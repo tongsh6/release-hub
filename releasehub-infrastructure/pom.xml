@@ -11,6 +11,12 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
             <groupId>io.releasehub</groupId>
             <artifactId>releasehub-application</artifactId>
         </dependency>

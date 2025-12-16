@@ -8,4 +8,13 @@
         <version>${revision}${changelist}</version>
     </parent>
     <artifactId>releasehub-common</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
 </project>

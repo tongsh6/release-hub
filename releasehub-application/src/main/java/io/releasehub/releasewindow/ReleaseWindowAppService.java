@@ -1,6 +1,7 @@
 package io.releasehub.releasewindow;
 
 import io.releasehub.common.exception.BizException;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -9,15 +10,11 @@ import java.time.Instant;
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor
 public class ReleaseWindowAppService {
 
     private final ReleaseWindowRepository repository;
-    private final Clock clock;
-
-    public ReleaseWindowAppService(ReleaseWindowRepository repository) {
-        this.repository = repository;
-        this.clock = Clock.systemUTC();
-    }
+    private final Clock clock = Clock.systemUTC();
 
     @Transactional
     public ReleaseWindow create(String name) {

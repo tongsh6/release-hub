@@ -1,6 +1,9 @@
 package io.releasehub.common.exception;
 
+import lombok.Getter;
+
 public class BizException extends RuntimeException {
+    @Getter
     private final String code;
     private final String message;
 
@@ -8,10 +11,6 @@ public class BizException extends RuntimeException {
         super(message);
         this.code = code;
         this.message = message;
-    }
-
-    public String getCode() {
-        return code;
     }
 
     @Override

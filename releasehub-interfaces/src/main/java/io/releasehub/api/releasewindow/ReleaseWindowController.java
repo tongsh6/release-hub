@@ -4,6 +4,7 @@ import io.releasehub.common.response.ApiResponse;
 import io.releasehub.releasewindow.ReleaseWindow;
 import io.releasehub.releasewindow.ReleaseWindowAppService;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,13 +18,10 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/release-windows")
+@RequiredArgsConstructor
 public class ReleaseWindowController {
 
     private final ReleaseWindowAppService appService;
-
-    public ReleaseWindowController(ReleaseWindowAppService appService) {
-        this.appService = appService;
-    }
 
     @PostMapping
     public ApiResponse<ReleaseWindowView> create(@Valid @RequestBody CreateReleaseWindowRequest request) {

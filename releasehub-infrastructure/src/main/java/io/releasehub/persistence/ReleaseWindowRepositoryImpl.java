@@ -4,6 +4,7 @@ import io.releasehub.releasewindow.ReleaseWindow;
 import io.releasehub.releasewindow.ReleaseWindowId;
 import io.releasehub.releasewindow.ReleaseWindowRepository;
 import io.releasehub.releasewindow.ReleaseWindowStatus;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -11,13 +12,10 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Repository
+@RequiredArgsConstructor
 public class ReleaseWindowRepositoryImpl implements ReleaseWindowRepository {
 
     private final ReleaseWindowJpaRepository jpaRepository;
-
-    public ReleaseWindowRepositoryImpl(ReleaseWindowJpaRepository jpaRepository) {
-        this.jpaRepository = jpaRepository;
-    }
 
     @Override
     public void save(ReleaseWindow releaseWindow) {
