@@ -1,5 +1,6 @@
 package io.releasehub.persistence;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -16,15 +17,27 @@ public class ReleaseWindowJpaEntity {
     private Instant createdAt;
     private Instant updatedAt;
 
+    @Column(name = "start_at")
+    private Instant startAt;
+
+    @Column(name = "end_at")
+    private Instant endAt;
+
+    @Column(name = "frozen", nullable = false)
+    private boolean frozen;
+
     public ReleaseWindowJpaEntity() {
     }
 
-    public ReleaseWindowJpaEntity(String id, String name, String status, Instant createdAt, Instant updatedAt) {
+    public ReleaseWindowJpaEntity(String id, String name, String status, Instant createdAt, Instant updatedAt, Instant startAt, Instant endAt, boolean frozen) {
         this.id = id;
         this.name = name;
         this.status = status;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.frozen = frozen;
     }
 
     public String getId() {
@@ -65,5 +78,29 @@ public class ReleaseWindowJpaEntity {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Instant getStartAt() {
+        return startAt;
+    }
+
+    public void setStartAt(Instant startAt) {
+        this.startAt = startAt;
+    }
+
+    public Instant getEndAt() {
+        return endAt;
+    }
+
+    public void setEndAt(Instant endAt) {
+        this.endAt = endAt;
+    }
+
+    public boolean isFrozen() {
+        return frozen;
+    }
+
+    public void setFrozen(boolean frozen) {
+        this.frozen = frozen;
     }
 }

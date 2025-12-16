@@ -44,6 +44,30 @@ public class ReleaseWindowAppService {
     }
 
     @Transactional
+    public ReleaseWindow configureWindow(String id, Instant startAt, Instant endAt) {
+        ReleaseWindow rw = get(id);
+        rw.configureWindow(startAt, endAt, Instant.now(clock));
+        repository.save(rw);
+        return rw;
+    }
+
+    @Transactional
+    public ReleaseWindow freeze(String id) {
+        ReleaseWindow rw = get(id);
+        rw.freeze(Instant.now(clock));
+        repository.save(rw);
+        return rw;
+    }
+
+    @Transactional
+    public ReleaseWindow unfreeze(String id) {
+        ReleaseWindow rw = get(id);
+        rw.unfreeze(Instant.now(clock));
+        repository.save(rw);
+        return rw;
+    }
+
+    @Transactional
     public ReleaseWindow release(String id) {
         ReleaseWindow rw = get(id);
         rw.release(Instant.now(clock));

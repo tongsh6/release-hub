@@ -26,7 +26,10 @@ public class ReleaseWindowRepositoryImpl implements ReleaseWindowRepository {
                 releaseWindow.getName(),
                 releaseWindow.getStatus().name(),
                 releaseWindow.getCreatedAt(),
-                releaseWindow.getUpdatedAt()
+                releaseWindow.getUpdatedAt(),
+                releaseWindow.getStartAt(),
+                releaseWindow.getEndAt(),
+                releaseWindow.isFrozen()
         );
         jpaRepository.save(entity);
     }
@@ -45,12 +48,21 @@ public class ReleaseWindowRepositoryImpl implements ReleaseWindowRepository {
     }
 
     private ReleaseWindow toDomain(ReleaseWindowJpaEntity entity) {
-        return ReleaseWindow.rehydrate(
-                new ReleaseWindowId(entity.getId()),
-                entity.getName(),
-                ReleaseWindowStatus.valueOf(entity.getStatus()),
-                entity.getCreatedAt(),
-                entity.getUpdatedAt()
-        );
+        try {
+            return ReleaseWindow.rehydrate(
+                    new ReleaseWindowId(entity.getId()),
+                    entity.getName(),
+                    ReleaseWindowStatus.valueOf(entity.getStatus()),
+                    entity.getCreatedAt(),
+                    entity.getUpdatedAt(),
+                    entity.getStartAt(),
+                    entity.getEndAt(),
+                    entity.isFrozen()
+            );
+        } catch (Exception e) {
+            System.err.println("Error rehydrating entity: " + entity.getId());
+            e.printStackTrace();
+            throw e;
+        }
     }
 }

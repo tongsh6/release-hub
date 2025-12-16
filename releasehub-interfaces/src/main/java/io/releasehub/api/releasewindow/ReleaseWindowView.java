@@ -10,16 +10,22 @@ public class ReleaseWindowView {
     private String status;
     private Instant createdAt;
     private Instant updatedAt;
+    private Instant startAt;
+    private Instant endAt;
+    private boolean frozen;
 
     public ReleaseWindowView() {
     }
 
-    public ReleaseWindowView(String id, String name, String status, Instant createdAt, Instant updatedAt) {
+    public ReleaseWindowView(String id, String name, String status, Instant createdAt, Instant updatedAt, Instant startAt, Instant endAt, boolean frozen) {
         this.id = id;
         this.name = name;
         this.status = status;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.frozen = frozen;
     }
 
     public static ReleaseWindowView from(ReleaseWindow rw) {
@@ -28,7 +34,10 @@ public class ReleaseWindowView {
                 rw.getName(),
                 rw.getStatus().name(),
                 rw.getCreatedAt(),
-                rw.getUpdatedAt()
+                rw.getUpdatedAt(),
+                rw.getStartAt(),
+                rw.getEndAt(),
+                rw.isFrozen()
         );
     }
 
@@ -70,5 +79,29 @@ public class ReleaseWindowView {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Instant getStartAt() {
+        return startAt;
+    }
+
+    public void setStartAt(Instant startAt) {
+        this.startAt = startAt;
+    }
+
+    public Instant getEndAt() {
+        return endAt;
+    }
+
+    public void setEndAt(Instant endAt) {
+        this.endAt = endAt;
+    }
+
+    public boolean isFrozen() {
+        return frozen;
+    }
+
+    public void setFrozen(boolean frozen) {
+        this.frozen = frozen;
     }
 }
