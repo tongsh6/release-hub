@@ -1,6 +1,8 @@
-package io.releasehub.releasewindow;
+package io.releasehub.application.releasewindow;
 
 import io.releasehub.common.exception.BizException;
+import io.releasehub.domain.releasewindow.ReleaseWindow;
+import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

@@ -1,4 +1,4 @@
-package io.releasehub.releasewindow;
+package io.releasehub.domain.releasewindow;
 
 public enum ReleaseWindowStatus {
     DRAFT,

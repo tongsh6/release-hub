@@ -1,4 +1,4 @@
-package io.releasehub.api.releasewindow;
+package io.releasehub.interfaces.api.releasewindow;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

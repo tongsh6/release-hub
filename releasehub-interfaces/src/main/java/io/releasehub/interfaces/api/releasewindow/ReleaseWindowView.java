@@ -1,6 +1,6 @@
-package io.releasehub.api.releasewindow;
+package io.releasehub.interfaces.api.releasewindow;
 
-import io.releasehub.releasewindow.ReleaseWindow;
+import io.releasehub.domain.releasewindow.ReleaseWindow;
 
 import java.time.Instant;
 

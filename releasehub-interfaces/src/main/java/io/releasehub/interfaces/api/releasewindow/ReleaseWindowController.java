@@ -1,8 +1,8 @@
-package io.releasehub.api.releasewindow;
+package io.releasehub.interfaces.api.releasewindow;
 
+import io.releasehub.application.releasewindow.ReleaseWindowAppService;
 import io.releasehub.common.response.ApiResponse;
-import io.releasehub.releasewindow.ReleaseWindow;
-import io.releasehub.releasewindow.ReleaseWindowAppService;
+import io.releasehub.domain.releasewindow.ReleaseWindow;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;

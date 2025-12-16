@@ -1,4 +1,4 @@
-package io.releasehub.releasewindow;
+package io.releasehub.domain.releasewindow;
 
 import io.releasehub.common.exception.BizException;
 import org.junit.jupiter.api.Test;
@@ -46,16 +46,22 @@ class ReleaseWindowTest {
         ReleaseWindow rw = ReleaseWindow.createDraft("Test", now);
 
         // Draft -> Submitted
-        rw.submit(now);
+        Instant submitTime = now.plusSeconds(10);
+        rw.submit(submitTime);
         assertEquals(ReleaseWindowStatus.SUBMITTED, rw.getStatus());
+        assertEquals(submitTime, rw.getUpdatedAt());
 
         // Submitted -> Released
-        rw.release(now);
+        Instant releaseTime = now.plusSeconds(20);
+        rw.release(releaseTime);
         assertEquals(ReleaseWindowStatus.RELEASED, rw.getStatus());
+        assertEquals(releaseTime, rw.getUpdatedAt());
 
         // Released -> Closed
-        rw.close(now);
+        Instant closeTime = now.plusSeconds(30);
+        rw.close(closeTime);
         assertEquals(ReleaseWindowStatus.CLOSED, rw.getStatus());
+        assertEquals(closeTime, rw.getUpdatedAt());
     }
 
     @Test
@@ -100,10 +106,12 @@ class ReleaseWindowTest {
         Instant start = now.plusSeconds(3600);
         Instant end = now.plusSeconds(7200);
 
-        rw.configureWindow(start, end, now);
+        Instant updateTime = now.plusSeconds(10);
+        rw.configureWindow(start, end, updateTime);
 
         assertEquals(start, rw.getStartAt());
         assertEquals(end, rw.getEndAt());
+        assertEquals(updateTime, rw.getUpdatedAt());
     }
 
     @Test
@@ -130,20 +138,28 @@ class ReleaseWindowTest {
         rw.submit(now);
 
         // Freeze
-        rw.freeze(now);
+        Instant freezeTime = now.plusSeconds(10);
+        rw.freeze(freezeTime);
         assertTrue(rw.isFrozen());
+        assertEquals(freezeTime, rw.getUpdatedAt());
 
-        // Idempotent Freeze
-        rw.freeze(now);
+        // Idempotent Freeze - should NOT update timestamp
+        Instant later = freezeTime.plusSeconds(10);
+        rw.freeze(later);
         assertTrue(rw.isFrozen());
+        assertEquals(freezeTime, rw.getUpdatedAt()); // Timestamp remains freezeTime
 
         // Unfreeze
-        rw.unfreeze(now);
+        Instant unfreezeTime = later.plusSeconds(10);
+        rw.unfreeze(unfreezeTime);
         assertFalse(rw.isFrozen());
+        assertEquals(unfreezeTime, rw.getUpdatedAt());
 
-        // Idempotent Unfreeze
-        rw.unfreeze(now);
+        // Idempotent Unfreeze - should NOT update timestamp
+        Instant evenLater = unfreezeTime.plusSeconds(10);
+        rw.unfreeze(evenLater);
         assertFalse(rw.isFrozen());
+        assertEquals(unfreezeTime, rw.getUpdatedAt()); // Timestamp remains unfreezeTime
     }
 
     @Test

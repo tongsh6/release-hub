@@ -1,4 +1,4 @@
-package io.releasehub.releasewindow;
+package io.releasehub.domain.releasewindow;
 
 import java.util.Objects;
 import java.util.UUID;

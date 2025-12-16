@@ -1,9 +1,9 @@
-package io.releasehub.persistence;
+package io.releasehub.infrastructure.persistence;
 
-import io.releasehub.releasewindow.ReleaseWindow;
-import io.releasehub.releasewindow.ReleaseWindowId;
-import io.releasehub.releasewindow.ReleaseWindowRepository;
-import io.releasehub.releasewindow.ReleaseWindowStatus;
+import io.releasehub.application.releasewindow.ReleaseWindowRepository;
+import io.releasehub.domain.releasewindow.ReleaseWindow;
+import io.releasehub.domain.releasewindow.ReleaseWindowId;
+import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
