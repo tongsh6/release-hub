@@ -33,4 +33,35 @@
             <artifactId>spring-context</artifactId>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>enforce-banned-dependencies</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <searchTransitive>false</searchTransitive>
+                                    <excludes>
+                                        <exclude>io.releasehub:releasehub-interfaces</exclude>
+                                        <exclude>io.releasehub:releasehub-infrastructure</exclude>
+                                        <exclude>io.releasehub:releasehub-bootstrap</exclude>
+                                    </excludes>
+                                    <message>Application layer must not directly depend on Interfaces, Infrastructure, or Bootstrap layers.</message>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
