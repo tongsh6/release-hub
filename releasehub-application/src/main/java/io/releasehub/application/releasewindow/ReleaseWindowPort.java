@@ -6,7 +6,10 @@ import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import java.util.List;
 import java.util.Optional;
 
-public interface ReleaseWindowRepository {
+/**
+ * Port/Gateway：用例层对外部能力的抽象
+ */
+public interface ReleaseWindowPort {
     void save(ReleaseWindow releaseWindow);
     Optional<ReleaseWindow> findById(ReleaseWindowId id);
     List<ReleaseWindow> findAll();

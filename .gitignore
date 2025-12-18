@@ -1,0 +1,7 @@
+target/
+.idea/
+.vscode/
+*.DS_Store
+*.log
+.flattened-pom.xml
+BACKEND_STRUCTURE_REPORT.md

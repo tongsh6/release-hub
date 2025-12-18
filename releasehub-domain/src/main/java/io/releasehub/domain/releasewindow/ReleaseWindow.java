@@ -1,16 +1,19 @@
 package io.releasehub.domain.releasewindow;
 
 import io.releasehub.common.exception.BizException;
+import lombok.Getter;
 
 import java.time.Instant;
 
+@Getter
 public class ReleaseWindow {
+    // Getters
     private final ReleaseWindowId id;
     private final String name;
-    private ReleaseWindowStatus status;
     private final Instant createdAt;
+    private ReleaseWindowStatus status;
     private Instant updatedAt;
-    
+
     private Instant startAt;
     private Instant endAt;
     private boolean frozen;
@@ -39,6 +42,15 @@ public class ReleaseWindow {
                 null,
                 false
         );
+    }
+
+    private static void validateName(String name) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new BizException("RW_NAME_REQUIRED", "ReleaseWindow name is required");
+        }
+        if (name.length() > 128) {
+            throw new BizException("RW_NAME_TOO_LONG", "ReleaseWindow name is too long (max 128)");
+        }
     }
 
     // Rehydration method
@@ -112,22 +124,4 @@ public class ReleaseWindow {
         this.updatedAt = now;
     }
 
-    private static void validateName(String name) {
-        if (name == null || name.trim().isEmpty()) {
-            throw new BizException("RW_NAME_REQUIRED", "ReleaseWindow name is required");
-        }
-        if (name.length() > 128) {
-            throw new BizException("RW_NAME_TOO_LONG", "ReleaseWindow name is too long (max 128)");
-        }
-    }
-
-    // Getters
-    public ReleaseWindowId getId() { return id; }
-    public String getName() { return name; }
-    public ReleaseWindowStatus getStatus() { return status; }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public Instant getStartAt() { return startAt; }
-    public Instant getEndAt() { return endAt; }
-    public boolean isFrozen() { return frozen; }
 }

@@ -16,8 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * @author tongshuanglong
+ */
 @RestController
-@RequestMapping("/api/release-windows")
+@RequestMapping("/api/v1/release-windows")
 @RequiredArgsConstructor
 public class ReleaseWindowController {
 

@@ -15,30 +15,30 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ReleaseWindowAppService {
 
-    private final ReleaseWindowRepository repository;
+    private final ReleaseWindowPort releaseWindowPort;
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
     public ReleaseWindow create(String name) {
         ReleaseWindow rw = ReleaseWindow.createDraft(name, Instant.now(clock));
-        repository.save(rw);
+        releaseWindowPort.save(rw);
         return rw;
     }
 
     public ReleaseWindow get(String id) {
-        return repository.findById(new ReleaseWindowId(id))
+        return releaseWindowPort.findById(new ReleaseWindowId(id))
                 .orElseThrow(() -> new BizException("RW_NOT_FOUND", "ReleaseWindow not found: " + id));
     }
 
     public List<ReleaseWindow> list() {
-        return repository.findAll();
+        return releaseWindowPort.findAll();
     }
 
     @Transactional
     public ReleaseWindow submit(String id) {
         ReleaseWindow rw = get(id);
         rw.submit(Instant.now(clock));
-        repository.save(rw);
+        releaseWindowPort.save(rw);
         return rw;
     }
 
@@ -46,7 +46,7 @@ public class ReleaseWindowAppService {
     public ReleaseWindow configureWindow(String id, Instant startAt, Instant endAt) {
         ReleaseWindow rw = get(id);
         rw.configureWindow(startAt, endAt, Instant.now(clock));
-        repository.save(rw);
+        releaseWindowPort.save(rw);
         return rw;
     }
 
@@ -54,7 +54,7 @@ public class ReleaseWindowAppService {
     public ReleaseWindow freeze(String id) {
         ReleaseWindow rw = get(id);
         rw.freeze(Instant.now(clock));
-        repository.save(rw);
+        releaseWindowPort.save(rw);
         return rw;
     }
 
@@ -62,7 +62,7 @@ public class ReleaseWindowAppService {
     public ReleaseWindow unfreeze(String id) {
         ReleaseWindow rw = get(id);
         rw.unfreeze(Instant.now(clock));
-        repository.save(rw);
+        releaseWindowPort.save(rw);
         return rw;
     }
 
@@ -70,7 +70,7 @@ public class ReleaseWindowAppService {
     public ReleaseWindow release(String id) {
         ReleaseWindow rw = get(id);
         rw.release(Instant.now(clock));
-        repository.save(rw);
+        releaseWindowPort.save(rw);
         return rw;
     }
 
@@ -78,7 +78,7 @@ public class ReleaseWindowAppService {
     public ReleaseWindow close(String id) {
         ReleaseWindow rw = get(id);
         rw.close(Instant.now(clock));
-        repository.save(rw);
+        releaseWindowPort.save(rw);
         return rw;
     }
 }

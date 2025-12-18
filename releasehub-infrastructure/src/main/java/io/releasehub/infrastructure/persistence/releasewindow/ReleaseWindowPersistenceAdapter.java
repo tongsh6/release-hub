@@ -1,6 +1,6 @@
-package io.releasehub.infrastructure.persistence;
+package io.releasehub.infrastructure.persistence.releasewindow;
 
-import io.releasehub.application.releasewindow.ReleaseWindowRepository;
+import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
@@ -11,9 +11,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * Adapter：基础设施层对 Port 的实现
+ */
 @Repository
 @RequiredArgsConstructor
-public class ReleaseWindowRepositoryImpl implements ReleaseWindowRepository {
+public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
 
     private final ReleaseWindowJpaRepository jpaRepository;
 
@@ -35,14 +38,14 @@ public class ReleaseWindowRepositoryImpl implements ReleaseWindowRepository {
     @Override
     public Optional<ReleaseWindow> findById(ReleaseWindowId id) {
         return jpaRepository.findById(id.value())
-                .map(this::toDomain);
+                            .map(this::toDomain);
     }
 
     @Override
     public List<ReleaseWindow> findAll() {
         return jpaRepository.findAll().stream()
-                .map(this::toDomain)
-                .collect(Collectors.toList());
+                            .map(this::toDomain)
+                            .collect(Collectors.toList());
     }
 
     private ReleaseWindow toDomain(ReleaseWindowJpaEntity entity) {

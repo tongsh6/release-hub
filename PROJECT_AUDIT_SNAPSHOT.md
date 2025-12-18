@@ -1,8 +1,8 @@
-# PROJECT AUDIT SNAPSHOT
+# PROJECT_AUDIT_SNAPSHOT
 
-## 1) 项目总览
+## 1. 项目总览
 - **工程名**: releasehub
-- **根目录**: /Users/tongshuanglong/release-hub
+- **根目录名**: releasehub
 - **Java 版本**: 21
 - **Spring Boot 版本**: 3.2.8
 - **Lombok 版本**: 1.18.36
@@ -14,7 +14,7 @@
   - releasehub-interfaces
   - releasehub-bootstrap
 
-## 2) 目录树 (排除构建产物与配置)
+## 2. 目录树 (关键路径)
 ```text
 .
 ├── pom.xml
@@ -23,121 +23,86 @@
 │   └── src
 │       └── main
 │           └── java
-│               └── io
-│                   └── releasehub
-│                       └── application
-│                           └── releasewindow
-│                               ├── ReleaseWindowAppService.java
-│                               └── ReleaseWindowRepository.java
+│               └── io/releasehub/application
+│                   ├── project
+│                   ├── releasewindow
+│                   └── repo
 ├── releasehub-bootstrap
 │   ├── pom.xml
 │   └── src
 │       ├── main
 │       │   ├── java
-│       │   │   └── io
-│       │   │       └── releasehub
-│       │   │           └── bootstrap
-│       │   │               └── ReleaseHubApplication.java
+│       │   │   └── io/releasehub/bootstrap
 │       │   └── resources
 │       │       └── application.yml
 │       └── test
 │           └── java
-│               └── io
-│                   └── releasehub
-│                       └── arch
-│                           └── ArchitectureRulesTest.java
+│               └── io/releasehub/arch
 ├── releasehub-common
 │   ├── pom.xml
 │   └── src
 │       └── main
 │           └── java
-│               └── io
-│                   └── releasehub
-│                       └── common
-│                           ├── exception
-│                           │   └── BizException.java
-│                           └── response
-│                               └── ApiResponse.java
+│               └── io/releasehub/common
 ├── releasehub-domain
 │   ├── pom.xml
 │   └── src
 │       ├── main
-│       │   ├── java
-│       │   │   └── io
-│       │   │       └── releasehub
-│       │   │           └── domain
-│       │   │               └── releasewindow
-│       │   │                   ├── ReleaseWindow.java
-│       │   │                   ├── ReleaseWindowId.java
-│       │   │                   └── ReleaseWindowStatus.java
+│       │   └── java
+│       │       └── io/releasehub/domain
+│       │           ├── project
+│       │           ├── releasewindow
+│       │           └── repo
 │       └── test
 │           └── java
-│               └── io
-│                   └── releasehub
-│                       └── domain
-│                           └── releasewindow
-│                               └── ReleaseWindowTest.java
+│               └── io/releasehub/domain
 ├── releasehub-infrastructure
 │   ├── pom.xml
 │   └── src
-│       ├── main
-│       │   ├── java
-│       │   │   └── io
-│       │   │       └── releasehub
-│       │   │           └── infrastructure
-│       │   │               └── persistence
-│       │   │                   ├── PersistenceConfig.java
-│       │   │                   ├── ReleaseWindowJpaEntity.java
-│       │   │                   ├── ReleaseWindowJpaRepository.java
-│       │   │                   └── ReleaseWindowRepositoryImpl.java
-│       │   └── resources
-│       │       └── db
-│       │           └── migration
-│       │               ├── V1__init.sql
-│       │               └── V2__release_window_window_and_frozen.sql
-├── releasehub-interfaces
-│   ├── pom.xml
-│   └── src
 │       └── main
-│           └── java
-│               └── io
-│                   └── releasehub
-│                       ├── interfaces
-│                       │   ├── api
-│                       │   │   └── releasewindow
-│                       │   │       ├── ConfigureReleaseWindowRequest.java
-│                       │   │       ├── CreateReleaseWindowRequest.java
-│                       │   │       ├── ReleaseWindowController.java
-│                       │   │       └── ReleaseWindowView.java
-│                       │   └── rest
-│                       │       ├── GlobalExceptionHandler.java
-│                       │       └── PingController.java
-├── verify_rw.sh
-└── verify_rw_v2.sh
+│           ├── java
+│           │   └── io/releasehub/infrastructure
+│           │       └── persistence
+│           └── resources
+│               └── db/migration
+└── releasehub-interfaces
+    ├── pom.xml
+    └── src
+        └── main
+            └── java
+                └── io/releasehub/interfaces
+                    ├── api
+                    └── rest
 ```
 
-## 3) 包分层核对
-**io.releasehub.common..**
-- `io.releasehub.common.exception`: `BizException`
-- `io.releasehub.common.response`: `ApiResponse`
+## 3. 包分层核对 (基于真实包名)
 
-**io.releasehub.domain..**
-- `io.releasehub.domain.releasewindow`: `ReleaseWindow`, `ReleaseWindowId`, `ReleaseWindowStatus`
+### io.releasehub.common..
+- **exception**: BizException
+- **response**: ApiResponse
 
-**io.releasehub.application..**
-- `io.releasehub.application.releasewindow`: `ReleaseWindowAppService`, `ReleaseWindowRepository`
+### io.releasehub.domain..
+- **project**: Project, ProjectId, ProjectStatus
+- **releasewindow**: ReleaseWindow, ReleaseWindowId, ReleaseWindowStatus
+- **repo**: CodeRepository, RepoId
 
-**io.releasehub.infrastructure..**
-- `io.releasehub.infrastructure.persistence`: `ReleaseWindowJpaEntity`, `ReleaseWindowJpaRepository`, `ReleaseWindowRepositoryImpl`, `PersistenceConfig`
+### io.releasehub.application..
+- **project**: ProjectAppService, ProjectRepository
+- **releasewindow**: ReleaseWindowAppService, ReleaseWindowRepository, ReleaseWindowScopeAppService, ReleaseWindowScopeRepository
+- **repo**: CodeRepositoryAppService, CodeRepositoryRepository
 
-**io.releasehub.interfaces..**
-- `io.releasehub.interfaces.api.releasewindow`: `ReleaseWindowController`, `CreateReleaseWindowRequest`, `ReleaseWindowView`
-- `io.releasehub.interfaces.rest`: `GlobalExceptionHandler`, `PingController`
+### io.releasehub.infrastructure..
+- **persistence**: PersistenceConfig, ReleaseWindowJpaEntity, ReleaseWindowJpaRepository, ReleaseWindowRepositoryImpl
 
-**io.releasehub.bootstrap..**
-- `io.releasehub.bootstrap`: `ReleaseHubApplication`
+### io.releasehub.interfaces..
+- **api.releasewindow**: ConfigureReleaseWindowRequest, CreateReleaseWindowRequest, ReleaseWindowController, ReleaseWindowView
+- **rest**: GlobalExceptionHandler, PingController
 
-## 4) 启动类核对
+### io.releasehub.bootstrap..
+- **(root)**: ReleaseHubApplication
+
+## 4. 启动类核对
+
 **文件路径**: `releasehub-bootstrap/src/main/java/io/releasehub/bootstrap/ReleaseHubApplication.java`
 ```java
 package io.releasehub.bootstrap;
@@ -154,155 +119,132 @@ public class ReleaseHubApplication {
 }
 ```
 
-**application.yml (关键片段)**
+**配置片段 (application.yml)**:
 ```yaml
 spring:
   datasource:
     url: jdbc:h2:mem:releasehub;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1
-    driver-class-name: org.h2.Driver
   jpa:
     hibernate:
       ddl-auto: none
   flyway:
     enabled: true
     locations: classpath:db/migration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
 ```
 
-## 5) POM 依赖矩阵核对
-**父 POM (dependencyManagement)**
-```xml
-<dependencyManagement>
-    <dependencies>
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <version>${lombok.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-dependencies</artifactId>
-            <version>${spring-boot.version}</version>
-            <type>pom</type>
-            <scope>import</scope>
-        </dependency>
-        <!-- Internal Modules -->
-        <dependency>
-            <groupId>io.releasehub</groupId>
-            <artifactId>releasehub-common</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <!-- ... other internal modules ... -->
-    </dependencies>
-</dependencyManagement>
-```
+## 5. POM 依赖矩阵核对
 
-**releasehub-common**
-- `lombok` (provided)
+### 父 POM (dependencyManagement)
+- **Spring Boot**: `spring-boot-dependencies` (3.2.8)
+- **Lombok**: `lombok` (1.18.36)
+- **Modules**: common, domain, application, infrastructure, interfaces
 
-**releasehub-domain**
-- `lombok` (provided)
-- `releasehub-common`
-- `junit-jupiter` (test)
+### Lombok 配置
+- **Dependency**: Provided scope in all modules.
+- **Compiler**: `maven-compiler-plugin` with `annotationProcessorPaths` for `lombok`.
 
-**releasehub-application**
-- `lombok` (provided)
-- `releasehub-domain`
-- `releasehub-common`
-- `spring-tx`
-- `spring-context`
+### 模块依赖摘要
+- **releasehub-common**: lombok
+- **releasehub-domain**: lombok, common, junit-jupiter
+- **releasehub-application**: lombok, domain, common, spring-tx, spring-context
+- **releasehub-infrastructure**: lombok, application, common, spring-boot-starter-data-jpa, flyway-core, h2
+- **releasehub-interfaces**: lombok, application, common, spring-boot-starter-web, spring-boot-starter-validation
+- **releasehub-bootstrap**: interfaces, infrastructure, spring-boot-starter-actuator, spring-boot-starter-test, archunit-junit5
 
-**releasehub-infrastructure**
-- `lombok` (provided)
-- `releasehub-application`
-- `releasehub-common`
-- `spring-boot-starter-data-jpa`
-- `flyway-core`
-- `h2` (runtime)
+## 6. ArchUnit 门禁核对
 
-**releasehub-interfaces**
-- `lombok` (provided)
-- `releasehub-application`
-- `releasehub-common`
-- `spring-boot-starter-web`
-- `spring-boot-starter-validation`
-
-**releasehub-bootstrap**
-- `releasehub-interfaces`
-- `releasehub-infrastructure`
-- `spring-boot-starter-actuator`
-- `spring-boot-starter-test` (test)
-- `archunit-junit5` (test)
-
-## 6) ArchUnit 门禁核对
 **文件路径**: `releasehub-bootstrap/src/test/java/io/releasehub/arch/ArchitectureRulesTest.java`
+
 ```java
-@Test
-void enforceLayeredArchitecture() {
-    layeredArchitecture()
-            .consideringOnlyDependenciesInAnyPackage("io.releasehub..")
-            .layer("Common").definedBy("io.releasehub.common..")
-            .layer("Domain").definedBy("io.releasehub.domain..")
-            .layer("Application").definedBy("io.releasehub.application..")
-            .layer("Infrastructure").definedBy("io.releasehub.infrastructure..")
-            .layer("Interfaces").definedBy("io.releasehub.interfaces..")
-            .layer("Bootstrap").definedBy("io.releasehub.bootstrap..")
+package io.releasehub.arch;
 
-            .whereLayer("Domain").mayOnlyBeAccessedByLayers("Application", "Infrastructure", "Interfaces", "Bootstrap")
-            .whereLayer("Application").mayOnlyAccessLayers("Domain", "Common")
-            .whereLayer("Infrastructure").mayOnlyAccessLayers("Application", "Domain", "Common")
-            .whereLayer("Interfaces").mayOnlyAccessLayers("Application", "Domain", "Common")
-            .whereLayer("Bootstrap").mayOnlyAccessLayers("Interfaces", "Infrastructure", "Application", "Domain", "Common")
-            .check(classes);
-}
+import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.core.importer.ImportOption;
+import org.junit.jupiter.api.Test;
+import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 
-@Test
-void domainLayerShouldBePure() {
-    com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses().that().resideInAPackage("io.releasehub.domain..")
-            .should().dependOnClassesThat(
-                    com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage("org.springframework..")
-                    .or(com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage("jakarta.persistence.."))
-                    .or(com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage("javax.persistence.."))
-            )
-            .as("Domain layer must not depend on Spring or Persistence frameworks")
-            .check(classes);
+public class ArchitectureRulesTest {
+
+    private final JavaClasses classes = new ClassFileImporter()
+            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+            .importPackages("io.releasehub");
+
+    @Test
+    void enforceLayeredArchitecture() {
+        layeredArchitecture()
+                .consideringOnlyDependenciesInAnyPackage("io.releasehub..")
+                .layer("Common").definedBy("io.releasehub.common..")
+                .layer("Domain").definedBy("io.releasehub.domain..")
+                .layer("Application").definedBy("io.releasehub.application..")
+                .layer("Infrastructure").definedBy("io.releasehub.infrastructure..")
+                .layer("Interfaces").definedBy("io.releasehub.interfaces..")
+                .layer("Bootstrap").definedBy("io.releasehub.bootstrap..")
+
+                .whereLayer("Interfaces").mayOnlyBeAccessedByLayers("Bootstrap")
+                .whereLayer("Infrastructure").mayOnlyBeAccessedByLayers("Bootstrap")
+                .whereLayer("Application").mayOnlyBeAccessedByLayers("Interfaces", "Infrastructure", "Bootstrap")
+                .whereLayer("Domain").mayOnlyBeAccessedByLayers("Application", "Infrastructure", "Interfaces")
+
+                .whereLayer("Domain").mayOnlyAccessLayers("Common")
+                .whereLayer("Application").mayOnlyAccessLayers("Domain", "Common")
+                .whereLayer("Interfaces").mayOnlyAccessLayers("Application", "Domain", "Common")
+                .whereLayer("Infrastructure").mayOnlyAccessLayers("Application", "Domain", "Common")
+                .whereLayer("Bootstrap").mayOnlyAccessLayers("Interfaces", "Infrastructure")
+
+                .check(classes);
+    }
+    
+    // ... (Domain Purity & Common Restrictions tests omitted for brevity)
 }
 ```
 
-## 7) ReleaseWindow V2 证据
+## 7. ReleaseWindow V2 证据
+
 **聚合根路径**: `releasehub-domain/src/main/java/io/releasehub/domain/releasewindow/ReleaseWindow.java`
+
+**关键代码摘录**:
 ```java
-private Instant startAt;
-private Instant endAt;
-private boolean frozen;
+    private Instant startAt;
+    private Instant endAt;
+    private boolean frozen;
 
-public void configureWindow(Instant startAt, Instant endAt, Instant now) {
-    if (!startAt.isBefore(endAt)) {
-        throw new BizException("RW_INVALID_WINDOW", "StartAt must be strictly before EndAt");
+    public void configureWindow(Instant startAt, Instant endAt, Instant now) {
+        if (startAt == null || endAt == null) throw new BizException("RW_INVALID_WINDOW", "StartAt and EndAt must not be null");
+        if (!startAt.isBefore(endAt)) throw new BizException("RW_INVALID_WINDOW", "StartAt must be strictly before EndAt");
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.updatedAt = now;
     }
-    this.startAt = startAt;
-    this.endAt = endAt;
-    this.updatedAt = now;
-}
 
-public void freeze(Instant now) {
-    if (this.status != ReleaseWindowStatus.SUBMITTED) {
-        throw new BizException("RW_INVALID_STATE", "Cannot freeze from state: " + this.status);
+    public void freeze(Instant now) {
+        if (this.status != ReleaseWindowStatus.SUBMITTED) throw new BizException("RW_INVALID_STATE", "Cannot freeze from state: " + this.status);
+        if (this.frozen) return;
+        this.frozen = true;
+        this.updatedAt = now;
     }
-    this.frozen = true;
-    this.updatedAt = now;
-}
 
-public void release(Instant now) {
-    if (this.frozen) {
-        throw new BizException("RW_FROZEN", "Cannot release a frozen window");
+    public void unfreeze(Instant now) {
+        if (!this.frozen) return;
+        this.frozen = false;
+        this.updatedAt = now;
     }
-    if (this.startAt != null && this.endAt != null) {
-        if (now.isBefore(this.startAt) || now.isAfter(this.endAt)) {
-            throw new BizException("RW_OUT_OF_WINDOW", "Current time is outside the release window");
+
+    public void release(Instant now) {
+        // ...
+        if (this.frozen) throw new BizException("RW_FROZEN", "Cannot release a frozen window");
+        if (this.startAt != null && this.endAt != null) {
+            if (now.isBefore(this.startAt) || now.isAfter(this.endAt)) {
+                throw new BizException("RW_OUT_OF_WINDOW", "Current time is outside the release window");
+            }
         }
+        // ...
     }
-    this.status = ReleaseWindowStatus.RELEASED;
-}
 ```
 
 **Flyway V2 脚本**: `releasehub-infrastructure/src/main/resources/db/migration/V2__release_window_window_and_frozen.sql`
@@ -312,10 +254,50 @@ ALTER TABLE release_window ADD COLUMN end_at TIMESTAMP;
 ALTER TABLE release_window ADD COLUMN frozen BOOLEAN DEFAULT FALSE NOT NULL;
 ```
 
-**验证脚本**: `verify_rw_v2.sh` (存在，内容包含针对 Configure, Freeze, Release 的 curl 测试)
+**验证脚本**: `verify_rw_v2.sh`
+```bash
+#!/bin/bash
+# ... (setup omitted)
 
-## 8) 构建与验证命令
-1. `mvn -q clean test`
-2. `mvn -pl releasehub-bootstrap spring-boot:run`
-3. `bash verify_rw.sh`
-4. `bash verify_rw_v2.sh`
+# 3. Configure Window
+curl -s -X PUT $BASE_URL/$id/window \
+  -H "Content-Type: application/json" \
+  -d "{\"startAt\": \"$start_at\", \"endAt\": \"$end_at\"}" | python3 -m json.tool
+
+# 4. Freeze
+curl -s -X POST $BASE_URL/$id/freeze | python3 -m json.tool
+
+# 5. Attempt Release (Expect Failure)
+response=$(curl -s -X POST $BASE_URL/$id/release)
+if echo "$response" | grep -q "RW_FROZEN"; then
+    echo "SUCCESS: Release blocked by frozen state."
+else
+    echo "FAIL: Release should have been blocked."
+    exit 1
+fi
+
+# 6. Unfreeze & 7. Release
+curl -s -X POST $BASE_URL/$id/unfreeze | python3 -m json.tool
+curl -s -X POST $BASE_URL/$id/release | python3 -m json.tool
+```
+
+## 8. 构建与验证命令
+
+请按顺序执行以下命令进行验证：
+
+1.  **单元测试与 ArchUnit 门禁**:
+    ```bash
+    mvn -q clean test
+    ```
+2.  **启动应用**:
+    ```bash
+    mvn -pl releasehub-bootstrap spring-boot:run
+    ```
+3.  **运行 V1 验证脚本**:
+    ```bash
+    bash verify_rw.sh
+    ```
+4.  **运行 V2 验证脚本**:
+    ```bash
+    bash verify_rw_v2.sh
+    ```

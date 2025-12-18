@@ -1,9 +1,11 @@
 package io.releasehub.interfaces.api.releasewindow;
 
 import jakarta.validation.constraints.NotBlank;
+import lombok.Getter;
 
 import java.time.Instant;
 
+@Getter
 public class ConfigureReleaseWindowRequest {
     @NotBlank
     private String startAt;
@@ -11,16 +13,8 @@ public class ConfigureReleaseWindowRequest {
     @NotBlank
     private String endAt;
 
-    public String getStartAt() {
-        return startAt;
-    }
-
     public void setStartAt(String startAt) {
         this.startAt = startAt;
-    }
-
-    public String getEndAt() {
-        return endAt;
     }
 
     public void setEndAt(String endAt) {

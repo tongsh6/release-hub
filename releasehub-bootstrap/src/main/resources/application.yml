@@ -1,3 +1,8 @@
+releasehub:
+  seed:
+    # 避免生产数据污染，默认关闭种子数据
+    enabled: false
+
 server:
   port: 8080
 
@@ -26,3 +31,18 @@ management:
     web:
       exposure:
         include: health,info
+
+security:
+  jwt:
+    secret: "ThisIsASecretKeyForReleaseHubJwtTokenGenerationAndValidationWhichMustBeLongEnough" # 必须足够长
+    ttlMinutes: 120
+cors:
+  allowedOrigins: "http://localhost:5173"
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+

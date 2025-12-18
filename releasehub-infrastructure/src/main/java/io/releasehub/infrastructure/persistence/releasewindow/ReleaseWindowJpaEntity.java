@@ -1,4 +1,4 @@
-package io.releasehub.infrastructure.persistence;
+package io.releasehub.infrastructure.persistence.releasewindow;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -11,6 +11,9 @@ import lombok.Setter;
 
 import java.time.Instant;
 
+/**
+ * @author tongshuanglong
+ */
 @Entity
 @Table(name = "release_window")
 @Getter

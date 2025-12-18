@@ -4,21 +4,46 @@
 command -v curl >/dev/null 2>&1 || { echo >&2 "curl required but not installed. Aborting."; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo >&2 "python3 required but not installed. Aborting."; exit 1; }
 
-BASE_URL="http://localhost:8080/api/release-windows"
+BASE_URL="http://localhost:8080/api/v1/release-windows"
+AUTH_URL="http://localhost:8080/api/v1/auth/login"
 
 echo "Checking if service is up..."
-curl -s "${BASE_URL/release-windows/ping}" > /dev/null
+# Ping check might fail 401 but curl returns 0. If it fails connection refused, it returns non-zero.
+for i in {1..30}; do
+    curl -s "http://localhost:8080/actuator/health" > /dev/null
+    if [ $? -eq 0 ]; then
+        echo "Service is up!"
+        break
+    fi
+    echo "Waiting for service... ($i/30)"
+    sleep 2
+done
+
+curl -v "http://localhost:8080/actuator/health" > /dev/null
 if [ $? -ne 0 ]; then
     echo "Service is not reachable at localhost:8080. Please start it first."
     exit 1
 fi
 
-echo "Service is up. Starting verification..."
+echo "Service is up. Logging in..."
+token_response=$(curl -s -X POST $AUTH_URL \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin"}')
+token=$(echo $token_response | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+
+if [ -z "$token" ]; then
+  echo "Login failed. Response: $token_response"
+  exit 1
+fi
+echo "Logged in. Token acquired."
+
+AUTH_HEADER="Authorization: Bearer $token"
 
 # 1. Create Release Window
 echo "1. Creating Release Window..."
 create_response=$(curl -s -X POST $BASE_URL \
   -H "Content-Type: application/json" \
+  -H "$AUTH_HEADER" \
   -d '{"name": "R-V2-TEST"}')
 echo "Response: $create_response"
 
@@ -32,7 +57,7 @@ echo "Created ID: $id"
 
 # 2. Submit
 echo -e "\n2. Submitting..."
-curl -s -X POST $BASE_URL/$id/submit | python3 -m json.tool
+curl -s -X POST $BASE_URL/$id/submit -H "$AUTH_HEADER" | python3 -m json.tool
 
 # 3. Configure Window (Current time window)
 echo -e "\n3. Configuring Window..."
@@ -49,15 +74,16 @@ echo "Setting window: $start_at to $end_at"
 
 curl -s -X PUT $BASE_URL/$id/window \
   -H "Content-Type: application/json" \
+  -H "$AUTH_HEADER" \
   -d "{\"startAt\": \"$start_at\", \"endAt\": \"$end_at\"}" | python3 -m json.tool
 
 # 4. Freeze
 echo -e "\n4. Freezing..."
-curl -s -X POST $BASE_URL/$id/freeze | python3 -m json.tool
+curl -s -X POST $BASE_URL/$id/freeze -H "$AUTH_HEADER" | python3 -m json.tool
 
 # 5. Attempt Release (Should fail due to Frozen)
 echo -e "\n5. Attempting Release (Expect Failure)..."
-response=$(curl -s -X POST $BASE_URL/$id/release)
+response=$(curl -s -X POST $BASE_URL/$id/release -H "$AUTH_HEADER")
 echo "$response" | python3 -m json.tool
 
 if echo "$response" | grep -q "RW_FROZEN"; then
@@ -69,11 +95,11 @@ fi
 
 # 6. Unfreeze
 echo -e "\n6. Unfreezing..."
-curl -s -X POST $BASE_URL/$id/unfreeze | python3 -m json.tool
+curl -s -X POST $BASE_URL/$id/unfreeze -H "$AUTH_HEADER" | python3 -m json.tool
 
 # 7. Release (Should succeed)
 echo -e "\n7. Releasing (Expect Success)..."
-response=$(curl -s -X POST $BASE_URL/$id/release)
+response=$(curl -s -X POST $BASE_URL/$id/release -H "$AUTH_HEADER")
 echo "$response" | python3 -m json.tool
 
 if echo "$response" | grep -q "\"status\":\"RELEASED\""; then
@@ -85,6 +111,6 @@ fi
 
 # 8. Close
 echo -e "\n8. Closing..."
-curl -s -X POST $BASE_URL/$id/close | python3 -m json.tool
+curl -s -X POST $BASE_URL/$id/close -H "$AUTH_HEADER" | python3 -m json.tool
 
 echo -e "\nVerification V2 Completed Successfully!"
