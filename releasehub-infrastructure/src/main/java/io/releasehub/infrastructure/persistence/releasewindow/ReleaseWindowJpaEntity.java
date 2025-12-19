@@ -36,4 +36,7 @@ public class ReleaseWindowJpaEntity {
 
     @Column(name = "frozen", nullable = false)
     private boolean frozen;
+
+    @Column(name = "published_at")
+    private Instant publishedAt;
 }

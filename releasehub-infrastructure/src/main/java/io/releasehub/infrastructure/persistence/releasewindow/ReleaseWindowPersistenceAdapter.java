@@ -30,7 +30,8 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
                 releaseWindow.getUpdatedAt(),
                 releaseWindow.getStartAt(),
                 releaseWindow.getEndAt(),
-                releaseWindow.isFrozen()
+                releaseWindow.isFrozen(),
+                releaseWindow.getPublishedAt()
         );
         jpaRepository.save(entity);
     }
@@ -58,7 +59,8 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
                     entity.getUpdatedAt(),
                     entity.getStartAt(),
                     entity.getEndAt(),
-                    entity.isFrozen()
+                    entity.isFrozen(),
+                    entity.getPublishedAt()
             );
         } catch (Exception e) {
             System.err.println("Error rehydrating entity: " + entity.getId());

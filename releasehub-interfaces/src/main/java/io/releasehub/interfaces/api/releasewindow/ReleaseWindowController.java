@@ -1,20 +1,13 @@
 package io.releasehub.interfaces.api.releasewindow;
 
 import io.releasehub.application.releasewindow.ReleaseWindowAppService;
+import io.releasehub.application.releasewindow.ReleaseWindowView;
 import io.releasehub.common.response.ApiResponse;
-import io.releasehub.domain.releasewindow.ReleaseWindow;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * @author tongshuanglong
@@ -28,57 +21,58 @@ public class ReleaseWindowController {
 
     @PostMapping
     public ApiResponse<ReleaseWindowView> create(@Valid @RequestBody CreateReleaseWindowRequest request) {
-        ReleaseWindow rw = appService.create(request.getName());
-        return ApiResponse.success(ReleaseWindowView.from(rw));
+        ReleaseWindowView view = appService.create(request.getName());
+        return ApiResponse.success(view);
     }
 
     @GetMapping("/{id}")
     public ApiResponse<ReleaseWindowView> get(@PathVariable("id") String id) {
-        ReleaseWindow rw = appService.get(id);
-        return ApiResponse.success(ReleaseWindowView.from(rw));
+        ReleaseWindowView view = appService.get(id);
+        return ApiResponse.success(view);
     }
 
     @GetMapping
     public ApiResponse<List<ReleaseWindowView>> list() {
-        List<ReleaseWindowView> list = appService.list().stream()
-                                                 .map(ReleaseWindowView::from)
-                                                 .collect(Collectors.toList());
+        List<ReleaseWindowView> list = appService.list();
         return ApiResponse.success(list);
     }
 
-    @PostMapping("/{id}/submit")
-    public ApiResponse<ReleaseWindowView> submit(@PathVariable("id") String id) {
-        ReleaseWindow rw = appService.submit(id);
-        return ApiResponse.success(ReleaseWindowView.from(rw));
+    @PostMapping("/{id}/publish")
+    public ApiResponse<ReleaseWindowView> publish(@PathVariable("id") String id, @RequestBody(required = false) PublishReleaseWindowRequest request) {
+        // 中文注释：发布窗口，需先完成配置
+        ReleaseWindowView view = appService.publish(id);
+        return ApiResponse.success(view);
     }
 
     @PutMapping("/{id}/window")
     public ApiResponse<ReleaseWindowView> configureWindow(@PathVariable("id") String id, @Valid @RequestBody ConfigureReleaseWindowRequest request) {
-        ReleaseWindow rw = appService.configureWindow(id, request.getStartAtInstant(), request.getEndAtInstant());
-        return ApiResponse.success(ReleaseWindowView.from(rw));
+        // 中文注释：配置时间窗口，需在冻结前执行
+        ReleaseWindowView view = appService.configureWindow(id, request.getStartAtInstant(), request.getEndAtInstant());
+        return ApiResponse.success(view);
     }
 
     @PostMapping("/{id}/freeze")
-    public ApiResponse<ReleaseWindowView> freeze(@PathVariable("id") String id) {
-        ReleaseWindow rw = appService.freeze(id);
-        return ApiResponse.success(ReleaseWindowView.from(rw));
+    public ApiResponse<ReleaseWindowView> freeze(@PathVariable("id") String id, @RequestBody(required = false) FreezeReleaseWindowRequest request) {
+        // 中文注释：冻结窗口，冻结后不可再配置
+        ReleaseWindowView view = appService.freeze(id);
+        return ApiResponse.success(view);
     }
 
     @PostMapping("/{id}/unfreeze")
     public ApiResponse<ReleaseWindowView> unfreeze(@PathVariable("id") String id) {
-        ReleaseWindow rw = appService.unfreeze(id);
-        return ApiResponse.success(ReleaseWindowView.from(rw));
+        ReleaseWindowView view = appService.unfreeze(id);
+        return ApiResponse.success(view);
     }
 
     @PostMapping("/{id}/release")
     public ApiResponse<ReleaseWindowView> release(@PathVariable("id") String id) {
-        ReleaseWindow rw = appService.release(id);
-        return ApiResponse.success(ReleaseWindowView.from(rw));
+        ReleaseWindowView view = appService.release(id);
+        return ApiResponse.success(view);
     }
 
     @PostMapping("/{id}/close")
     public ApiResponse<ReleaseWindowView> close(@PathVariable("id") String id) {
-        ReleaseWindow rw = appService.close(id);
-        return ApiResponse.success(ReleaseWindowView.from(rw));
+        ReleaseWindowView view = appService.close(id);
+        return ApiResponse.success(view);
     }
 }

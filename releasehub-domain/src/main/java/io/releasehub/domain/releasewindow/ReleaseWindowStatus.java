@@ -6,7 +6,7 @@ package io.releasehub.domain.releasewindow;
 
 public enum ReleaseWindowStatus {
     DRAFT,
-    SUBMITTED,
+    PUBLISHED,
     RELEASED,
     CLOSED
 }

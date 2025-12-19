@@ -1,4 +1,4 @@
-package io.releasehub.interfaces.api.releasewindow;
+package io.releasehub.application.releasewindow;
 
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import lombok.Getter;
@@ -17,11 +17,12 @@ public class ReleaseWindowView {
     private Instant startAt;
     private Instant endAt;
     private boolean frozen;
+    private Instant publishedAt;
 
     public ReleaseWindowView() {
     }
 
-    public ReleaseWindowView(String id, String name, String status, Instant createdAt, Instant updatedAt, Instant startAt, Instant endAt, boolean frozen) {
+    public ReleaseWindowView(String id, String name, String status, Instant createdAt, Instant updatedAt, Instant startAt, Instant endAt, boolean frozen, Instant publishedAt) {
         this.id = id;
         this.name = name;
         this.status = status;
@@ -30,6 +31,7 @@ public class ReleaseWindowView {
         this.startAt = startAt;
         this.endAt = endAt;
         this.frozen = frozen;
+        this.publishedAt = publishedAt;
     }
 
     public static ReleaseWindowView from(ReleaseWindow rw) {
@@ -41,8 +43,8 @@ public class ReleaseWindowView {
                 rw.getUpdatedAt(),
                 rw.getStartAt(),
                 rw.getEndAt(),
-                rw.isFrozen()
+                rw.isFrozen(),
+                rw.getPublishedAt()
         );
     }
-
 }

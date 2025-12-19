@@ -19,66 +19,74 @@ public class ReleaseWindowAppService {
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
-    public ReleaseWindow create(String name) {
+    public ReleaseWindowView create(String name) {
         ReleaseWindow rw = ReleaseWindow.createDraft(name, Instant.now(clock));
         releaseWindowPort.save(rw);
-        return rw;
+        return ReleaseWindowView.from(rw);
     }
 
-    public ReleaseWindow get(String id) {
-        return releaseWindowPort.findById(new ReleaseWindowId(id))
+    public ReleaseWindowView get(String id) {
+        ReleaseWindow rw = releaseWindowPort.findById(new ReleaseWindowId(id))
                 .orElseThrow(() -> new BizException("RW_NOT_FOUND", "ReleaseWindow not found: " + id));
+        return ReleaseWindowView.from(rw);
     }
 
-    public List<ReleaseWindow> list() {
-        return releaseWindowPort.findAll();
+    public List<ReleaseWindowView> list() {
+        return releaseWindowPort.findAll().stream()
+                .map(ReleaseWindowView::from)
+                .toList();
     }
 
     @Transactional
-    public ReleaseWindow submit(String id) {
-        ReleaseWindow rw = get(id);
-        rw.submit(Instant.now(clock));
+    public ReleaseWindowView publish(String id) {
+        ReleaseWindow rw = findById(id);
+        rw.publish(Instant.now(clock));
         releaseWindowPort.save(rw);
-        return rw;
+        return ReleaseWindowView.from(rw);
     }
 
     @Transactional
-    public ReleaseWindow configureWindow(String id, Instant startAt, Instant endAt) {
-        ReleaseWindow rw = get(id);
+    public ReleaseWindowView configureWindow(String id, Instant startAt, Instant endAt) {
+        ReleaseWindow rw = findById(id);
         rw.configureWindow(startAt, endAt, Instant.now(clock));
         releaseWindowPort.save(rw);
-        return rw;
+        return ReleaseWindowView.from(rw);
     }
 
     @Transactional
-    public ReleaseWindow freeze(String id) {
-        ReleaseWindow rw = get(id);
+    public ReleaseWindowView freeze(String id) {
+        ReleaseWindow rw = findById(id);
         rw.freeze(Instant.now(clock));
         releaseWindowPort.save(rw);
-        return rw;
+        return ReleaseWindowView.from(rw);
     }
 
     @Transactional
-    public ReleaseWindow unfreeze(String id) {
-        ReleaseWindow rw = get(id);
+    public ReleaseWindowView unfreeze(String id) {
+        ReleaseWindow rw = findById(id);
         rw.unfreeze(Instant.now(clock));
         releaseWindowPort.save(rw);
-        return rw;
+        return ReleaseWindowView.from(rw);
     }
 
     @Transactional
-    public ReleaseWindow release(String id) {
-        ReleaseWindow rw = get(id);
+    public ReleaseWindowView release(String id) {
+        ReleaseWindow rw = findById(id);
         rw.release(Instant.now(clock));
         releaseWindowPort.save(rw);
-        return rw;
+        return ReleaseWindowView.from(rw);
     }
 
     @Transactional
-    public ReleaseWindow close(String id) {
-        ReleaseWindow rw = get(id);
+    public ReleaseWindowView close(String id) {
+        ReleaseWindow rw = findById(id);
         rw.close(Instant.now(clock));
         releaseWindowPort.save(rw);
-        return rw;
+        return ReleaseWindowView.from(rw);
+    }
+
+    private ReleaseWindow findById(String id) {
+         return releaseWindowPort.findById(new ReleaseWindowId(id))
+                .orElseThrow(() -> new BizException("RW_NOT_FOUND", "ReleaseWindow not found: " + id));
     }
 }
