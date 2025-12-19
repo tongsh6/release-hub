@@ -1,20 +1,20 @@
 package io.releasehub.infrastructure.seed;
 
 import io.releasehub.application.auth.PasswordPort;
-import io.releasehub.domain.user.User;
 import io.releasehub.application.user.UserPort;
+import io.releasehub.domain.user.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-
-import java.util.UUID;
 
 /**
  * 数据库种子数据初始化
  * 包含默认的管理员账号
+ *
+ * @author tongshuanglong
  */
 @Configuration
 @Slf4j
@@ -33,13 +33,13 @@ public class DataSeeder {
                 String rawPassword = "admin";
                 // 密码必须经过 BCrypt 加密
                 String encodedPassword = passwordService.encode(rawPassword);
-                
+
                 User admin = new User(
-                    UUID.randomUUID().toString(),
-                    "admin",
-                    encodedPassword,
-                    "Admin User",
-                    true
+                        "11111111-1111-1111-1111-111111111111", // Fixed ID for admin
+                        "admin",
+                        encodedPassword,
+                        "Admin User",
+                        true
                 );
                 userPort.save(admin);
                 log.info("Initialized admin user with password 'admin'");
