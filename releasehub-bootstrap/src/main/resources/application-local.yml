@@ -1,0 +1,39 @@
+releasehub:
+  seed:
+    # 避免生产数据污染，默认关闭种子数据
+    enabled: true
+
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:releasehub;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1
+    username: sa
+    password: sa
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    fail-on-missing-locations: true
+
+security:
+  jwt:
+    secret: "ThisIsASecretKeyForReleaseHubJwtTokenGenerationAndValidationWhichMustBeLongEnough" # 必须足够长
+    ttlMinutes: 120
+cors:
+  allowedOrigins: "http://localhost:5173"
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
