@@ -1,5 +1,6 @@
 target/
 .idea/
+.trae/
 .vscode/
 *.DS_Store
 *.log
