@@ -12,6 +12,9 @@ import lombok.Setter;
 @Getter
 public class CreateReleaseWindowRequest {
     @NotBlank
+    @Size(max = 64)
+    private String windowKey;
+    @NotBlank
     @Size(max = 128)
     private String name;
 

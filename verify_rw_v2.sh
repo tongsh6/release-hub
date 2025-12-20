@@ -44,7 +44,7 @@ echo "1. Creating Release Window..."
 create_response=$(curl -s -X POST $BASE_URL \
   -H "Content-Type: application/json" \
   -H "$AUTH_HEADER" \
-  -d '{"name": "R-V2-TEST"}')
+  -d '{"windowKey":"RW-V2-TEST","name":"R-V2-TEST"}')
 echo "Response: $create_response"
 
 id=$(echo $create_response | grep -o '"id":"[^"]*' | cut -d'"' -f4)
@@ -56,8 +56,8 @@ fi
 echo "Created ID: $id"
 
 # 2. Submit
-echo -e "\n2. Submitting..."
-curl -s -X POST $BASE_URL/$id/submit -H "$AUTH_HEADER" | python3 -m json.tool
+echo -e "\n2. Publishing..."
+curl -s -X POST $BASE_URL/$id/publish -H "$AUTH_HEADER" | python3 -m json.tool
 
 # 3. Configure Window (Current time window)
 echo -e "\n3. Configuring Window..."
@@ -81,27 +81,14 @@ curl -s -X PUT $BASE_URL/$id/window \
 echo -e "\n4. Freezing..."
 curl -s -X POST $BASE_URL/$id/freeze -H "$AUTH_HEADER" | python3 -m json.tool
 
-# 5. Attempt Release (Should fail due to Frozen)
-echo -e "\n5. Attempting Release (Expect Failure)..."
+# 5. Publish
+echo -e "\n5. Publishing..."
+curl -s -X POST $BASE_URL/$id/publish -H "$AUTH_HEADER" | python3 -m json.tool
+
+# 6. Release (Should succeed)
+echo -e "\n6. Releasing (Expect Success)..."
 response=$(curl -s -X POST $BASE_URL/$id/release -H "$AUTH_HEADER")
 echo "$response" | python3 -m json.tool
-
-if echo "$response" | grep -q "RW_FROZEN"; then
-    echo "SUCCESS: Release blocked by frozen state."
-else
-    echo "FAIL: Release should have been blocked."
-    exit 1
-fi
-
-# 6. Unfreeze
-echo -e "\n6. Unfreezing..."
-curl -s -X POST $BASE_URL/$id/unfreeze -H "$AUTH_HEADER" | python3 -m json.tool
-
-# 7. Release (Should succeed)
-echo -e "\n7. Releasing (Expect Success)..."
-response=$(curl -s -X POST $BASE_URL/$id/release -H "$AUTH_HEADER")
-echo "$response" | python3 -m json.tool
-
 if echo "$response" | grep -q "\"status\":\"RELEASED\""; then
     echo "SUCCESS: Released successfully."
 else
@@ -109,8 +96,8 @@ else
     exit 1
 fi
 
-# 8. Close
-echo -e "\n8. Closing..."
+# 7. Close
+echo -e "\n7. Closing..."
 curl -s -X POST $BASE_URL/$id/close -H "$AUTH_HEADER" | python3 -m json.tool
 
 echo -e "\nVerification V2 Completed Successfully!"

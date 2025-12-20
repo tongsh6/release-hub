@@ -24,6 +24,7 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
     public void save(ReleaseWindow releaseWindow) {
         ReleaseWindowJpaEntity entity = new ReleaseWindowJpaEntity(
                 releaseWindow.getId().value(),
+                releaseWindow.getWindowKey(),
                 releaseWindow.getName(),
                 releaseWindow.getStatus().name(),
                 releaseWindow.getCreatedAt(),
@@ -53,6 +54,7 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
         try {
             return ReleaseWindow.rehydrate(
                     new ReleaseWindowId(entity.getId()),
+                    entity.getWindowKey(),
                     entity.getName(),
                     ReleaseWindowStatus.valueOf(entity.getStatus()),
                     entity.getCreatedAt(),

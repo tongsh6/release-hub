@@ -10,6 +10,7 @@ import java.time.Instant;
 @Getter
 public class ReleaseWindowView {
     private String id;
+    private String windowKey;
     private String name;
     private String status;
     private Instant createdAt;
@@ -22,8 +23,9 @@ public class ReleaseWindowView {
     public ReleaseWindowView() {
     }
 
-    public ReleaseWindowView(String id, String name, String status, Instant createdAt, Instant updatedAt, Instant startAt, Instant endAt, boolean frozen, Instant publishedAt) {
+    public ReleaseWindowView(String id, String windowKey, String name, String status, Instant createdAt, Instant updatedAt, Instant startAt, Instant endAt, boolean frozen, Instant publishedAt) {
         this.id = id;
+        this.windowKey = windowKey;
         this.name = name;
         this.status = status;
         this.createdAt = createdAt;
@@ -37,6 +39,7 @@ public class ReleaseWindowView {
     public static ReleaseWindowView from(ReleaseWindow rw) {
         return new ReleaseWindowView(
                 rw.getId().value(),
+                rw.getWindowKey(),
                 rw.getName(),
                 rw.getStatus().name(),
                 rw.getCreatedAt(),

@@ -6,7 +6,10 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * ReleaseWindow 聚合状态机单测
@@ -18,7 +21,7 @@ class ReleaseWindowTest {
 
     @Test
     void should_create_draft_successfully() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("2024-W01", now);
+        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
         assertEquals(ReleaseWindowStatus.DRAFT, rw.getStatus());
         assertEquals("2024-W01", rw.getName());
         assertFalse(rw.isFrozen());
@@ -26,7 +29,7 @@ class ReleaseWindowTest {
 
     @Test
     void should_configure_window_successfully() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("2024-W01", now);
+        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
         Instant start = now.plus(1, ChronoUnit.DAYS);
         Instant end = now.plus(3, ChronoUnit.DAYS);
 
@@ -38,7 +41,7 @@ class ReleaseWindowTest {
 
     @Test
     void should_fail_to_configure_when_frozen() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("2024-W01", now);
+        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
         rw.freeze(now);
 
         Instant start = now.plus(1, ChronoUnit.DAYS);
@@ -50,7 +53,7 @@ class ReleaseWindowTest {
 
     @Test
     void should_fail_to_publish_when_not_configured() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("2024-W01", now);
+        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
 
         BizException ex = assertThrows(BizException.class, () -> rw.publish(now));
         assertTrue(ex.getMessage().contains("must be configured"));
@@ -58,9 +61,9 @@ class ReleaseWindowTest {
 
     @Test
     void should_publish_successfully() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("2024-W01", now);
+        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
         rw.configureWindow(now.plus(1, ChronoUnit.DAYS), now.plus(3, ChronoUnit.DAYS), now);
-        
+
         rw.publish(now);
 
         assertEquals(ReleaseWindowStatus.PUBLISHED, rw.getStatus());
@@ -69,7 +72,7 @@ class ReleaseWindowTest {
 
     @Test
     void should_fail_to_publish_when_already_published() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("2024-W01", now);
+        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
         rw.configureWindow(now.plus(1, ChronoUnit.DAYS), now.plus(3, ChronoUnit.DAYS), now);
         rw.publish(now);
 
@@ -79,17 +82,17 @@ class ReleaseWindowTest {
 
     @Test
     void should_freeze_successfully() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("2024-W01", now);
+        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
         rw.freeze(now);
         assertTrue(rw.isFrozen());
     }
 
     @Test
     void should_release_successfully() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("2024-W01", now);
+        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
         rw.configureWindow(now.plus(1, ChronoUnit.DAYS), now.plus(3, ChronoUnit.DAYS), now);
         rw.publish(now);
-        
+
         rw.release(now);
         assertEquals(ReleaseWindowStatus.RELEASED, rw.getStatus());
     }

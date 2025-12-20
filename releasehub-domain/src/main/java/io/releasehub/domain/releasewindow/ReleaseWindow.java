@@ -8,6 +8,7 @@ import java.time.Instant;
 
 @Getter
 public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
+    private final String windowKey;
     private final String name;
     private ReleaseWindowStatus status;
 
@@ -16,8 +17,9 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
     private boolean frozen;
     private Instant publishedAt;
 
-    private ReleaseWindow(ReleaseWindowId id, String name, ReleaseWindowStatus status, Instant createdAt, Instant updatedAt, Instant startAt, Instant endAt, boolean frozen, Instant publishedAt) {
+    private ReleaseWindow(ReleaseWindowId id, String windowKey, String name, ReleaseWindowStatus status, Instant createdAt, Instant updatedAt, Instant startAt, Instant endAt, boolean frozen, Instant publishedAt) {
         super(id, createdAt, updatedAt, 0L);
+        this.windowKey = windowKey;
         this.name = name;
         this.status = status;
         this.startAt = startAt;
@@ -26,10 +28,12 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
         this.publishedAt = publishedAt;
     }
 
-    public static ReleaseWindow createDraft(String name, Instant now) {
+    public static ReleaseWindow createDraft(String windowKey, String name, Instant now) {
         validateName(name);
+        validateKey(windowKey);
         return new ReleaseWindow(
                 ReleaseWindowId.newId(),
+                windowKey,
                 name,
                 ReleaseWindowStatus.DRAFT,
                 now,
@@ -41,6 +45,15 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
         );
     }
 
+    private static void validateKey(String key) {
+        if (key == null || key.trim().isEmpty()) {
+            throw new BizException("RW_KEY_REQUIRED", "ReleaseWindow key is required");
+        }
+        if (key.length() > 64) {
+            throw new BizException("RW_KEY_TOO_LONG", "ReleaseWindow key is too long (max 64)");
+        }
+    }
+
     private static void validateName(String name) {
         if (name == null || name.trim().isEmpty()) {
             throw new BizException("RW_NAME_REQUIRED", "ReleaseWindow name is required");
@@ -50,8 +63,8 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
         }
     }
 
-    public static ReleaseWindow rehydrate(ReleaseWindowId id, String name, ReleaseWindowStatus status, Instant createdAt, Instant updatedAt, Instant startAt, Instant endAt, boolean frozen, Instant publishedAt) {
-        return new ReleaseWindow(id, name, status, createdAt, updatedAt, startAt, endAt, frozen, publishedAt);
+    public static ReleaseWindow rehydrate(ReleaseWindowId id, String windowKey, String name, ReleaseWindowStatus status, Instant createdAt, Instant updatedAt, Instant startAt, Instant endAt, boolean frozen, Instant publishedAt) {
+        return new ReleaseWindow(id, windowKey, name, status, createdAt, updatedAt, startAt, endAt, frozen, publishedAt);
     }
 
     public void configureWindow(Instant startAt, Instant endAt, Instant now) {

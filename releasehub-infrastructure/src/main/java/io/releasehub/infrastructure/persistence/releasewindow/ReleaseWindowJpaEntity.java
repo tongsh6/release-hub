@@ -23,6 +23,7 @@ import java.time.Instant;
 public class ReleaseWindowJpaEntity {
     @Id
     private String id;
+    private String windowKey;
     private String name;
     private String status;
     private Instant createdAt;

@@ -19,8 +19,8 @@ public class ReleaseWindowAppService {
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
-    public ReleaseWindowView create(String name) {
-        ReleaseWindow rw = ReleaseWindow.createDraft(name, Instant.now(clock));
+    public ReleaseWindowView create(String windowKey, String name) {
+        ReleaseWindow rw = ReleaseWindow.createDraft(windowKey, name, Instant.now(clock));
         releaseWindowPort.save(rw);
         return ReleaseWindowView.from(rw);
     }
