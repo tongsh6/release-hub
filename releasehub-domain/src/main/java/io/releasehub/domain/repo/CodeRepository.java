@@ -1,6 +1,7 @@
 package io.releasehub.domain.repo;
 
 import io.releasehub.common.exception.BizException;
+import io.releasehub.domain.base.BaseEntity;
 import io.releasehub.domain.project.ProjectId;
 import lombok.Getter;
 
@@ -10,29 +11,24 @@ import java.time.Instant;
  * @author tongshuanglong
  */
 @Getter
-public class CodeRepository {
-    private final RepoId id;
+public class CodeRepository extends BaseEntity<RepoId> {
     private final ProjectId projectId;
     private final String name;
     private final String cloneUrl;
     private final boolean monoRepo;
-    private final Instant createdAt;
     private String defaultBranch;
-    private Instant updatedAt;
 
-    // Constructor for reconstruction
     public CodeRepository(RepoId id, ProjectId projectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant createdAt, Instant updatedAt) {
-        this.id = id;
+        super(id, createdAt, updatedAt, 0L);
         this.projectId = projectId;
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
         this.monoRepo = monoRepo;
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
     }
 
-    private CodeRepository(ProjectId projectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
+    private CodeRepository(RepoId id, ProjectId projectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
+        super(id, now);
         if (projectId == null) {
             throw new BizException("REPO_PROJECT_REQUIRED", "Project ID is required");
         }
@@ -40,14 +36,11 @@ public class CodeRepository {
         validateUrl(cloneUrl);
         validateBranch(defaultBranch);
 
-        this.id = RepoId.newId();
         this.projectId = projectId;
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
         this.monoRepo = monoRepo;
-        this.createdAt = now;
-        this.updatedAt = now;
     }
 
     private void validateName(String name) {
@@ -78,12 +71,12 @@ public class CodeRepository {
     }
 
     public static CodeRepository create(ProjectId projectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
-        return new CodeRepository(projectId, name, cloneUrl, defaultBranch, monoRepo, now);
+        return new CodeRepository(RepoId.newId(), projectId, name, cloneUrl, defaultBranch, monoRepo, now);
     }
 
     public void changeDefaultBranch(String branch, Instant now) {
         validateBranch(branch);
         this.defaultBranch = branch;
-        this.updatedAt = now;
+        touch(now);
     }
 }

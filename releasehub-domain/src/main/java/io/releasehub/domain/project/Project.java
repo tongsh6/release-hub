@@ -1,38 +1,31 @@
 package io.releasehub.domain.project;
 
 import io.releasehub.common.exception.BizException;
+import io.releasehub.domain.base.BaseEntity;
 import lombok.Getter;
 
 import java.time.Instant;
 
 @Getter
-public class Project {
-    private final ProjectId id;
+public class Project extends BaseEntity<ProjectId> {
     private final String description;
-    private final Instant createdAt;
     private String name;
     private ProjectStatus status;
-    private Instant updatedAt;
 
-    // Constructor for reconstruction (e.g. from persistence)
     public Project(ProjectId id, String name, String description, ProjectStatus status, Instant createdAt, Instant updatedAt) {
-        this.id = id;
+        super(id, createdAt, updatedAt, 0L);
         this.name = name;
         this.description = description;
         this.status = status;
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
     }
 
-    private Project(String name, String description, Instant now) {
+    private Project(ProjectId id, String name, String description, Instant now) {
+        super(id, now);
         validateName(name);
         validateDescription(description);
-        this.id = ProjectId.newId();
         this.name = name;
         this.description = description;
         this.status = ProjectStatus.ACTIVE;
-        this.createdAt = now;
-        this.updatedAt = now;
     }
 
     private void validateName(String name) {
@@ -51,13 +44,13 @@ public class Project {
     }
 
     public static Project create(String name, String description, Instant now) {
-        return new Project(name, description, now);
+        return new Project(ProjectId.newId(), name, description, now);
     }
 
     public void rename(String name, Instant now) {
         validateName(name);
         this.name = name;
-        this.updatedAt = now;
+        touch(now);
     }
 
     public void archive(Instant now) {
@@ -65,6 +58,6 @@ public class Project {
             return; // Idempotent
         }
         this.status = ProjectStatus.ARCHIVED;
-        this.updatedAt = now;
+        touch(now);
     }
 }
