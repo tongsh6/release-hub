@@ -8,10 +8,10 @@ server:
 
 spring:
   datasource:
-    url: jdbc:h2:mem:releasehub;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1
-    username: sa
-    password: sa
-    driver-class-name: org.h2.Driver
+    url: jdbc:mysql://localhost:3306/release_hub?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=utf8&createDatabaseIfNotExist=true
+    username: release_hub
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
       ddl-auto: none
