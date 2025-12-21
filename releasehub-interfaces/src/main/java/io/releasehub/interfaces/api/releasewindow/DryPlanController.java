@@ -17,7 +17,7 @@ import java.util.List;
  * @author tongshuanglong
  */
 @RestController
-@RequestMapping("/api/v1/windows")
+@RequestMapping("/api/v1/release-windows")
 @RequiredArgsConstructor
 @Tag(name = "发布窗口 - 干运行计划")
 public class DryPlanController {

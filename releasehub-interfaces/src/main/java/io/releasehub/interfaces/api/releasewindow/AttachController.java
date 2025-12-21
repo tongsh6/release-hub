@@ -22,7 +22,7 @@ import java.util.List;
  * @author tongshuanglong
  */
 @RestController
-@RequestMapping("/api/v1/windows")
+@RequestMapping("/api/v1/release-windows")
 @RequiredArgsConstructor
 @Tag(name = "发布窗口 - 迭代管理")
 public class AttachController {

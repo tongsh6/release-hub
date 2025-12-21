@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/windows")
+@RequestMapping("/api/v1/release-windows")
 @RequiredArgsConstructor
 @Tag(name = "发布窗口 - 编排管理")
 public class OrchestrateController {
