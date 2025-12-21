@@ -4,6 +4,8 @@ import io.releasehub.application.window.AttachAppService;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,28 +21,33 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/windows")
 @RequiredArgsConstructor
+@Tag(name = "Windows")
 public class AttachController {
     private final AttachAppService attachAppService;
 
     @PostMapping("/{id}/attach")
+    @Operation(summary = "Attach iterations to window")
     public ApiResponse<List<String>> attach(@PathVariable("id") String windowId, @RequestBody AttachRequest request) {
         var list = attachAppService.attach(windowId, request.getIterationKeys());
         return ApiResponse.success(list.stream().map(x -> x.getIterationKey().value()).toList());
     }
 
     @PostMapping("/{id}/detach")
+    @Operation(summary = "Detach iteration from window")
     public ApiResponse<Boolean> detach(@PathVariable("id") String windowId, @RequestBody DetachRequest request) {
         attachAppService.detach(windowId, request.getIterationKey());
         return ApiResponse.success(true);
     }
 
     @GetMapping("/{id}/iterations")
+    @Operation(summary = "List window iterations")
     public ApiResponse<List<WindowIterationView>> list(@PathVariable("id") String windowId) {
         var list = attachAppService.list(windowId);
         return ApiResponse.success(list.stream().map(x -> new WindowIterationView(x.getIterationKey().value(), x.getAttachAt())).toList());
     }
 
     @GetMapping("/{id}/iterations/paged")
+    @Operation(summary = "List window iterations (paged)")
     public ApiPageResponse<List<WindowIterationView>> listPaged(@PathVariable("id") String windowId,
                                                                 @RequestParam(name = "page", defaultValue = "0") int page,
                                                                 @RequestParam(name = "size", defaultValue = "20") int size) {

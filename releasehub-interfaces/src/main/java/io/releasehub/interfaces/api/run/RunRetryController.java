@@ -2,6 +2,8 @@ package io.releasehub.interfaces.api.run;
 
 import io.releasehub.application.run.RunAppService;
 import io.releasehub.common.response.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,10 +17,12 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/runs")
 @RequiredArgsConstructor
+@Tag(name = "Runs")
 public class RunRetryController {
     private final RunAppService runAppService;
 
     @PostMapping("/{id}/retry")
+    @Operation(summary = "Retry run with selected items")
     public ApiResponse<String> retry(@PathVariable("id") String runId, @RequestBody RetryRequest request) {
         var run = runAppService.retry(runId, request.getItems(), request.getOperator());
         return ApiResponse.success(run.getId());

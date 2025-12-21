@@ -5,6 +5,8 @@ import io.releasehub.application.iteration.IterationView;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -26,28 +28,33 @@ import java.util.Set;
 @RestController
 @RequestMapping("/api/v1/iterations")
 @RequiredArgsConstructor
+@Tag(name = "Iterations")
 public class IterationController {
     private final IterationAppService iterationAppService;
 
     @PostMapping
+    @Operation(summary = "Create iteration")
     public ApiResponse<String> create(@RequestBody CreateIterationRequest request) {
         var it = iterationAppService.create(request.getIterationKey(), request.getDescription(), request.getRepoIds());
         return ApiResponse.success(it.getId().value());
     }
 
     @GetMapping("/{key}")
+    @Operation(summary = "Get iteration")
     public ApiResponse<IterationView> get(@PathVariable("key") String key) {
         var it = iterationAppService.get(key);
         return ApiResponse.success(IterationView.fromDomain(it));
     }
 
     @GetMapping
+    @Operation(summary = "List iterations")
     public ApiResponse<List<IterationView>> list() {
         var list = iterationAppService.list().stream().map(IterationView::fromDomain).toList();
         return ApiResponse.success(list);
     }
 
     @GetMapping("/paged")
+    @Operation(summary = "List iterations (paged)")
     public ApiPageResponse<List<IterationView>> listPaged(@RequestParam(name = "page", defaultValue = "0") int page,
                                                           @RequestParam(name = "size", defaultValue = "20") int size) {
         var all = iterationAppService.list().stream().map(IterationView::fromDomain).toList();
@@ -58,30 +65,35 @@ public class IterationController {
     }
 
     @PutMapping("/{key}")
+    @Operation(summary = "Update iteration")
     public ApiResponse<IterationView> update(@PathVariable("key") String key, @RequestBody UpdateIterationRequest request) {
         var it = iterationAppService.update(key, request.getDescription(), request.getRepoIds());
         return ApiResponse.success(IterationView.fromDomain(it));
     }
 
     @PostMapping("/{key}/repos/add")
+    @Operation(summary = "Add repos to iteration")
     public ApiResponse<IterationView> addRepos(@PathVariable("key") String key, @RequestBody RepoChangeRequest request) {
         var it = iterationAppService.addRepos(key, request.getRepoIds());
         return ApiResponse.success(IterationView.fromDomain(it));
     }
 
     @PostMapping("/{key}/repos/remove")
+    @Operation(summary = "Remove repos from iteration")
     public ApiResponse<IterationView> removeRepos(@PathVariable("key") String key, @RequestBody RepoChangeRequest request) {
         var it = iterationAppService.removeRepos(key, request.getRepoIds());
         return ApiResponse.success(IterationView.fromDomain(it));
     }
 
     @GetMapping("/{key}/repos")
+    @Operation(summary = "List repos of iteration")
     public ApiResponse<java.util.Set<String>> listRepos(@PathVariable("key") String key) {
         var repos = iterationAppService.listRepos(key);
         return ApiResponse.success(repos);
     }
 
     @DeleteMapping("/{key}")
+    @Operation(summary = "Delete iteration")
     public ApiResponse<Void> delete(@PathVariable("key") String key) {
         iterationAppService.delete(key);
         return ApiResponse.success(null);

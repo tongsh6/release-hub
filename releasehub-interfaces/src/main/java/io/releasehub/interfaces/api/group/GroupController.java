@@ -6,6 +6,8 @@ import io.releasehub.application.group.GroupView;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -23,40 +25,47 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/v1/groups")
 @RequiredArgsConstructor
+@Tag(name = "Groups")
 public class GroupController {
     private final GroupAppService groupAppService;
 
     @PostMapping
+    @Operation(summary = "Create group")
     public ApiResponse<String> create(@RequestBody CreateGroupRequest request) {
         var g = groupAppService.create(request.getName(), request.getCode(), request.getParentCode());
         return ApiResponse.success(g.getId().value());
     }
 
     @GetMapping("/{id}")
+    @Operation(summary = "Get group by id")
     public ApiResponse<GroupView> get(@PathVariable("id") String id) {
         var g = groupAppService.get(id);
         return ApiResponse.success(GroupView.fromDomain(g));
     }
 
     @GetMapping("/by-code/{code}")
+    @Operation(summary = "Get group by code")
     public ApiResponse<GroupView> getByCode(@PathVariable("code") String code) {
         var g = groupAppService.getByCode(code);
         return ApiResponse.success(GroupView.fromDomain(g));
     }
 
     @DeleteMapping("/{id}")
+    @Operation(summary = "Delete group by id")
     public ApiResponse<Void> deleteById(@PathVariable("id") String id) {
         groupAppService.deleteById(id);
         return ApiResponse.success(null);
     }
 
     @DeleteMapping("/by-code/{code}")
+    @Operation(summary = "Delete group by code")
     public ApiResponse<Void> deleteByCode(@PathVariable("code") String code) {
         groupAppService.deleteByCode(code);
         return ApiResponse.success(null);
     }
 
     @GetMapping
+    @Operation(summary = "List groups")
     public ApiResponse<List<GroupView>> list() {
         var list = groupAppService.list().stream()
                                   .map(GroupView::fromDomain)
@@ -65,6 +74,7 @@ public class GroupController {
     }
 
     @GetMapping("/paged")
+    @Operation(summary = "List groups (paged)")
     public ApiPageResponse<List<GroupView>> listPaged(@RequestParam(name = "page", defaultValue = "0") int page,
                                                       @RequestParam(name = "size", defaultValue = "20") int size) {
         var all = groupAppService.list().stream().map(GroupView::fromDomain).collect(Collectors.toList());
@@ -75,6 +85,7 @@ public class GroupController {
     }
 
     @GetMapping("/children/{parentCode}")
+    @Operation(summary = "List children by parent code")
     public ApiResponse<List<GroupView>> children(@PathVariable("parentCode") String parentCode) {
         var list = groupAppService.children(parentCode).stream()
                                   .map(GroupView::fromDomain)
@@ -83,6 +94,7 @@ public class GroupController {
     }
 
     @GetMapping("/top-level")
+    @Operation(summary = "List top-level groups")
     public ApiResponse<List<GroupView>> topLevel() {
         var list = groupAppService.topLevel().stream()
                                   .map(GroupView::fromDomain)
@@ -91,6 +103,7 @@ public class GroupController {
     }
 
     @GetMapping("/tree")
+    @Operation(summary = "Get group tree")
     public ApiResponse<List<GroupNodeView>> tree() {
         var tree = groupAppService.tree();
         return ApiResponse.success(tree);
