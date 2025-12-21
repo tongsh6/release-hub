@@ -38,4 +38,9 @@ public class AttachAppService {
         iterationPort.findByKey(new IterationKey(iterationKey)).orElseThrow();
         windowIterationPort.detach(new ReleaseWindowId(windowId), new IterationKey(iterationKey));
     }
+
+    public List<WindowIteration> list(String windowId) {
+        releaseWindowPort.findById(new ReleaseWindowId(windowId)).orElseThrow();
+        return windowIterationPort.listByWindow(new ReleaseWindowId(windowId));
+    }
 }

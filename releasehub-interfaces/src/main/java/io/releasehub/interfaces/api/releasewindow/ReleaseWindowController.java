@@ -2,6 +2,8 @@ package io.releasehub.interfaces.api.releasewindow;
 
 import io.releasehub.application.releasewindow.ReleaseWindowAppService;
 import io.releasehub.application.releasewindow.ReleaseWindowView;
+import io.releasehub.common.paging.PageMeta;
+import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -41,6 +44,16 @@ public class ReleaseWindowController {
     public ApiResponse<List<ReleaseWindowView>> list() {
         List<ReleaseWindowView> list = appService.list();
         return ApiResponse.success(list);
+    }
+
+    @GetMapping("/_paged")
+    public ApiPageResponse<List<ReleaseWindowView>> listPaged(@RequestParam(name = "page", defaultValue = "0") int page,
+                                                              @RequestParam(name = "size", defaultValue = "20") int size) {
+        List<ReleaseWindowView> all = appService.list();
+        int from = Math.max(page * size, 0);
+        int to = Math.min(from + size, all.size());
+        List<ReleaseWindowView> slice = from >= all.size() ? List.of() : all.subList(from, to);
+        return ApiPageResponse.success(slice, new PageMeta(page, size, all.size()));
     }
 
     @PostMapping("/{id}/publish")

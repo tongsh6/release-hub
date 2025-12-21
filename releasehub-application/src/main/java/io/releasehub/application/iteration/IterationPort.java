@@ -10,4 +10,5 @@ public interface IterationPort {
     void save(Iteration iteration);
     Optional<Iteration> findByKey(IterationKey key);
     List<Iteration> findAll();
+    void deleteByKey(IterationKey key);
 }

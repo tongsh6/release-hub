@@ -29,4 +29,9 @@ public class IterationPersistenceAdapter implements IterationPort {
     public List<Iteration> findAll() {
         return new ArrayList<>(store.values());
     }
+
+    @Override
+    public void deleteByKey(IterationKey key) {
+        store.remove(key);
+    }
 }

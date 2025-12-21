@@ -4,35 +4,63 @@ import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.window.WindowIteration;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Repository
+@RequiredArgsConstructor
 public class WindowIterationPersistenceAdapter implements WindowIterationPort {
-    private final Map<ReleaseWindowId, List<WindowIteration>> store = new ConcurrentHashMap<>();
+
+    private final WindowIterationJpaRepository jpaRepository;
 
     @Override
     public WindowIteration attach(ReleaseWindowId windowId, IterationKey iterationKey, Instant attachAt) {
-        List<WindowIteration> list = store.computeIfAbsent(windowId, k -> new ArrayList<>());
-        WindowIteration wi = WindowIteration.attach(windowId, iterationKey, attachAt, Instant.now());
-        list.removeIf(x -> x.getIterationKey().equals(iterationKey));
-        list.add(wi);
-        return wi;
+        String id = windowId.value() + "::" + iterationKey.value();
+        Instant now = Instant.now();
+        WindowIterationJpaEntity entity = jpaRepository.findByWindowIdAndIterationKey(windowId.value(), iterationKey.value())
+                .map(e -> {
+                    e.setAttachAt(attachAt);
+                    e.setUpdatedAt(now);
+                    return e;
+                })
+                .orElseGet(() -> new WindowIterationJpaEntity(
+                        id,
+                        windowId.value(),
+                        iterationKey.value(),
+                        attachAt,
+                        now,
+                        now
+                ));
+        jpaRepository.save(entity);
+        return WindowIteration.rehydrate(
+                id,
+                new ReleaseWindowId(entity.getWindowId()),
+                new IterationKey(entity.getIterationKey()),
+                entity.getAttachAt(),
+                entity.getCreatedAt(),
+                entity.getUpdatedAt()
+        );
     }
 
     @Override
     public void detach(ReleaseWindowId windowId, IterationKey iterationKey) {
-        List<WindowIteration> list = store.computeIfAbsent(windowId, k -> new ArrayList<>());
-        list.removeIf(x -> x.getIterationKey().equals(iterationKey));
+        jpaRepository.deleteByWindowIdAndIterationKey(windowId.value(), iterationKey.value());
     }
 
     @Override
     public List<WindowIteration> listByWindow(ReleaseWindowId windowId) {
-        return new ArrayList<>(store.getOrDefault(windowId, List.of()));
+        return jpaRepository.findByWindowId(windowId.value()).stream()
+                .map(e -> WindowIteration.rehydrate(
+                        e.getId(),
+                        new ReleaseWindowId(e.getWindowId()),
+                        new IterationKey(e.getIterationKey()),
+                        e.getAttachAt(),
+                        e.getCreatedAt(),
+                        e.getUpdatedAt()
+                ))
+                .collect(java.util.stream.Collectors.toList());
     }
 }

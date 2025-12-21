@@ -53,4 +53,24 @@ class IterationApiTest {
         String id = objectMapper.readTree(result.getResponse().getContentAsString()).get("data").asText();
         assertThat(id).isEqualTo("IT-UT-1");
     }
+
+    @Test
+    void shouldCreateIterationWithNullOrMissingRepoIds() throws Exception {
+        String token = loginAndGetToken();
+        String reqMissing = "{\"iterationKey\":\"IT-UT-2\",\"description\":\"desc\"}";
+        mockMvc.perform(post("/api/v1/iterations")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(reqMissing))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").value("IT-UT-2"));
+
+        String reqNull = "{\"iterationKey\":\"IT-UT-3\",\"description\":\"desc\",\"repoIds\":null}";
+        mockMvc.perform(post("/api/v1/iterations")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(reqNull))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").value("IT-UT-3"));
+    }
 }
