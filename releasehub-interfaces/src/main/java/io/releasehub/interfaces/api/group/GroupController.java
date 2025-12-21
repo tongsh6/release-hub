@@ -64,7 +64,7 @@ public class GroupController {
         return ApiResponse.success(list);
     }
 
-    @GetMapping("/_paged")
+    @GetMapping("/paged")
     public ApiPageResponse<List<GroupView>> listPaged(@RequestParam(name = "page", defaultValue = "0") int page,
                                                       @RequestParam(name = "size", defaultValue = "20") int size) {
         var all = groupAppService.list().stream().map(GroupView::fromDomain).collect(Collectors.toList());

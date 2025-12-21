@@ -40,7 +40,7 @@ public class AttachController {
         return ApiResponse.success(list.stream().map(x -> new WindowIterationView(x.getIterationKey().value(), x.getAttachAt())).toList());
     }
 
-    @GetMapping("/{id}/iterations/_paged")
+    @GetMapping("/{id}/iterations/paged")
     public ApiPageResponse<List<WindowIterationView>> listPaged(@PathVariable("id") String windowId,
                                                                 @RequestParam(name = "page", defaultValue = "0") int page,
                                                                 @RequestParam(name = "size", defaultValue = "20") int size) {

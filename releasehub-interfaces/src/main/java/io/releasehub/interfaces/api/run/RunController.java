@@ -27,7 +27,7 @@ public class RunController {
         return ApiResponse.success(runPort.findAll());
     }
 
-    @GetMapping("/_paged")
+    @GetMapping("/paged")
     public ApiPageResponse<java.util.List<io.releasehub.domain.run.Run>> listPaged(@RequestParam(name = "page", defaultValue = "0") int page,
                                                                                    @RequestParam(name = "size", defaultValue = "20") int size) {
         java.util.List<io.releasehub.domain.run.Run> all = runPort.findAll();
