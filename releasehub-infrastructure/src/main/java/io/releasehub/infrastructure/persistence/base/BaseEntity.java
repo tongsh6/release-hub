@@ -1,4 +1,4 @@
-package io.releasehub.domain.base;
+package io.releasehub.infrastructure.persistence.base;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -50,14 +50,14 @@ public abstract class BaseEntity<ID> implements Entity<ID> {
     }
 
     @Override
+    public int hashCode() {
+        return Objects.hashCode(id);
+    }
+
+    @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof BaseEntity<?> b)) return false;
         return Objects.equals(id, b.id);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hashCode(id);
     }
 }
