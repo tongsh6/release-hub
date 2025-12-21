@@ -12,10 +12,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * @author tongshuanglong
+ */
 @RestController
 @RequestMapping("/api/v1/settings")
 @RequiredArgsConstructor
-@Tag(name = "Settings")
+@Tag(name = "系统设置 - gitlab 设置")
 public class SettingsController {
     private final SettingsPort settingsPort;
 

@@ -22,10 +22,13 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * @author tongshuanglong
+ */
 @RestController
 @RequestMapping("/api/v1/groups")
 @RequiredArgsConstructor
-@Tag(name = "Groups")
+@Tag(name = "分组管理 - 分组设置")
 public class GroupController {
     private final GroupAppService groupAppService;
 

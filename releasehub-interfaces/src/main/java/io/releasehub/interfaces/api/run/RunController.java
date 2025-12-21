@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/runs")
 @RequiredArgsConstructor
-@Tag(name = "Runs")
+@Tag(name = "运行记录 - Runs")
 public class RunController {
     private final RunPort runPort;
 

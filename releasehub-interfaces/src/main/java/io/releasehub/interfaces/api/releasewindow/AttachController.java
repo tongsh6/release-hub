@@ -1,4 +1,4 @@
-package io.releasehub.interfaces.api.window;
+package io.releasehub.interfaces.api.releasewindow;
 
 import io.releasehub.application.window.AttachAppService;
 import io.releasehub.common.paging.PageMeta;
@@ -18,10 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * @author tongshuanglong
+ */
 @RestController
 @RequestMapping("/api/v1/windows")
 @RequiredArgsConstructor
-@Tag(name = "Windows")
+@Tag(name = "发布窗口 - 迭代管理")
 public class AttachController {
     private final AttachAppService attachAppService;
 

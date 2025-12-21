@@ -14,10 +14,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * @author tongshuanglong
+ */
 @RestController
 @RequestMapping("/api/v1/runs")
 @RequiredArgsConstructor
-@Tag(name = "Runs")
+@Tag(name = "运行记录 - 重试管理")
 public class RunRetryController {
     private final RunAppService runAppService;
 

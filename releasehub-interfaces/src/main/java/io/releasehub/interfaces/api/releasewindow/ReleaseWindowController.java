@@ -26,7 +26,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/release-windows")
 @RequiredArgsConstructor
-@Tag(name = "Release Windows")
+@Tag(name = "发布窗口 - 发布窗口设置")
 public class ReleaseWindowController {
 
     private final ReleaseWindowAppService appService;

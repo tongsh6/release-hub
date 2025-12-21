@@ -1,4 +1,4 @@
-package io.releasehub.interfaces.api.window;
+package io.releasehub.interfaces.api.releasewindow;
 
 import io.releasehub.application.run.RunAppService;
 import io.releasehub.common.response.ApiResponse;
@@ -17,7 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/windows")
 @RequiredArgsConstructor
-@Tag(name = "Windows")
+@Tag(name = "发布窗口 - 编排管理")
 public class OrchestrateController {
     private final RunAppService runAppService;
 

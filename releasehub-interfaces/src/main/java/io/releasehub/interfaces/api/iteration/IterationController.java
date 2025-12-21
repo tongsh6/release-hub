@@ -28,7 +28,7 @@ import java.util.Set;
 @RestController
 @RequestMapping("/api/v1/iterations")
 @RequiredArgsConstructor
-@Tag(name = "Iterations")
+@Tag(name = "迭代管理 - 迭代设置")
 public class IterationController {
     private final IterationAppService iterationAppService;
 

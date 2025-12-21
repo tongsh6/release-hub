@@ -1,7 +1,7 @@
-package io.releasehub.interfaces.api.window;
+package io.releasehub.interfaces.api.releasewindow;
 
-import io.releasehub.application.window.DryPlanAppService;
-import io.releasehub.application.window.DryPlanItemView;
+import io.releasehub.application.window.PlanAppService;
+import io.releasehub.application.window.PlanItemView;
 import io.releasehub.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,13 +16,13 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/windows")
 @RequiredArgsConstructor
-@Tag(name = "Windows")
-public class DryPlanController {
-    private final DryPlanAppService dryPlanAppService;
+@Tag(name = "发布窗口 - 执行计划")
+public class PlanController {
+    private final PlanAppService planAppService;
 
-    @GetMapping("/{id}/dry-plan")
-    @Operation(summary = "Get dry-run plan by window")
-    public ApiResponse<List<DryPlanItemView>> dryPlan(@PathVariable("id") String windowId) {
-        return ApiResponse.success(dryPlanAppService.dryPlanByWindow(windowId));
+    @GetMapping("/{id}/plan")
+    @Operation(summary = "Get execution plan by window")
+    public ApiResponse<List<PlanItemView>> getPlan(@PathVariable("id") String windowId) {
+        return ApiResponse.success(planAppService.getPlanByWindow(windowId));
     }
 }
