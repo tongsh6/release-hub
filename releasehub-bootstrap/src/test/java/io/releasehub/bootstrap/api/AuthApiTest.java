@@ -37,17 +37,17 @@ class AuthApiTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(loginRequest)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").exists())
+                .andExpect(jsonPath("$.data.token").exists())
                 .andReturn();
 
         String response = result.getResponse().getContentAsString();
-        String token = objectMapper.readTree(response).get("token").asText();
+        String token = objectMapper.readTree(response).get("data").get("token").asText();
 
         // 2. Access /api/me with token
         mockMvc.perform(get("/api/v1/me")
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.username").value("admin"));
+                .andExpect(jsonPath("$.data.username").value("admin"));
     }
 
     @Test
@@ -59,7 +59,9 @@ class AuthApiTest {
         mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(loginRequest)))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("AUTH_FAILED"));
     }
 
     @Test

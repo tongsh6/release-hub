@@ -15,4 +15,7 @@ public interface CodeRepositoryPort {
     Optional<CodeRepository> findById(RepoId id);
     List<CodeRepository> findAll();
     List<CodeRepository> findByProjectId(ProjectId projectId);
+    void deleteById(RepoId id);
+
+    List<CodeRepository> search(String keyword, ProjectId projectId, Long gitlabProjectId);
 }

@@ -1,6 +1,7 @@
 package io.releasehub.application.repo;
 
 import io.releasehub.application.gitlab.GitLabPort;
+import io.releasehub.application.settings.SettingsPort;
 import io.releasehub.common.exception.BizException;
 import io.releasehub.domain.project.ProjectId;
 import io.releasehub.domain.repo.CodeRepository;
@@ -18,6 +19,7 @@ import java.util.List;
 public class CodeRepositoryAppService {
     private final CodeRepositoryPort codeRepositoryPort;
     private final GitLabPort gitLabPort;
+    private final SettingsPort settingsPort;
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
@@ -25,6 +27,20 @@ public class CodeRepositoryAppService {
         CodeRepository repo = CodeRepository.create(new ProjectId(projectId), gitlabProjectId, name, cloneUrl, defaultBranch, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
         return repo;
+    }
+
+    @Transactional
+    public CodeRepository update(String repoId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo) {
+        CodeRepository repo = get(repoId);
+        repo.update(gitlabProjectId, name, cloneUrl, defaultBranch, monoRepo, Instant.now(clock));
+        codeRepositoryPort.save(repo);
+        return repo;
+    }
+
+    @Transactional
+    public void delete(String repoId) {
+        CodeRepository repo = get(repoId);
+        codeRepositoryPort.deleteById(repo.getId());
     }
 
     public CodeRepository get(String repoId) {
@@ -39,10 +55,18 @@ public class CodeRepositoryAppService {
     public List<CodeRepository> listByProject(String projectId) {
         return codeRepositoryPort.findByProjectId(new ProjectId(projectId));
     }
+    
+    public List<CodeRepository> search(String keyword, String projectId, Long gitlabProjectId) {
+        ProjectId pid = projectId != null && !projectId.isBlank() ? new ProjectId(projectId) : null;
+        return codeRepositoryPort.search(keyword, pid, gitlabProjectId);
+    }
 
     @Transactional
     public void syncRepository(String repoId) {
         CodeRepository repo = get(repoId);
+        if (settingsPort.getGitLab().isEmpty()) {
+            throw new BizException("GITLAB_SETTINGS_MISSING", "GitLab settings missing");
+        }
         var branchStats = gitLabPort.fetchBranchStatistics(repo.getGitlabProjectId());
         var mrStats = gitLabPort.fetchMrStatistics(repo.getGitlabProjectId());
         

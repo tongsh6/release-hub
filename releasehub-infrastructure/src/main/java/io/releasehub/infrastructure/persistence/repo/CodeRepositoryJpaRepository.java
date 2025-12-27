@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface CodeRepositoryJpaRepository extends JpaRepository<CodeRepositoryJpaEntity, String> {
     List<CodeRepositoryJpaEntity> findByProjectId(String projectId);
+    void deleteById(String id);
 }

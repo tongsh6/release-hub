@@ -8,12 +8,16 @@ import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,7 +38,7 @@ public class GroupController {
 
     @PostMapping
     @Operation(summary = "Create group")
-    public ApiResponse<String> create(@RequestBody CreateGroupRequest request) {
+    public ApiResponse<String> create(@Valid @RequestBody CreateGroupRequest request) {
         var g = groupAppService.create(request.getName(), request.getCode(), request.getParentCode());
         return ApiResponse.success(g.getId().value());
     }
@@ -50,6 +54,13 @@ public class GroupController {
     @Operation(summary = "Get group by code")
     public ApiResponse<GroupView> getByCode(@PathVariable("code") String code) {
         var g = groupAppService.getByCode(code);
+        return ApiResponse.success(GroupView.fromDomain(g));
+    }
+
+    @PutMapping("/{id}")
+    @Operation(summary = "Update group")
+    public ApiResponse<GroupView> update(@PathVariable("id") String id, @Valid @RequestBody UpdateGroupRequest request) {
+        var g = groupAppService.update(id, request.getName(), request.getParentCode());
         return ApiResponse.success(GroupView.fromDomain(g));
     }
 
@@ -114,8 +125,22 @@ public class GroupController {
 
     @Data
     public static class CreateGroupRequest {
+        @NotBlank
+        @Size(max = 128)
         private String name;
+        @NotBlank
+        @Size(max = 64)
         private String code;
+        @Size(max = 64)
+        private String parentCode;
+    }
+
+    @Data
+    public static class UpdateGroupRequest {
+        @NotBlank
+        @Size(max = 128)
+        private String name;
+        @Size(max = 64)
         private String parentCode;
     }
 }

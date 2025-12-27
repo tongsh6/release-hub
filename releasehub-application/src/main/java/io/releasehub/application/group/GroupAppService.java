@@ -24,7 +24,14 @@ public class GroupAppService {
 
     @Transactional
     public Group create(String name, String code, String parentCode) {
-        Group group = Group.create(name, code, normalizeParentCode(parentCode), Instant.now(clock));
+        ensureCodeAvailable(code);
+        String normalizedParent = normalizeParentCode(parentCode);
+        if (normalizedParent != null && normalizedParent.equals(code)) {
+            throw new BizException("GROUP_PARENT_SAME_AS_SELF", "Parent code cannot be self for group: " + code);
+        }
+        ensureParentExists(normalizedParent);
+
+        Group group = Group.create(name, code, normalizedParent, Instant.now(clock));
         groupPort.save(group);
         return group;
     }
@@ -37,6 +44,23 @@ public class GroupAppService {
     public Group getByCode(String code) {
         return groupPort.findByCode(code)
                 .orElseThrow(() -> new BizException("GROUP_CODE_NOT_FOUND", "Group code not found: " + code));
+    }
+
+    @Transactional
+    public Group update(String id, String name, String parentCode) {
+        Group group = get(id);
+        String normalizedParent = normalizeParentCode(parentCode);
+        ensureParentExists(normalizedParent);
+
+        if (normalizedParent != null && normalizedParent.equals(group.getCode())) {
+            throw new BizException("GROUP_PARENT_SAME_AS_SELF", "Parent code cannot be self for group: " + group.getCode());
+        }
+
+        Instant now = Instant.now(clock);
+        group.rename(name, now);
+        group.changeParentCode(normalizedParent, now);
+        groupPort.save(group);
+        return group;
     }
 
     @Transactional
@@ -106,5 +130,19 @@ public class GroupAppService {
             return null;
         }
         return parentCode;
+    }
+
+    private void ensureCodeAvailable(String code) {
+        if (groupPort.findByCode(code).isPresent()) {
+            throw new BizException("GROUP_CODE_EXISTS", "Group code already exists: " + code);
+        }
+    }
+
+    private void ensureParentExists(String parentCode) {
+        if (parentCode == null || parentCode.isBlank()) {
+            return;
+        }
+        groupPort.findByCode(parentCode)
+                .orElseThrow(() -> new BizException("GROUP_PARENT_NOT_FOUND", "Parent group not found: " + parentCode));
     }
 }

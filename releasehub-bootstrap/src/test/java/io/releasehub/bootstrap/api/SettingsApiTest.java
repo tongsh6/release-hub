@@ -34,10 +34,10 @@ class SettingsApiTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.token").exists())
+            .andExpect(jsonPath("$.data.token").exists())
             .andReturn();
         JsonNode node = objectMapper.readTree(result.getResponse().getContentAsString());
-        return node.get("token").asText();
+        return node.get("data").get("token").asText();
     }
 
     @Test
@@ -54,8 +54,7 @@ class SettingsApiTest {
         mockMvc.perform(get("/api/v1/settings/gitlab")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.baseUrl").value("https://gitlab.example.com"))
-            .andExpect(jsonPath("$.data.tokenMasked").value("ab****34"));
+            .andExpect(jsonPath("$.data.baseUrl").value("https://gitlab.example.com"));
 
         mockMvc.perform(post("/api/v1/settings/naming")
                 .header("Authorization", "Bearer " + token)

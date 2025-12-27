@@ -37,11 +37,11 @@ class PingApiTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(loginRequest)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.token").exists())
+            .andExpect(jsonPath("$.data.token").exists())
             .andReturn();
 
         String response = result.getResponse().getContentAsString();
-        String token = objectMapper.readTree(response).get("token").asText();
+        String token = objectMapper.readTree(response).get("data").get("token").asText();
 
         mockMvc.perform(get("/api/v1/ping")
                 .header("Authorization", "Bearer " + token))

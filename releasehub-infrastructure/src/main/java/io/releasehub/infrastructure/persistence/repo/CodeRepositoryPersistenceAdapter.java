@@ -67,6 +67,28 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    public void deleteById(RepoId id) {
+        repository.deleteById(id.value());
+    }
+
+    @Override
+    public List<CodeRepository> search(String keyword, ProjectId projectId, Long gitlabProjectId) {
+        String k = keyword != null ? keyword.toLowerCase() : null;
+        return repository.findAll().stream()
+                .filter(e -> {
+                    if (projectId != null && !projectId.value().equals(e.getProjectId())) return false;
+                    if (gitlabProjectId != null && !gitlabProjectId.equals(e.getGitlabProjectId())) return false;
+                    if (k == null || k.isBlank()) return true;
+                    return (e.getName() != null && e.getName().toLowerCase().contains(k))
+                            || (e.getCloneUrl() != null && e.getCloneUrl().toLowerCase().contains(k))
+                            || (e.getProjectId() != null && e.getProjectId().toLowerCase().contains(k))
+                            || (e.getGitlabProjectId() != null && String.valueOf(e.getGitlabProjectId()).contains(k));
+                })
+                .map(this::toDomain)
+                .collect(Collectors.toList());
+    }
+
     private CodeRepository toDomain(CodeRepositoryJpaEntity entity) {
         return CodeRepository.rehydrate(
                 new RepoId(entity.getId()),

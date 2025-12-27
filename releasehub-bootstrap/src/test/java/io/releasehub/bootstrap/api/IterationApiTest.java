@@ -33,10 +33,10 @@ class IterationApiTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.token").exists())
+            .andExpect(jsonPath("$.data.token").exists())
             .andReturn();
         JsonNode node = objectMapper.readTree(result.getResponse().getContentAsString());
-        return node.get("token").asText();
+        return node.get("data").get("token").asText();
     }
 
     @Test

@@ -13,10 +13,10 @@ import java.time.Instant;
 @Getter
 public class CodeRepository extends BaseEntity<RepoId> {
     private final ProjectId projectId;
-    private final Long gitlabProjectId;
-    private final String name;
-    private final String cloneUrl;
-    private final boolean monoRepo;
+    private Long gitlabProjectId;
+    private String name;
+    private String cloneUrl;
+    private boolean monoRepo;
     private String defaultBranch;
     private int branchCount;
     private int activeBranchCount;
@@ -141,6 +141,21 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.mergedMrCount = mergedMrCount;
         this.closedMrCount = closedMrCount;
         this.lastSyncAt = now;
+        touch(now);
+    }
+
+    public void update(Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
+        if (gitlabProjectId == null) {
+            throw new BizException("REPO_GITLAB_ID_REQUIRED", "GitLab Project ID is required");
+        }
+        validateName(name);
+        validateUrl(cloneUrl);
+        validateBranch(defaultBranch);
+        this.gitlabProjectId = gitlabProjectId;
+        this.name = name;
+        this.cloneUrl = cloneUrl;
+        this.defaultBranch = defaultBranch;
+        this.monoRepo = monoRepo;
         touch(now);
     }
 }

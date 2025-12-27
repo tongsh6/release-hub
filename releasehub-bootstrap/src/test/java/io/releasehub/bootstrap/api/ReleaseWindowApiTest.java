@@ -69,9 +69,9 @@ class ReleaseWindowApiTest {
                                           .contentType(MediaType.APPLICATION_JSON)
                                           .content(objectMapper.writeValueAsString(loginRequest)))
                                   .andExpect(status().isOk())
-                                  .andExpect(jsonPath("$.token").exists())
+                                  .andExpect(jsonPath("$.data.token").exists())
                                   .andReturn();
         String response = result.getResponse().getContentAsString();
-        return objectMapper.readTree(response).get("token").asText();
+        return objectMapper.readTree(response).get("data").get("token").asText();
     }
 }
