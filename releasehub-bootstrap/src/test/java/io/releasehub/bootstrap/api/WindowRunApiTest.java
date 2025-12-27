@@ -79,7 +79,7 @@ class WindowRunApiTest {
                 .content("{\"iterationKey\":\"IT-2\",\"description\":\"d\",\"repoIds\":[\"repo-1\"]}"))
             .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/windows/" + windowId + "/attach")
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/attach")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"iterationKeys\":[\"IT-1\",\"IT-2\"]}"))
@@ -87,19 +87,19 @@ class WindowRunApiTest {
             .andExpect(jsonPath("$.data[0]").value("IT-1"))
             .andExpect(jsonPath("$.data[1]").value("IT-2"));
 
-        mockMvc.perform(get("/api/v1/windows/" + windowId + "/plan")
+        mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/plan")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data").isArray());
 
-        mockMvc.perform(get("/api/v1/windows/" + windowId + "/dry-plan")
+        mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/dry-plan")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data").isArray());
 
-        MvcResult orch = mockMvc.perform(post("/api/v1/windows/" + windowId + "/orchestrate")
+        MvcResult orch = mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/orchestrate")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"repoIds\":[\"repo-1\"],\"iterationKeys\":[],\"failFast\":true,\"operator\":\"tester\"}"))

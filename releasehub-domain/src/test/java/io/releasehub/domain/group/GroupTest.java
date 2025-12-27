@@ -42,10 +42,10 @@ class GroupTest {
         Instant now = Instant.now();
 
         BizException ex1 = assertThrows(BizException.class, () -> Group.create("Name", null, null, now));
-        assertEquals("GROUP_CODE_REQUIRED", ex1.getCode());
+        assertEquals("GROUP_ID_INVALID", ex1.getCode());
 
         BizException ex2 = assertThrows(BizException.class, () -> Group.create("Name", "", null, now));
-        assertEquals("GROUP_CODE_REQUIRED", ex2.getCode());
+        assertEquals("GROUP_ID_INVALID", ex2.getCode());
 
         String longCode = "a".repeat(65);
         BizException ex3 = assertThrows(BizException.class, () -> Group.create("Name", longCode, null, now));

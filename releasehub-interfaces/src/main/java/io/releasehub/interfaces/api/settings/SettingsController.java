@@ -31,7 +31,7 @@ public class SettingsController {
     @PostMapping("/gitlab")
     @Operation(summary = "Save GitLab settings")
     public ApiResponse<Boolean> saveGitLab(@RequestBody GitLabRequest req) {
-        settingsPort.saveGitLab(new SettingsPort.SettingsGitLab(req.getBaseUrl(), mask(req.getToken())));
+        settingsPort.saveGitLab(new SettingsPort.SettingsGitLab(req.getBaseUrl(), req.getToken()));
         return ApiResponse.success(true);
     }
 

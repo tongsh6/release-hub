@@ -1,4 +1,4 @@
-package io.releasehub.infrastructure.persistence.group;
+package io.releasehub.infrastructure.persistence.project;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -9,31 +9,25 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.io.Serializable;
 import java.time.Instant;
 
 @Entity
-@Table(name = "groups")
+@Table(name = "project")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class GroupJpaEntity implements Serializable {
+public class ProjectJpaEntity {
     @Id
     private String id;
-    
+    @Column(nullable = false)
     private String name;
-    
-    private String code;
-    
-    @Column(name = "parent_code")
-    private String parentCode;
-    
-    @Column(name = "created_at")
+    private String description;
+    @Column(nullable = false)
+    private String status;
+    @Column(name = "created_at", nullable = false)
     private Instant createdAt;
-    
-    @Column(name = "updated_at")
+    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
-    
     private long version;
 }

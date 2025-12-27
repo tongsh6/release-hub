@@ -13,4 +13,5 @@ public interface ProjectPort {
     void save(Project project);
     Optional<Project> findById(ProjectId id);
     List<Project> findAll();
+    void deleteById(ProjectId id);
 }

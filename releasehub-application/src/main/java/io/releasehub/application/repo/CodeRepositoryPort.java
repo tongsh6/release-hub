@@ -13,5 +13,6 @@ import java.util.Optional;
 public interface CodeRepositoryPort {
     void save(CodeRepository repository);
     Optional<CodeRepository> findById(RepoId id);
+    List<CodeRepository> findAll();
     List<CodeRepository> findByProjectId(ProjectId projectId);
 }

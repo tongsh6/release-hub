@@ -62,7 +62,7 @@ class WindowIterationApiTest {
                        .content("{\"iterationKey\":\"IT-B\",\"description\":\"d\",\"repoIds\":[\"repo-2\"]}"))
                .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/windows/" + windowId + "/attach")
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/attach")
                        .header("Authorization", "Bearer " + token)
                        .contentType(MediaType.APPLICATION_JSON)
                        .content("{\"iterationKeys\":[\"IT-A\",\"IT-B\"]}"))
@@ -70,7 +70,7 @@ class WindowIterationApiTest {
                .andExpect(jsonPath("$.data[0]").value("IT-A"))
                .andExpect(jsonPath("$.data[1]").value("IT-B"));
 
-        mockMvc.perform(get("/api/v1/windows/" + windowId + "/iterations")
+        mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/iterations")
                        .header("Authorization", "Bearer " + token))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.success").value(true))
@@ -78,14 +78,14 @@ class WindowIterationApiTest {
                .andExpect(jsonPath("$.data[0].iterationKey").exists())
                .andExpect(jsonPath("$.data[0].attachAt").exists());
 
-        mockMvc.perform(post("/api/v1/windows/" + windowId + "/detach")
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/detach")
                        .header("Authorization", "Bearer " + token)
                        .contentType(MediaType.APPLICATION_JSON)
                        .content("{\"iterationKey\":\"IT-A\"}"))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.data").value(true));
 
-        mockMvc.perform(get("/api/v1/windows/" + windowId + "/iterations")
+        mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/iterations")
                        .header("Authorization", "Bearer " + token))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.data").isArray());

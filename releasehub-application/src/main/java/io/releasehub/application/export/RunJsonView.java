@@ -49,7 +49,7 @@ public class RunJsonView {
         Item i = new Item();
         i.setWindowKey(item.getWindowKey());
         i.setRepo(item.getRepo().value());
-        i.setIterationKey(item.getIterationKey().value());
+        i.setIterationKey(item.getIterationKey() == null ? null : item.getIterationKey().value());
         i.setPlannedOrder(item.getPlannedOrder());
         i.setExecutedOrder(item.getExecutedOrder());
         i.setFinalResult(item.getFinalResult() == null ? null : item.getFinalResult().name());

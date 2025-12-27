@@ -12,11 +12,15 @@ public class Project extends BaseEntity<ProjectId> {
     private String name;
     private ProjectStatus status;
 
-    public Project(ProjectId id, String name, String description, ProjectStatus status, Instant createdAt, Instant updatedAt) {
-        super(id, createdAt, updatedAt, 0L);
+    public Project(ProjectId id, String name, String description, ProjectStatus status, Instant createdAt, Instant updatedAt, long version) {
+        super(id, createdAt, updatedAt, version);
         this.name = name;
         this.description = description;
         this.status = status;
+    }
+
+    public static Project rehydrate(ProjectId id, String name, String description, ProjectStatus status, Instant createdAt, Instant updatedAt, long version) {
+        return new Project(id, name, description, status, createdAt, updatedAt, version);
     }
 
     private Project(ProjectId id, String name, String description, Instant now) {

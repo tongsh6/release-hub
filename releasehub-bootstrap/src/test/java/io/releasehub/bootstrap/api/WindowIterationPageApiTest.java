@@ -74,13 +74,13 @@ class WindowIterationPageApiTest {
                 + "\"IT-PG-0\",\"IT-PG-1\",\"IT-PG-2\",\"IT-PG-3\",\"IT-PG-4\",\"IT-PG-5\",\"IT-PG-6\",\"IT-PG-7\",\"IT-PG-8\",\"IT-PG-9\","
                 + "\"IT-PG-10\",\"IT-PG-11\",\"IT-PG-12\",\"IT-PG-13\",\"IT-PG-14\",\"IT-PG-15\",\"IT-PG-16\",\"IT-PG-17\",\"IT-PG-18\",\"IT-PG-19\","
                 + "\"IT-PG-20\",\"IT-PG-21\",\"IT-PG-22\"]}";
-        mockMvc.perform(post("/api/v1/windows/" + windowId + "/attach")
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/attach")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(attachReq))
             .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/windows/" + windowId + "/iterations/paged?page=1&size=10")
+        mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/iterations/paged?page=1&size=10")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.length()").value(10))

@@ -17,14 +17,17 @@ public class RunItem extends BaseEntity<String> {
     private final List<RunStep> steps = new ArrayList<>();
     private RunItemResult finalResult;
 
-    private RunItem(String id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, int executedOrder, RunItemResult finalResult, Instant createdAt, Instant updatedAt) {
-        super(id, createdAt, updatedAt, 0L);
+    private RunItem(String id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, int executedOrder, RunItemResult finalResult, List<RunStep> steps, Instant createdAt, Instant updatedAt, long version) {
+        super(id, createdAt, updatedAt, version);
         this.windowKey = windowKey;
         this.repo = repo;
         this.iterationKey = iterationKey;
         this.plannedOrder = plannedOrder;
         this.executedOrder = executedOrder;
         this.finalResult = finalResult;
+        if (steps != null) {
+            this.steps.addAll(steps);
+        }
     }
 
     private RunItem(String id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, Instant now) {
@@ -42,8 +45,8 @@ public class RunItem extends BaseEntity<String> {
         return new RunItem(id, windowKey, repo, iterationKey, plannedOrder, now);
     }
 
-    public static RunItem rehydrate(String id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, int executedOrder, RunItemResult finalResult, Instant createdAt, Instant updatedAt) {
-        return new RunItem(id, windowKey, repo, iterationKey, plannedOrder, executedOrder, finalResult, createdAt, updatedAt);
+    public static RunItem rehydrate(String id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, int executedOrder, RunItemResult finalResult, List<RunStep> steps, Instant createdAt, Instant updatedAt, long version) {
+        return new RunItem(id, windowKey, repo, iterationKey, plannedOrder, executedOrder, finalResult, steps, createdAt, updatedAt, version);
     }
 
     public String getWindowKey() {

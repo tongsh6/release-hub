@@ -86,13 +86,14 @@ public class GroupJpaPersistenceAdapter implements GroupPort {
     }
 
     private Group toDomain(GroupJpaEntity entity) {
-        return new Group(
+        return Group.rehydrate(
                 new GroupId(entity.getId()),
                 entity.getName(),
                 entity.getCode(),
                 entity.getParentCode(),
                 entity.getCreatedAt(),
-                entity.getUpdatedAt()
+                entity.getUpdatedAt(),
+                entity.getVersion()
         );
     }
 }

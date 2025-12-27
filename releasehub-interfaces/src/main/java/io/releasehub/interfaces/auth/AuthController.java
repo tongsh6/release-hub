@@ -4,13 +4,13 @@ import io.releasehub.application.auth.AuthAppService;
 import io.releasehub.application.auth.TokenInfo;
 import io.releasehub.application.user.UserPort;
 import io.releasehub.domain.user.User;
+import io.releasehub.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,21 +36,21 @@ public class AuthController {
 
     @PostMapping("/auth/login")
     @Operation(summary = "Login")
-    public ResponseEntity<TokenInfo> login(@Valid @RequestBody LoginRequest request) {
+    public ApiResponse<TokenInfo> login(@Valid @RequestBody LoginRequest request) {
         try {
             TokenInfo tokenInfo = authAppService.login(request.getUsername(), request.getPassword());
-            return ResponseEntity.ok(tokenInfo);
+            return ApiResponse.success(tokenInfo);
         } catch (IllegalArgumentException | IllegalStateException e) {
             e.printStackTrace();
-            return ResponseEntity.status(401).build();
+            return ApiResponse.error("AUTH_FAILED", "Authentication failed");
         }
     }
 
     @GetMapping("/me")
     @Operation(summary = "Get current user info")
-    public ResponseEntity<UserResponse> me(@AuthenticationPrincipal UserDetails userDetails) {
+    public ApiResponse<UserResponse> me(@AuthenticationPrincipal UserDetails userDetails) {
         if (userDetails == null) {
-            return ResponseEntity.status(401).build();
+            return ApiResponse.error("AUTH_REQUIRED", "Authentication required");
         }
 
         User user = userPort.findByUsername(userDetails.getUsername())
@@ -62,7 +62,7 @@ public class AuthController {
                 user.getDisplayName(),
                 Collections.emptyList() // MVP: No permissions yet
         );
-        return ResponseEntity.ok(response);
+        return ApiResponse.success(response);
     }
 
     @Data

@@ -13,34 +13,86 @@ import java.time.Instant;
 @Getter
 public class CodeRepository extends BaseEntity<RepoId> {
     private final ProjectId projectId;
+    private final Long gitlabProjectId;
     private final String name;
     private final String cloneUrl;
     private final boolean monoRepo;
     private String defaultBranch;
+    private int branchCount;
+    private int activeBranchCount;
+    private int nonCompliantBranchCount;
+    private int mrCount;
+    private int openMrCount;
+    private int mergedMrCount;
+    private int closedMrCount;
+    private Instant lastSyncAt;
 
-    public CodeRepository(RepoId id, ProjectId projectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant createdAt, Instant updatedAt) {
+    public CodeRepository(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt) {
         super(id, createdAt, updatedAt, 0L);
         this.projectId = projectId;
+        this.gitlabProjectId = gitlabProjectId;
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
         this.monoRepo = monoRepo;
+        this.branchCount = branchCount;
+        this.activeBranchCount = activeBranchCount;
+        this.nonCompliantBranchCount = nonCompliantBranchCount;
+        this.mrCount = mrCount;
+        this.openMrCount = openMrCount;
+        this.mergedMrCount = mergedMrCount;
+        this.closedMrCount = closedMrCount;
+        this.lastSyncAt = lastSyncAt;
     }
 
-    private CodeRepository(RepoId id, ProjectId projectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
+    private CodeRepository(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
+        super(id, createdAt, updatedAt, version);
+        this.projectId = projectId;
+        this.gitlabProjectId = gitlabProjectId;
+        this.name = name;
+        this.cloneUrl = cloneUrl;
+        this.defaultBranch = defaultBranch;
+        this.monoRepo = monoRepo;
+        this.branchCount = branchCount;
+        this.activeBranchCount = activeBranchCount;
+        this.nonCompliantBranchCount = nonCompliantBranchCount;
+        this.mrCount = mrCount;
+        this.openMrCount = openMrCount;
+        this.mergedMrCount = mergedMrCount;
+        this.closedMrCount = closedMrCount;
+        this.lastSyncAt = lastSyncAt;
+    }
+
+    public static CodeRepository rehydrate(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
+        return new CodeRepository(id, projectId, gitlabProjectId, name, cloneUrl, defaultBranch, monoRepo, branchCount, activeBranchCount, nonCompliantBranchCount, mrCount, openMrCount, mergedMrCount, closedMrCount, lastSyncAt, createdAt, updatedAt, version);
+    }
+
+    private CodeRepository(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
         super(id, now);
         if (projectId == null) {
             throw new BizException("REPO_PROJECT_REQUIRED", "Project ID is required");
+        }
+        if (gitlabProjectId == null) {
+            throw new BizException("REPO_GITLAB_ID_REQUIRED", "GitLab Project ID is required");
         }
         validateName(name);
         validateUrl(cloneUrl);
         validateBranch(defaultBranch);
 
         this.projectId = projectId;
+        this.gitlabProjectId = gitlabProjectId;
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
         this.monoRepo = monoRepo;
+        this.branchCount = 0;
+        this.activeBranchCount = 0;
+        this.nonCompliantBranchCount = 0;
+        this.mrCount = 0;
+        this.openMrCount = 0;
+        this.mergedMrCount = 0;
+        this.closedMrCount = 0;
+        this.lastSyncAt = null;
     }
 
     private void validateName(String name) {
@@ -70,13 +122,25 @@ public class CodeRepository extends BaseEntity<RepoId> {
         }
     }
 
-    public static CodeRepository create(ProjectId projectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
-        return new CodeRepository(RepoId.newId(), projectId, name, cloneUrl, defaultBranch, monoRepo, now);
+    public static CodeRepository create(ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
+        return new CodeRepository(RepoId.newId(), projectId, gitlabProjectId, name, cloneUrl, defaultBranch, monoRepo, now);
     }
 
     public void changeDefaultBranch(String branch, Instant now) {
         validateBranch(branch);
         this.defaultBranch = branch;
+        touch(now);
+    }
+
+    public void updateStatistics(int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant now) {
+        this.branchCount = branchCount;
+        this.activeBranchCount = activeBranchCount;
+        this.nonCompliantBranchCount = nonCompliantBranchCount;
+        this.mrCount = mrCount;
+        this.openMrCount = openMrCount;
+        this.mergedMrCount = mergedMrCount;
+        this.closedMrCount = closedMrCount;
+        this.lastSyncAt = now;
         touch(now);
     }
 }

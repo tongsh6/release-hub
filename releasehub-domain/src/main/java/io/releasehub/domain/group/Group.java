@@ -12,11 +12,15 @@ public class Group extends BaseEntity<GroupId> {
     private final String code;
     private String parentCode;
 
-    public Group(GroupId id, String name, String code, String parentCode, Instant createdAt, Instant updatedAt) {
-        super(id, createdAt, updatedAt, 0L);
+    public Group(GroupId id, String name, String code, String parentCode, Instant createdAt, Instant updatedAt, long version) {
+        super(id, createdAt, updatedAt, version);
         this.name = name;
         this.code = code;
         this.parentCode = parentCode;
+    }
+
+    public static Group rehydrate(GroupId id, String name, String code, String parentCode, Instant createdAt, Instant updatedAt, long version) {
+        return new Group(id, name, code, parentCode, createdAt, updatedAt, version);
     }
 
     private Group(GroupId id, String name, String code, String parentCode, Instant now) {
@@ -60,7 +64,7 @@ public class Group extends BaseEntity<GroupId> {
     }
 
     public static Group create(String name, String code, String parentCode, Instant now) {
-        return new Group(GroupId.newId(), name, code, parentCode, now);
+        return new Group(new GroupId(code), name, code, parentCode, now);
     }
 
     public void rename(String name, Instant now) {
@@ -75,4 +79,3 @@ public class Group extends BaseEntity<GroupId> {
         touch(now);
     }
 }
-
