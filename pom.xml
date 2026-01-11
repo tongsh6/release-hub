@@ -28,6 +28,7 @@
         <springdoc.version>2.6.0</springdoc.version>
         <jjwt.version>0.11.5</jjwt.version>
         <flyway.version>10.20.0</flyway.version>
+        <postgresql.version>42.7.7</postgresql.version>
     </properties>
 
     <dependencyManagement>
@@ -77,6 +78,12 @@
                 <version>${spring-boot.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${postgresql.version}</version>
             </dependency>
             
             <!-- Internal Modules -->
