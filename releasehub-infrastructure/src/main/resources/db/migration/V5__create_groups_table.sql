@@ -1,0 +1,10 @@
+CREATE TABLE groups (
+    id VARCHAR(36) NOT NULL PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    code VARCHAR(64) NOT NULL UNIQUE,
+    parent_code VARCHAR(64),
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    version BIGINT NOT NULL DEFAULT 0
+);
+

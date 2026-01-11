@@ -1,0 +1,3 @@
+ALTER TABLE release_window ADD COLUMN start_at TIMESTAMP;
+ALTER TABLE release_window ADD COLUMN end_at TIMESTAMP;
+ALTER TABLE release_window ADD COLUMN frozen BOOLEAN DEFAULT FALSE NOT NULL;
