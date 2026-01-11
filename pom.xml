@@ -23,7 +23,7 @@
         <java.version>21</java.version>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
-        <spring-boot.version>3.2.8</spring-boot.version>
+        <spring-boot.version>3.4.1</spring-boot.version>
         <lombok.version>1.18.36</lombok.version>
         <springdoc.version>2.6.0</springdoc.version>
         <jjwt.version>0.11.5</jjwt.version>
@@ -40,7 +40,7 @@
             <dependency>
                 <groupId>org.springframework.security</groupId>
                 <artifactId>spring-security-test</artifactId>
-                <version>6.2.5</version> <!-- Compatible with Spring Boot 3.2.x -->
+                <version>6.4.2</version> <!-- Compatible with Spring Boot 3.4.x -->
                 <scope>test</scope>
             </dependency>
             <dependency>
