@@ -2,7 +2,8 @@ package io.releasehub.application.repo;
 
 import io.releasehub.application.gitlab.GitLabPort;
 import io.releasehub.application.settings.SettingsPort;
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.project.ProjectId;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
@@ -45,7 +46,7 @@ public class CodeRepositoryAppService {
 
     public CodeRepository get(String repoId) {
         return codeRepositoryPort.findById(new RepoId(repoId))
-                .orElseThrow(() -> new BizException("REPO_NOT_FOUND", "Repository not found: " + repoId));
+                .orElseThrow(() -> NotFoundException.repository(repoId));
     }
 
     public List<CodeRepository> list() {
@@ -65,7 +66,7 @@ public class CodeRepositoryAppService {
     public void syncRepository(String repoId) {
         CodeRepository repo = get(repoId);
         if (settingsPort.getGitLab().isEmpty()) {
-            throw new BizException("GITLAB_SETTINGS_MISSING", "GitLab settings missing");
+            throw BusinessException.gitlabSettingsMissing();
         }
         var branchStats = gitLabPort.fetchBranchStatistics(repo.getGitlabProjectId());
         var mrStats = gitLabPort.fetchMrStatistics(repo.getGitlabProjectId());

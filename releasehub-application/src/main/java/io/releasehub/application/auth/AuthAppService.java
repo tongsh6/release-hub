@@ -1,7 +1,9 @@
 package io.releasehub.application.auth;
 
-import io.releasehub.domain.user.User;
 import io.releasehub.application.user.UserPort;
+import io.releasehub.common.exception.AuthenticationException;
+import io.releasehub.common.exception.ForbiddenException;
+import io.releasehub.domain.user.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,14 +20,14 @@ public class AuthAppService {
     public TokenInfo login(String username, String password) {
         // 使用通用错误信息防止枚举攻击
         User user = userPort.findByUsername(username)
-                .orElseThrow(() -> new IllegalArgumentException("Invalid username or password"));
+                            .orElseThrow(AuthenticationException::failed);
 
         if (!passwordService.matches(password, user.getPasswordHash())) {
-            throw new IllegalArgumentException("Invalid username or password");
+            throw AuthenticationException.failed();
         }
 
         if (!user.isEnabled()) {
-            throw new IllegalStateException("User is disabled");
+            throw ForbiddenException.userDisabled();
         }
 
         return tokenProvider.createToken(user);

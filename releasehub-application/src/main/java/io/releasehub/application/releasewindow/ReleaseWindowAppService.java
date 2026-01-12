@@ -1,6 +1,6 @@
 package io.releasehub.application.releasewindow;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,7 @@ public class ReleaseWindowAppService {
 
     public ReleaseWindowView get(String id) {
         ReleaseWindow rw = releaseWindowPort.findById(new ReleaseWindowId(id))
-                .orElseThrow(() -> new BizException("RW_NOT_FOUND", "ReleaseWindow not found: " + id));
+                .orElseThrow(() -> NotFoundException.releaseWindow(id));
         return ReleaseWindowView.from(rw);
     }
 
@@ -87,6 +87,6 @@ public class ReleaseWindowAppService {
 
     private ReleaseWindow findById(String id) {
          return releaseWindowPort.findById(new ReleaseWindowId(id))
-                .orElseThrow(() -> new BizException("RW_NOT_FOUND", "ReleaseWindow not found: " + id));
+                .orElseThrow(() -> NotFoundException.releaseWindow(id));
     }
 }

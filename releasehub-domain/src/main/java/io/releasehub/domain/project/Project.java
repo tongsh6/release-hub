@@ -1,6 +1,6 @@
 package io.releasehub.domain.project;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.base.BaseEntity;
 import lombok.Getter;
 
@@ -34,16 +34,16 @@ public class Project extends BaseEntity<ProjectId> {
 
     private void validateName(String name) {
         if (name == null || name.isBlank()) {
-            throw new BizException("PJ_NAME_REQUIRED", "Project name is required");
+            throw ValidationException.projectNameRequired();
         }
         if (name.length() > 128) {
-            throw new BizException("PJ_NAME_TOO_LONG", "Project name is too long (max 128)");
+            throw ValidationException.projectNameTooLong(128);
         }
     }
 
     private void validateDescription(String description) {
         if (description != null && description.length() > 512) {
-            throw new BizException("PJ_DESC_TOO_LONG", "Project description is too long (max 512)");
+            throw ValidationException.projectDescTooLong(512);
         }
     }
 

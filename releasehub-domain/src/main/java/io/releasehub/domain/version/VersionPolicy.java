@@ -1,6 +1,7 @@
 package io.releasehub.domain.version;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.base.BaseEntity;
 import lombok.Getter;
 
@@ -44,10 +45,10 @@ public class VersionPolicy extends BaseEntity<VersionPolicyId> {
 
     private static void validateName(String name) {
         if (name == null || name.isBlank()) {
-            throw new BizException("VP_NAME_REQUIRED", "VersionPolicy name is required");
+            throw ValidationException.vpNameRequired();
         }
         if (name.length() > 128) {
-            throw new BizException("VP_NAME_TOO_LONG", "VersionPolicy name is too long (max 128)");
+            throw ValidationException.vpNameTooLong(128);
         }
     }
 
@@ -59,13 +60,13 @@ public class VersionPolicy extends BaseEntity<VersionPolicyId> {
      */
     public String deriveNextVersion(String currentVersion) {
         if (currentVersion == null || currentVersion.isBlank()) {
-            throw new BizException("VP_CURRENT_VERSION_REQUIRED", "Current version is required");
+            throw ValidationException.vpCurrentVersionRequired();
         }
 
         return switch (scheme) {
             case SEMVER -> deriveSemVerNext(currentVersion);
             case DATE -> deriveDateVersion();
-            case CUSTOM -> throw new BizException("VP_CUSTOM_NOT_SUPPORTED", "Custom version scheme not yet supported");
+            case CUSTOM -> throw BusinessException.vpCustomNotSupported();
         };
     }
 
@@ -89,12 +90,12 @@ public class VersionPolicy extends BaseEntity<VersionPolicyId> {
 
     private String deriveSemVerNext(String currentVersion) {
         if (!validateSemVer(currentVersion)) {
-            throw new BizException("VP_INVALID_SEMVER", "Invalid SemVer format: " + currentVersion);
+            throw ValidationException.vpInvalidFormat(currentVersion);
         }
 
         String[] parts = currentVersion.split("\\.");
         if (parts.length < 3) {
-            throw new BizException("VP_INVALID_SEMVER", "Invalid SemVer format: " + currentVersion);
+            throw ValidationException.vpInvalidFormat(currentVersion);
         }
 
         int major = Integer.parseInt(parts[0]);

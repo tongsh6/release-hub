@@ -3,6 +3,7 @@ package io.releasehub.infrastructure.persistence.version;
 import io.releasehub.application.version.VersionPolicyPort;
 import io.releasehub.domain.version.BumpRule;
 import io.releasehub.domain.version.VersionPolicy;
+import io.releasehub.domain.version.VersionPolicyId;
 import io.releasehub.domain.version.VersionScheme;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +15,7 @@ import java.time.Instant;
 /**
  * VersionPolicy 数据初始化器
  * <p>
- * 在服务启动时创建测试用的 VersionPolicy 数据（内存存储）
+ * 在服务启动时创建内置的 VersionPolicy 数据
  */
 @Slf4j
 @Component
@@ -25,47 +26,53 @@ public class VersionPolicyDataInitializer {
 
     @PostConstruct
     public void init() {
-        log.info("Initializing test VersionPolicy data...");
+        log.info("Initializing built-in VersionPolicy data...");
 
-        // 创建 SemVer MAJOR 策略
-        VersionPolicy majorPolicy = VersionPolicy.create(
+        Instant now = Instant.now();
+
+        // 创建 SemVer MAJOR 策略 - 使用固定 ID
+        VersionPolicy majorPolicy = VersionPolicy.rehydrate(
+                new VersionPolicyId("MAJOR"),
                 "SemVer MAJOR",
                 VersionScheme.SEMVER,
                 BumpRule.MAJOR,
-                Instant.now()
+                now, now, 0L
         );
         versionPolicyPort.save(majorPolicy);
-        log.info("Created VersionPolicy: {} (MAJOR)", majorPolicy.getId().value());
+        log.info("Created VersionPolicy: MAJOR");
 
-        // 创建 SemVer MINOR 策略
-        VersionPolicy minorPolicy = VersionPolicy.create(
+        // 创建 SemVer MINOR 策略 - 使用固定 ID
+        VersionPolicy minorPolicy = VersionPolicy.rehydrate(
+                new VersionPolicyId("MINOR"),
                 "SemVer MINOR",
                 VersionScheme.SEMVER,
                 BumpRule.MINOR,
-                Instant.now()
+                now, now, 0L
         );
         versionPolicyPort.save(minorPolicy);
-        log.info("Created VersionPolicy: {} (MINOR)", minorPolicy.getId().value());
+        log.info("Created VersionPolicy: MINOR");
 
-        // 创建 SemVer PATCH 策略
-        VersionPolicy patchPolicy = VersionPolicy.create(
+        // 创建 SemVer PATCH 策略 - 使用固定 ID
+        VersionPolicy patchPolicy = VersionPolicy.rehydrate(
+                new VersionPolicyId("PATCH"),
                 "SemVer PATCH",
                 VersionScheme.SEMVER,
                 BumpRule.PATCH,
-                Instant.now()
+                now, now, 0L
         );
         versionPolicyPort.save(patchPolicy);
-        log.info("Created VersionPolicy: {} (PATCH)", patchPolicy.getId().value());
+        log.info("Created VersionPolicy: PATCH");
 
-        // 创建日期版本策略
-        VersionPolicy datePolicy = VersionPolicy.create(
+        // 创建日期版本策略 - 使用固定 ID
+        VersionPolicy datePolicy = VersionPolicy.rehydrate(
+                new VersionPolicyId("DATE"),
                 "Date Version",
                 VersionScheme.DATE,
                 BumpRule.NONE,
-                Instant.now()
+                now, now, 0L
         );
         versionPolicyPort.save(datePolicy);
-        log.info("Created VersionPolicy: {} (DATE)", datePolicy.getId().value());
+        log.info("Created VersionPolicy: DATE");
 
         log.info("VersionPolicy data initialization completed. Total: 4 policies");
     }

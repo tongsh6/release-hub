@@ -1,6 +1,6 @@
 package io.releasehub.application.project;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.project.Project;
 import io.releasehub.domain.project.ProjectId;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +26,7 @@ public class ProjectAppService {
 
     public Project get(String id) {
         return projectPort.findById(new ProjectId(id))
-                .orElseThrow(() -> new BizException("PJ_NOT_FOUND", "Project not found: " + id));
+                .orElseThrow(() -> NotFoundException.project(id));
     }
 
     public List<Project> list() {

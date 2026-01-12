@@ -7,7 +7,7 @@ import io.releasehub.application.version.VersionUpdateAppService;
 import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
 import io.releasehub.application.window.WindowIterationPort;
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
@@ -136,11 +136,11 @@ public class RunAppService {
         Run run = Run.start(RunType.VERSION_UPDATE, operator, now);
         
         ReleaseWindow rw = releaseWindowPort.findById(new ReleaseWindowId(windowId))
-                .orElseThrow(() -> new BizException("WINDOW_NOT_FOUND", "ReleaseWindow not found: " + windowId));
+                .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
         
         // 验证仓库存在
         codeRepositoryPort.findById(new RepoId(repoId))
-                .orElseThrow(() -> new BizException("REPO_NOT_FOUND", "CodeRepository not found: " + repoId));
+                .orElseThrow(() -> NotFoundException.repository(repoId));
         
         // 创建版本更新请求
         VersionUpdateRequest request = buildTool == BuildTool.MAVEN
@@ -209,13 +209,13 @@ public class RunAppService {
         Run run = Run.start(RunType.VERSION_UPDATE, operator, now);
         
         ReleaseWindow rw = releaseWindowPort.findById(new ReleaseWindowId(windowId))
-                .orElseThrow(() -> new BizException("WINDOW_NOT_FOUND", "ReleaseWindow not found: " + windowId));
+                .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
 
         int order = 1;
         for (RepoVersionUpdateInfo repoInfo : repositories) {
             // 验证仓库存在
             codeRepositoryPort.findById(new RepoId(repoInfo.repoId()))
-                    .orElseThrow(() -> new BizException("REPO_NOT_FOUND", "CodeRepository not found: " + repoInfo.repoId()));
+                    .orElseThrow(() -> NotFoundException.repository(repoInfo.repoId()));
 
             // 创建版本更新请求
             VersionUpdateRequest request = repoInfo.buildTool() == BuildTool.MAVEN

@@ -1,6 +1,7 @@
 package io.releasehub.domain.group;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.base.BaseEntity;
 import lombok.Getter;
 
@@ -35,19 +36,19 @@ public class Group extends BaseEntity<GroupId> {
 
     private void validateName(String name) {
         if (name == null || name.isBlank()) {
-            throw new BizException("GROUP_NAME_REQUIRED", "Group name is required");
+            throw ValidationException.groupNameRequired();
         }
         if (name.length() > 128) {
-            throw new BizException("GROUP_NAME_TOO_LONG", "Group name is too long (max 128)");
+            throw ValidationException.groupNameTooLong(128);
         }
     }
 
     private void validateCode(String code) {
         if (code == null || code.isBlank()) {
-            throw new BizException("GROUP_CODE_REQUIRED", "Group code is required");
+            throw ValidationException.groupCodeRequired();
         }
         if (code.length() > 64) {
-            throw new BizException("GROUP_CODE_TOO_LONG", "Group code is too long (max 64)");
+            throw ValidationException.groupCodeTooLong(64);
         }
     }
 
@@ -56,10 +57,10 @@ public class Group extends BaseEntity<GroupId> {
             return;
         }
         if (parentCode.length() > 64) {
-            throw new BizException("GROUP_PARENT_CODE_TOO_LONG", "Parent code is too long (max 64)");
+            throw ValidationException.groupParentTooLong(64);
         }
         if (parentCode.equals(selfCode)) {
-            throw new BizException("GROUP_PARENT_SAME_AS_SELF", "Parent code cannot equal self code");
+            throw BusinessException.groupParentSelf();
         }
     }
 

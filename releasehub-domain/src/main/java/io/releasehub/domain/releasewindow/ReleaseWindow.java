@@ -1,6 +1,7 @@
 package io.releasehub.domain.releasewindow;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.base.BaseEntity;
 import lombok.Getter;
 
@@ -47,19 +48,19 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
 
     private static void validateKey(String key) {
         if (key == null || key.trim().isEmpty()) {
-            throw new BizException("RW_KEY_REQUIRED", "ReleaseWindow key is required");
+            throw ValidationException.rwKeyRequired();
         }
         if (key.length() > 64) {
-            throw new BizException("RW_KEY_TOO_LONG", "ReleaseWindow key is too long (max 64)");
+            throw ValidationException.rwKeyTooLong(64);
         }
     }
 
     private static void validateName(String name) {
         if (name == null || name.trim().isEmpty()) {
-            throw new BizException("RW_NAME_REQUIRED", "ReleaseWindow name is required");
+            throw ValidationException.rwNameRequired();
         }
         if (name.length() > 128) {
-            throw new BizException("RW_NAME_TOO_LONG", "ReleaseWindow name is too long (max 128)");
+            throw ValidationException.rwNameTooLong(128);
         }
     }
 
@@ -69,13 +70,13 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
 
     public void configureWindow(Instant startAt, Instant endAt, Instant now) {
         if (this.frozen) {
-            throw new BizException("RW_ALREADY_FROZEN", "Cannot configure frozen ReleaseWindow");
+            throw BusinessException.rwAlreadyFrozen();
         }
         if (startAt == null || endAt == null) {
-            throw new BizException("RW_INVALID_WINDOW", "StartAt and EndAt must not be null");
+            throw BusinessException.rwTimeRequired();
         }
         if (!startAt.isBefore(endAt)) {
-            throw new BizException("RW_INVALID_WINDOW", "StartAt must be strictly before EndAt");
+            throw BusinessException.rwInvalidTimeRange();
         }
         this.startAt = startAt;
         this.endAt = endAt;
@@ -102,10 +103,10 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
 
     public void publish(Instant now) {
         if (this.status != ReleaseWindowStatus.DRAFT) {
-             throw new BizException("RW_INVALID_STATE", "Cannot publish from state: " + this.status);
+            throw BusinessException.rwInvalidState(this.status);
         }
         if (this.startAt == null || this.endAt == null) {
-             throw new BizException("RW_NOT_CONFIGURED", "ReleaseWindow must be configured before publishing");
+            throw BusinessException.rwNotConfigured();
         }
         
         this.status = ReleaseWindowStatus.PUBLISHED;
@@ -116,7 +117,7 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
 
     public void release(Instant now) {
         if (this.status != ReleaseWindowStatus.PUBLISHED) {
-            throw new BizException("RW_INVALID_STATE", "Cannot release from state: " + this.status);
+            throw BusinessException.rwInvalidState(this.status);
         }
         if (!this.frozen) {
         }
@@ -129,7 +130,7 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
             return; // Idempotent
         }
         if (this.status != ReleaseWindowStatus.RELEASED) {
-            throw new BizException("RW_INVALID_STATE", "Cannot close from state: " + this.status);
+            throw BusinessException.rwInvalidState(this.status);
         }
         this.status = ReleaseWindowStatus.CLOSED;
         touch(now);

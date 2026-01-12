@@ -1,6 +1,7 @@
 package io.releasehub.application.group;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +28,7 @@ public class GroupAppService {
         ensureCodeAvailable(code);
         String normalizedParent = normalizeParentCode(parentCode);
         if (normalizedParent != null && normalizedParent.equals(code)) {
-            throw new BizException("GROUP_PARENT_SAME_AS_SELF", "Parent code cannot be self for group: " + code);
+            throw BusinessException.groupParentSelf();
         }
         ensureParentExists(normalizedParent);
 
@@ -38,12 +39,12 @@ public class GroupAppService {
 
     public Group get(String id) {
         return groupPort.findById(new GroupId(id))
-                .orElseThrow(() -> new BizException("GROUP_NOT_FOUND", "Group not found: " + id));
+                .orElseThrow(() -> NotFoundException.group(id));
     }
 
     public Group getByCode(String code) {
         return groupPort.findByCode(code)
-                .orElseThrow(() -> new BizException("GROUP_CODE_NOT_FOUND", "Group code not found: " + code));
+                .orElseThrow(() -> NotFoundException.groupCode(code));
     }
 
     @Transactional
@@ -53,7 +54,7 @@ public class GroupAppService {
         ensureParentExists(normalizedParent);
 
         if (normalizedParent != null && normalizedParent.equals(group.getCode())) {
-            throw new BizException("GROUP_PARENT_SAME_AS_SELF", "Parent code cannot be self for group: " + group.getCode());
+            throw BusinessException.groupParentSelf();
         }
 
         Instant now = Instant.now(clock);
@@ -68,7 +69,7 @@ public class GroupAppService {
         Group g = get(id);
         long cnt = groupPort.countChildren(g.getCode());
         if (cnt > 0) {
-            throw new BizException("GROUP_DELETE_HAS_CHILDREN", "Group has children: " + g.getCode());
+            throw BusinessException.groupHasChildren(g.getCode());
         }
         groupPort.deleteById(new GroupId(id));
     }
@@ -77,7 +78,7 @@ public class GroupAppService {
     public void deleteByCode(String code) {
         long cnt = groupPort.countChildren(code);
         if (cnt > 0) {
-            throw new BizException("GROUP_DELETE_HAS_CHILDREN", "Group has children: " + code);
+            throw BusinessException.groupHasChildren(code);
         }
         groupPort.deleteByCode(code);
     }
@@ -134,7 +135,7 @@ public class GroupAppService {
 
     private void ensureCodeAvailable(String code) {
         if (groupPort.findByCode(code).isPresent()) {
-            throw new BizException("GROUP_CODE_EXISTS", "Group code already exists: " + code);
+            throw BusinessException.groupCodeExists(code);
         }
     }
 
@@ -143,6 +144,6 @@ public class GroupAppService {
             return;
         }
         groupPort.findByCode(parentCode)
-                .orElseThrow(() -> new BizException("GROUP_PARENT_NOT_FOUND", "Parent group not found: " + parentCode));
+                .orElseThrow(() -> NotFoundException.groupParent(parentCode));
     }
 }

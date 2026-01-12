@@ -2,7 +2,8 @@ package io.releasehub.application.iteration;
 
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.window.WindowIterationPort;
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
@@ -52,7 +53,7 @@ public class IterationAppService {
 
     public Iteration get(String key) {
         return iterationPort.findByKey(new IterationKey(key))
-                            .orElseThrow(() -> new BizException("ITERATION_NOT_FOUND", "Iteration not found: " + key));
+                            .orElseThrow(() -> NotFoundException.iteration(key));
     }
 
     @Transactional
@@ -95,7 +96,7 @@ public class IterationAppService {
                                   .map(WindowIteration::getIterationKey)
                                   .anyMatch(k -> k.equals(existing.getId()));
         if (attached) {
-            throw new BizException("ITERATION_DELETE_ATTACHED", "Iteration attached: " + key);
+            throw BusinessException.iterationAttached(key);
         }
         iterationPort.deleteByKey(existing.getId());
     }

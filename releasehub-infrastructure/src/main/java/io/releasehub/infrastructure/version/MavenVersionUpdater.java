@@ -3,7 +3,8 @@ package io.releasehub.infrastructure.version;
 import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
 import io.releasehub.application.version.VersionUpdater;
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.BaseException;
+import io.releasehub.common.exception.BusinessException;
 import io.releasehub.domain.version.BuildTool;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -81,7 +82,7 @@ public class MavenVersionUpdater implements VersionUpdater {
             
             return VersionUpdateResult.success(oldVersion, request.targetVersion(), diff, pomPath);
             
-        } catch (BizException e) {
+        } catch (BaseException e) {
             return VersionUpdateResult.failure(e.getMessage(), request.pomPath());
         } catch (Exception e) {
             log.error("Failed to update Maven version", e);
@@ -132,7 +133,7 @@ public class MavenVersionUpdater implements VersionUpdater {
         NodeList versionNodes = root.getElementsByTagName("version");
         
         if (versionNodes.getLength() == 0) {
-            throw new BizException("VERSION_NOT_FOUND", "Version element not found in POM");
+            throw BusinessException.versionNotFoundInFile();
         }
         
         // 更新第一个 version 元素（项目版本）

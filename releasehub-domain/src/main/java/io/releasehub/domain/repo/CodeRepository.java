@@ -1,6 +1,6 @@
 package io.releasehub.domain.repo;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.base.BaseEntity;
 import io.releasehub.domain.project.ProjectId;
 import lombok.Getter;
@@ -70,10 +70,10 @@ public class CodeRepository extends BaseEntity<RepoId> {
     private CodeRepository(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
         super(id, now);
         if (projectId == null) {
-            throw new BizException("REPO_PROJECT_REQUIRED", "Project ID is required");
+            throw ValidationException.repoProjectRequired();
         }
         if (gitlabProjectId == null) {
-            throw new BizException("REPO_GITLAB_ID_REQUIRED", "GitLab Project ID is required");
+            throw ValidationException.repoGitlabIdRequired();
         }
         validateName(name);
         validateUrl(cloneUrl);
@@ -97,28 +97,28 @@ public class CodeRepository extends BaseEntity<RepoId> {
 
     private void validateName(String name) {
         if (name == null || name.isBlank()) {
-            throw new BizException("REPO_NAME_REQUIRED", "Repository name is required");
+            throw ValidationException.repoNameRequired();
         }
         if (name.length() > 128) {
-            throw new BizException("REPO_NAME_TOO_LONG", "Repository name is too long (max 128)");
+            throw ValidationException.repoNameTooLong(128);
         }
     }
 
     private void validateUrl(String url) {
         if (url == null || url.isBlank()) {
-            throw new BizException("REPO_URL_REQUIRED", "Clone URL is required");
+            throw ValidationException.repoUrlRequired();
         }
         if (url.length() > 512) {
-            throw new BizException("REPO_URL_TOO_LONG", "Clone URL is too long (max 512)");
+            throw ValidationException.repoUrlTooLong(512);
         }
     }
 
     private void validateBranch(String branch) {
         if (branch == null || branch.isBlank()) {
-            throw new BizException("REPO_BRANCH_REQUIRED", "Default branch is required");
+            throw ValidationException.repoBranchRequired();
         }
         if (branch.length() > 128) {
-            throw new BizException("REPO_BRANCH_TOO_LONG", "Default branch is too long (max 128)");
+            throw ValidationException.repoBranchTooLong(128);
         }
     }
 
@@ -146,7 +146,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
 
     public void update(Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
         if (gitlabProjectId == null) {
-            throw new BizException("REPO_GITLAB_ID_REQUIRED", "GitLab Project ID is required");
+            throw ValidationException.repoGitlabIdRequired();
         }
         validateName(name);
         validateUrl(cloneUrl);

@@ -1,5 +1,7 @@
 package io.releasehub.application.version;
 
+import io.releasehub.common.exception.BaseException;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.version.VersionPolicy;
 import io.releasehub.domain.version.VersionPolicyId;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +27,7 @@ public class VersionValidationAppService {
      */
     public VersionValidationResult validateVersion(String policyId, String currentVersion) {
         VersionPolicy policy = versionPolicyPort.findById(new VersionPolicyId(policyId))
-                .orElseThrow(() -> new RuntimeException("VersionPolicy not found: " + policyId));
+                .orElseThrow(() -> NotFoundException.versionPolicy(policyId));
 
         try {
             String derivedVersion;
@@ -45,6 +47,8 @@ public class VersionValidationAppService {
             }
 
             return VersionValidationResult.success(derivedVersion, null);
+        } catch (BaseException e) {
+            throw e;
         } catch (Exception e) {
             return VersionValidationResult.failure("Failed to derive version: " + e.getMessage());
         }
@@ -59,7 +63,7 @@ public class VersionValidationAppService {
      */
     public boolean validateVersionFormat(String policyId, String version) {
         VersionPolicy policy = versionPolicyPort.findById(new VersionPolicyId(policyId))
-                .orElseThrow(() -> new RuntimeException("VersionPolicy not found: " + policyId));
+                .orElseThrow(() -> NotFoundException.versionPolicy(policyId));
 
         return policy.validateVersion(version);
     }
