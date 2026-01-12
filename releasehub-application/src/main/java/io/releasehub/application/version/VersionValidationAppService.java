@@ -26,7 +26,7 @@ public class VersionValidationAppService {
      * @return 校验结果
      */
     public VersionValidationResult validateVersion(String policyId, String currentVersion) {
-        VersionPolicy policy = versionPolicyPort.findById(new VersionPolicyId(policyId))
+        VersionPolicy policy = versionPolicyPort.findById(VersionPolicyId.of(policyId))
                 .orElseThrow(() -> NotFoundException.versionPolicy(policyId));
 
         try {
@@ -62,7 +62,7 @@ public class VersionValidationAppService {
      * @return 是否有效
      */
     public boolean validateVersionFormat(String policyId, String version) {
-        VersionPolicy policy = versionPolicyPort.findById(new VersionPolicyId(policyId))
+        VersionPolicy policy = versionPolicyPort.findById(VersionPolicyId.of(policyId))
                 .orElseThrow(() -> NotFoundException.versionPolicy(policyId));
 
         return policy.validateVersion(version);

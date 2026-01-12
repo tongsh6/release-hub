@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-public class RunItem extends BaseEntity<String> {
+public class RunItem extends BaseEntity<RunItemId> {
     private final String windowKey;
     private final RepoId repo;
     private final IterationKey iterationKey;
@@ -17,7 +17,7 @@ public class RunItem extends BaseEntity<String> {
     private final List<RunStep> steps = new ArrayList<>();
     private RunItemResult finalResult;
 
-    private RunItem(String id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, int executedOrder, RunItemResult finalResult, List<RunStep> steps, Instant createdAt, Instant updatedAt, long version) {
+    private RunItem(RunItemId id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, int executedOrder, RunItemResult finalResult, List<RunStep> steps, Instant createdAt, Instant updatedAt, long version) {
         super(id, createdAt, updatedAt, version);
         this.windowKey = windowKey;
         this.repo = repo;
@@ -30,7 +30,7 @@ public class RunItem extends BaseEntity<String> {
         }
     }
 
-    private RunItem(String id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, Instant now) {
+    private RunItem(RunItemId id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, Instant now) {
         super(id, now);
         this.windowKey = windowKey;
         this.repo = repo;
@@ -41,11 +41,11 @@ public class RunItem extends BaseEntity<String> {
     }
 
     public static RunItem create(String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, Instant now) {
-        String id = windowKey + "::" + repo.value() + "::" + iterationKey.value();
+        RunItemId id = RunItemId.generate(windowKey, repo, iterationKey);
         return new RunItem(id, windowKey, repo, iterationKey, plannedOrder, now);
     }
 
-    public static RunItem rehydrate(String id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, int executedOrder, RunItemResult finalResult, List<RunStep> steps, Instant createdAt, Instant updatedAt, long version) {
+    public static RunItem rehydrate(RunItemId id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, int executedOrder, RunItemResult finalResult, List<RunStep> steps, Instant createdAt, Instant updatedAt, long version) {
         return new RunItem(id, windowKey, repo, iterationKey, plannedOrder, executedOrder, finalResult, steps, createdAt, updatedAt, version);
     }
 

@@ -51,8 +51,8 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
         return iterationRepository.findById(key.value())
                 .map(e -> {
                     List<IterationRepoJpaEntity> repos = iterationRepoRepository.findByIdIterationKey(e.getKey());
-                    Set<RepoId> repoIds = repos.stream().map(r -> new RepoId(r.getId().getRepoId())).collect(Collectors.toCollection(HashSet::new));
-                    return Iteration.rehydrate(new IterationKey(e.getKey()), e.getDescription(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
+                    Set<RepoId> repoIds = repos.stream().map(r -> RepoId.of(r.getId().getRepoId())).collect(Collectors.toCollection(HashSet::new));
+                    return Iteration.rehydrate(IterationKey.of(e.getKey()), e.getDescription(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
                 });
     }
 
@@ -61,8 +61,8 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
         return iterationRepository.findAll().stream()
                 .map(e -> {
                     List<IterationRepoJpaEntity> repos = iterationRepoRepository.findByIdIterationKey(e.getKey());
-                    Set<RepoId> repoIds = repos.stream().map(r -> new RepoId(r.getId().getRepoId())).collect(Collectors.toCollection(HashSet::new));
-                    return Iteration.rehydrate(new IterationKey(e.getKey()), e.getDescription(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
+                    Set<RepoId> repoIds = repos.stream().map(r -> RepoId.of(r.getId().getRepoId())).collect(Collectors.toCollection(HashSet::new));
+                    return Iteration.rehydrate(IterationKey.of(e.getKey()), e.getDescription(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
                 })
                 .collect(Collectors.toList());
     }

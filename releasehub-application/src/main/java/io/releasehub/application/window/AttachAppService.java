@@ -23,24 +23,24 @@ public class AttachAppService {
 
     @Transactional
     public List<WindowIteration> attach(String windowId, List<String> iterationKeys) {
-        releaseWindowPort.findById(new ReleaseWindowId(windowId)).orElseThrow();
+        releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
         Instant now = Instant.now(clock);
         return iterationKeys.stream()
-                .map(k -> new IterationKey(k))
+                .map(IterationKey::of)
                 .peek(k -> iterationPort.findByKey(k).orElseThrow())
-                .map(k -> windowIterationPort.attach(new ReleaseWindowId(windowId), k, now))
+                .map(k -> windowIterationPort.attach(ReleaseWindowId.of(windowId), k, now))
                 .toList();
     }
 
     @Transactional
     public void detach(String windowId, String iterationKey) {
-        releaseWindowPort.findById(new ReleaseWindowId(windowId)).orElseThrow();
-        iterationPort.findByKey(new IterationKey(iterationKey)).orElseThrow();
-        windowIterationPort.detach(new ReleaseWindowId(windowId), new IterationKey(iterationKey));
+        releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
+        iterationPort.findByKey(IterationKey.of(iterationKey)).orElseThrow();
+        windowIterationPort.detach(ReleaseWindowId.of(windowId), IterationKey.of(iterationKey));
     }
 
     public List<WindowIteration> list(String windowId) {
-        releaseWindowPort.findById(new ReleaseWindowId(windowId)).orElseThrow();
-        return windowIterationPort.listByWindow(new ReleaseWindowId(windowId));
+        releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
+        return windowIterationPort.listByWindow(ReleaseWindowId.of(windowId));
     }
 }

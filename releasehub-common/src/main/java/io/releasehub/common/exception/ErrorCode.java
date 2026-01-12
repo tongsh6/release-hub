@@ -36,6 +36,7 @@ public enum ErrorCode {
     RW_TIME_REQUIRED("RW_008", "error.rw.time_required", 400),
     RW_INVALID_STATE("RW_009", "error.rw.invalid_state", 400),
     RW_NOT_CONFIGURED("RW_010", "error.rw.not_configured", 400),
+    RW_ID_INVALID("RW_011", "error.rw.id_invalid", 400),
 
     // ========== 代码仓库 (REPO) ==========
     REPO_NOT_FOUND("REPO_001", "error.repo.not_found", 404),
@@ -47,6 +48,7 @@ public enum ErrorCode {
     REPO_URL_TOO_LONG("REPO_007", "error.repo.url_too_long", 400),
     REPO_BRANCH_REQUIRED("REPO_008", "error.repo.branch_required", 400),
     REPO_BRANCH_TOO_LONG("REPO_009", "error.repo.branch_too_long", 400),
+    REPO_ID_INVALID("REPO_010", "error.repo.id_invalid", 400),
 
     // ========== 分组 (GROUP) ==========
     GROUP_NOT_FOUND("GROUP_001", "error.group.not_found", 404),
@@ -65,6 +67,7 @@ public enum ErrorCode {
     // ========== 迭代 (ITER) ==========
     ITERATION_NOT_FOUND("ITER_001", "error.iter.not_found", 404),
     ITERATION_ATTACHED("ITER_002", "error.iter.attached", 400),
+    ITERATION_KEY_INVALID("ITER_003", "error.iter.key_invalid", 400),
 
     // ========== 版本策略 (VP) ==========
     VERSION_POLICY_NOT_FOUND("VP_001", "error.vp.not_found", 404),
@@ -74,15 +77,22 @@ public enum ErrorCode {
     VERSION_CURRENT_REQUIRED("VP_005", "error.vp.current_version_required", 400),
     VERSION_CUSTOM_NOT_SUPPORTED("VP_006", "error.vp.custom_not_supported", 400),
     VERSION_NOT_FOUND_IN_FILE("VP_007", "error.vp.version_not_found_in_file", 400),
+    VERSION_POLICY_ID_INVALID("VP_008", "error.vp.id_invalid", 400),
 
     // ========== 项目 (PJ) ==========
     PROJECT_NOT_FOUND("PJ_001", "error.pj.not_found", 404),
     PROJECT_NAME_REQUIRED("PJ_002", "error.pj.name_required", 400),
     PROJECT_NAME_TOO_LONG("PJ_003", "error.pj.name_too_long", 400),
     PROJECT_DESC_TOO_LONG("PJ_004", "error.pj.desc_too_long", 400),
+    PROJECT_ID_INVALID("PJ_005", "error.pj.id_invalid", 400),
 
     // ========== 运行记录 (RUN) ==========
     RUN_NOT_FOUND("RUN_001", "error.run.not_found", 404),
+    RUN_ID_INVALID("RUN_002", "error.run.id_invalid", 400),
+    RUN_ITEM_ID_INVALID("RUN_003", "error.run.item_id_invalid", 400),
+
+    // ========== 窗口迭代关联 (WI) ==========
+    WINDOW_ITERATION_ID_INVALID("WI_001", "error.wi.id_invalid", 400),
 
     // ========== GitLab (GITLAB) ==========
     GITLAB_SETTINGS_MISSING("GITLAB_001", "error.gitlab.settings_missing", 400);

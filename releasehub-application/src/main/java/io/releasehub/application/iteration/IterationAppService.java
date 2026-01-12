@@ -31,7 +31,7 @@ public class IterationAppService {
     public Iteration create(String iterationKey, String description, Set<String> repoIds) {
         Set<String> safeRepoIds = repoIds == null ? java.util.Set.of() : repoIds;
         Set<RepoId> repos = safeRepoIds.stream().map(RepoId::new).collect(java.util.stream.Collectors.toSet());
-        Iteration it = Iteration.create(new IterationKey(iterationKey), description, repos, Instant.now(clock));
+        Iteration it = Iteration.create(IterationKey.of(iterationKey), description, repos, Instant.now(clock));
         iterationPort.save(it);
         return it;
     }
@@ -52,7 +52,7 @@ public class IterationAppService {
     }
 
     public Iteration get(String key) {
-        return iterationPort.findByKey(new IterationKey(key))
+        return iterationPort.findByKey(IterationKey.of(key))
                             .orElseThrow(() -> NotFoundException.iteration(key));
     }
 
@@ -91,7 +91,7 @@ public class IterationAppService {
         Iteration existing = get(key);
         List<ReleaseWindow> windows = releaseWindowPort.findAll();
         boolean attached = windows.stream()
-                                  .map(w -> windowIterationPort.listByWindow(new ReleaseWindowId(w.getId().value())))
+                                  .map(w -> windowIterationPort.listByWindow(ReleaseWindowId.of(w.getId().value())))
                                   .flatMap(List::stream)
                                   .map(WindowIteration::getIterationKey)
                                   .anyMatch(k -> k.equals(existing.getId()));

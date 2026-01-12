@@ -52,7 +52,7 @@ public class VersionUpdateController {
         );
 
         VersionUpdateResponse response = new VersionUpdateResponse();
-        response.setRunId(run.getId());
+        response.setRunId(run.getId().value());
         response.setStatus(run.getFinishedAt() != null ? "COMPLETED" : "RUNNING");
 
         return ApiResponse.success(response);
@@ -86,7 +86,7 @@ public class VersionUpdateController {
         );
 
         VersionUpdateResponse response = new VersionUpdateResponse();
-        response.setRunId(run.getId());
+        response.setRunId(run.getId().value());
         response.setStatus(run.getFinishedAt() != null ? "COMPLETED" : "RUNNING");
 
         return ApiResponse.success(response);

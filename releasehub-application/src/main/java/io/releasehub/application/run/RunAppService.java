@@ -70,13 +70,13 @@ public class RunAppService {
     @Transactional
     public Run startOrchestrate(String windowId, List<String> repoIds, List<String> iterationKeys, boolean failFast, String operator) {
         Run run = Run.start(RunType.WINDOW_ORCHESTRATION, operator, Instant.now(clock));
-        ReleaseWindow rw = releaseWindowPort.findById(new ReleaseWindowId(windowId)).orElseThrow();
-        List<WindowIteration> bindings = windowIterationPort.listByWindow(new ReleaseWindowId(windowId));
+        ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
+        List<WindowIteration> bindings = windowIterationPort.listByWindow(ReleaseWindowId.of(windowId));
         bindings.sort(Comparator.comparing(WindowIteration::getAttachAt));
         List<IterationKey> orderedIterations = bindings.stream().map(WindowIteration::getIterationKey).distinct().toList();
 
         for (String repoIdStr : repoIds) {
-            RepoId repoId = new RepoId(repoIdStr);
+            RepoId repoId = RepoId.of(repoIdStr);
             for (IterationKey ik : orderedIterations) {
                 if (!iterationKeys.isEmpty() && iterationKeys.stream().noneMatch(k -> k.equals(ik.value()))) {
                     continue;
@@ -135,17 +135,17 @@ public class RunAppService {
         Instant now = Instant.now(clock);
         Run run = Run.start(RunType.VERSION_UPDATE, operator, now);
         
-        ReleaseWindow rw = releaseWindowPort.findById(new ReleaseWindowId(windowId))
+        ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId))
                 .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
         
         // 验证仓库存在
-        codeRepositoryPort.findById(new RepoId(repoId))
+        codeRepositoryPort.findById(RepoId.of(repoId))
                 .orElseThrow(() -> NotFoundException.repository(repoId));
         
         // 创建版本更新请求
         VersionUpdateRequest request = buildTool == BuildTool.MAVEN
-                ? VersionUpdateRequest.forMaven(new RepoId(repoId), repoPath, targetVersion, pomPath)
-                : VersionUpdateRequest.forGradle(new RepoId(repoId), repoPath, targetVersion, gradlePropertiesPath);
+                ? VersionUpdateRequest.forMaven(RepoId.of(repoId), repoPath, targetVersion, pomPath)
+                : VersionUpdateRequest.forGradle(RepoId.of(repoId), repoPath, targetVersion, gradlePropertiesPath);
         
         // 执行版本更新
         Instant stepStart = Instant.now(clock);
@@ -153,8 +153,8 @@ public class RunAppService {
         Instant stepEnd = Instant.now(clock);
         
         // 创建 RunItem（版本更新不关联迭代，使用虚拟迭代 key）
-        IterationKey dummyIterationKey = new IterationKey("VERSION_UPDATE");
-        RunItem item = RunItem.create(rw.getName(), new RepoId(repoId), dummyIterationKey, 1, now);
+        IterationKey dummyIterationKey = IterationKey.of("VERSION_UPDATE");
+        RunItem item = RunItem.create(rw.getName(), RepoId.of(repoId), dummyIterationKey, 1, now);
         
         // 创建执行步骤
         RunItemResult stepResult = result.success()
@@ -208,19 +208,19 @@ public class RunAppService {
         Instant now = Instant.now(clock);
         Run run = Run.start(RunType.VERSION_UPDATE, operator, now);
         
-        ReleaseWindow rw = releaseWindowPort.findById(new ReleaseWindowId(windowId))
+        ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId))
                 .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
 
         int order = 1;
         for (RepoVersionUpdateInfo repoInfo : repositories) {
             // 验证仓库存在
-            codeRepositoryPort.findById(new RepoId(repoInfo.repoId()))
+            codeRepositoryPort.findById(RepoId.of(repoInfo.repoId()))
                     .orElseThrow(() -> NotFoundException.repository(repoInfo.repoId()));
 
             // 创建版本更新请求
             VersionUpdateRequest request = repoInfo.buildTool() == BuildTool.MAVEN
-                    ? VersionUpdateRequest.forMaven(new RepoId(repoInfo.repoId()), repoInfo.repoPath(), targetVersion, repoInfo.pomPath())
-                    : VersionUpdateRequest.forGradle(new RepoId(repoInfo.repoId()), repoInfo.repoPath(), targetVersion, repoInfo.gradlePropertiesPath());
+                    ? VersionUpdateRequest.forMaven(RepoId.of(repoInfo.repoId()), repoInfo.repoPath(), targetVersion, repoInfo.pomPath())
+                    : VersionUpdateRequest.forGradle(RepoId.of(repoInfo.repoId()), repoInfo.repoPath(), targetVersion, repoInfo.gradlePropertiesPath());
 
             // 执行版本更新
             Instant stepStart = Instant.now(clock);
@@ -228,8 +228,8 @@ public class RunAppService {
             Instant stepEnd = Instant.now(clock);
 
             // 创建 RunItem（版本更新不关联迭代，使用虚拟迭代 key）
-            IterationKey dummyIterationKey = new IterationKey("VERSION_UPDATE");
-            RunItem item = RunItem.create(rw.getName(), new RepoId(repoInfo.repoId()), dummyIterationKey, order, now);
+            IterationKey dummyIterationKey = IterationKey.of("VERSION_UPDATE");
+            RunItem item = RunItem.create(rw.getName(), RepoId.of(repoInfo.repoId()), dummyIterationKey, order, now);
 
             // 创建执行步骤
             RunItemResult stepResult = result.success()

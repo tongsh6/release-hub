@@ -25,7 +25,7 @@ public class CodeRepositoryAppService {
 
     @Transactional
     public CodeRepository create(String projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo) {
-        CodeRepository repo = CodeRepository.create(new ProjectId(projectId), gitlabProjectId, name, cloneUrl, defaultBranch, monoRepo, Instant.now(clock));
+        CodeRepository repo = CodeRepository.create(ProjectId.of(projectId), gitlabProjectId, name, cloneUrl, defaultBranch, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
         return repo;
     }
@@ -45,7 +45,7 @@ public class CodeRepositoryAppService {
     }
 
     public CodeRepository get(String repoId) {
-        return codeRepositoryPort.findById(new RepoId(repoId))
+        return codeRepositoryPort.findById(RepoId.of(repoId))
                 .orElseThrow(() -> NotFoundException.repository(repoId));
     }
 
@@ -54,11 +54,11 @@ public class CodeRepositoryAppService {
     }
 
     public List<CodeRepository> listByProject(String projectId) {
-        return codeRepositoryPort.findByProjectId(new ProjectId(projectId));
+        return codeRepositoryPort.findByProjectId(ProjectId.of(projectId));
     }
     
     public List<CodeRepository> search(String keyword, String projectId, Long gitlabProjectId) {
-        ProjectId pid = projectId != null && !projectId.isBlank() ? new ProjectId(projectId) : null;
+        ProjectId pid = projectId != null && !projectId.isBlank() ? ProjectId.of(projectId) : null;
         return codeRepositoryPort.search(keyword, pid, gitlabProjectId);
     }
 

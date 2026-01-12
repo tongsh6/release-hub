@@ -65,7 +65,7 @@ public class Group extends BaseEntity<GroupId> {
     }
 
     public static Group create(String name, String code, String parentCode, Instant now) {
-        return new Group(new GroupId(code), name, code, parentCode, now);
+        return new Group(GroupId.of(code), name, code, parentCode, now);
     }
 
     public void rename(String name, Instant now) {

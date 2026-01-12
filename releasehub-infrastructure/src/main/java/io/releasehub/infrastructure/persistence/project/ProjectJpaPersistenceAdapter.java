@@ -53,7 +53,7 @@ public class ProjectJpaPersistenceAdapter implements ProjectPort {
 
     private Project toDomain(ProjectJpaEntity entity) {
         return Project.rehydrate(
-                new ProjectId(entity.getId()),
+                ProjectId.of(entity.getId()),
                 entity.getName(),
                 entity.getDescription(),
                 ProjectStatus.valueOf(entity.getStatus()),

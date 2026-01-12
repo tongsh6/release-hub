@@ -25,8 +25,8 @@ public class PlanAppService {
     private final IterationPort iterationPort;
 
     public List<PlanItemView> getPlanByWindow(String windowId) {
-        ReleaseWindow rw = releaseWindowPort.findById(new ReleaseWindowId(windowId)).orElseThrow();
-        List<WindowIteration> bindings = windowIterationPort.listByWindow(new ReleaseWindowId(windowId));
+        ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
+        List<WindowIteration> bindings = windowIterationPort.listByWindow(ReleaseWindowId.of(windowId));
         bindings.sort(Comparator.comparing(WindowIteration::getAttachAt));
         Map<IterationKey, Integer> order = computePlannedOrder(bindings);
 

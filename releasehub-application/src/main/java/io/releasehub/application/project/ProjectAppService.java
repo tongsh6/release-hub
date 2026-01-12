@@ -25,7 +25,7 @@ public class ProjectAppService {
     }
 
     public Project get(String id) {
-        return projectPort.findById(new ProjectId(id))
+        return projectPort.findById(ProjectId.of(id))
                 .orElseThrow(() -> NotFoundException.project(id));
     }
 

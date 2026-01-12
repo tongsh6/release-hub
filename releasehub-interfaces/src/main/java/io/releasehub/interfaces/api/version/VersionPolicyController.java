@@ -40,7 +40,7 @@ public class VersionPolicyController {
     @GetMapping("/{id}")
     @Operation(summary = "获取版本策略详情")
     public ApiResponse<VersionPolicyView> get(@PathVariable("id") String id) {
-        VersionPolicy policy = versionPolicyPort.findById(new VersionPolicyId(id))
+        VersionPolicy policy = versionPolicyPort.findById(VersionPolicyId.of(id))
                 .orElseThrow(() -> new BizException("POLICY_NOT_FOUND", "VersionPolicy not found: " + id));
         return ApiResponse.success(VersionPolicyView.fromDomain(policy));
     }

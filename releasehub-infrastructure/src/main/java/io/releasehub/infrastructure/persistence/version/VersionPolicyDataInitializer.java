@@ -32,7 +32,7 @@ public class VersionPolicyDataInitializer {
 
         // 创建 SemVer MAJOR 策略 - 使用固定 ID
         VersionPolicy majorPolicy = VersionPolicy.rehydrate(
-                new VersionPolicyId("MAJOR"),
+                VersionPolicyId.of("MAJOR"),
                 "SemVer MAJOR",
                 VersionScheme.SEMVER,
                 BumpRule.MAJOR,
@@ -43,7 +43,7 @@ public class VersionPolicyDataInitializer {
 
         // 创建 SemVer MINOR 策略 - 使用固定 ID
         VersionPolicy minorPolicy = VersionPolicy.rehydrate(
-                new VersionPolicyId("MINOR"),
+                VersionPolicyId.of("MINOR"),
                 "SemVer MINOR",
                 VersionScheme.SEMVER,
                 BumpRule.MINOR,
@@ -54,7 +54,7 @@ public class VersionPolicyDataInitializer {
 
         // 创建 SemVer PATCH 策略 - 使用固定 ID
         VersionPolicy patchPolicy = VersionPolicy.rehydrate(
-                new VersionPolicyId("PATCH"),
+                VersionPolicyId.of("PATCH"),
                 "SemVer PATCH",
                 VersionScheme.SEMVER,
                 BumpRule.PATCH,
@@ -65,7 +65,7 @@ public class VersionPolicyDataInitializer {
 
         // 创建日期版本策略 - 使用固定 ID
         VersionPolicy datePolicy = VersionPolicy.rehydrate(
-                new VersionPolicyId("DATE"),
+                VersionPolicyId.of("DATE"),
                 "Date Version",
                 VersionScheme.DATE,
                 BumpRule.NONE,

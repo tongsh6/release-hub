@@ -38,7 +38,7 @@ public class GroupAppService {
     }
 
     public Group get(String id) {
-        return groupPort.findById(new GroupId(id))
+        return groupPort.findById(GroupId.of(id))
                 .orElseThrow(() -> NotFoundException.group(id));
     }
 
@@ -71,7 +71,7 @@ public class GroupAppService {
         if (cnt > 0) {
             throw BusinessException.groupHasChildren(g.getCode());
         }
-        groupPort.deleteById(new GroupId(id));
+        groupPort.deleteById(GroupId.of(id));
     }
 
     @Transactional

@@ -26,7 +26,7 @@ public class ReleaseWindowAppService {
     }
 
     public ReleaseWindowView get(String id) {
-        ReleaseWindow rw = releaseWindowPort.findById(new ReleaseWindowId(id))
+        ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(id))
                 .orElseThrow(() -> NotFoundException.releaseWindow(id));
         return ReleaseWindowView.from(rw);
     }
@@ -86,7 +86,7 @@ public class ReleaseWindowAppService {
     }
 
     private ReleaseWindow findById(String id) {
-         return releaseWindowPort.findById(new ReleaseWindowId(id))
+         return releaseWindowPort.findById(ReleaseWindowId.of(id))
                 .orElseThrow(() -> NotFoundException.releaseWindow(id));
     }
 }

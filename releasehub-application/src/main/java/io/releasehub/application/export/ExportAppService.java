@@ -21,7 +21,7 @@ public class ExportAppService {
         for (RunItem item : run.getItems()) {
             for (RunStep step : item.getSteps()) {
                 joiner.add(String.join(",",
-                        run.getId(),
+                        run.getId().value(),
                         item.getWindowKey(),
                         item.getRepo().value(),
                         item.getIterationKey().value(),

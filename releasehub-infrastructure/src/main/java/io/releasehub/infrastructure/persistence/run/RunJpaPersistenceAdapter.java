@@ -5,7 +5,9 @@ import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.ActionType;
 import io.releasehub.domain.run.Run;
+import io.releasehub.domain.run.RunId;
 import io.releasehub.domain.run.RunItem;
+import io.releasehub.domain.run.RunItemId;
 import io.releasehub.domain.run.RunItemResult;
 import io.releasehub.domain.run.RunStep;
 import io.releasehub.domain.run.RunType;
@@ -13,7 +15,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Repository;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -45,7 +46,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
 
     private RunJpaEntity toEntity(Run domain) {
         RunJpaEntity entity = new RunJpaEntity();
-        entity.setId(domain.getId());
+        entity.setId(domain.getId().value());
         entity.setRunType(domain.getRunType().name());
         entity.setOperator(domain.getOperator());
         entity.setStartedAt(domain.getStartedAt());
@@ -57,7 +58,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
         List<RunItemJpaEntity> itemEntities = domain.getItems().stream()
                 .map(item -> {
                     RunItemJpaEntity itemEntity = new RunItemJpaEntity();
-                    itemEntity.setId(item.getId());
+                    itemEntity.setId(item.getId().value());
                     itemEntity.setRun(entity); // Set parent reference
                     itemEntity.setWindowKey(item.getWindowKey());
                     itemEntity.setRepoId(item.getRepo().value());
@@ -94,7 +95,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 .collect(Collectors.toList());
 
         return Run.rehydrate(
-                entity.getId(),
+                RunId.of(entity.getId()),
                 RunType.valueOf(entity.getRunType()),
                 entity.getOperator(),
                 entity.getStartedAt(),
@@ -118,17 +119,17 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 .collect(Collectors.toList());
 
         return RunItem.rehydrate(
-                entity.getId(),
+                RunItemId.of(entity.getId()),
                 entity.getWindowKey(),
-                new RepoId(entity.getRepoId()),
-                new IterationKey(entity.getIterationKey()),
+                RepoId.of(entity.getRepoId()),
+                IterationKey.of(entity.getIterationKey()),
                 entity.getPlannedOrder(),
                 entity.getExecutedOrder(),
                 entity.getFinalResult() != null ? RunItemResult.valueOf(entity.getFinalResult()) : null,
                 steps,
                 entity.getCreatedAt(),
                 entity.getUpdatedAt(),
-                0L // RunItemJpaEntity doesn't have version field, defaulting to 0 or we should add it
+                0L // RunItemJpaEntity doesn't have version field, defaulting to 0
         );
     }
 }

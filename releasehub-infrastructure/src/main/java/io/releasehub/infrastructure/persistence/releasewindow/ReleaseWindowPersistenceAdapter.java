@@ -53,7 +53,7 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
     private ReleaseWindow toDomain(ReleaseWindowJpaEntity entity) {
         try {
             return ReleaseWindow.rehydrate(
-                    new ReleaseWindowId(entity.getId()),
+                    ReleaseWindowId.of(entity.getId()),
                     entity.getWindowKey(),
                     entity.getName(),
                     ReleaseWindowStatus.valueOf(entity.getStatus()),

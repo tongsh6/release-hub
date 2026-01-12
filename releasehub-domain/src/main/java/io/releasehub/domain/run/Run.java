@@ -14,7 +14,7 @@ import java.util.List;
  */
 @Getter
 @NoArgsConstructor
-public class Run extends BaseEntity<String> {
+public class Run extends BaseEntity<RunId> {
     private RunType runType;
     private String operator;
     private Instant startedAt;
@@ -23,7 +23,7 @@ public class Run extends BaseEntity<String> {
 
     // For Lombok Builder or manual construction
     @Builder
-    private Run(String id, RunType runType, String operator, Instant startedAt, Instant finishedAt, List<RunItem> items, Instant createdAt, Instant updatedAt, long version) {
+    private Run(RunId id, RunType runType, String operator, Instant startedAt, Instant finishedAt, List<RunItem> items, Instant createdAt, Instant updatedAt, long version) {
         super(id, createdAt != null ? createdAt : startedAt, updatedAt != null ? updatedAt : startedAt, version);
         this.runType = runType;
         this.operator = operator;
@@ -34,7 +34,7 @@ public class Run extends BaseEntity<String> {
         }
     }
 
-    public static Run rehydrate(String id, RunType runType, String operator, Instant startedAt, Instant finishedAt, List<RunItem> items, Instant createdAt, Instant updatedAt, long version) {
+    public static Run rehydrate(RunId id, RunType runType, String operator, Instant startedAt, Instant finishedAt, List<RunItem> items, Instant createdAt, Instant updatedAt, long version) {
         return new Run(id, runType, operator, startedAt, finishedAt, items, createdAt, updatedAt, version);
     }
 
@@ -43,7 +43,7 @@ public class Run extends BaseEntity<String> {
     }
 
     public static Run start(RunType runType, String operator, Instant now) {
-        String id = runType.name() + "::" + now.toEpochMilli();
+        RunId id = RunId.generate(runType, now);
         return Run.builder()
                   .id(id)
                   .runType(runType)

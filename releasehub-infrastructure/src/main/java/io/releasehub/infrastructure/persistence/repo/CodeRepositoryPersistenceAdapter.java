@@ -91,8 +91,8 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
 
     private CodeRepository toDomain(CodeRepositoryJpaEntity entity) {
         return CodeRepository.rehydrate(
-                new RepoId(entity.getId()),
-                new ProjectId(entity.getProjectId()),
+                RepoId.of(entity.getId()),
+                ProjectId.of(entity.getProjectId()),
                 entity.getGitlabProjectId(),
                 entity.getName(),
                 entity.getCloneUrl(),
