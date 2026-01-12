@@ -20,10 +20,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BizException.class)
     public org.springframework.http.ResponseEntity<ApiResponse<Void>> handleBizException(BizException e) {
         log.warn("BizException: code={}, message={}", e.getCode(), e.getMessage());
+        
+        // 认证失败返回 401
         if ("AUTH_FAILED".equals(e.getCode())) {
              return org.springframework.http.ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                      .body(ApiResponse.error(e.getCode(), e.getMessage()));
         }
+        
+        // 资源不存在返回 404
+        if ("REPO_NOT_FOUND".equals(e.getCode()) || 
+            "WINDOW_NOT_FOUND".equals(e.getCode())) {
+            return org.springframework.http.ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.error(e.getCode(), e.getMessage()));
+        }
+        
+        // 其他业务异常返回 400
         return org.springframework.http.ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(e.getCode(), e.getMessage()));
     }

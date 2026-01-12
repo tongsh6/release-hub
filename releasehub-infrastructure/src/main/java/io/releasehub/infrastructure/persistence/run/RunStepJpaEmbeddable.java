@@ -23,5 +23,6 @@ public class RunStepJpaEmbeddable {
     private Instant startAt;
     @Column(name = "end_at")
     private Instant endAt;
+    @Column(name = "message", columnDefinition = "TEXT")
     private String message;
 }
