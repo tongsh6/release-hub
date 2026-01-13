@@ -39,6 +39,10 @@ public class BusinessException extends BaseException {
         return of(ErrorCode.RW_NOT_CONFIGURED);
     }
 
+    public static BusinessException rwNoIterations(Object windowId) {
+        return of(ErrorCode.RW_NO_ITERATIONS, windowId);
+    }
+
     // ========== Group ==========
 
     public static BusinessException groupCodeExists(Object code) {

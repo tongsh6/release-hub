@@ -30,5 +30,24 @@ public class WindowIterationJpaEntity {
     private Instant createdAt;
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+    
+    // Release 分支管理字段
+    @Column(name = "release_branch", length = 200)
+    private String releaseBranch;
+    @Column(name = "branch_created")
+    private Boolean branchCreated;
+    @Column(name = "last_merge_at")
+    private Instant lastMergeAt;
+    
+    public WindowIterationJpaEntity(String id, String windowId, String iterationKey, 
+                                     Instant attachAt, Instant createdAt, Instant updatedAt) {
+        this.id = id;
+        this.windowId = windowId;
+        this.iterationKey = iterationKey;
+        this.attachAt = attachAt;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+        this.branchCreated = false;
+    }
 }
 

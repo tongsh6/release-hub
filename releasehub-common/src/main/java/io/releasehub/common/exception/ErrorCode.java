@@ -37,13 +37,12 @@ public enum ErrorCode {
     RW_INVALID_STATE("RW_009", "error.rw.invalid_state", 400),
     RW_NOT_CONFIGURED("RW_010", "error.rw.not_configured", 400),
     RW_ID_INVALID("RW_011", "error.rw.id_invalid", 400),
+    RW_NO_ITERATIONS("RW_012", "error.rw.no_iterations", 400),
 
     // ========== 代码仓库 (REPO) ==========
     REPO_NOT_FOUND("REPO_001", "error.repo.not_found", 404),
     REPO_NAME_REQUIRED("REPO_002", "error.repo.name_required", 400),
     REPO_NAME_TOO_LONG("REPO_003", "error.repo.name_too_long", 400),
-    REPO_PROJECT_REQUIRED("REPO_004", "error.repo.project_required", 400),
-    REPO_GITLAB_ID_REQUIRED("REPO_005", "error.repo.gitlab_id_required", 400),
     REPO_URL_REQUIRED("REPO_006", "error.repo.url_required", 400),
     REPO_URL_TOO_LONG("REPO_007", "error.repo.url_too_long", 400),
     REPO_BRANCH_REQUIRED("REPO_008", "error.repo.branch_required", 400),
@@ -95,7 +94,15 @@ public enum ErrorCode {
     WINDOW_ITERATION_ID_INVALID("WI_001", "error.wi.id_invalid", 400),
 
     // ========== GitLab (GITLAB) ==========
-    GITLAB_SETTINGS_MISSING("GITLAB_001", "error.gitlab.settings_missing", 400);
+    GITLAB_SETTINGS_MISSING("GITLAB_001", "error.gitlab.settings_missing", 400),
+
+    // ========== 分支规则 (BR) ==========
+    BRANCH_RULE_NOT_FOUND("BR_001", "error.br.not_found", 404),
+    BRANCH_RULE_NAME_REQUIRED("BR_002", "error.br.name_required", 400),
+    BRANCH_RULE_NAME_TOO_LONG("BR_003", "error.br.name_too_long", 400),
+    BRANCH_RULE_PATTERN_REQUIRED("BR_004", "error.br.pattern_required", 400),
+    BRANCH_RULE_PATTERN_TOO_LONG("BR_005", "error.br.pattern_too_long", 400),
+    BRANCH_RULE_PATTERN_INVALID("BR_006", "error.br.pattern_invalid", 400);
 
     /**
      * 错误码

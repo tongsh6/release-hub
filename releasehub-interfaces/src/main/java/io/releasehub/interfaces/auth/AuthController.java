@@ -3,8 +3,8 @@ package io.releasehub.interfaces.auth;
 import io.releasehub.application.auth.AuthAppService;
 import io.releasehub.application.auth.TokenInfo;
 import io.releasehub.application.user.UserPort;
-import io.releasehub.domain.user.User;
 import io.releasehub.common.response.ApiResponse;
+import io.releasehub.domain.user.User;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -38,7 +38,11 @@ public class AuthController {
     @Operation(summary = "Login")
     public ApiResponse<TokenInfo> login(@Valid @RequestBody LoginRequest request) {
         try {
-            TokenInfo tokenInfo = authAppService.login(request.getUsername(), request.getPassword());
+            TokenInfo tokenInfo = authAppService.login(
+                    request.getUsername(),
+                    request.getPassword(),
+                    request.isRememberMe()
+            );
             return ApiResponse.success(tokenInfo);
         } catch (IllegalArgumentException | IllegalStateException e) {
             e.printStackTrace();
@@ -72,6 +76,8 @@ public class AuthController {
 
         @NotBlank(message = "Password is required")
         private String password;
+
+        private boolean rememberMe;
     }
 
     @Data

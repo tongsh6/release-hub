@@ -12,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,7 +33,7 @@ public class ReleaseWindowController {
     @PostMapping
     @Operation(summary = "Create release window")
     public ApiResponse<ReleaseWindowView> create(@Valid @RequestBody CreateReleaseWindowRequest request) {
-        ReleaseWindowView view = appService.create(request.getWindowKey(), request.getName());
+        ReleaseWindowView view = appService.create(request.getName(), request.getDescription(), request.getPlannedReleaseAt());
         return ApiResponse.success(view);
     }
 
@@ -66,16 +65,7 @@ public class ReleaseWindowController {
     @PostMapping("/{id}/publish")
     @Operation(summary = "Publish release window")
     public ApiResponse<ReleaseWindowView> publish(@PathVariable("id") String id, @RequestBody(required = false) PublishReleaseWindowRequest request) {
-        // 中文注释：发布窗口，需先完成配置
         ReleaseWindowView view = appService.publish(id);
-        return ApiResponse.success(view);
-    }
-
-    @PutMapping("/{id}/window")
-    @Operation(summary = "Configure release window")
-    public ApiResponse<ReleaseWindowView> configureWindow(@PathVariable("id") String id, @Valid @RequestBody ConfigureReleaseWindowRequest request) {
-        // 中文注释：配置时间窗口，需在冻结前执行
-        ReleaseWindowView view = appService.configureWindow(id, request.getStartAtInstant(), request.getEndAtInstant());
         return ApiResponse.success(view);
     }
 
@@ -91,13 +81,6 @@ public class ReleaseWindowController {
     @Operation(summary = "Unfreeze release window")
     public ApiResponse<ReleaseWindowView> unfreeze(@PathVariable("id") String id) {
         ReleaseWindowView view = appService.unfreeze(id);
-        return ApiResponse.success(view);
-    }
-
-    @PostMapping("/{id}/release")
-    @Operation(summary = "Release")
-    public ApiResponse<ReleaseWindowView> release(@PathVariable("id") String id) {
-        ReleaseWindowView view = appService.release(id);
         return ApiResponse.success(view);
     }
 

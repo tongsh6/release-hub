@@ -1,6 +1,5 @@
 package io.releasehub.application.repo;
 
-import io.releasehub.domain.project.ProjectId;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 
@@ -14,8 +13,17 @@ public interface CodeRepositoryPort {
     void save(CodeRepository repository);
     Optional<CodeRepository> findById(RepoId id);
     List<CodeRepository> findAll();
-    List<CodeRepository> findByProjectId(ProjectId projectId);
     void deleteById(RepoId id);
 
-    List<CodeRepository> search(String keyword, ProjectId projectId, Long gitlabProjectId);
+    List<CodeRepository> search(String keyword);
+    
+    /**
+     * 更新仓库的初始版本号
+     */
+    void updateInitialVersion(String repoId, String initialVersion, String versionSource);
+    
+    /**
+     * 获取仓库的初始版本号
+     */
+    Optional<String> getInitialVersion(String repoId);
 }

@@ -1,6 +1,7 @@
 package io.releasehub.application.group;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,30 +35,30 @@ class GroupAppServiceValidationTest {
     void createShouldFailWhenCodeExists() {
         port.save(Group.create("A", "A", null, now));
 
-        BizException ex = assertThrows(BizException.class, () -> svc.create("Another", "A", null));
-        assertEquals("GROUP_CODE_EXISTS", ex.getCode());
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.create("Another", "A", null));
+        assertEquals("GROUP_007", ex.getCode());
     }
 
     @Test
     void createShouldFailWhenParentMissing() {
-        BizException ex = assertThrows(BizException.class, () -> svc.create("Child", "C", "NO_PARENT"));
-        assertEquals("GROUP_PARENT_NOT_FOUND", ex.getCode());
+        NotFoundException ex = assertThrows(NotFoundException.class, () -> svc.create("Child", "C", "NO_PARENT"));
+        assertEquals("GROUP_010", ex.getCode());
     }
 
     @Test
     void updateShouldFailWhenParentIsSelf() {
         port.save(Group.create("Self", "SELF", null, now));
 
-        BizException ex = assertThrows(BizException.class, () -> svc.update("SELF", "Self", "SELF"));
-        assertEquals("GROUP_PARENT_SAME_AS_SELF", ex.getCode());
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.update("SELF", "Self", "SELF"));
+        assertEquals("GROUP_009", ex.getCode());
     }
 
     @Test
     void updateShouldFailWhenParentMissing() {
         port.save(Group.create("Node", "NODE", null, now));
 
-        BizException ex = assertThrows(BizException.class, () -> svc.update("NODE", "Node2", "MISSING"));
-        assertEquals("GROUP_PARENT_NOT_FOUND", ex.getCode());
+        NotFoundException ex = assertThrows(NotFoundException.class, () -> svc.update("NODE", "Node2", "MISSING"));
+        assertEquals("GROUP_010", ex.getCode());
     }
 
     @Test

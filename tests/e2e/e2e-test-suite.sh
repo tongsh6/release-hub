@@ -299,20 +299,21 @@ ITERATION_KEY=""
 test_it_001_create_iteration() {
     log_section "US-IT-001: 创建迭代"
     
-    ITERATION_KEY="SPRINT-$(date +%s)"
+    ITERATION_NAME="SPRINT-$(date +%s)"
     local response=$(api_post "/iterations" "{
-        \"iterationKey\": \"$ITERATION_KEY\"
+        \"name\": \"$ITERATION_NAME\"
     }")
     
-    local key=$(json_get "$response" ".data.iterationKey" 2>/dev/null || json_get "$response" ".iterationKey")
+    ITERATION_KEY=$(json_get "$response" ".data.key" 2>/dev/null)
+    local key="$ITERATION_KEY"
     
     if [ -n "$key" ] && [ "$key" != "null" ]; then
-        log_success "创建迭代成功: $ITERATION_KEY"
+        log_success "创建迭代成功: $ITERATION_NAME (key: $ITERATION_KEY)"
     else
         # 可能返回格式不同，检查是否有错误
         local code=$(json_get "$response" "code")
         if [ "$code" = "OK" ] || [ "$code" = "0" ]; then
-            log_success "创建迭代成功: $ITERATION_KEY"
+            log_success "创建迭代成功: $ITERATION_NAME"
         else
             log_fail "创建迭代失败: $response"
         fi
@@ -350,10 +351,7 @@ test_repo_001_create_repository() {
     log_section "US-REPO-001: 添加代码仓库"
     
     local ts=$(date +%s)
-    local gitlab_id=$((ts % 1000000 + RANDOM))
     local response=$(api_post "/repositories" "{
-        \"projectId\": \"test-project-001\",
-        \"gitlabProjectId\": $gitlab_id,
         \"name\": \"test-service-$ts\",
         \"cloneUrl\": \"https://gitlab.example.com/test/test-service-$ts.git\",
         \"defaultBranch\": \"main\",

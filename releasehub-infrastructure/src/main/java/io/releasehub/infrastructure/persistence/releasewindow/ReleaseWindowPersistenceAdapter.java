@@ -26,11 +26,11 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
                 releaseWindow.getId().value(),
                 releaseWindow.getWindowKey(),
                 releaseWindow.getName(),
+                releaseWindow.getDescription(),
+                releaseWindow.getPlannedReleaseAt(),
                 releaseWindow.getStatus().name(),
                 releaseWindow.getCreatedAt(),
                 releaseWindow.getUpdatedAt(),
-                releaseWindow.getStartAt(),
-                releaseWindow.getEndAt(),
                 releaseWindow.isFrozen(),
                 releaseWindow.getPublishedAt()
         );
@@ -56,11 +56,11 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
                     ReleaseWindowId.of(entity.getId()),
                     entity.getWindowKey(),
                     entity.getName(),
+                    entity.getDescription(),
+                    entity.getPlannedReleaseAt(),
                     ReleaseWindowStatus.valueOf(entity.getStatus()),
                     entity.getCreatedAt(),
                     entity.getUpdatedAt(),
-                    entity.getStartAt(),
-                    entity.getEndAt(),
                     entity.isFrozen(),
                     entity.getPublishedAt()
             );

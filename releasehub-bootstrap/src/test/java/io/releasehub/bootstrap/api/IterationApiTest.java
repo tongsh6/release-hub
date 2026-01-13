@@ -42,35 +42,38 @@ class IterationApiTest {
     @Test
     void shouldCreateIteration() throws Exception {
         String token = loginAndGetToken();
-        String req = "{\"iterationKey\":\"IT-UT-1\",\"description\":\"desc\",\"repoIds\":[\"repo-1\",\"repo-2\"]}";
+        String req = "{\"name\":\"测试迭代1\",\"description\":\"desc\",\"repoIds\":[\"repo-1\",\"repo-2\"]}";
         MvcResult result = mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(req))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").exists())
+            .andExpect(jsonPath("$.data.key").exists())
+            .andExpect(jsonPath("$.data.name").value("测试迭代1"))
             .andReturn();
-        String id = objectMapper.readTree(result.getResponse().getContentAsString()).get("data").asText();
-        assertThat(id).isEqualTo("IT-UT-1");
+        String key = objectMapper.readTree(result.getResponse().getContentAsString()).get("data").get("key").asText();
+        assertThat(key).startsWith("ITER-");
     }
 
     @Test
     void shouldCreateIterationWithNullOrMissingRepoIds() throws Exception {
         String token = loginAndGetToken();
-        String reqMissing = "{\"iterationKey\":\"IT-UT-2\",\"description\":\"desc\"}";
+        String reqMissing = "{\"name\":\"测试迭代2\",\"description\":\"desc\"}";
         mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(reqMissing))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").value("IT-UT-2"));
+            .andExpect(jsonPath("$.data.key").exists())
+            .andExpect(jsonPath("$.data.name").value("测试迭代2"));
 
-        String reqNull = "{\"iterationKey\":\"IT-UT-3\",\"description\":\"desc\",\"repoIds\":null}";
+        String reqNull = "{\"name\":\"测试迭代3\",\"description\":\"desc\",\"repoIds\":null}";
         mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(reqNull))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").value("IT-UT-3"));
+            .andExpect(jsonPath("$.data.key").exists())
+            .andExpect(jsonPath("$.data.name").value("测试迭代3"));
     }
 }

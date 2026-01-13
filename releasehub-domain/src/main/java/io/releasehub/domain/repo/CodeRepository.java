@@ -2,7 +2,6 @@ package io.releasehub.domain.repo;
 
 import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.base.BaseEntity;
-import io.releasehub.domain.project.ProjectId;
 import lombok.Getter;
 
 import java.time.Instant;
@@ -12,8 +11,6 @@ import java.time.Instant;
  */
 @Getter
 public class CodeRepository extends BaseEntity<RepoId> {
-    private final ProjectId projectId;
-    private Long gitlabProjectId;
     private String name;
     private String cloneUrl;
     private boolean monoRepo;
@@ -27,10 +24,8 @@ public class CodeRepository extends BaseEntity<RepoId> {
     private int closedMrCount;
     private Instant lastSyncAt;
 
-    public CodeRepository(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt) {
+    public CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt) {
         super(id, createdAt, updatedAt, 0L);
-        this.projectId = projectId;
-        this.gitlabProjectId = gitlabProjectId;
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
@@ -45,10 +40,8 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.lastSyncAt = lastSyncAt;
     }
 
-    private CodeRepository(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
+    private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
         super(id, createdAt, updatedAt, version);
-        this.projectId = projectId;
-        this.gitlabProjectId = gitlabProjectId;
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
@@ -63,24 +56,16 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.lastSyncAt = lastSyncAt;
     }
 
-    public static CodeRepository rehydrate(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
-        return new CodeRepository(id, projectId, gitlabProjectId, name, cloneUrl, defaultBranch, monoRepo, branchCount, activeBranchCount, nonCompliantBranchCount, mrCount, openMrCount, mergedMrCount, closedMrCount, lastSyncAt, createdAt, updatedAt, version);
+    public static CodeRepository rehydrate(RepoId id, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
+        return new CodeRepository(id, name, cloneUrl, defaultBranch, monoRepo, branchCount, activeBranchCount, nonCompliantBranchCount, mrCount, openMrCount, mergedMrCount, closedMrCount, lastSyncAt, createdAt, updatedAt, version);
     }
 
-    private CodeRepository(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
+    private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
         super(id, now);
-        if (projectId == null) {
-            throw ValidationException.repoProjectRequired();
-        }
-        if (gitlabProjectId == null) {
-            throw ValidationException.repoGitlabIdRequired();
-        }
         validateName(name);
         validateUrl(cloneUrl);
         validateBranch(defaultBranch);
 
-        this.projectId = projectId;
-        this.gitlabProjectId = gitlabProjectId;
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
@@ -122,8 +107,8 @@ public class CodeRepository extends BaseEntity<RepoId> {
         }
     }
 
-    public static CodeRepository create(ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
-        return new CodeRepository(RepoId.newId(), projectId, gitlabProjectId, name, cloneUrl, defaultBranch, monoRepo, now);
+    public static CodeRepository create(String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
+        return new CodeRepository(RepoId.newId(), name, cloneUrl, defaultBranch, monoRepo, now);
     }
 
     public void changeDefaultBranch(String branch, Instant now) {
@@ -144,14 +129,10 @@ public class CodeRepository extends BaseEntity<RepoId> {
         touch(now);
     }
 
-    public void update(Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
-        if (gitlabProjectId == null) {
-            throw ValidationException.repoGitlabIdRequired();
-        }
+    public void update(String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
         validateName(name);
         validateUrl(cloneUrl);
         validateBranch(defaultBranch);
-        this.gitlabProjectId = gitlabProjectId;
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;

@@ -4,7 +4,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -13,9 +12,7 @@ import lombok.Setter;
 import java.time.Instant;
 
 @Entity
-@Table(name = "code_repository", uniqueConstraints = {
-        @UniqueConstraint(columnNames = "gitlab_project_id")
-})
+@Table(name = "code_repository")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -23,10 +20,6 @@ import java.time.Instant;
 public class CodeRepositoryJpaEntity {
     @Id
     private String id;
-    @Column(name = "project_id", nullable = false)
-    private String projectId;
-    @Column(name = "gitlab_project_id", nullable = false)
-    private Long gitlabProjectId;
     @Column(nullable = false)
     private String name;
     @Column(name = "clone_url", nullable = false)
@@ -56,4 +49,10 @@ public class CodeRepositoryJpaEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
     private long version;
+    
+    // 版本管理字段
+    @Column(name = "initial_version", length = 50)
+    private String initialVersion;
+    @Column(name = "version_source", length = 20)
+    private String versionSource;
 }

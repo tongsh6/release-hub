@@ -11,36 +11,36 @@ import java.time.Instant;
 public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
     private final String windowKey;
     private final String name;
+    private final String description;
+    private final Instant plannedReleaseAt;
     private ReleaseWindowStatus status;
 
-    private Instant startAt;
-    private Instant endAt;
     private boolean frozen;
     private Instant publishedAt;
 
-    private ReleaseWindow(ReleaseWindowId id, String windowKey, String name, ReleaseWindowStatus status, Instant createdAt, Instant updatedAt, Instant startAt, Instant endAt, boolean frozen, Instant publishedAt) {
+    private ReleaseWindow(ReleaseWindowId id, String windowKey, String name, String description, Instant plannedReleaseAt, ReleaseWindowStatus status, Instant createdAt, Instant updatedAt, boolean frozen, Instant publishedAt) {
         super(id, createdAt, updatedAt, 0L);
         this.windowKey = windowKey;
         this.name = name;
+        this.description = description;
+        this.plannedReleaseAt = plannedReleaseAt;
         this.status = status;
-        this.startAt = startAt;
-        this.endAt = endAt;
         this.frozen = frozen;
         this.publishedAt = publishedAt;
     }
 
-    public static ReleaseWindow createDraft(String windowKey, String name, Instant now) {
+    public static ReleaseWindow createDraft(String windowKey, String name, String description, Instant plannedReleaseAt, Instant now) {
         validateName(name);
         validateKey(windowKey);
         return new ReleaseWindow(
                 ReleaseWindowId.newId(),
                 windowKey,
                 name,
+                description,
+                plannedReleaseAt,
                 ReleaseWindowStatus.DRAFT,
                 now,
                 now,
-                null,
-                null,
                 false,
                 null
         );
@@ -64,28 +64,11 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
         }
     }
 
-    public static ReleaseWindow rehydrate(ReleaseWindowId id, String windowKey, String name, ReleaseWindowStatus status, Instant createdAt, Instant updatedAt, Instant startAt, Instant endAt, boolean frozen, Instant publishedAt) {
-        return new ReleaseWindow(id, windowKey, name, status, createdAt, updatedAt, startAt, endAt, frozen, publishedAt);
-    }
-
-    public void configureWindow(Instant startAt, Instant endAt, Instant now) {
-        if (this.frozen) {
-            throw BusinessException.rwAlreadyFrozen();
-        }
-        if (startAt == null || endAt == null) {
-            throw BusinessException.rwTimeRequired();
-        }
-        if (!startAt.isBefore(endAt)) {
-            throw BusinessException.rwInvalidTimeRange();
-        }
-        this.startAt = startAt;
-        this.endAt = endAt;
-        touch(now);
+    public static ReleaseWindow rehydrate(ReleaseWindowId id, String windowKey, String name, String description, Instant plannedReleaseAt, ReleaseWindowStatus status, Instant createdAt, Instant updatedAt, boolean frozen, Instant publishedAt) {
+        return new ReleaseWindow(id, windowKey, name, description, plannedReleaseAt, status, createdAt, updatedAt, frozen, publishedAt);
     }
 
     public void freeze(Instant now) {
-        if (this.startAt == null || this.endAt == null) {
-        }
         if (this.frozen) {
             return;
         }
@@ -105,23 +88,9 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
         if (this.status != ReleaseWindowStatus.DRAFT) {
             throw BusinessException.rwInvalidState(this.status);
         }
-        if (this.startAt == null || this.endAt == null) {
-            throw BusinessException.rwNotConfigured();
-        }
         
         this.status = ReleaseWindowStatus.PUBLISHED;
         this.publishedAt = now;
-        touch(now);
-    }
-
-
-    public void release(Instant now) {
-        if (this.status != ReleaseWindowStatus.PUBLISHED) {
-            throw BusinessException.rwInvalidState(this.status);
-        }
-        if (!this.frozen) {
-        }
-        this.status = ReleaseWindowStatus.RELEASED;
         touch(now);
     }
 
@@ -129,7 +98,7 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
         if (this.status == ReleaseWindowStatus.CLOSED) {
             return; // Idempotent
         }
-        if (this.status != ReleaseWindowStatus.RELEASED) {
+        if (this.status != ReleaseWindowStatus.PUBLISHED) {
             throw BusinessException.rwInvalidState(this.status);
         }
         this.status = ReleaseWindowStatus.CLOSED;

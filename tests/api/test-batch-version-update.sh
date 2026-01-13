@@ -44,8 +44,6 @@ for i in 1 2; do
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $TOKEN" \
       -d "{
-        \"projectId\": \"test-project-$(date +%s)\",
-        \"gitlabProjectId\": $((123456 + i)),
         \"name\": \"test-repo-batch-$i\",
         \"cloneUrl\": \"git@gitlab.com:test/repo-batch-$i.git\",
         \"defaultBranch\": \"main\",

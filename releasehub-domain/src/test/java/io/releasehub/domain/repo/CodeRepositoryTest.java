@@ -1,7 +1,6 @@
 package io.releasehub.domain.repo;
 
-import io.releasehub.common.exception.BizException;
-import io.releasehub.domain.project.ProjectId;
+import io.releasehub.common.exception.ValidationException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -16,11 +15,9 @@ class CodeRepositoryTest {
     @Test
     void create_ShouldSucceed_WhenValid() {
         Instant now = Instant.now();
-        ProjectId projectId = ProjectId.newId();
-        CodeRepository repo = CodeRepository.create(projectId, 1L, "Repo1", "http://git.com/repo1.git", "main", true, now);
+        CodeRepository repo = CodeRepository.create("Repo1", "http://git.com/repo1.git", "main", true, now);
 
         assertNotNull(repo.getId());
-        assertEquals(projectId, repo.getProjectId());
         assertEquals("Repo1", repo.getName());
         assertEquals("http://git.com/repo1.git", repo.getCloneUrl());
         assertEquals("main", repo.getDefaultBranch());
@@ -32,37 +29,32 @@ class CodeRepositoryTest {
     @Test
     void create_ShouldThrow_WhenInvalid() {
         Instant now = Instant.now();
-        ProjectId projectId = ProjectId.newId();
-
-        // Missing ProjectId
-        assertThrows(BizException.class, () -> CodeRepository.create(null, 1L, "Name", "url", "main", false, now));
-        assertThrows(BizException.class, () -> CodeRepository.create(projectId, null, "Name", "url", "main", false, now));
 
         // Name checks
-        BizException exName = assertThrows(BizException.class, () -> CodeRepository.create(projectId, 1L, "", "url", "main", false, now));
-        assertEquals("REPO_NAME_REQUIRED", exName.getCode());
+        ValidationException exName = assertThrows(ValidationException.class, () -> CodeRepository.create("", "url", "main", false, now));
+        assertEquals("REPO_002", exName.getCode());
 
         String longName = "a".repeat(129);
-        BizException exNameLong = assertThrows(BizException.class, () -> CodeRepository.create(projectId, 1L, longName, "url", "main", false, now));
-        assertEquals("REPO_NAME_TOO_LONG", exNameLong.getCode());
+        ValidationException exNameLong = assertThrows(ValidationException.class, () -> CodeRepository.create(longName, "url", "main", false, now));
+        assertEquals("REPO_003", exNameLong.getCode());
 
         // URL checks
-        BizException exUrl = assertThrows(BizException.class, () -> CodeRepository.create(projectId, 1L, "Name", "", "main", false, now));
-        assertEquals("REPO_URL_REQUIRED", exUrl.getCode());
+        ValidationException exUrl = assertThrows(ValidationException.class, () -> CodeRepository.create("Name", "", "main", false, now));
+        assertEquals("REPO_006", exUrl.getCode());
 
         String longUrl = "a".repeat(513);
-        BizException exUrlLong = assertThrows(BizException.class, () -> CodeRepository.create(projectId, 1L, "Name", longUrl, "main", false, now));
-        assertEquals("REPO_URL_TOO_LONG", exUrlLong.getCode());
+        ValidationException exUrlLong = assertThrows(ValidationException.class, () -> CodeRepository.create("Name", longUrl, "main", false, now));
+        assertEquals("REPO_007", exUrlLong.getCode());
 
         // Branch checks
-        BizException exBranch = assertThrows(BizException.class, () -> CodeRepository.create(projectId, 1L, "Name", "url", "", false, now));
-        assertEquals("REPO_BRANCH_REQUIRED", exBranch.getCode());
+        ValidationException exBranch = assertThrows(ValidationException.class, () -> CodeRepository.create("Name", "url", "", false, now));
+        assertEquals("REPO_008", exBranch.getCode());
     }
 
     @Test
     void changeDefaultBranch_ShouldUpdate() {
         Instant now = Instant.now();
-        CodeRepository repo = CodeRepository.create(ProjectId.newId(), 1L, "Name", "url", "main", false, now);
+        CodeRepository repo = CodeRepository.create("Name", "url", "main", false, now);
 
         Instant later = now.plusSeconds(10);
         repo.changeDefaultBranch("develop", later);

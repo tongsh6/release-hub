@@ -51,11 +51,15 @@ curl -s -X POST "$BASE/release-windows/$ID/freeze" -H "$AUTH" | python3 -m json.
 curl -s -X POST "$BASE/release-windows/$ID/publish" -H "$AUTH" | python3 -m json.tool
 
 echo "Create iterations..."
-curl -s -X POST "$BASE/iterations" -H "$AUTH" -H "Content-Type: application/json" -d '{"iterationKey":"IT-1","description":"d","repoIds":["repo-1","repo-2"]}' | python3 -m json.tool
-curl -s -X POST "$BASE/iterations" -H "$AUTH" -H "Content-Type: application/json" -d '{"iterationKey":"IT-2","description":"d","repoIds":["repo-1"]}' | python3 -m json.tool
+IT1=$(curl -s -X POST "$BASE/iterations" -H "$AUTH" -H "Content-Type: application/json" -d '{"name":"迭代1","description":"d","repoIds":["repo-1","repo-2"]}')
+echo "$IT1" | python3 -m json.tool
+IT1_KEY=$(echo "$IT1" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
+IT2=$(curl -s -X POST "$BASE/iterations" -H "$AUTH" -H "Content-Type: application/json" -d '{"name":"迭代2","description":"d","repoIds":["repo-1"]}')
+echo "$IT2" | python3 -m json.tool
+IT2_KEY=$(echo "$IT2" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
 
 echo "Attach iterations to window..."
-curl -s -X POST "$BASE/windows/$ID/attach" -H "$AUTH" -H "Content-Type: application/json" -d '{"iterationKeys":["IT-1","IT-2"]}' | python3 -m json.tool
+curl -s -X POST "$BASE/windows/$ID/attach" -H "$AUTH" -H "Content-Type: application/json" -d "{\"iterationKeys\":[\"$IT1_KEY\",\"$IT2_KEY\"]}" | python3 -m json.tool
 echo "Plan..."
 curl -s -X GET "$BASE/windows/$ID/plan" -H "$AUTH" | python3 -m json.tool
 echo "Dry-Plan..."

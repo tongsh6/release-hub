@@ -1,11 +1,13 @@
 package io.releasehub.domain.project;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.ValidationException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ProjectTest {
 
@@ -25,25 +27,25 @@ class ProjectTest {
     @Test
     void create_ShouldThrow_WhenNameInvalid() {
         Instant now = Instant.now();
-        
-        BizException ex1 = assertThrows(BizException.class, () -> Project.create(null, "Desc", now));
-        assertEquals("PJ_NAME_REQUIRED", ex1.getCode());
 
-        BizException ex2 = assertThrows(BizException.class, () -> Project.create("", "Desc", now));
-        assertEquals("PJ_NAME_REQUIRED", ex2.getCode());
+        ValidationException ex1 = assertThrows(ValidationException.class, () -> Project.create(null, "Desc", now));
+        assertEquals("PJ_002", ex1.getCode());
+
+        ValidationException ex2 = assertThrows(ValidationException.class, () -> Project.create("", "Desc", now));
+        assertEquals("PJ_002", ex2.getCode());
 
         String longName = "a".repeat(129);
-        BizException ex3 = assertThrows(BizException.class, () -> Project.create(longName, "Desc", now));
-        assertEquals("PJ_NAME_TOO_LONG", ex3.getCode());
+        ValidationException ex3 = assertThrows(ValidationException.class, () -> Project.create(longName, "Desc", now));
+        assertEquals("PJ_003", ex3.getCode());
     }
 
     @Test
     void create_ShouldThrow_WhenDescriptionTooLong() {
         Instant now = Instant.now();
         String longDesc = "a".repeat(513);
-        
-        BizException ex = assertThrows(BizException.class, () -> Project.create("Name", longDesc, now));
-        assertEquals("PJ_DESC_TOO_LONG", ex.getCode());
+
+        ValidationException ex = assertThrows(ValidationException.class, () -> Project.create("Name", longDesc, now));
+        assertEquals("PJ_004", ex.getCode());
     }
 
     @Test

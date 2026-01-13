@@ -1,99 +1,132 @@
 package io.releasehub.domain.releasewindow;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.BusinessException;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * ReleaseWindow 聚合状态机单测
- * 覆盖关键路径：创建 -> 配置 -> 冻结 -> 发布 -> Release -> Close
+ * 覆盖关键路径：创建 -> 发布 -> 关闭
+ * 状态流转：DRAFT → PUBLISHED → CLOSED
  */
+@DisplayName("ReleaseWindow 领域实体测试")
 class ReleaseWindowTest {
 
     private final Instant now = Instant.now();
+    private final Instant plannedRelease = now.plusSeconds(86400); // +1 day
 
-    @Test
-    void should_create_draft_successfully() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
-        assertEquals(ReleaseWindowStatus.DRAFT, rw.getStatus());
-        assertEquals("2024-W01", rw.getName());
-        assertFalse(rw.isFrozen());
+    @Nested
+    @DisplayName("createDraft - 创建草稿")
+    class CreateDraftTest {
+
+        @Test
+        @DisplayName("成功创建草稿状态的发布窗口")
+        void should_create_draft_successfully() {
+            ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", "描述", plannedRelease, now);
+            
+            assertEquals(ReleaseWindowStatus.DRAFT, rw.getStatus());
+            assertEquals("2024-W01", rw.getName());
+            assertEquals("WK-01", rw.getWindowKey());
+            assertEquals("描述", rw.getDescription());
+            assertEquals(plannedRelease, rw.getPlannedReleaseAt());
+            assertFalse(rw.isFrozen());
+            assertNotNull(rw.getId());
+        }
     }
 
-    @Test
-    void should_configure_window_successfully() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
-        Instant start = now.plus(1, ChronoUnit.DAYS);
-        Instant end = now.plus(3, ChronoUnit.DAYS);
+    @Nested
+    @DisplayName("publish - 发布")
+    class PublishTest {
 
-        rw.configureWindow(start, end, now);
+        @Test
+        @DisplayName("成功发布")
+        void should_publish_successfully() {
+            ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", null, plannedRelease, now);
 
-        assertEquals(start, rw.getStartAt());
-        assertEquals(end, rw.getEndAt());
+            rw.publish(now);
+
+            assertEquals(ReleaseWindowStatus.PUBLISHED, rw.getStatus());
+            assertEquals(now, rw.getPublishedAt());
+        }
+
+        @Test
+        @DisplayName("已发布的窗口不能再发布")
+        void should_fail_to_publish_when_already_published() {
+            ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", null, plannedRelease, now);
+            rw.publish(now);
+
+            BusinessException ex = assertThrows(BusinessException.class, () -> rw.publish(now));
+            assertTrue(ex.getMessage().contains("state"));
+        }
+
+        @Test
+        @DisplayName("已关闭的窗口不能发布")
+        void should_fail_to_publish_when_closed() {
+            ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", null, plannedRelease, now);
+            rw.publish(now);
+            rw.close(now);
+
+            BusinessException ex = assertThrows(BusinessException.class, () -> rw.publish(now));
+            assertTrue(ex.getMessage().contains("state"));
+        }
     }
 
-    @Test
-    void should_fail_to_configure_when_frozen() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
-        rw.freeze(now);
+    @Nested
+    @DisplayName("close - 关闭")
+    class CloseTest {
 
-        Instant start = now.plus(1, ChronoUnit.DAYS);
-        Instant end = now.plus(3, ChronoUnit.DAYS);
+        @Test
+        @DisplayName("成功关闭已发布的窗口")
+        void should_close_published_window() {
+            ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", null, plannedRelease, now);
+            rw.publish(now);
 
-        BizException ex = assertThrows(BizException.class, () -> rw.configureWindow(start, end, now));
-        assertTrue(ex.getMessage().contains("Cannot configure frozen ReleaseWindow"));
+            rw.close(now);
+
+            assertEquals(ReleaseWindowStatus.CLOSED, rw.getStatus());
+        }
+
+        @Test
+        @DisplayName("草稿窗口不能直接关闭")
+        void should_fail_to_close_draft_window() {
+            ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", null, plannedRelease, now);
+
+            BusinessException ex = assertThrows(BusinessException.class, () -> rw.close(now));
+            assertTrue(ex.getMessage().contains("state"));
+        }
+
+        @Test
+        @DisplayName("已关闭的窗口再次关闭是幂等操作")
+        void should_close_already_closed_idempotent() {
+            ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", null, plannedRelease, now);
+            rw.publish(now);
+            rw.close(now);
+
+            // 幂等操作，不抛异常
+            rw.close(now);
+            assertEquals(ReleaseWindowStatus.CLOSED, rw.getStatus());
+        }
     }
 
-    @Test
-    void should_fail_to_publish_when_not_configured() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
+    @Nested
+    @DisplayName("freeze - 冻结")
+    class FreezeTest {
 
-        BizException ex = assertThrows(BizException.class, () -> rw.publish(now));
-        assertTrue(ex.getMessage().contains("must be configured"));
-    }
-
-    @Test
-    void should_publish_successfully() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
-        rw.configureWindow(now.plus(1, ChronoUnit.DAYS), now.plus(3, ChronoUnit.DAYS), now);
-
-        rw.publish(now);
-
-        assertEquals(ReleaseWindowStatus.PUBLISHED, rw.getStatus());
-        assertEquals(now, rw.getPublishedAt());
-    }
-
-    @Test
-    void should_fail_to_publish_when_already_published() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
-        rw.configureWindow(now.plus(1, ChronoUnit.DAYS), now.plus(3, ChronoUnit.DAYS), now);
-        rw.publish(now);
-
-        BizException ex = assertThrows(BizException.class, () -> rw.publish(now));
-        assertTrue(ex.getMessage().contains("Cannot publish from state"));
-    }
-
-    @Test
-    void should_freeze_successfully() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
-        rw.freeze(now);
-        assertTrue(rw.isFrozen());
-    }
-
-    @Test
-    void should_release_successfully() {
-        ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", now);
-        rw.configureWindow(now.plus(1, ChronoUnit.DAYS), now.plus(3, ChronoUnit.DAYS), now);
-        rw.publish(now);
-
-        rw.release(now);
-        assertEquals(ReleaseWindowStatus.RELEASED, rw.getStatus());
+        @Test
+        @DisplayName("成功冻结窗口")
+        void should_freeze_successfully() {
+            ReleaseWindow rw = ReleaseWindow.createDraft("WK-01", "2024-W01", null, plannedRelease, now);
+            rw.freeze(now);
+            assertTrue(rw.isFrozen());
+        }
     }
 }

@@ -125,8 +125,6 @@ class VersionUpdateApiTest {
     @Order(3)
     void shouldCreateRepository() throws Exception {
         CreateRepoRequest request = new CreateRepoRequest();
-        request.setProjectId("test-project-" + UUID.randomUUID().toString().substring(0, 8));
-        request.setGitlabProjectId(123456L);
         request.setName("Test Repository");
         request.setCloneUrl("git@gitlab.com:test/repo.git");
         request.setDefaultBranch("main");

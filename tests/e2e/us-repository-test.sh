@@ -21,10 +21,7 @@ test_us_repo_001() {
     
     local ts=$(date +%s)
     local repo_name="test-repo-$ts"
-    local gitlab_id=$((ts % 1000000 + RANDOM))
     local response=$(api_post "/repositories" "{
-        \"projectId\": \"test-project-001\",
-        \"gitlabProjectId\": $gitlab_id,
         \"name\": \"$repo_name\",
         \"cloneUrl\": \"https://gitlab.example.com/test/$repo_name.git\",
         \"defaultBranch\": \"main\",
@@ -46,10 +43,7 @@ test_us_repo_001() {
     echo ""
     echo "场景 2: 添加单仓库（monoRepo=false）"
     
-    gitlab_id=$(($(date +%s) % 1000000 + RANDOM + 1000))
     response=$(api_post "/repositories" "{
-        \"projectId\": \"test-project-002\",
-        \"gitlabProjectId\": $gitlab_id,
         \"name\": \"single-service-$(date +%s)\",
         \"cloneUrl\": \"https://gitlab.example.com/test/single-service-$(date +%s).git\",
         \"defaultBranch\": \"master\",
@@ -67,10 +61,7 @@ test_us_repo_001() {
     echo ""
     echo "场景 3: 添加 MonoRepo"
     
-    gitlab_id=$(($(date +%s) % 1000000 + RANDOM + 2000))
     response=$(api_post "/repositories" "{
-        \"projectId\": \"test-project-003\",
-        \"gitlabProjectId\": $gitlab_id,
         \"name\": \"mono-platform-$(date +%s)\",
         \"cloneUrl\": \"https://gitlab.example.com/test/mono-platform-$(date +%s).git\",
         \"defaultBranch\": \"main\",
@@ -110,13 +101,13 @@ test_us_repo_002() {
     fi
     
     echo ""
-    echo "场景 2: 按项目筛选仓库"
+    echo "场景 2: 按关键字搜索仓库"
     
-    response=$(api_get "/repositories/paged?page=0&size=10&projectId=test-project-001")
+    response=$(api_get "/repositories/paged?page=0&size=10&keyword=test")
     code=$(json_get "$response" ".code")
     
     if [ "$code" = "OK" ]; then
-        log_success "  ✓ 按项目筛选成功"
+        log_success "  ✓ 按关键字搜索成功"
     else
         log_info "  ⚠ 筛选功能可能未实现"
     fi
@@ -203,8 +194,6 @@ test_us_repo_005() {
     # 创建一个专门用于删除测试的仓库
     local gitlab_id=$(($(date +%s) % 1000000 + RANDOM + 9000))
     local response=$(api_post "/repositories" "{
-        \"projectId\": \"delete-test-project\",
-        \"gitlabProjectId\": $gitlab_id,
         \"name\": \"to-be-deleted-$(date +%s)\",
         \"cloneUrl\": \"https://gitlab.example.com/test/delete-test-$(date +%s).git\",
         \"defaultBranch\": \"main\",

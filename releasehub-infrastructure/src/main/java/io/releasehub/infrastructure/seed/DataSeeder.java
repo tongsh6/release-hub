@@ -9,7 +9,6 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * 数据库种子数据初始化
@@ -25,18 +24,10 @@ public class DataSeeder {
 
     private final UserPort userPort;
     private final PasswordPort passwordService;
-    private final JdbcTemplate jdbcTemplate;
 
     @Bean
     public CommandLineRunner initData() {
         return args -> {
-            try {
-                jdbcTemplate.execute("DELETE FROM code_repository");
-                log.info("Cleared code_repository table to ensure schema compatibility");
-            } catch (Exception e) {
-                log.warn("Failed to clear code_repository: {}", e.getMessage());
-            }
-
             // 检查是否存在 admin 用户，不存在则创建
             if (userPort.findByUsername("admin").isEmpty()) {
                 String rawPassword = "admin";

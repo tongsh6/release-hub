@@ -18,6 +18,11 @@ public class AuthAppService {
 
     @Transactional(readOnly = true)
     public TokenInfo login(String username, String password) {
+        return login(username, password, false);
+    }
+
+    @Transactional(readOnly = true)
+    public TokenInfo login(String username, String password, boolean rememberMe) {
         // 使用通用错误信息防止枚举攻击
         User user = userPort.findByUsername(username)
                             .orElseThrow(AuthenticationException::failed);
@@ -30,6 +35,6 @@ public class AuthAppService {
             throw ForbiddenException.userDisabled();
         }
 
-        return tokenProvider.createToken(user);
+        return tokenProvider.createToken(user, rememberMe);
     }
 }

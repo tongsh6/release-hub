@@ -1,7 +1,6 @@
 package io.releasehub.infrastructure.persistence.repo;
 
 import io.releasehub.application.repo.CodeRepositoryPort;
-import io.releasehub.domain.project.ProjectId;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 import lombok.RequiredArgsConstructor;
@@ -24,10 +23,11 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
 
     @Override
     public void save(CodeRepository domain) {
+        // 先检查是否存在，以保留版本管理字段
+        CodeRepositoryJpaEntity existing = repository.findById(domain.getId().value()).orElse(null);
+        
         CodeRepositoryJpaEntity entity = new CodeRepositoryJpaEntity(
                 domain.getId().value(),
-                domain.getProjectId().value(),
-                domain.getGitlabProjectId(),
                 domain.getName(),
                 domain.getCloneUrl(),
                 domain.getDefaultBranch(),
@@ -42,7 +42,9 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
                 domain.getLastSyncAt(),
                 domain.getCreatedAt(),
                 domain.getUpdatedAt(),
-                domain.getVersion()
+                domain.getVersion(),
+                existing != null ? existing.getInitialVersion() : null,
+                existing != null ? existing.getVersionSource() : null
         );
         repository.save(entity);
     }
@@ -61,29 +63,18 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
     }
 
     @Override
-    public List<CodeRepository> findByProjectId(ProjectId projectId) {
-        return repository.findByProjectId(projectId.value()).stream()
-                .map(this::toDomain)
-                .collect(Collectors.toList());
-    }
-
-    @Override
     public void deleteById(RepoId id) {
         repository.deleteById(id.value());
     }
 
     @Override
-    public List<CodeRepository> search(String keyword, ProjectId projectId, Long gitlabProjectId) {
+    public List<CodeRepository> search(String keyword) {
         String k = keyword != null ? keyword.toLowerCase() : null;
         return repository.findAll().stream()
                 .filter(e -> {
-                    if (projectId != null && !projectId.value().equals(e.getProjectId())) return false;
-                    if (gitlabProjectId != null && !gitlabProjectId.equals(e.getGitlabProjectId())) return false;
                     if (k == null || k.isBlank()) return true;
                     return (e.getName() != null && e.getName().toLowerCase().contains(k))
-                            || (e.getCloneUrl() != null && e.getCloneUrl().toLowerCase().contains(k))
-                            || (e.getProjectId() != null && e.getProjectId().toLowerCase().contains(k))
-                            || (e.getGitlabProjectId() != null && String.valueOf(e.getGitlabProjectId()).contains(k));
+                            || (e.getCloneUrl() != null && e.getCloneUrl().toLowerCase().contains(k));
                 })
                 .map(this::toDomain)
                 .collect(Collectors.toList());
@@ -92,8 +83,6 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
     private CodeRepository toDomain(CodeRepositoryJpaEntity entity) {
         return CodeRepository.rehydrate(
                 RepoId.of(entity.getId()),
-                ProjectId.of(entity.getProjectId()),
-                entity.getGitlabProjectId(),
                 entity.getName(),
                 entity.getCloneUrl(),
                 entity.getDefaultBranch(),
@@ -110,5 +99,20 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
                 entity.getUpdatedAt(),
                 entity.getVersion()
         );
+    }
+
+    @Override
+    public void updateInitialVersion(String repoId, String initialVersion, String versionSource) {
+        repository.findById(repoId).ifPresent(entity -> {
+            entity.setInitialVersion(initialVersion);
+            entity.setVersionSource(versionSource);
+            repository.save(entity);
+        });
+    }
+
+    @Override
+    public Optional<String> getInitialVersion(String repoId) {
+        return repository.findById(repoId)
+                .map(CodeRepositoryJpaEntity::getInitialVersion);
     }
 }

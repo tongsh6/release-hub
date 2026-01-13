@@ -52,4 +52,8 @@ public class NotFoundException extends BaseException {
     public static NotFoundException run(Object id) {
         return of(ErrorCode.RUN_NOT_FOUND, id);
     }
+
+    public static NotFoundException branchRule(Object id) {
+        return of(ErrorCode.BRANCH_RULE_NOT_FOUND, id);
+    }
 }

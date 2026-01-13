@@ -11,8 +11,6 @@ import java.time.Instant;
 @Data
 public class CodeRepositoryView {
     private String id;
-    private String projectId;
-    private Long gitlabProjectId;
     private String name;
     private String cloneUrl;
     private String defaultBranch;
@@ -34,8 +32,6 @@ public class CodeRepositoryView {
         }
         CodeRepositoryView view = new CodeRepositoryView();
         view.setId(domain.getId().value());
-        view.setProjectId(domain.getProjectId().value());
-        view.setGitlabProjectId(domain.getGitlabProjectId());
         view.setName(domain.getName());
         view.setCloneUrl(domain.getCloneUrl());
         view.setDefaultBranch(domain.getDefaultBranch());

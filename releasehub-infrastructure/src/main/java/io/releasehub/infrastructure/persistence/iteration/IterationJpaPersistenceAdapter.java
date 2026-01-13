@@ -26,7 +26,9 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
     public void save(Iteration iteration) {
         IterationJpaEntity entity = new IterationJpaEntity(
                 iteration.getId().value(),
+                iteration.getName(),
                 iteration.getDescription(),
+                iteration.getExpectedReleaseAt(),
                 iteration.getCreatedAt(),
                 iteration.getUpdatedAt()
         );
@@ -52,7 +54,7 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
                 .map(e -> {
                     List<IterationRepoJpaEntity> repos = iterationRepoRepository.findByIdIterationKey(e.getKey());
                     Set<RepoId> repoIds = repos.stream().map(r -> RepoId.of(r.getId().getRepoId())).collect(Collectors.toCollection(HashSet::new));
-                    return Iteration.rehydrate(IterationKey.of(e.getKey()), e.getDescription(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
+                    return Iteration.rehydrate(IterationKey.of(e.getKey()), e.getName(), e.getDescription(), e.getExpectedReleaseAt(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
                 });
     }
 
@@ -62,7 +64,7 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
                 .map(e -> {
                     List<IterationRepoJpaEntity> repos = iterationRepoRepository.findByIdIterationKey(e.getKey());
                     Set<RepoId> repoIds = repos.stream().map(r -> RepoId.of(r.getId().getRepoId())).collect(Collectors.toCollection(HashSet::new));
-                    return Iteration.rehydrate(IterationKey.of(e.getKey()), e.getDescription(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
+                    return Iteration.rehydrate(IterationKey.of(e.getKey()), e.getName(), e.getDescription(), e.getExpectedReleaseAt(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
                 })
                 .collect(Collectors.toList());
     }
@@ -73,4 +75,3 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
         iterationRepository.deleteById(key.value());
     }
 }
-

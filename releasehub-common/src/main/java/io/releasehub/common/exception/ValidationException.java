@@ -51,14 +51,6 @@ public class ValidationException extends BaseException {
         return of(ErrorCode.REPO_NAME_TOO_LONG, maxLength);
     }
 
-    public static ValidationException repoProjectRequired() {
-        return of(ErrorCode.REPO_PROJECT_REQUIRED);
-    }
-
-    public static ValidationException repoGitlabIdRequired() {
-        return of(ErrorCode.REPO_GITLAB_ID_REQUIRED);
-    }
-
     public static ValidationException repoUrlRequired() {
         return of(ErrorCode.REPO_URL_REQUIRED);
     }
@@ -131,5 +123,27 @@ public class ValidationException extends BaseException {
 
     public static ValidationException projectDescTooLong(int maxLength) {
         return of(ErrorCode.PROJECT_DESC_TOO_LONG, maxLength);
+    }
+
+    // ========== BranchRule ==========
+
+    public static ValidationException brNameRequired() {
+        return of(ErrorCode.BRANCH_RULE_NAME_REQUIRED);
+    }
+
+    public static ValidationException brNameTooLong(int maxLength) {
+        return of(ErrorCode.BRANCH_RULE_NAME_TOO_LONG, maxLength);
+    }
+
+    public static ValidationException brPatternRequired() {
+        return of(ErrorCode.BRANCH_RULE_PATTERN_REQUIRED);
+    }
+
+    public static ValidationException brPatternTooLong(int maxLength) {
+        return of(ErrorCode.BRANCH_RULE_PATTERN_TOO_LONG, maxLength);
+    }
+
+    public static ValidationException brPatternInvalid(String details) {
+        return of(ErrorCode.BRANCH_RULE_PATTERN_INVALID, details);
     }
 }

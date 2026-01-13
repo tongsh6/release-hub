@@ -57,8 +57,6 @@ REPO_RESPONSE=$(curl -s -X POST "$BASE_URL/repositories" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d "{
-    \"projectId\": \"$PROJECT_ID\",
-    \"gitlabProjectId\": 123456,
     \"name\": \"test-repo-$(date +%s)\",
     \"cloneUrl\": \"git@gitlab.com:test/repo.git\",
     \"defaultBranch\": \"main\",
