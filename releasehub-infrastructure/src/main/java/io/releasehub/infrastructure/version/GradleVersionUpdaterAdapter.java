@@ -2,7 +2,7 @@ package io.releasehub.infrastructure.version;
 
 import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
-import io.releasehub.application.version.VersionUpdater;
+import io.releasehub.application.version.VersionUpdaterPort;
 import io.releasehub.common.exception.BizException;
 import io.releasehub.domain.version.BuildTool;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +23,7 @@ import java.util.Properties;
  */
 @Slf4j
 @Component
-public class GradleVersionUpdater implements VersionUpdater {
+public class GradleVersionUpdaterAdapter implements VersionUpdaterPort {
 
     @Override
     public VersionUpdateResult update(VersionUpdateRequest request) {

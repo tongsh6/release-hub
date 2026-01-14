@@ -167,7 +167,7 @@ public class ReleaseRunService {
 
         while (task.canRetry()) {
             try {
-                RunTaskExecutor executor = executorRegistry.getExecutor(task.getTaskType());
+                RunTaskExecutorPort executor = executorRegistry.getExecutor(task.getTaskType());
                 if (executor == null) {
                     log.warn("No executor found for task type: {}", task.getTaskType());
                     task.markSkipped(Instant.now(clock));

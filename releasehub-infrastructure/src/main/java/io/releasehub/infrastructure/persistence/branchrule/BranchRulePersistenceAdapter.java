@@ -1,10 +1,13 @@
 package io.releasehub.infrastructure.persistence.branchrule;
 
 import io.releasehub.application.branchrule.BranchRulePort;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.branchrule.BranchRule;
 import io.releasehub.domain.branchrule.BranchRuleId;
 import io.releasehub.domain.branchrule.BranchRuleType;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -37,6 +40,22 @@ public class BranchRulePersistenceAdapter implements BranchRulePort {
         return repository.findAll().stream()
                 .map(this::toDomain)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public PageResult<BranchRule> findPaged(String name, int page, int size) {
+        int pageIndex = Math.max(page - 1, 0);
+        PageRequest pageable = PageRequest.of(pageIndex, size);
+        Page<BranchRuleJpaEntity> result;
+        if (name == null || name.isBlank()) {
+            result = repository.findAll(pageable);
+        } else {
+            result = repository.findByNameContainingIgnoreCase(name.trim(), pageable);
+        }
+        List<BranchRule> items = result.getContent().stream()
+                .map(this::toDomain)
+                .collect(Collectors.toList());
+        return new PageResult<>(items, result.getTotalElements());
     }
 
     @Override

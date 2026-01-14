@@ -1,10 +1,13 @@
 package io.releasehub.infrastructure.persistence.repo;
 
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -78,6 +81,23 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
                 })
                 .map(this::toDomain)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public PageResult<CodeRepository> searchPaged(String keyword, int page, int size) {
+        int pageIndex = Math.max(page - 1, 0);
+        PageRequest pageable = PageRequest.of(pageIndex, size);
+        Page<CodeRepositoryJpaEntity> result;
+        if (keyword == null || keyword.isBlank()) {
+            result = repository.findAll(pageable);
+        } else {
+            String k = keyword.trim();
+            result = repository.findByNameContainingIgnoreCaseOrCloneUrlContainingIgnoreCase(k, k, pageable);
+        }
+        List<CodeRepository> items = result.getContent().stream()
+                .map(this::toDomain)
+                .collect(Collectors.toList());
+        return new PageResult<>(items, result.getTotalElements());
     }
 
     private CodeRepository toDomain(CodeRepositoryJpaEntity entity) {

@@ -62,13 +62,12 @@ public class IterationController {
 
     @GetMapping("/paged")
     @Operation(summary = "List iterations (paged)")
-    public ApiPageResponse<List<IterationView>> listPaged(@RequestParam(name = "page", defaultValue = "0") int page,
-                                                          @RequestParam(name = "size", defaultValue = "20") int size) {
-        var all = iterationAppService.list().stream().map(IterationView::fromDomain).toList();
-        int from = Math.max(page * size, 0);
-        int to = Math.min(from + size, all.size());
-        List<IterationView> slice = from >= all.size() ? List.<IterationView>of() : all.subList(from, to);
-        return ApiPageResponse.success(slice, new PageMeta(page, size, all.size()));
+    public ApiPageResponse<List<IterationView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
+                                                          @RequestParam(name = "size", defaultValue = "20") int size,
+                                                          @RequestParam(name = "keyword", required = false) String keyword) {
+        var result = iterationAppService.listPaged(keyword, page, size);
+        List<IterationView> views = result.items().stream().map(IterationView::fromDomain).toList();
+        return ApiPageResponse.success(views, new PageMeta(page, size, result.total()));
     }
 
     @PutMapping("/{key}")

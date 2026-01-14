@@ -59,9 +59,9 @@ class AuthApiTest {
         mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(loginRequest)))
-                .andExpect(status().isOk())
+                .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.code").value("AUTH_FAILED"));
+                .andExpect(jsonPath("$.code").value("AUTH_001"));
     }
 
     @Test

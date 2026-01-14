@@ -8,6 +8,7 @@ import io.releasehub.application.version.VersionExtractor;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
@@ -68,6 +69,10 @@ public class IterationAppService {
 
     public List<Iteration> list() {
         return iterationPort.findAll();
+    }
+
+    public PageResult<Iteration> listPaged(String keyword, int page, int size) {
+        return iterationPort.findPaged(keyword, page, size);
     }
 
     @Transactional

@@ -1,5 +1,6 @@
 package io.releasehub.application.branchrule;
 
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.branchrule.BranchRule;
 import io.releasehub.domain.branchrule.BranchRuleId;
 
@@ -13,5 +14,6 @@ public interface BranchRulePort {
     void save(BranchRule rule);
     Optional<BranchRule> findById(BranchRuleId id);
     List<BranchRule> findAll();
+    PageResult<BranchRule> findPaged(String name, int page, int size);
     void deleteById(BranchRuleId id);
 }

@@ -34,7 +34,6 @@ class ReleaseWindowApiTest {
         String token = loginAndGetToken();
 
         CreateReleaseWindowRequest createRequest = new CreateReleaseWindowRequest();
-        createRequest.setWindowKey("UT-RW-01");
         createRequest.setName("UT-RW-01");
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/release-windows")

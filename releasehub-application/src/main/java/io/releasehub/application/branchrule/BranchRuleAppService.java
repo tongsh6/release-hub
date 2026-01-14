@@ -1,6 +1,7 @@
 package io.releasehub.application.branchrule;
 
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.branchrule.BranchRule;
 import io.releasehub.domain.branchrule.BranchRuleId;
 import io.releasehub.domain.branchrule.BranchRuleType;
@@ -23,6 +24,11 @@ public class BranchRuleAppService {
     @Transactional(readOnly = true)
     public List<BranchRule> list() {
         return branchRulePort.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public PageResult<BranchRule> listPaged(String name, int page, int size) {
+        return branchRulePort.findPaged(name, page, size);
     }
 
     @Transactional(readOnly = true)

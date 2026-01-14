@@ -4,6 +4,7 @@ import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.iteration.IterationRepoPort;
 import io.releasehub.application.port.out.GitLabBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
@@ -115,6 +116,11 @@ public class AttachAppService {
     public List<WindowIteration> list(String windowId) {
         releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
         return windowIterationPort.listByWindow(ReleaseWindowId.of(windowId));
+    }
+
+    public PageResult<WindowIteration> listPaged(String windowId, int page, int size) {
+        releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
+        return windowIterationPort.listByWindowPaged(ReleaseWindowId.of(windowId), page, size);
     }
 
     /**

@@ -1,6 +1,8 @@
 package io.releasehub.interfaces.api.project;
 
 import io.releasehub.application.project.ProjectAppService;
+import io.releasehub.common.paging.PageMeta;
+import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
 import io.releasehub.domain.project.Project;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -36,6 +39,19 @@ public class ProjectController {
                                           .map(this::toView)
                                           .toList();
         return ApiResponse.success(views);
+    }
+
+    @GetMapping("/paged")
+    @Operation(summary = "获取项目分页列表")
+    public ApiPageResponse<List<ProjectView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
+                                                        @RequestParam(name = "size", defaultValue = "20") int size,
+                                                        @RequestParam(name = "name", required = false) String name,
+                                                        @RequestParam(name = "status", required = false) String status) {
+        var result = projectAppService.listPaged(name, status, page, size);
+        List<ProjectView> views = result.items().stream()
+                .map(this::toView)
+                .toList();
+        return ApiPageResponse.success(views, new PageMeta(page, size, result.total()));
     }
 
     private ProjectView toView(Project project) {

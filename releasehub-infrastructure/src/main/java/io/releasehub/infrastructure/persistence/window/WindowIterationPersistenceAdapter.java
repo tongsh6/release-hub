@@ -1,11 +1,14 @@
 package io.releasehub.infrastructure.persistence.window;
 
 import io.releasehub.application.window.WindowIterationPort;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.window.WindowIteration;
 import io.releasehub.domain.window.WindowIterationId;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
@@ -65,6 +68,24 @@ public class WindowIterationPersistenceAdapter implements WindowIterationPort {
                         e.getUpdatedAt()
                 ))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public PageResult<WindowIteration> listByWindowPaged(ReleaseWindowId windowId, int page, int size) {
+        int pageIndex = Math.max(page - 1, 0);
+        PageRequest pageable = PageRequest.of(pageIndex, size);
+        Page<WindowIterationJpaEntity> result = jpaRepository.findByWindowId(windowId.value(), pageable);
+        List<WindowIteration> items = result.getContent().stream()
+                .map(e -> WindowIteration.rehydrate(
+                        WindowIterationId.of(e.getId()),
+                        ReleaseWindowId.of(e.getWindowId()),
+                        IterationKey.of(e.getIterationKey()),
+                        e.getAttachAt(),
+                        e.getCreatedAt(),
+                        e.getUpdatedAt()
+                ))
+                .collect(Collectors.toList());
+        return new PageResult<>(items, result.getTotalElements());
     }
 
     @Override

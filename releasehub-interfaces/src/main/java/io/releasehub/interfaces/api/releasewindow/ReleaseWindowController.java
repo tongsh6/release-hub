@@ -53,13 +53,11 @@ public class ReleaseWindowController {
 
     @GetMapping("/paged")
     @Operation(summary = "List release windows (paged)")
-    public ApiPageResponse<List<ReleaseWindowView>> listPaged(@RequestParam(name = "page", defaultValue = "0") int page,
-                                                              @RequestParam(name = "size", defaultValue = "20") int size) {
-        List<ReleaseWindowView> all = appService.list();
-        int from = Math.max(page * size, 0);
-        int to = Math.min(from + size, all.size());
-        List<ReleaseWindowView> slice = from >= all.size() ? List.of() : all.subList(from, to);
-        return ApiPageResponse.success(slice, new PageMeta(page, size, all.size()));
+    public ApiPageResponse<List<ReleaseWindowView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
+                                                              @RequestParam(name = "size", defaultValue = "20") int size,
+                                                              @RequestParam(name = "name", required = false) String name) {
+        var result = appService.listPaged(name, page, size);
+        return ApiPageResponse.success(result.items(), new PageMeta(page, size, result.total()));
     }
 
     @PostMapping("/{id}/publish")

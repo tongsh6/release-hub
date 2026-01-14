@@ -24,11 +24,11 @@ class GradleVersionUpdaterTest {
 
     @TempDir
     Path tempDir;
-    private GradleVersionUpdater updater;
+    private GradleVersionUpdaterAdapter updater;
 
     @BeforeEach
     void setUp() {
-        updater = new GradleVersionUpdater();
+        updater = new GradleVersionUpdaterAdapter();
     }
 
     @Test

@@ -38,14 +38,17 @@ public class RunController {
 
     @GetMapping("/paged")
     @Operation(summary = "List runs (paged)")
-    public ApiPageResponse<List<RunView>> listPaged(@RequestParam(name = "page", defaultValue = "0") int page,
-                                                    @RequestParam(name = "size", defaultValue = "20") int size) {
-        List<Run> all = runPort.findAll();
-        int from = Math.max(page * size, 0);
-        int to = Math.min(from + size, all.size());
-        List<RunView> slice = (from >= all.size() ? List.<Run>of() : all.subList(from, to))
-                .stream().map(RunView::from).toList();
-        return ApiPageResponse.success(slice, new PageMeta(page, size, all.size()));
+    public ApiPageResponse<List<RunView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
+                                                    @RequestParam(name = "size", defaultValue = "20") int size,
+                                                    @RequestParam(name = "runType", required = false) String runType,
+                                                    @RequestParam(name = "operator", required = false) String operator,
+                                                    @RequestParam(name = "windowKey", required = false) String windowKey,
+                                                    @RequestParam(name = "repoId", required = false) String repoId,
+                                                    @RequestParam(name = "iterationKey", required = false) String iterationKey,
+                                                    @RequestParam(name = "status", required = false) String status) {
+        var result = runPort.findPaged(runType, operator, windowKey, repoId, iterationKey, status, page, size);
+        List<RunView> views = result.items().stream().map(RunView::from).toList();
+        return ApiPageResponse.success(views, new PageMeta(page, size, result.total()));
     }
 
     /**

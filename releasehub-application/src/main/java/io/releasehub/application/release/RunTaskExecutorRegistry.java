@@ -15,7 +15,7 @@ import java.util.Map;
 @Component
 public class RunTaskExecutorRegistry {
     
-    private final Map<RunTaskType, RunTaskExecutor> executors = new EnumMap<>(RunTaskType.class);
+    private final Map<RunTaskType, RunTaskExecutorPort> executors = new EnumMap<>(RunTaskType.class);
     
     public RunTaskExecutorRegistry(List<AbstractRunTaskExecutor> executorList) {
         for (AbstractRunTaskExecutor executor : executorList) {
@@ -24,7 +24,7 @@ public class RunTaskExecutorRegistry {
         }
     }
     
-    public RunTaskExecutor getExecutor(RunTaskType taskType) {
+    public RunTaskExecutorPort getExecutor(RunTaskType taskType) {
         return executors.get(taskType);
     }
 }

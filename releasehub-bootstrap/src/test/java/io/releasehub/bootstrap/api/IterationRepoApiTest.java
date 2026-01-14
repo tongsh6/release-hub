@@ -41,32 +41,36 @@ class IterationRepoApiTest {
     @Test
     void shouldAddRemoveAndListReposForIteration() throws Exception {
         String token = loginAndGetToken();
-        mockMvc.perform(post("/api/v1/iterations")
+        var createResult = mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"iterationKey\":\"IT-RP-1\",\"description\":\"d\"}"))
-            .andExpect(status().isOk());
+                .content("{\"description\":\"d\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.key").exists())
+            .andReturn();
+        String iterationKey = objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .get("data").get("key").asText();
 
-        mockMvc.perform(post("/api/v1/iterations/IT-RP-1/repos/add")
+        mockMvc.perform(post("/api/v1/iterations/" + iterationKey + "/repos/add")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"repoIds\":[\"repo-1\",\"repo-2\"]}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.repoIds.length()").value(2));
 
-        mockMvc.perform(get("/api/v1/iterations/IT-RP-1/repos")
+        mockMvc.perform(get("/api/v1/iterations/" + iterationKey + "/repos")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.length()").value(2));
 
-        mockMvc.perform(post("/api/v1/iterations/IT-RP-1/repos/remove")
+        mockMvc.perform(post("/api/v1/iterations/" + iterationKey + "/repos/remove")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"repoIds\":[\"repo-1\"]}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.repoIds.length()").value(1));
 
-        mockMvc.perform(get("/api/v1/iterations/IT-RP-1/repos")
+        mockMvc.perform(get("/api/v1/iterations/" + iterationKey + "/repos")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.length()").value(1));

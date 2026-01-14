@@ -1,10 +1,13 @@
 package io.releasehub.infrastructure.persistence.releasewindow;
 
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -48,6 +51,22 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
         return jpaRepository.findAll().stream()
                             .map(this::toDomain)
                             .collect(Collectors.toList());
+    }
+
+    @Override
+    public PageResult<ReleaseWindow> findPaged(String name, int page, int size) {
+        int pageIndex = Math.max(page - 1, 0);
+        PageRequest pageable = PageRequest.of(pageIndex, size);
+        Page<ReleaseWindowJpaEntity> result;
+        if (name == null || name.isBlank()) {
+            result = jpaRepository.findAll(pageable);
+        } else {
+            result = jpaRepository.findByNameContainingIgnoreCase(name.trim(), pageable);
+        }
+        List<ReleaseWindow> items = result.getContent().stream()
+                .map(this::toDomain)
+                .collect(Collectors.toList());
+        return new PageResult<>(items, result.getTotalElements());
     }
 
     private ReleaseWindow toDomain(ReleaseWindowJpaEntity entity) {

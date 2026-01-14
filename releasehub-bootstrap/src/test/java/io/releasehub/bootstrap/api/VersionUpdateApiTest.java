@@ -25,7 +25,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -105,7 +104,6 @@ class VersionUpdateApiTest {
     @Order(2)
     void shouldCreateReleaseWindow() throws Exception {
         CreateReleaseWindowRequest request = new CreateReleaseWindowRequest();
-        request.setWindowKey("VU-TEST-" + UUID.randomUUID().toString().substring(0, 8));
         request.setName("Version Update Test Window");
 
         MvcResult result = mockMvc.perform(post("/api/v1/release-windows")
@@ -189,7 +187,7 @@ class VersionUpdateApiTest {
                        .content(objectMapper.writeValueAsString(request)))
                .andExpect(status().isNotFound())
                .andExpect(jsonPath("$.success").value(false))
-               .andExpect(jsonPath("$.code").value("REPO_NOT_FOUND"));
+               .andExpect(jsonPath("$.code").value("REPO_001"));
     }
 
     @Test
@@ -275,7 +273,6 @@ class VersionUpdateApiTest {
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.success").value(true))
                .andExpect(jsonPath("$.data.id").value(runId))
-               .andExpect(jsonPath("$.data.runType").value("VERSION_UPDATE"))
-               .andExpect(jsonPath("$.data.items").isArray());
+               .andExpect(jsonPath("$.data.runType").value("VERSION_UPDATE"));
     }
 }

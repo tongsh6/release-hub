@@ -54,14 +54,14 @@ class ReleaseWindowPageApiTest {
                     .content("{\"windowKey\":\"WK-P-" + i + "\",\"name\":\"RW-P-" + i + "\"}"))
                 .andExpect(status().isOk());
         }
-        mockMvc.perform(get("/api/v1/release-windows/paged?page=0&size=10")
+        mockMvc.perform(get("/api/v1/release-windows/paged?page=1&size=10")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.length()").value(10))
-            .andExpect(jsonPath("$.page.page").value(0))
+            .andExpect(jsonPath("$.page.page").value(1))
             .andExpect(jsonPath("$.page.size").value(10))
-            .andExpect(jsonPath("$.page.totalElements").value(base + 25))
+            .andExpect(jsonPath("$.page.total").value(base + 25))
             .andExpect(jsonPath("$.page.totalPages").value((int) Math.ceil((double)(base + 25) / 10)))
             .andExpect(jsonPath("$.page.hasNext").value(true));
     }

@@ -2,6 +2,7 @@ package io.releasehub.application.group;
 
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
 import lombok.RequiredArgsConstructor;
@@ -84,6 +85,10 @@ public class GroupAppService {
     }
     public List<Group> list() {
         return groupPort.findAll();
+    }
+
+    public PageResult<Group> listPaged(int page, int size) {
+        return groupPort.findPaged(page, size);
     }
 
     public List<Group> children(String parentCode) {

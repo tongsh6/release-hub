@@ -8,7 +8,7 @@ import io.releasehub.domain.version.BuildTool;
  * 定义版本更新的能力，支持多种构建工具（Maven、Gradle）的可插拔实现。
  * 实现类应在 infrastructure 层。
  */
-public interface VersionUpdater {
+public interface VersionUpdaterPort {
     /**
      * 执行版本更新
      *

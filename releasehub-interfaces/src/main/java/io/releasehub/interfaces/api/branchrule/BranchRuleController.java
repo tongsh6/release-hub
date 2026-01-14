@@ -1,6 +1,8 @@
 package io.releasehub.interfaces.api.branchrule;
 
 import io.releasehub.application.branchrule.BranchRuleAppService;
+import io.releasehub.common.paging.PageMeta;
+import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
 import io.releasehub.domain.branchrule.BranchRule;
 import io.releasehub.domain.branchrule.BranchRuleType;
@@ -38,6 +40,18 @@ public class BranchRuleController {
                                           .map(this::toView)
                                           .toList();
         return ApiResponse.success(views);
+    }
+
+    @GetMapping("/paged")
+    @Operation(summary = "获取分支规则分页列表")
+    public ApiPageResponse<List<BranchRuleView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
+                                                           @RequestParam(name = "size", defaultValue = "20") int size,
+                                                           @RequestParam(name = "name", required = false) String name) {
+        var result = branchRuleAppService.listPaged(name, page, size);
+        List<BranchRuleView> views = result.items().stream()
+                .map(this::toView)
+                .toList();
+        return ApiPageResponse.success(views, new PageMeta(page, size, result.total()));
     }
 
     private BranchRuleView toView(BranchRule rule) {

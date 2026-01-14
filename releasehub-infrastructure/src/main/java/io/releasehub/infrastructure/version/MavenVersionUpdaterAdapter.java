@@ -2,7 +2,7 @@ package io.releasehub.infrastructure.version;
 
 import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
-import io.releasehub.application.version.VersionUpdater;
+import io.releasehub.application.version.VersionUpdaterPort;
 import io.releasehub.common.exception.BaseException;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.domain.version.BuildTool;
@@ -35,7 +35,7 @@ import java.util.List;
  */
 @Slf4j
 @Component
-public class MavenVersionUpdater implements VersionUpdater {
+public class MavenVersionUpdaterAdapter implements VersionUpdaterPort {
 
     @Override
     public VersionUpdateResult update(VersionUpdateRequest request) {

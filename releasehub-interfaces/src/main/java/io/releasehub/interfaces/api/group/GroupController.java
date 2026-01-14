@@ -89,13 +89,11 @@ public class GroupController {
 
     @GetMapping("/paged")
     @Operation(summary = "List groups (paged)")
-    public ApiPageResponse<List<GroupView>> listPaged(@RequestParam(name = "page", defaultValue = "0") int page,
+    public ApiPageResponse<List<GroupView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
                                                       @RequestParam(name = "size", defaultValue = "20") int size) {
-        var all = groupAppService.list().stream().map(GroupView::fromDomain).collect(Collectors.toList());
-        int from = Math.max(page * size, 0);
-        int to = Math.min(from + size, all.size());
-        List<GroupView> slice = from >= all.size() ? java.util.List.<GroupView>of() : all.subList(from, to);
-        return ApiPageResponse.success(slice, new PageMeta(page, size, all.size()));
+        var result = groupAppService.listPaged(page, size);
+        List<GroupView> views = result.items().stream().map(GroupView::fromDomain).collect(Collectors.toList());
+        return ApiPageResponse.success(views, new PageMeta(page, size, result.total()));
     }
 
     @GetMapping("/children/{parentCode}")

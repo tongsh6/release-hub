@@ -4,7 +4,6 @@ import io.releasehub.application.repo.CodeRepositoryAppService;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
-import io.releasehub.domain.repo.CodeRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -90,14 +89,14 @@ public class CodeRepositoryController {
 
     @GetMapping("/paged")
     @Operation(summary = "List repositories (paged)")
-    public ApiPageResponse<List<CodeRepositoryView>> listPaged(@RequestParam(name = "page", defaultValue = "0") int page,
+    public ApiPageResponse<List<CodeRepositoryView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
                                                                @RequestParam(name = "size", defaultValue = "20") int size,
                                                                @RequestParam(name = "keyword", required = false) String keyword) {
-        List<CodeRepository> all = appService.search(keyword);
-        int from = Math.max(page * size, 0);
-        int to = Math.min(from + size, all.size());
-        List<CodeRepository> slice = from >= all.size() ? List.of() : all.subList(from, to);
-        return ApiPageResponse.success(slice.stream().map(CodeRepositoryView::fromDomain).collect(Collectors.toList()), new PageMeta(page, size, all.size()));
+        var result = appService.searchPaged(keyword, page, size);
+        List<CodeRepositoryView> views = result.items().stream()
+                .map(CodeRepositoryView::fromDomain)
+                .collect(Collectors.toList());
+        return ApiPageResponse.success(views, new PageMeta(page, size, result.total()));
     }
 
     @GetMapping("/{id}/initial-version")

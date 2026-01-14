@@ -4,6 +4,7 @@ import io.releasehub.application.release.ReleaseRunService;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.run.Run;
@@ -60,6 +61,14 @@ public class ReleaseWindowAppService {
         return releaseWindowPort.findAll().stream()
                 .map(ReleaseWindowView::from)
                 .toList();
+    }
+
+    public PageResult<ReleaseWindowView> listPaged(String name, int page, int size) {
+        PageResult<ReleaseWindow> result = releaseWindowPort.findPaged(name, page, size);
+        List<ReleaseWindowView> views = result.items().stream()
+                .map(ReleaseWindowView::from)
+                .toList();
+        return new PageResult<>(views, result.total());
     }
 
     @Transactional

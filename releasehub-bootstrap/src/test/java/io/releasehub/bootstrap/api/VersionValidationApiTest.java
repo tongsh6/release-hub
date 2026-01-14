@@ -16,8 +16,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -62,7 +60,6 @@ class VersionValidationApiTest {
     @Order(2)
     void shouldCreateReleaseWindow() throws Exception {
         CreateReleaseWindowRequest request = new CreateReleaseWindowRequest();
-        request.setWindowKey("VV-TEST-" + UUID.randomUUID().toString().substring(0, 8));
         request.setName("Version Validation Test Window");
 
         MvcResult result = mockMvc.perform(post("/api/v1/release-windows")
@@ -82,7 +79,6 @@ class VersionValidationApiTest {
     @Order(3)
     void shouldReturnErrorForMissingPolicyId() throws Exception {
         // policyId 是必填字段，缺失时应该返回错误
-        // 当前实现返回 500（验证失败或 null policyId 导致的错误）
         VersionValidationRequest request = new VersionValidationRequest();
         request.setCurrentVersion("1.0.0");
         // 故意不设置 policyId
@@ -91,7 +87,7 @@ class VersionValidationApiTest {
                        .header("Authorization", "Bearer " + token)
                        .contentType(MediaType.APPLICATION_JSON)
                        .content(objectMapper.writeValueAsString(request)))
-               .andExpect(status().is5xxServerError());
+               .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -101,12 +97,11 @@ class VersionValidationApiTest {
         request.setPolicyId("invalid-policy-id");
         request.setCurrentVersion("1.0.0");
 
-        // policyId 无效时应该返回 500 Internal Server Error (因为抛出 RuntimeException)
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/validate")
                        .header("Authorization", "Bearer " + token)
                        .contentType(MediaType.APPLICATION_JSON)
                        .content(objectMapper.writeValueAsString(request)))
-               .andExpect(status().is5xxServerError());
+               .andExpect(status().isNotFound());
     }
 
     @Test
@@ -116,12 +111,11 @@ class VersionValidationApiTest {
         request.setPolicyId(""); // 空字符串
         request.setCurrentVersion("2.5.3");
 
-        // 空 policyId 应该返回错误（当前实现返回 500）
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/validate")
                        .header("Authorization", "Bearer " + token)
                        .contentType(MediaType.APPLICATION_JSON)
                        .content(objectMapper.writeValueAsString(request)))
-               .andExpect(status().is5xxServerError());
+               .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -132,11 +126,10 @@ class VersionValidationApiTest {
         request.setPolicyId("00000000-0000-0000-0000-000000000000"); // 有效 UUID 格式但不存在
         request.setCurrentVersion("1.0.0");
 
-        // policyId 不存在时应该返回 500
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/validate")
                        .header("Authorization", "Bearer " + token)
                        .contentType(MediaType.APPLICATION_JSON)
                        .content(objectMapper.writeValueAsString(request)))
-               .andExpect(status().is5xxServerError());
+               .andExpect(status().isNotFound());
     }
 }

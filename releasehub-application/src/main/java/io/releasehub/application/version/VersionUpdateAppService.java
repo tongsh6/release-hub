@@ -15,7 +15,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class VersionUpdateAppService {
 
-    private final List<VersionUpdater> versionUpdaters;
+    private final List<VersionUpdaterPort> versionUpdaters;
 
     /**
      * 执行版本更新
@@ -26,7 +26,7 @@ public class VersionUpdateAppService {
     public VersionUpdateResult updateVersion(VersionUpdateRequest request) {
         BuildTool buildTool = request.buildTool();
         
-        VersionUpdater updater = findUpdater(buildTool);
+        VersionUpdaterPort updater = findUpdater(buildTool);
         if (updater == null) {
             return VersionUpdateResult.failure(
                     "No VersionUpdater found for build tool: " + buildTool,
@@ -40,7 +40,7 @@ public class VersionUpdateAppService {
     /**
      * 查找支持指定构建工具的 VersionUpdater
      */
-    private VersionUpdater findUpdater(BuildTool buildTool) {
+    private VersionUpdaterPort findUpdater(BuildTool buildTool) {
         return versionUpdaters.stream()
                 .filter(updater -> updater.supports(buildTool))
                 .findFirst()

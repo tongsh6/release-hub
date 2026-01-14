@@ -5,7 +5,7 @@ import io.releasehub.domain.run.RunTask;
 /**
  * 运行任务执行器接口
  */
-public interface RunTaskExecutor {
+public interface RunTaskExecutorPort {
     
     /**
      * 执行任务

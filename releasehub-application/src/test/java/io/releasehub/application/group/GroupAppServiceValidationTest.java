@@ -2,6 +2,7 @@ package io.releasehub.application.group;
 
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
 import org.junit.jupiter.api.BeforeEach;
@@ -93,6 +94,15 @@ class GroupAppServiceValidationTest {
         @Override
         public List<Group> findAll() {
             return new ArrayList<>(byId.values());
+        }
+
+        @Override
+        public PageResult<Group> findPaged(int page, int size) {
+            List<Group> all = findAll();
+            int pageIndex = Math.max(page - 1, 0);
+            int from = Math.min(pageIndex * size, all.size());
+            int to = Math.min(from + size, all.size());
+            return new PageResult<>(all.subList(from, to), all.size());
         }
 
         @Override

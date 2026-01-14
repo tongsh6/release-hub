@@ -58,21 +58,19 @@ public class AttachController {
     @GetMapping("/{id}/iterations/paged")
     @Operation(summary = "List window iterations (paged)")
     public ApiPageResponse<List<WindowIterationView>> listPaged(@PathVariable("id") String windowId,
-                                                                @RequestParam(name = "page", defaultValue = "0") int page,
+                                                                @RequestParam(name = "page", defaultValue = "1") int page,
                                                                 @RequestParam(name = "size", defaultValue = "20") int size) {
-        var all = attachAppService.list(windowId).stream()
-                                  .map(x -> new WindowIterationView(
-                                          x.getIterationKey().value(), 
-                                          x.getAttachAt(),
-                                          null,  // releaseBranch - TODO: 从 WindowIterationPort 获取
-                                          null,  // branchCreated
-                                          null   // lastMergeAt
-                                  ))
-                                  .toList();
-        int from = Math.max(page * size, 0);
-        int to = Math.min(from + size, all.size());
-        List<WindowIterationView> slice = from >= all.size() ? List.<WindowIterationView>of() : all.subList(from, to);
-        return ApiPageResponse.success(slice, new PageMeta(page, size, all.size()));
+        var result = attachAppService.listPaged(windowId, page, size);
+        List<WindowIterationView> views = result.items().stream()
+                .map(x -> new WindowIterationView(
+                        x.getIterationKey().value(),
+                        x.getAttachAt(),
+                        null,  // releaseBranch - TODO: 从 WindowIterationPort 获取
+                        null,  // branchCreated
+                        null   // lastMergeAt
+                ))
+                .toList();
+        return ApiPageResponse.success(views, new PageMeta(page, size, result.total()));
     }
 
     @PostMapping("/{id}/iterations/{iterationKey}/create-release-branch")

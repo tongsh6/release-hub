@@ -1,11 +1,14 @@
 package io.releasehub.infrastructure.persistence.version;
 
 import io.releasehub.application.version.VersionPolicyPort;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.version.BumpRule;
 import io.releasehub.domain.version.VersionPolicy;
 import io.releasehub.domain.version.VersionPolicyId;
 import io.releasehub.domain.version.VersionScheme;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -41,6 +44,17 @@ public class VersionPolicyPersistenceAdapter implements VersionPolicyPort {
     }
 
     @Override
+    public PageResult<VersionPolicy> findPaged(String keyword, int page, int size) {
+        int pageIndex = Math.max(page - 1, 0);
+        PageRequest pageable = PageRequest.of(pageIndex, size);
+        Page<VersionPolicyJpaEntity> result = repository.searchByKeyword(normalize(keyword), pageable);
+        List<VersionPolicy> items = result.getContent().stream()
+                .map(this::toDomain)
+                .collect(Collectors.toList());
+        return new PageResult<>(items, result.getTotalElements());
+    }
+
+    @Override
     public void deleteById(VersionPolicyId id) {
         repository.deleteById(id.value());
     }
@@ -67,5 +81,11 @@ public class VersionPolicyPersistenceAdapter implements VersionPolicyPort {
                 entity.getUpdatedAt(),
                 entity.getVersion()
         );
+    }
+
+    private String normalize(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isBlank() ? null : trimmed;
     }
 }

@@ -24,11 +24,11 @@ class MavenVersionUpdaterTest {
 
     @TempDir
     Path tempDir;
-    private MavenVersionUpdater updater;
+    private MavenVersionUpdaterAdapter updater;
 
     @BeforeEach
     void setUp() {
-        updater = new MavenVersionUpdater();
+        updater = new MavenVersionUpdaterAdapter();
     }
 
     @Test

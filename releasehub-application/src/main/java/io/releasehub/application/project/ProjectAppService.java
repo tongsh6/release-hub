@@ -1,6 +1,7 @@
 package io.releasehub.application.project;
 
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.project.Project;
 import io.releasehub.domain.project.ProjectId;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,11 @@ public class ProjectAppService {
     @Transactional(readOnly = true)
     public List<Project> list() {
         return projectPort.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public PageResult<Project> listPaged(String name, String status, int page, int size) {
+        return projectPort.findPaged(name, status, page, size);
     }
 
     @Transactional(readOnly = true)

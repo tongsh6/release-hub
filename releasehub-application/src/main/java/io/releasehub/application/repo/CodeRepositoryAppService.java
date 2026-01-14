@@ -2,6 +2,7 @@ package io.releasehub.application.repo;
 
 import io.releasehub.application.version.VersionExtractor;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 import lombok.RequiredArgsConstructor;
@@ -70,6 +71,10 @@ public class CodeRepositoryAppService {
 
     public List<CodeRepository> search(String keyword) {
         return codeRepositoryPort.search(keyword);
+    }
+
+    public PageResult<CodeRepository> searchPaged(String keyword, int page, int size) {
+        return codeRepositoryPort.searchPaged(keyword, page, size);
     }
 
     public GateSummary getGateSummary(String repoId) {
