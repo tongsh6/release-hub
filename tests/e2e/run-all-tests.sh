@@ -132,28 +132,31 @@ main() {
     # 运行各测试套件
     case "${1:-all}" in
         all)
-            run_test_suite "US-RW: 发布窗口管理" "$SCRIPT_DIR/us_release_window_test.sh"
-            run_test_suite "US-REPO: 代码仓库管理" "$SCRIPT_DIR/us_repository_test.sh"
-            run_test_suite "US-VU: 版本更新" "$SCRIPT_DIR/us_version_update_test.sh"
-            run_test_suite "US-VAL: 版本校验" "$SCRIPT_DIR/us_version_validation_test.sh"
+            run_test_suite "US-RW: 发布窗口管理" "$SCRIPT_DIR/us-release-window-test.sh"
+            run_test_suite "US-REPO: 代码仓库管理" "$SCRIPT_DIR/us-repository-test.sh"
+            run_test_suite "US-VU: 版本更新" "$SCRIPT_DIR/us-version-update-test.sh"
+            run_test_suite "US-VAL: 版本校验" "$SCRIPT_DIR/us-version-validation-test.sh"
             ;;
         rw)
-            run_test_suite "US-RW: 发布窗口管理" "$SCRIPT_DIR/us_release_window_test.sh"
+            run_test_suite "US-RW: 发布窗口管理" "$SCRIPT_DIR/us-release-window-test.sh"
             ;;
         repo)
-            run_test_suite "US-REPO: 代码仓库管理" "$SCRIPT_DIR/us_repository_test.sh"
+            run_test_suite "US-REPO: 代码仓库管理" "$SCRIPT_DIR/us-repository-test.sh"
             ;;
         vu)
-            run_test_suite "US-VU: 版本更新" "$SCRIPT_DIR/us_version_update_test.sh"
+            run_test_suite "US-VU: 版本更新" "$SCRIPT_DIR/us-version-update-test.sh"
             ;;
         val)
-            run_test_suite "US-VAL: 版本校验" "$SCRIPT_DIR/us_version_validation_test.sh"
+            run_test_suite "US-VAL: 版本校验" "$SCRIPT_DIR/us-version-validation-test.sh"
             ;;
         e2e)
-            run_test_suite "E2E 综合测试" "$SCRIPT_DIR/e2e_test_suite.sh"
+            run_test_suite "E2E 综合测试" "$SCRIPT_DIR/e2e-test-suite.sh"
             ;;
         smoke)
-            run_test_suite "冒烟测试: 迭代-仓库-窗口完整流程" "$SCRIPT_DIR/smoke_test.sh"
+            run_test_suite "冒烟测试: 迭代-仓库-窗口完整流程" "$SCRIPT_DIR/smoke-test.sh"
+            ;;
+        auto)
+            run_test_suite "US-AUTO: 发布自动化功能" "$SCRIPT_DIR/us-release-automation-test.sh"
             ;;
         *)
             echo "用法: $0 [all|rw|repo|vu|val|e2e|smoke]"
@@ -165,6 +168,7 @@ main() {
             echo "  val   - 仅运行版本校验测试"
             echo "  e2e   - 运行 E2E 综合测试"
             echo "  smoke - 运行冒烟测试（迭代-仓库-窗口完整流程）"
+            echo "  auto  - 运行发布自动化功能测试"
             exit 1
             ;;
     esac
