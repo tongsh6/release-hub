@@ -14,9 +14,11 @@ public class CreateRepoRequest {
     @Size(max = 512)
     private String cloneUrl;
     
-    @NotBlank
     @Size(max = 128)
     private String defaultBranch;
     
     private boolean monoRepo;
+
+    @Size(max = 50)
+    private String initialVersion;
 }

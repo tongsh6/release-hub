@@ -22,7 +22,7 @@ public class CodeRepositoryJpaEntity {
     private String id;
     @Column(nullable = false)
     private String name;
-    @Column(name = "clone_url", nullable = false)
+    @Column(name = "clone_url", nullable = false, length = 512)
     private String cloneUrl;
     @Column(name = "default_branch")
     private String defaultBranch;

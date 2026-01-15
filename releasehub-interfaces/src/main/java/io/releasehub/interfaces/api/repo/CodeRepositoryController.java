@@ -31,14 +31,27 @@ public class CodeRepositoryController {
     @PostMapping
     @Operation(summary = "Create repository")
     public ApiResponse<CodeRepositoryView> create(@RequestBody @Valid CreateRepoRequest request) {
-        var repo = appService.create(request.getName(), request.getCloneUrl(), request.getDefaultBranch(), request.isMonoRepo());
+        var repo = appService.create(
+                request.getName(),
+                request.getCloneUrl(),
+                request.getDefaultBranch(),
+                request.isMonoRepo(),
+                request.getInitialVersion()
+        );
         return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
     }
 
     @PutMapping("/{id}")
     @Operation(summary = "Update repository")
     public ApiResponse<CodeRepositoryView> update(@PathVariable("id") String id, @RequestBody @Valid UpdateRepoRequest request) {
-        var repo = appService.update(id, request.getName(), request.getCloneUrl(), request.getDefaultBranch(), request.isMonoRepo());
+        var repo = appService.update(
+                id,
+                request.getName(),
+                request.getCloneUrl(),
+                request.getDefaultBranch(),
+                request.isMonoRepo(),
+                request.getInitialVersion()
+        );
         return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
     }
 
@@ -118,5 +131,12 @@ public class CodeRepositoryController {
     public ApiResponse<InitialVersionView> syncInitialVersion(@PathVariable("id") String id) {
         String version = appService.syncInitialVersionFromRepo(id);
         return ApiResponse.success(new InitialVersionView(id, version));
+    }
+
+    @PostMapping("/{id}/sync")
+    @Operation(summary = "Sync repository statistics from GitLab")
+    public ApiResponse<CodeRepositoryView> sync(@PathVariable("id") String id) {
+        var repo = appService.sync(id);
+        return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
     }
 }

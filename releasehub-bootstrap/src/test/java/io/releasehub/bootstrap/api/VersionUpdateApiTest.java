@@ -125,8 +125,8 @@ class VersionUpdateApiTest {
         CreateRepoRequest request = new CreateRepoRequest();
         request.setName("Test Repository");
         request.setCloneUrl("git@gitlab.com:test/repo.git");
-        request.setDefaultBranch("main");
         request.setMonoRepo(false);
+        request.setInitialVersion("0.1.0");
 
         MvcResult result = mockMvc.perform(post("/api/v1/repositories")
                                           .header("Authorization", "Bearer " + token)
@@ -134,11 +134,17 @@ class VersionUpdateApiTest {
                                           .content(objectMapper.writeValueAsString(request)))
                                   .andExpect(status().isOk())
                                   .andExpect(jsonPath("$.data.id").exists())
+                                  .andExpect(jsonPath("$.data.defaultBranch").value("main"))
                                   .andReturn();
 
         repoId = objectMapper.readTree(result.getResponse().getContentAsString())
                              .get("data").get("id").asText();
         assertThat(repoId).isNotBlank();
+
+        mockMvc.perform(get("/api/v1/repositories/" + repoId + "/initial-version")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value("0.1.0"));
     }
 
     @Test

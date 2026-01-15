@@ -3,6 +3,7 @@ package io.releasehub.application.gitlab;
 import java.util.Optional;
 
 public interface GitLabPort {
+    long resolveProjectId(String repoCloneUrl);
     boolean branchExists(long projectId, String ref);
     Optional<MrInfo> ensureMrInfo(long projectId, String source, String target);
     GateSummary fetchGateSummary(long projectId);
