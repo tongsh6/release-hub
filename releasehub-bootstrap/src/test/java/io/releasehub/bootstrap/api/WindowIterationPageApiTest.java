@@ -41,8 +41,9 @@ class WindowIterationPageApiTest {
     @Test
     void shouldPageWindowIterations() throws Exception {
         String token = loginAndGetToken();
+        String groupCode = createGroupAndGetCode(token);
 
-        String createWindow = "{\"name\":\"RW-PG\"}";
+        String createWindow = "{\"name\":\"RW-PG\",\"groupCode\":\"" + groupCode + "\"}";
         var rwCreate = mockMvc.perform(post("/api/v1/release-windows")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -58,7 +59,7 @@ class WindowIterationPageApiTest {
             var itResult = mockMvc.perform(post("/api/v1/iterations")
                     .header("Authorization", "Bearer " + token)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"name\":\"IT-PG-" + i + "\",\"description\":\"d\",\"repoIds\":[\"repo-1\"]}"))
+                    .content("{\"name\":\"IT-PG-" + i + "\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"repo-1\"]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.key").exists())
                 .andReturn();
@@ -81,5 +82,17 @@ class WindowIterationPageApiTest {
             .andExpect(jsonPath("$.page.total").value(23))
             .andExpect(jsonPath("$.page.totalPages").value(3))
             .andExpect(jsonPath("$.page.hasNext").value(true));
+    }
+
+    private String createGroupAndGetCode(String token) throws Exception {
+        String code = "G" + System.currentTimeMillis();
+        String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
+        mockMvc.perform(post("/api/v1/groups")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists());
+        return code;
     }
 }

@@ -42,7 +42,8 @@ class IterationApiTest {
     @Test
     void shouldCreateIteration() throws Exception {
         String token = loginAndGetToken();
-        String req = "{\"name\":\"测试迭代1\",\"description\":\"desc\",\"repoIds\":[\"repo-1\",\"repo-2\"]}";
+        String groupCode = createGroupAndGetCode(token);
+        String req = "{\"name\":\"测试迭代1\",\"description\":\"desc\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"repo-1\",\"repo-2\"]}";
         MvcResult result = mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -58,7 +59,8 @@ class IterationApiTest {
     @Test
     void shouldCreateIterationWithNullOrMissingRepoIds() throws Exception {
         String token = loginAndGetToken();
-        String reqMissing = "{\"name\":\"测试迭代2\",\"description\":\"desc\"}";
+        String groupCode = createGroupAndGetCode(token);
+        String reqMissing = "{\"name\":\"测试迭代2\",\"description\":\"desc\",\"groupCode\":\"" + groupCode + "\"}";
         mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -67,7 +69,7 @@ class IterationApiTest {
             .andExpect(jsonPath("$.data.key").exists())
             .andExpect(jsonPath("$.data.name").value("测试迭代2"));
 
-        String reqNull = "{\"name\":\"测试迭代3\",\"description\":\"desc\",\"repoIds\":null}";
+        String reqNull = "{\"name\":\"测试迭代3\",\"description\":\"desc\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":null}";
         mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -75,5 +77,17 @@ class IterationApiTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.key").exists())
             .andExpect(jsonPath("$.data.name").value("测试迭代3"));
+    }
+
+    private String createGroupAndGetCode(String token) throws Exception {
+        String code = "G" + System.currentTimeMillis();
+        String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
+        mockMvc.perform(post("/api/v1/groups")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists());
+        return code;
     }
 }

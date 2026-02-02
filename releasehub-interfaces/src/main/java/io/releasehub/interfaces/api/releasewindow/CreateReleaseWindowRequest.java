@@ -21,4 +21,8 @@ public class CreateReleaseWindowRequest {
     private String description;
     
     private Instant plannedReleaseAt;
+
+    @NotBlank
+    @Size(max = 64)
+    private String groupCode;
 }

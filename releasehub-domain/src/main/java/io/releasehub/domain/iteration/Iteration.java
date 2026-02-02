@@ -13,30 +13,33 @@ public class Iteration extends BaseEntity<IterationKey> {
     private final String name;
     private final String description;
     private final LocalDate expectedReleaseAt;
+    private final String groupCode;
     private final Set<RepoId> repos;
 
-    private Iteration(IterationKey key, String name, String description, LocalDate expectedReleaseAt, Set<RepoId> repos, Instant createdAt, Instant updatedAt) {
+    private Iteration(IterationKey key, String name, String description, LocalDate expectedReleaseAt, String groupCode, Set<RepoId> repos, Instant createdAt, Instant updatedAt) {
         super(key, createdAt, updatedAt, 0L);
         this.name = name;
         this.description = description;
         this.expectedReleaseAt = expectedReleaseAt;
+        this.groupCode = groupCode;
         this.repos = new LinkedHashSet<>(Objects.requireNonNull(repos));
     }
 
-    private Iteration(IterationKey key, String name, String description, LocalDate expectedReleaseAt, Set<RepoId> repos, Instant now) {
+    private Iteration(IterationKey key, String name, String description, LocalDate expectedReleaseAt, String groupCode, Set<RepoId> repos, Instant now) {
         super(key, now);
         this.name = name;
         this.description = description;
         this.expectedReleaseAt = expectedReleaseAt;
+        this.groupCode = groupCode;
         this.repos = new LinkedHashSet<>(Objects.requireNonNull(repos));
     }
 
-    public static Iteration create(IterationKey key, String name, String description, LocalDate expectedReleaseAt, Set<RepoId> repos, Instant now) {
-        return new Iteration(key, name, description, expectedReleaseAt, repos, now);
+    public static Iteration create(IterationKey key, String name, String description, LocalDate expectedReleaseAt, String groupCode, Set<RepoId> repos, Instant now) {
+        return new Iteration(key, name, description, expectedReleaseAt, groupCode, repos, now);
     }
 
-    public static Iteration rehydrate(IterationKey key, String name, String description, LocalDate expectedReleaseAt, Set<RepoId> repos, Instant createdAt, Instant updatedAt) {
-        return new Iteration(key, name, description, expectedReleaseAt, repos, createdAt, updatedAt);
+    public static Iteration rehydrate(IterationKey key, String name, String description, LocalDate expectedReleaseAt, String groupCode, Set<RepoId> repos, Instant createdAt, Instant updatedAt) {
+        return new Iteration(key, name, description, expectedReleaseAt, groupCode, repos, createdAt, updatedAt);
     }
 
     public String getName() {
@@ -49,6 +52,10 @@ public class Iteration extends BaseEntity<IterationKey> {
 
     public LocalDate getExpectedReleaseAt() {
         return expectedReleaseAt;
+    }
+
+    public String getGroupCode() {
+        return groupCode;
     }
 
     public Set<RepoId> getRepos() {

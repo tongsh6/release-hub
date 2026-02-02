@@ -25,6 +25,8 @@ public class ReleaseWindowJpaEntity {
     private String id;
     private String windowKey;
     private String name;
+    @Column(name = "group_code")
+    private String groupCode;
     
     @Column(columnDefinition = "TEXT")
     private String description;

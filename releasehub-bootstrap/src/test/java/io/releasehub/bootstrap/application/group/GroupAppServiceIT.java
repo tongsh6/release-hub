@@ -1,7 +1,7 @@
 package io.releasehub.bootstrap.application.group;
 
 import io.releasehub.application.group.GroupAppService;
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -60,7 +60,7 @@ class GroupAppServiceIT {
     void deleteByCode_ShouldThrow_WhenHasChildren() {
         var a = svc.create("A", "001", null);
         var b = svc.create("B", "001001", "001");
-        var ex = assertThrows(BizException.class, () -> svc.deleteByCode("001"));
-        assertEquals("GROUP_DELETE_HAS_CHILDREN", ex.getCode());
+        var ex = assertThrows(BusinessException.class, () -> svc.deleteByCode("001"));
+        assertEquals("GROUP_008", ex.getCode());
     }
 }

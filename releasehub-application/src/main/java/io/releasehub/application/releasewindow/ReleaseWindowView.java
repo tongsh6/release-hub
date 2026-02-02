@@ -14,6 +14,7 @@ public class ReleaseWindowView {
     private String name;
     private String description;
     private Instant plannedReleaseAt;
+    private String groupCode;
     private String status;
     private Instant createdAt;
     private Instant updatedAt;
@@ -23,12 +24,13 @@ public class ReleaseWindowView {
     public ReleaseWindowView() {
     }
 
-    public ReleaseWindowView(String id, String windowKey, String name, String description, Instant plannedReleaseAt, String status, Instant createdAt, Instant updatedAt, boolean frozen, Instant publishedAt) {
+    public ReleaseWindowView(String id, String windowKey, String name, String description, Instant plannedReleaseAt, String groupCode, String status, Instant createdAt, Instant updatedAt, boolean frozen, Instant publishedAt) {
         this.id = id;
         this.windowKey = windowKey;
         this.name = name;
         this.description = description;
         this.plannedReleaseAt = plannedReleaseAt;
+        this.groupCode = groupCode;
         this.status = status;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -43,6 +45,7 @@ public class ReleaseWindowView {
                 rw.getName(),
                 rw.getDescription(),
                 rw.getPlannedReleaseAt(),
+                rw.getGroupCode(),
                 rw.getStatus().name(),
                 rw.getCreatedAt(),
                 rw.getUpdatedAt(),

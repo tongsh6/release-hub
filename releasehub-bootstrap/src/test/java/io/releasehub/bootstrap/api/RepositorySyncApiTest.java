@@ -52,11 +52,13 @@ class RepositorySyncApiTest {
     @Test
     void shouldFailSyncWhenGitLabSettingsMissing() throws Exception {
         String token = loginAndGetToken();
+        String groupCode = createGroupAndGetCode(token);
 
         CreateRepoRequest request = new CreateRepoRequest();
         request.setName("Sync Test Repo");
         request.setCloneUrl("git@gitlab.com:test/sync-repo.git");
         request.setMonoRepo(false);
+        request.setGroupCode(groupCode);
 
         MvcResult created = mockMvc.perform(post("/api/v1/repositories")
                         .header("Authorization", "Bearer " + token)
@@ -74,5 +76,16 @@ class RepositorySyncApiTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("GITLAB_001"));
     }
-}
 
+    private String createGroupAndGetCode(String token) throws Exception {
+        String code = "G" + System.currentTimeMillis();
+        String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
+        mockMvc.perform(post("/api/v1/groups")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists());
+        return code;
+    }
+}

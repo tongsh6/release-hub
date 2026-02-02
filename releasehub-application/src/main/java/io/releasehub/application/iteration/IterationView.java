@@ -13,6 +13,7 @@ public class IterationView {
     private String name;
     private String description;
     private LocalDate expectedReleaseAt;
+    private String groupCode;
     private Set<String> repoIds;
     private Instant createdAt;
     private Instant updatedAt;
@@ -23,6 +24,7 @@ public class IterationView {
         v.name = it.getName();
         v.description = it.getDescription();
         v.expectedReleaseAt = it.getExpectedReleaseAt();
+        v.groupCode = it.getGroupCode();
         v.repoIds = it.getRepos().stream().map(RepoId::value).collect(Collectors.toSet());
         v.createdAt = it.getCreatedAt();
         v.updatedAt = it.getUpdatedAt();
@@ -33,6 +35,7 @@ public class IterationView {
     public String getName() { return name; }
     public String getDescription() { return description; }
     public LocalDate getExpectedReleaseAt() { return expectedReleaseAt; }
+    public String getGroupCode() { return groupCode; }
     public Set<String> getRepoIds() { return repoIds; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

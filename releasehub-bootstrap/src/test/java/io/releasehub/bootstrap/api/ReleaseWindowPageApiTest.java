@@ -41,6 +41,7 @@ class ReleaseWindowPageApiTest {
     @Test
     void shouldListWindowsWithPaging() throws Exception {
         String token = loginAndGetToken();
+        String groupCode = createGroupAndGetCode(token);
         var before = mockMvc.perform(get("/api/v1/release-windows")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
@@ -51,7 +52,7 @@ class ReleaseWindowPageApiTest {
             mockMvc.perform(post("/api/v1/release-windows")
                     .header("Authorization", "Bearer " + token)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"windowKey\":\"WK-P-" + i + "\",\"name\":\"RW-P-" + i + "\"}"))
+                    .content("{\"name\":\"RW-P-" + i + "\",\"groupCode\":\"" + groupCode + "\"}"))
                 .andExpect(status().isOk());
         }
         mockMvc.perform(get("/api/v1/release-windows/paged?page=1&size=10")
@@ -64,5 +65,17 @@ class ReleaseWindowPageApiTest {
             .andExpect(jsonPath("$.page.total").value(base + 25))
             .andExpect(jsonPath("$.page.totalPages").value((int) Math.ceil((double)(base + 25) / 10)))
             .andExpect(jsonPath("$.page.hasNext").value(true));
+    }
+
+    private String createGroupAndGetCode(String token) throws Exception {
+        String code = "G" + System.currentTimeMillis();
+        String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
+        mockMvc.perform(post("/api/v1/groups")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists());
+        return code;
     }
 }

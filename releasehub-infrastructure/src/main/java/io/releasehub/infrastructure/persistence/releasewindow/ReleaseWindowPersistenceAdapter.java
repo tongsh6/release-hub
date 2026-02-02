@@ -29,6 +29,7 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
                 releaseWindow.getId().value(),
                 releaseWindow.getWindowKey(),
                 releaseWindow.getName(),
+                releaseWindow.getGroupCode(),
                 releaseWindow.getDescription(),
                 releaseWindow.getPlannedReleaseAt(),
                 releaseWindow.getStatus().name(),
@@ -71,15 +72,16 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
 
     private ReleaseWindow toDomain(ReleaseWindowJpaEntity entity) {
         try {
-            return ReleaseWindow.rehydrate(
-                    ReleaseWindowId.of(entity.getId()),
-                    entity.getWindowKey(),
-                    entity.getName(),
-                    entity.getDescription(),
-                    entity.getPlannedReleaseAt(),
-                    ReleaseWindowStatus.valueOf(entity.getStatus()),
-                    entity.getCreatedAt(),
-                    entity.getUpdatedAt(),
+        return ReleaseWindow.rehydrate(
+                ReleaseWindowId.of(entity.getId()),
+                entity.getWindowKey(),
+                entity.getName(),
+                entity.getDescription(),
+                entity.getPlannedReleaseAt(),
+                entity.getGroupCode(),
+                ReleaseWindowStatus.valueOf(entity.getStatus()),
+                entity.getCreatedAt(),
+                entity.getUpdatedAt(),
                     entity.isFrozen(),
                     entity.getPublishedAt()
             );

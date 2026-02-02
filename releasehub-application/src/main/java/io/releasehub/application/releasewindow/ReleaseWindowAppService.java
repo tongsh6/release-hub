@@ -1,9 +1,11 @@
 package io.releasehub.application.releasewindow;
 
+import io.releasehub.application.group.GroupPort;
 import io.releasehub.application.release.ReleaseRunService;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
@@ -26,12 +28,21 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ReleaseWindowAppService {
 
+    private static final DateTimeFormatter KEY_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private final ReleaseWindowPort releaseWindowPort;
     private final WindowIterationPort windowIterationPort;
     private final ReleaseRunService releaseRunService;
+    private final GroupPort groupPort;
     private final Clock clock = Clock.systemUTC();
-    
-    private static final DateTimeFormatter KEY_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
+
+    @Transactional
+    public ReleaseWindowView create(String name, String description, Instant plannedReleaseAt, String groupCode) {
+        String windowKey = generateWindowKey();
+        ensureLeafGroup(groupCode);
+        ReleaseWindow rw = ReleaseWindow.createDraft(windowKey, name, description, plannedReleaseAt, groupCode, Instant.now(clock));
+        releaseWindowPort.save(rw);
+        return ReleaseWindowView.from(rw);
+    }
 
     /**
      * 自动生成发布窗口标识
@@ -43,47 +54,50 @@ public class ReleaseWindowAppService {
         return "RW-" + datePart + "-" + randomPart;
     }
 
-    @Transactional
-    public ReleaseWindowView create(String name, String description, Instant plannedReleaseAt) {
-        String windowKey = generateWindowKey();
-        ReleaseWindow rw = ReleaseWindow.createDraft(windowKey, name, description, plannedReleaseAt, Instant.now(clock));
-        releaseWindowPort.save(rw);
-        return ReleaseWindowView.from(rw);
+    private void ensureLeafGroup(String groupCode) {
+        if (groupCode == null || groupCode.isBlank()) {
+            throw ValidationException.groupCodeRequired();
+        }
+        groupPort.findByCode(groupCode)
+                 .orElseThrow(() -> NotFoundException.groupCode(groupCode));
+        if (groupPort.countChildren(groupCode) > 0) {
+            throw BusinessException.groupHasChildren(groupCode);
+        }
     }
 
     public ReleaseWindowView get(String id) {
         ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(id))
-                .orElseThrow(() -> NotFoundException.releaseWindow(id));
+                                            .orElseThrow(() -> NotFoundException.releaseWindow(id));
         return ReleaseWindowView.from(rw);
     }
 
     public List<ReleaseWindowView> list() {
         return releaseWindowPort.findAll().stream()
-                .map(ReleaseWindowView::from)
-                .toList();
+                                .map(ReleaseWindowView::from)
+                                .toList();
     }
 
     public PageResult<ReleaseWindowView> listPaged(String name, int page, int size) {
         PageResult<ReleaseWindow> result = releaseWindowPort.findPaged(name, page, size);
         List<ReleaseWindowView> views = result.items().stream()
-                .map(ReleaseWindowView::from)
-                .toList();
+                                              .map(ReleaseWindowView::from)
+                                              .toList();
         return new PageResult<>(views, result.total());
     }
 
     @Transactional
     public ReleaseWindowView publish(String id) {
         ReleaseWindow rw = findById(id);
-        
+
         // 验证关联迭代
         List<WindowIteration> iterations = windowIterationPort.listByWindow(ReleaseWindowId.of(id));
         if (iterations.isEmpty()) {
             throw BusinessException.rwNoIterations(id);
         }
-        
+
         rw.publish(Instant.now(clock));
         releaseWindowPort.save(rw);
-        
+
         // 创建发布运行任务并异步执行
         try {
             Run run = releaseRunService.createReleaseRun(id, rw.getWindowKey(), "system"); // TODO: 获取当前用户
@@ -93,8 +107,13 @@ public class ReleaseWindowAppService {
             log.error("Failed to create release run for window {}: {}", id, e.getMessage());
             // 发布成功但运行任务创建失败时，不回滚发布状态
         }
-        
+
         return ReleaseWindowView.from(rw);
+    }
+
+    private ReleaseWindow findById(String id) {
+        return releaseWindowPort.findById(ReleaseWindowId.of(id))
+                                .orElseThrow(() -> NotFoundException.releaseWindow(id));
     }
 
     @Transactional
@@ -119,10 +138,5 @@ public class ReleaseWindowAppService {
         rw.close(Instant.now(clock));
         releaseWindowPort.save(rw);
         return ReleaseWindowView.from(rw);
-    }
-
-    private ReleaseWindow findById(String id) {
-         return releaseWindowPort.findById(ReleaseWindowId.of(id))
-                .orElseThrow(() -> NotFoundException.releaseWindow(id));
     }
 }

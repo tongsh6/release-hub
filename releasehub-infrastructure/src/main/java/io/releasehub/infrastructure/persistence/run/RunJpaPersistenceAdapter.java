@@ -56,24 +56,6 @@ public class RunJpaPersistenceAdapter implements RunPort {
         String normalizedIterationKey = normalize(iterationKey);
         String normalizedStatus = normalize(status);
 
-        if (normalizedStatus != null) {
-            List<Run> filtered = repository.findAllByFilters(
-                                                   normalizedRunType,
-                                                   normalizedOperator,
-                                                   normalizedWindowKey,
-                                                   normalizedRepoId,
-                                                   normalizedIterationKey)
-                                           .stream()
-                                           .map(this::toDomain)
-                                           .filter(run -> determineStatus(run).equalsIgnoreCase(normalizedStatus))
-                                           .collect(Collectors.toList());
-            int pageIndex = Math.max(page - 1, 0);
-            int from = Math.min(pageIndex * size, filtered.size());
-            int to = Math.min(from + size, filtered.size());
-            List<Run> slice = filtered.subList(from, to);
-            return new PageResult<>(slice, filtered.size());
-        }
-
         int pageIndex = Math.max(page - 1, 0);
         PageRequest pageable = PageRequest.of(pageIndex, size);
         Page<RunJpaEntity> result = repository.findPagedByFilters(
@@ -82,6 +64,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 normalizedWindowKey,
                 normalizedRepoId,
                 normalizedIterationKey,
+                normalizedStatus,
                 pageable
         );
         List<Run> items = result.getContent().stream()
@@ -94,26 +77,6 @@ public class RunJpaPersistenceAdapter implements RunPort {
         if (value == null) return null;
         String trimmed = value.trim();
         return trimmed.isBlank() ? null : trimmed;
-    }
-
-    private String determineStatus(Run run) {
-        if (run.getItems().isEmpty()) {
-            return run.getFinishedAt() != null ? "COMPLETED" : "RUNNING";
-        }
-        boolean hasFailed = run.getItems().stream()
-                               .anyMatch(item -> item.getFinalResult() != null &&
-                                       (item.getFinalResult().name().contains("FAILED") ||
-                                               item.getFinalResult().name().equals("MERGE_BLOCKED")));
-        if (hasFailed) {
-            return "FAILED";
-        }
-        boolean allSuccess = run.getItems().stream()
-                                .allMatch(item -> item.getFinalResult() != null &&
-                                        item.getFinalResult().name().contains("SUCCESS"));
-        if (allSuccess) {
-            return "SUCCESS";
-        }
-        return run.getFinishedAt() != null ? "COMPLETED" : "RUNNING";
     }
 
     private Run toDomain(RunJpaEntity entity) {

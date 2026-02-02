@@ -41,19 +41,27 @@ public class NotFoundException extends BaseException {
         return of(ErrorCode.ITERATION_NOT_FOUND, key);
     }
 
-    public static NotFoundException versionPolicy(Object id) {
-        return of(ErrorCode.VERSION_POLICY_NOT_FOUND, id);
+    public static NotFoundException iterationRepo(Object iterationKey, Object repoId) {
+        return of(ErrorCode.ITERATION_REPO_NOT_FOUND, iterationKey, repoId);
     }
 
-    public static NotFoundException project(Object id) {
-        return of(ErrorCode.PROJECT_NOT_FOUND, id);
+    public static NotFoundException versionPolicy(Object id) {
+        return of(ErrorCode.VERSION_POLICY_NOT_FOUND, id);
     }
 
     public static NotFoundException run(Object id) {
         return of(ErrorCode.RUN_NOT_FOUND, id);
     }
 
+    public static NotFoundException runTask(Object id) {
+        return of(ErrorCode.RUN_TASK_NOT_FOUND, id);
+    }
+
     public static NotFoundException branchRule(Object id) {
         return of(ErrorCode.BRANCH_RULE_NOT_FOUND, id);
+    }
+
+    public static NotFoundException gitlabProject(Object cloneUrl) {
+        return of(ErrorCode.GITLAB_PROJECT_NOT_FOUND, cloneUrl);
     }
 }

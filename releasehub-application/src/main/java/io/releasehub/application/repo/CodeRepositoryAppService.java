@@ -1,10 +1,13 @@
 package io.releasehub.application.repo;
 
 import io.releasehub.application.gitlab.GitLabPort;
+import io.releasehub.application.group.GroupPort;
+import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.settings.SettingsPort;
 import io.releasehub.application.version.VersionExtractor;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
@@ -26,12 +29,15 @@ public class CodeRepositoryAppService {
     private final VersionExtractor versionExtractor;
     private final SettingsPort settingsPort;
     private final GitLabPort gitLabPort;
+    private final IterationPort iterationPort;
+    private final GroupPort groupPort;
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
-    public CodeRepository create(String name, String cloneUrl, String defaultBranch, boolean monoRepo, String initialVersion) {
-        String normalizedBranch = normalizeBranch(defaultBranch);
-        CodeRepository repo = CodeRepository.create(name, cloneUrl, normalizedBranch, monoRepo, Instant.now(clock));
+    public CodeRepository create(String name, String cloneUrl, String defaultBranch, boolean monoRepo, String initialVersion, String groupCode) {
+        String normalizedBranch = normalizeBranch(cloneUrl, defaultBranch);
+        ensureLeafGroup(groupCode);
+        CodeRepository repo = CodeRepository.create(name, cloneUrl, normalizedBranch, groupCode, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
 
         if (initialVersion != null && !initialVersion.isBlank()) {
@@ -52,24 +58,39 @@ public class CodeRepositoryAppService {
                                 });
             } catch (Exception e) {
                 log.warn("Failed to extract initial version for repo {}: {}", name, e.getMessage());
+                codeRepositoryPort.updateInitialVersion(repo.getId().value(), null, "VERSION_UNRESOLVED");
             }
         }
 
         return repo;
     }
 
-    private String normalizeBranch(String branch) {
-        if (branch == null || branch.isBlank()) {
-            return "main";
+    private String normalizeBranch(String cloneUrl, String branch) {
+        if (branch != null && !branch.isBlank()) {
+            return branch.trim();
         }
-        return branch.trim();
+        try {
+            if (settingsPort.getGitLab().isPresent()) {
+                long projectId = gitLabPort.resolveProjectId(cloneUrl);
+                if (gitLabPort.branchExists(projectId, "main")) {
+                    return "main";
+                }
+                if (gitLabPort.branchExists(projectId, "master")) {
+                    return "master";
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to resolve default branch for repo {}: {}", cloneUrl, e.getMessage());
+        }
+        return "main";
     }
 
     @Transactional
-    public CodeRepository update(String repoId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, String initialVersion) {
+    public CodeRepository update(String repoId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, String initialVersion, String groupCode) {
         CodeRepository repo = get(repoId);
-        String normalizedBranch = normalizeBranch(defaultBranch);
-        repo.update(name, cloneUrl, normalizedBranch, monoRepo, Instant.now(clock));
+        String normalizedBranch = normalizeBranch(cloneUrl, defaultBranch);
+        ensureLeafGroup(groupCode);
+        repo.update(name, cloneUrl, normalizedBranch, groupCode, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
         if (initialVersion != null && !initialVersion.isBlank()) {
             codeRepositoryPort.updateInitialVersion(repoId, initialVersion.trim(), VersionSource.MANUAL.name());
@@ -83,9 +104,25 @@ public class CodeRepositoryAppService {
                                  .orElseThrow(() -> NotFoundException.repository(repoId));
     }
 
+    private void ensureLeafGroup(String groupCode) {
+        if (groupCode == null || groupCode.isBlank()) {
+            throw ValidationException.groupCodeRequired();
+        }
+        groupPort.findByCode(groupCode)
+                .orElseThrow(() -> NotFoundException.groupCode(groupCode));
+        if (groupPort.countChildren(groupCode) > 0) {
+            throw BusinessException.groupHasChildren(groupCode);
+        }
+    }
+
     @Transactional
     public void delete(String repoId) {
         CodeRepository repo = get(repoId);
+        boolean attached = iterationPort.findAll().stream()
+                .anyMatch(it -> it.getRepos().stream().anyMatch(r -> r.value().equals(repoId)));
+        if (attached) {
+            throw BusinessException.repoAttached(repoId);
+        }
         codeRepositoryPort.deleteById(repo.getId());
     }
 

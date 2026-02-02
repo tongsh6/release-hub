@@ -30,4 +30,8 @@ public class AuthenticationException extends BaseException {
     public static AuthenticationException tokenInvalid() {
         return of(ErrorCode.AUTH_TOKEN_INVALID);
     }
+
+    public static AuthenticationException required() {
+        return of(ErrorCode.AUTH_REQUIRED);
+    }
 }

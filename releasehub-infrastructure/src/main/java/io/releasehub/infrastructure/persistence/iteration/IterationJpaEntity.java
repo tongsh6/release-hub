@@ -25,6 +25,9 @@ public class IterationJpaEntity {
     
     @Column(length = 500)
     private String name;
+
+    @Column(name = "group_code")
+    private String groupCode;
     
     @Column(columnDefinition = "TEXT")
     private String description;

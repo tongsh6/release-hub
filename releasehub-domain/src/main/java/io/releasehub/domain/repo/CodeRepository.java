@@ -15,6 +15,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
     private String cloneUrl;
     private boolean monoRepo;
     private String defaultBranch;
+    private String groupCode;
     private int branchCount;
     private int activeBranchCount;
     private int nonCompliantBranchCount;
@@ -24,11 +25,12 @@ public class CodeRepository extends BaseEntity<RepoId> {
     private int closedMrCount;
     private Instant lastSyncAt;
 
-    public CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt) {
+    public CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt) {
         super(id, createdAt, updatedAt, 0L);
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
+        this.groupCode = groupCode;
         this.monoRepo = monoRepo;
         this.branchCount = branchCount;
         this.activeBranchCount = activeBranchCount;
@@ -40,11 +42,12 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.lastSyncAt = lastSyncAt;
     }
 
-    private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
+    private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
         super(id, createdAt, updatedAt, version);
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
+        this.groupCode = groupCode;
         this.monoRepo = monoRepo;
         this.branchCount = branchCount;
         this.activeBranchCount = activeBranchCount;
@@ -56,19 +59,21 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.lastSyncAt = lastSyncAt;
     }
 
-    public static CodeRepository rehydrate(RepoId id, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
-        return new CodeRepository(id, name, cloneUrl, defaultBranch, monoRepo, branchCount, activeBranchCount, nonCompliantBranchCount, mrCount, openMrCount, mergedMrCount, closedMrCount, lastSyncAt, createdAt, updatedAt, version);
+    public static CodeRepository rehydrate(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
+        return new CodeRepository(id, name, cloneUrl, defaultBranch, groupCode, monoRepo, branchCount, activeBranchCount, nonCompliantBranchCount, mrCount, openMrCount, mergedMrCount, closedMrCount, lastSyncAt, createdAt, updatedAt, version);
     }
 
-    private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
+    private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, boolean monoRepo, Instant now) {
         super(id, now);
         validateName(name);
         validateUrl(cloneUrl);
         validateBranch(defaultBranch);
+        validateGroupCode(groupCode);
 
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
+        this.groupCode = groupCode;
         this.monoRepo = monoRepo;
         this.branchCount = 0;
         this.activeBranchCount = 0;
@@ -107,8 +112,17 @@ public class CodeRepository extends BaseEntity<RepoId> {
         }
     }
 
-    public static CodeRepository create(String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
-        return new CodeRepository(RepoId.newId(), name, cloneUrl, defaultBranch, monoRepo, now);
+    private void validateGroupCode(String groupCode) {
+        if (groupCode == null || groupCode.isBlank()) {
+            throw ValidationException.groupCodeRequired();
+        }
+        if (groupCode.length() > 64) {
+            throw ValidationException.groupCodeTooLong(64);
+        }
+    }
+
+    public static CodeRepository create(String name, String cloneUrl, String defaultBranch, String groupCode, boolean monoRepo, Instant now) {
+        return new CodeRepository(RepoId.newId(), name, cloneUrl, defaultBranch, groupCode, monoRepo, now);
     }
 
     public void changeDefaultBranch(String branch, Instant now) {
@@ -129,13 +143,15 @@ public class CodeRepository extends BaseEntity<RepoId> {
         touch(now);
     }
 
-    public void update(String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
+    public void update(String name, String cloneUrl, String defaultBranch, String groupCode, boolean monoRepo, Instant now) {
         validateName(name);
         validateUrl(cloneUrl);
         validateBranch(defaultBranch);
+        validateGroupCode(groupCode);
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
+        this.groupCode = groupCode;
         this.monoRepo = monoRepo;
         touch(now);
     }

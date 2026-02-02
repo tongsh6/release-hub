@@ -1,7 +1,6 @@
 package io.releasehub.interfaces.rest;
 
 import io.releasehub.common.exception.BaseException;
-import io.releasehub.common.exception.BizException;
 import io.releasehub.common.exception.ErrorCode;
 import io.releasehub.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
@@ -42,19 +41,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.valueOf(ex.getHttpStatus()))
                 .body(ApiResponse.error(ex.getCode(), message));
-    }
-
-    /**
-     * 兼容旧的 BizException（过渡期保留）
-     */
-    @ExceptionHandler(BizException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBizException(BizException ex) {
-        log.warn("Legacy BizException: code={}, message={}", ex.getCode(), ex.getMessage());
-
-        HttpStatus status = determineHttpStatus(ex.getCode());
-        return ResponseEntity
-                .status(status)
-                .body(ApiResponse.error(ex.getCode(), ex.getMessage()));
     }
 
     /**
@@ -114,15 +100,4 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(ErrorCode.INTERNAL_ERROR.getCode(), message);
     }
 
-    /**
-     * 根据旧错误码确定 HTTP 状态码（兼容期）
-     */
-    private HttpStatus determineHttpStatus(String code) {
-        if (code == null) return HttpStatus.INTERNAL_SERVER_ERROR;
-        if (code.contains("NOT_FOUND")) return HttpStatus.NOT_FOUND;
-        if (code.contains("AUTH") || code.equals("AUTH_FAILED")) return HttpStatus.UNAUTHORIZED;
-        if (code.contains("FORBIDDEN") || code.contains("DISABLED")) return HttpStatus.FORBIDDEN;
-        if (code.contains("EXISTS") || code.contains("CONFLICT")) return HttpStatus.CONFLICT;
-        return HttpStatus.BAD_REQUEST;
-    }
 }

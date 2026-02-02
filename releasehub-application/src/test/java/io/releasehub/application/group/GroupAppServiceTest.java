@@ -1,5 +1,8 @@
 package io.releasehub.application.group;
 
+import io.releasehub.application.iteration.IterationPort;
+import io.releasehub.application.releasewindow.ReleaseWindowPort;
+import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.group.Group;
 import org.junit.jupiter.api.Disabled;
@@ -22,7 +25,7 @@ class GroupAppServiceTest {
     @Test
     void childrenAndTopLevelAndTree_ShouldWork() {
         InMemoryPort port = new InMemoryPort();
-        GroupAppService svc = new GroupAppService(port);
+        GroupAppService svc = new GroupAppService(port, new EmptyReleaseWindowPort(), new EmptyIterationPort(), new EmptyRepoPort());
         Instant now = Instant.now();
 
         Group a = Group.create("A", "A", null, now);
@@ -125,6 +128,91 @@ class GroupAppServiceTest {
             long cnt = 0;
             for (Group g : byId.values()) if (Objects.equals(parentCode, g.getParentCode())) cnt++;
             return cnt;
+        }
+    }
+
+    static class EmptyReleaseWindowPort implements ReleaseWindowPort {
+        @Override
+        public void save(io.releasehub.domain.releasewindow.ReleaseWindow releaseWindow) {
+        }
+
+        @Override
+        public Optional<io.releasehub.domain.releasewindow.ReleaseWindow> findById(io.releasehub.domain.releasewindow.ReleaseWindowId id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<io.releasehub.domain.releasewindow.ReleaseWindow> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public PageResult<io.releasehub.domain.releasewindow.ReleaseWindow> findPaged(String name, int page, int size) {
+            return new PageResult<>(List.of(), 0);
+        }
+    }
+
+    static class EmptyIterationPort implements IterationPort {
+        @Override
+        public void save(io.releasehub.domain.iteration.Iteration iteration) {
+        }
+
+        @Override
+        public Optional<io.releasehub.domain.iteration.Iteration> findByKey(io.releasehub.domain.iteration.IterationKey key) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<io.releasehub.domain.iteration.Iteration> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public PageResult<io.releasehub.domain.iteration.Iteration> findPaged(String keyword, int page, int size) {
+            return new PageResult<>(List.of(), 0);
+        }
+
+        @Override
+        public void deleteByKey(io.releasehub.domain.iteration.IterationKey key) {
+        }
+    }
+
+    static class EmptyRepoPort implements CodeRepositoryPort {
+        @Override
+        public void save(io.releasehub.domain.repo.CodeRepository domain) {
+        }
+
+        @Override
+        public Optional<io.releasehub.domain.repo.CodeRepository> findById(io.releasehub.domain.repo.RepoId id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<io.releasehub.domain.repo.CodeRepository> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public void deleteById(io.releasehub.domain.repo.RepoId id) {
+        }
+
+        @Override
+        public List<io.releasehub.domain.repo.CodeRepository> search(String keyword) {
+            return List.of();
+        }
+
+        @Override
+        public PageResult<io.releasehub.domain.repo.CodeRepository> searchPaged(String keyword, int page, int size) {
+            return new PageResult<>(List.of(), 0);
+        }
+
+        @Override
+        public void updateInitialVersion(String repoId, String initialVersion, String versionSource) {
+        }
+
+        @Override
+        public Optional<String> getInitialVersion(String repoId) {
+            return Optional.empty();
         }
     }
 }

@@ -1,5 +1,7 @@
 package io.releasehub.application.iteration;
 
+import io.releasehub.application.branchrule.BranchRuleAppService;
+import io.releasehub.application.group.GroupPort;
 import io.releasehub.application.port.out.GitLabBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
@@ -8,6 +10,7 @@ import io.releasehub.application.version.VersionExtractor;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
@@ -43,16 +46,19 @@ public class IterationAppService {
     private final CodeRepositoryPort codeRepositoryPort;
     private final IterationRepoPort iterationRepoPort;
     private final GitLabBranchPort gitLabBranchPort;
+    private final BranchRuleAppService branchRuleAppService;
     private final VersionDeriver versionDeriver;
     private final VersionExtractor versionExtractor;
+    private final GroupPort groupPort;
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
-    public Iteration create(String name, String description, LocalDate expectedReleaseAt, Set<String> repoIds) {
+    public Iteration create(String name, String description, LocalDate expectedReleaseAt, String groupCode, Set<String> repoIds) {
         String iterationKey = generateIterationKey();
         Set<String> safeRepoIds = repoIds == null ? java.util.Set.of() : repoIds;
         Set<RepoId> repos = safeRepoIds.stream().map(RepoId::new).collect(java.util.stream.Collectors.toSet());
-        Iteration it = Iteration.create(IterationKey.of(iterationKey), name, description, expectedReleaseAt, repos, Instant.now(clock));
+        ensureLeafGroup(groupCode);
+        Iteration it = Iteration.create(IterationKey.of(iterationKey), name, description, expectedReleaseAt, groupCode, repos, Instant.now(clock));
         iterationPort.save(it);
         return it;
     }
@@ -76,12 +82,13 @@ public class IterationAppService {
     }
 
     @Transactional
-    public Iteration update(String key, String name, String description, LocalDate expectedReleaseAt, Set<String> repoIds) {
+    public Iteration update(String key, String name, String description, LocalDate expectedReleaseAt, String groupCode, Set<String> repoIds) {
         Iteration existing = get(key);
         Set<String> safeRepoIds = repoIds == null ? java.util.Set.of() : repoIds;
         Set<RepoId> repos = safeRepoIds.stream().map(RepoId::new).collect(java.util.stream.Collectors.toSet());
         Instant now = Instant.now(clock);
-        Iteration updated = Iteration.rehydrate(existing.getId(), name, description, expectedReleaseAt, repos, existing.getCreatedAt(), now);
+        ensureLeafGroup(groupCode);
+        Iteration updated = Iteration.rehydrate(existing.getId(), name, description, expectedReleaseAt, groupCode, repos, existing.getCreatedAt(), now);
         iterationPort.save(updated);
         return updated;
     }
@@ -111,7 +118,7 @@ public class IterationAppService {
         }
 
         merged.addAll(toAdd);
-        Iteration updated = Iteration.rehydrate(existing.getId(), existing.getName(), existing.getDescription(), existing.getExpectedReleaseAt(), merged, existing.getCreatedAt(), now);
+        Iteration updated = Iteration.rehydrate(existing.getId(), existing.getName(), existing.getDescription(), existing.getExpectedReleaseAt(), existing.getGroupCode(), merged, existing.getCreatedAt(), now);
         iterationPort.save(updated);
         return updated;
     }
@@ -132,7 +139,10 @@ public class IterationAppService {
 
         // 3. 创建 feature 分支
         String featureBranch = "feature/" + iterationKey.value();
-        boolean branchCreated = gitLabBranchPort.createBranch(repoId.value(), featureBranch, masterBranch);
+        if (!branchRuleAppService.isCompliant(featureBranch)) {
+            throw ValidationException.invalidParameter("branchName");
+        }
+        boolean branchCreated = gitLabBranchPort.createBranch(repo.getCloneUrl(), featureBranch, masterBranch);
         if (!branchCreated) {
             log.warn("Failed to create feature branch {} for repo {}", featureBranch, repoId.value());
         }
@@ -164,8 +174,25 @@ public class IterationAppService {
         java.util.Set<RepoId> filtered = existing.getRepos().stream()
                                                  .filter(r -> !toRemove.contains(r.value()))
                                                  .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        for (RepoId repoId : existing.getRepos()) {
+            if (toRemove.contains(repoId.value())) {
+                try {
+                    String featureBranch = iterationRepoPort.getVersionInfo(existing.getId().value(), repoId.value())
+                            .map(IterationRepoVersionInfo::getFeatureBranch)
+                            .orElse("feature/" + existing.getId().value());
+                    codeRepositoryPort.findById(repoId).ifPresent(repo -> {
+                        boolean archived = gitLabBranchPort.archiveBranch(repo.getCloneUrl(), featureBranch, "unpublished");
+                        if (!archived) {
+                            log.warn("Failed to archive branch {} for repo {}", featureBranch, repoId.value());
+                        }
+                    });
+                } catch (Exception e) {
+                    log.error("Failed to archive branch for repo {}: {}", repoId.value(), e.getMessage());
+                }
+            }
+        }
         Instant now = Instant.now(clock);
-        Iteration updated = Iteration.rehydrate(existing.getId(), existing.getName(), existing.getDescription(), existing.getExpectedReleaseAt(), filtered, existing.getCreatedAt(), now);
+        Iteration updated = Iteration.rehydrate(existing.getId(), existing.getName(), existing.getDescription(), existing.getExpectedReleaseAt(), existing.getGroupCode(), filtered, existing.getCreatedAt(), now);
         iterationPort.save(updated);
         return updated;
     }
@@ -178,6 +205,9 @@ public class IterationAppService {
     @Transactional
     public void delete(String key) {
         Iteration existing = get(key);
+        if (!existing.getRepos().isEmpty()) {
+            throw BusinessException.iterationAttached(key);
+        }
         List<ReleaseWindow> windows = releaseWindowPort.findAll();
         boolean attached = windows.stream()
                                   .map(w -> windowIterationPort.listByWindow(ReleaseWindowId.of(w.getId().value())))
@@ -228,8 +258,7 @@ public class IterationAppService {
      */
     public IterationRepoVersionInfo getIterationRepoVersionInfo(IterationKey iterationKey, RepoId repoId) {
         return iterationRepoPort.getVersionInfo(iterationKey.value(), repoId.value())
-                                .orElseThrow(() -> new IllegalArgumentException(
-                                        "Iteration repo not found: " + iterationKey.value() + "/" + repoId.value()));
+                                .orElseThrow(() -> NotFoundException.iterationRepo(iterationKey.value(), repoId.value()));
     }
 
     /**
@@ -296,5 +325,16 @@ public class IterationAppService {
                 repoId.value(), iterationKey.value(), versionInfo.getDevVersion(), repoVersion);
 
         return getIterationRepoVersionInfo(iterationKey, repoId);
+    }
+
+    private void ensureLeafGroup(String groupCode) {
+        if (groupCode == null || groupCode.isBlank()) {
+            throw ValidationException.groupCodeRequired();
+        }
+        groupPort.findByCode(groupCode)
+                .orElseThrow(() -> NotFoundException.groupCode(groupCode));
+        if (groupPort.countChildren(groupCode) > 0) {
+            throw BusinessException.groupHasChildren(groupCode);
+        }
     }
 }

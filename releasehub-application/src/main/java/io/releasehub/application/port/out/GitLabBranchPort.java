@@ -40,7 +40,7 @@ public interface GitLabBranchPort {
      * @param branchName 分支名
      * @return 是否成功
      */
-    boolean archiveBranch(String repoCloneUrl, String branchName);
+    boolean archiveBranch(String repoCloneUrl, String branchName, String reason);
     
     /**
      * 创建标签

@@ -30,6 +30,7 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
         IterationJpaEntity entity = new IterationJpaEntity(
                 iteration.getId().value(),
                 iteration.getName(),
+                iteration.getGroupCode(),
                 iteration.getDescription(),
                 iteration.getExpectedReleaseAt(),
                 iteration.getCreatedAt(),
@@ -57,7 +58,7 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
                 .map(e -> {
                     List<IterationRepoJpaEntity> repos = iterationRepoRepository.findByIdIterationKey(e.getKey());
                     Set<RepoId> repoIds = repos.stream().map(r -> RepoId.of(r.getId().getRepoId())).collect(Collectors.toCollection(HashSet::new));
-                    return Iteration.rehydrate(IterationKey.of(e.getKey()), e.getName(), e.getDescription(), e.getExpectedReleaseAt(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
+                    return Iteration.rehydrate(IterationKey.of(e.getKey()), e.getName(), e.getDescription(), e.getExpectedReleaseAt(), e.getGroupCode(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
                 });
     }
 
@@ -101,6 +102,7 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
                 entity.getName(),
                 entity.getDescription(),
                 entity.getExpectedReleaseAt(),
+                entity.getGroupCode(),
                 repoIds,
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()

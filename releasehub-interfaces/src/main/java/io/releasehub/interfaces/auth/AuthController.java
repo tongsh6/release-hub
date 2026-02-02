@@ -3,6 +3,7 @@ package io.releasehub.interfaces.auth;
 import io.releasehub.application.auth.AuthAppService;
 import io.releasehub.application.auth.TokenInfo;
 import io.releasehub.application.user.UserPort;
+import io.releasehub.common.exception.AuthenticationException;
 import io.releasehub.common.response.ApiResponse;
 import io.releasehub.domain.user.User;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,28 +38,23 @@ public class AuthController {
     @PostMapping("/auth/login")
     @Operation(summary = "Login")
     public ApiResponse<TokenInfo> login(@Valid @RequestBody LoginRequest request) {
-        try {
-            TokenInfo tokenInfo = authAppService.login(
-                    request.getUsername(),
-                    request.getPassword(),
-                    request.isRememberMe()
-            );
-            return ApiResponse.success(tokenInfo);
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            e.printStackTrace();
-            return ApiResponse.error("AUTH_FAILED", "Authentication failed");
-        }
+        TokenInfo tokenInfo = authAppService.login(
+                request.getUsername(),
+                request.getPassword(),
+                request.isRememberMe()
+        );
+        return ApiResponse.success(tokenInfo);
     }
 
     @GetMapping("/me")
     @Operation(summary = "Get current user info")
     public ApiResponse<UserResponse> me(@AuthenticationPrincipal UserDetails userDetails) {
         if (userDetails == null) {
-            return ApiResponse.error("AUTH_REQUIRED", "Authentication required");
+            throw AuthenticationException.required();
         }
 
         User user = userPort.findByUsername(userDetails.getUsername())
-                            .orElseThrow(() -> new IllegalStateException("User not found"));
+                            .orElseThrow(AuthenticationException::failed);
 
         UserResponse response = new UserResponse(
                 user.getId(),

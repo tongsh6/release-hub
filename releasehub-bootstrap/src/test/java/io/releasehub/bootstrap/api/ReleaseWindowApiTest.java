@@ -32,9 +32,11 @@ class ReleaseWindowApiTest {
     @Test
     void shouldCreateGetAndListReleaseWindow() throws Exception {
         String token = loginAndGetToken();
+        String groupCode = createGroupAndGetCode(token);
 
         CreateReleaseWindowRequest createRequest = new CreateReleaseWindowRequest();
         createRequest.setName("UT-RW-01");
+        createRequest.setGroupCode(groupCode);
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/release-windows")
                                                 .header("Authorization", "Bearer " + token)
@@ -72,5 +74,17 @@ class ReleaseWindowApiTest {
                                   .andReturn();
         String response = result.getResponse().getContentAsString();
         return objectMapper.readTree(response).get("data").get("token").asText();
+    }
+
+    private String createGroupAndGetCode(String token) throws Exception {
+        String code = "G" + System.currentTimeMillis();
+        String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
+        mockMvc.perform(post("/api/v1/groups")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists());
+        return code;
     }
 }

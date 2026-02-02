@@ -30,8 +30,9 @@ class WindowIterationApiTest {
     @Test
     void shouldListAttachAndDetachIterations() throws Exception {
         String token = loginAndGetToken();
+        String groupCode = createGroupAndGetCode(token);
 
-        String createWindow = "{\"name\":\"RW-ITER\"}";
+        String createWindow = "{\"name\":\"RW-ITER\",\"groupCode\":\"" + groupCode + "\"}";
         MvcResult rwCreate = mockMvc.perform(post("/api/v1/release-windows")
                                             .header("Authorization", "Bearer " + token)
                                             .contentType(MediaType.APPLICATION_JSON)
@@ -44,7 +45,7 @@ class WindowIterationApiTest {
         var itAResult = mockMvc.perform(post("/api/v1/iterations")
                        .header("Authorization", "Bearer " + token)
                        .contentType(MediaType.APPLICATION_JSON)
-                       .content("{\"name\":\"IT-A\",\"description\":\"d\",\"repoIds\":[\"repo-1\"]}"))
+                       .content("{\"name\":\"IT-A\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"repo-1\"]}"))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.data.key").exists())
                .andReturn();
@@ -52,7 +53,7 @@ class WindowIterationApiTest {
         var itBResult = mockMvc.perform(post("/api/v1/iterations")
                        .header("Authorization", "Bearer " + token)
                        .contentType(MediaType.APPLICATION_JSON)
-                       .content("{\"name\":\"IT-B\",\"description\":\"d\",\"repoIds\":[\"repo-2\"]}"))
+                       .content("{\"name\":\"IT-B\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"repo-2\"]}"))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.data.key").exists())
                .andReturn();
@@ -85,6 +86,18 @@ class WindowIterationApiTest {
                        .header("Authorization", "Bearer " + token))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.data").isArray());
+    }
+
+    private String createGroupAndGetCode(String token) throws Exception {
+        String code = "G" + System.currentTimeMillis();
+        String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
+        mockMvc.perform(post("/api/v1/groups")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists());
+        return code;
     }
 
     private String loginAndGetToken() throws Exception {

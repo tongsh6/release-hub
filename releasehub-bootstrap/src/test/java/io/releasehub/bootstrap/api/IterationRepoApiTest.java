@@ -41,10 +41,11 @@ class IterationRepoApiTest {
     @Test
     void shouldAddRemoveAndListReposForIteration() throws Exception {
         String token = loginAndGetToken();
+        String groupCode = createGroupAndGetCode(token);
         var createResult = mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"description\":\"d\"}"))
+                .content("{\"description\":\"d\",\"groupCode\":\"" + groupCode + "\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.key").exists())
             .andReturn();
@@ -74,5 +75,17 @@ class IterationRepoApiTest {
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.length()").value(1));
+    }
+
+    private String createGroupAndGetCode(String token) throws Exception {
+        String code = "G" + System.currentTimeMillis();
+        String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
+        mockMvc.perform(post("/api/v1/groups")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists());
+        return code;
     }
 }

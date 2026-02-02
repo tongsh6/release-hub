@@ -33,7 +33,7 @@ public class ReleaseWindowController {
     @PostMapping
     @Operation(summary = "Create release window")
     public ApiResponse<ReleaseWindowView> create(@Valid @RequestBody CreateReleaseWindowRequest request) {
-        ReleaseWindowView view = appService.create(request.getName(), request.getDescription(), request.getPlannedReleaseAt());
+        ReleaseWindowView view = appService.create(request.getName(), request.getDescription(), request.getPlannedReleaseAt(), request.getGroupCode());
         return ApiResponse.success(view);
     }
 

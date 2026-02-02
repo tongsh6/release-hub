@@ -3,6 +3,7 @@ package io.releasehub.application.release.executors;
 import io.releasehub.application.port.out.GitLabBranchPort;
 import io.releasehub.application.release.AbstractRunTaskExecutor;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.RunTask;
@@ -33,12 +34,12 @@ public class ArchiveFeatureBranchExecutor extends AbstractRunTaskExecutor {
         log.info("Archiving feature branch for repo: {}", repoId);
         
         CodeRepository repo = codeRepositoryPort.findById(RepoId.of(repoId))
-                .orElseThrow(() -> new RuntimeException("Repository not found: " + repoId));
+                .orElseThrow(() -> NotFoundException.repository(repoId));
         
         // TODO: 获取 feature 分支名
         String featureBranch = "feature/ITER-xxx"; // 需要从上下文获取
         
-        boolean success = gitLabBranchPort.archiveBranch(repo.getCloneUrl(), featureBranch);
+        boolean success = gitLabBranchPort.archiveBranch(repo.getCloneUrl(), featureBranch, "released");
         if (!success) {
             log.warn("Failed to archive branch {} (may not exist)", featureBranch);
         }

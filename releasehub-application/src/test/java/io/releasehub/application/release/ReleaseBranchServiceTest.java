@@ -27,8 +27,13 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ReleaseBranchService 测试")
@@ -107,6 +112,7 @@ class ReleaseBranchServiceTest {
                     IterationKey.of(ITERATION_KEY),
                     "测试迭代",
                     null, null,
+                    "G001",
                     repos,
                     Instant.now(), Instant.now()
             );
@@ -119,6 +125,7 @@ class ReleaseBranchServiceTest {
                     "测试仓库",
                     cloneUrl,
                     "master",
+                    "G001",
                     false,
                     0, 0, 0, 0, 0, 0, 0,  // branch/mr counts
                     now, now, now, 0L

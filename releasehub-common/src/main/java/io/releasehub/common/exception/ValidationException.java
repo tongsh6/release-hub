@@ -111,20 +111,6 @@ public class ValidationException extends BaseException {
         return of(ErrorCode.VERSION_CURRENT_REQUIRED);
     }
 
-    // ========== Project ==========
-
-    public static ValidationException projectNameRequired() {
-        return of(ErrorCode.PROJECT_NAME_REQUIRED);
-    }
-
-    public static ValidationException projectNameTooLong(int maxLength) {
-        return of(ErrorCode.PROJECT_NAME_TOO_LONG, maxLength);
-    }
-
-    public static ValidationException projectDescTooLong(int maxLength) {
-        return of(ErrorCode.PROJECT_DESC_TOO_LONG, maxLength);
-    }
-
     // ========== BranchRule ==========
 
     public static ValidationException brNameRequired() {

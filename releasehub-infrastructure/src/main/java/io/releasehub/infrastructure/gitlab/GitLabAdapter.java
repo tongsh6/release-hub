@@ -2,6 +2,9 @@ package io.releasehub.infrastructure.gitlab;
 
 import io.releasehub.application.gitlab.GitLabPort;
 import io.releasehub.application.settings.SettingsPort;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.exception.ValidationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
@@ -32,7 +35,7 @@ public class GitLabAdapter implements GitLabPort {
     public long resolveProjectId(String repoCloneUrl) {
         var settings = settingsPort.getGitLab();
         if (settings.isEmpty()) {
-            throw new IllegalStateException("GitLab settings not configured");
+            throw BusinessException.gitlabSettingsMissing();
         }
         String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
         String token = settings.get().tokenMasked();
@@ -54,7 +57,7 @@ public class GitLabAdapter implements GitLabPort {
         );
         Map<String, Object> body = response.getBody();
         if (body == null || body.get("id") == null) {
-            throw new IllegalStateException("GitLab project not found by cloneUrl");
+            throw NotFoundException.gitlabProject(repoCloneUrl);
         }
         Object id = body.get("id");
         if (id instanceof Number n) {
@@ -249,7 +252,7 @@ public class GitLabAdapter implements GitLabPort {
 
     private String extractProjectPath(String cloneUrl) {
         if (cloneUrl == null || cloneUrl.isBlank()) {
-            throw new IllegalArgumentException("cloneUrl is blank");
+            throw ValidationException.invalidParameter("cloneUrl");
         }
 
         Matcher sshMatch = Pattern.compile("^git@([^:]+):(.+?)(\\.git)?$").matcher(cloneUrl.trim());
@@ -260,6 +263,6 @@ public class GitLabAdapter implements GitLabPort {
         if (httpsMatch.find()) {
             return httpsMatch.group(2);
         }
-        throw new IllegalArgumentException("Unsupported cloneUrl format");
+        throw ValidationException.invalidParameter("cloneUrl");
     }
 }

@@ -42,7 +42,7 @@ public class IterationController {
     @PostMapping
     @Operation(summary = "Create iteration")
     public ApiResponse<IterationView> create(@RequestBody CreateIterationRequest request) {
-        var it = iterationAppService.create(request.getName(), request.getDescription(), request.getExpectedReleaseAt(), request.getRepoIds());
+        var it = iterationAppService.create(request.getName(), request.getDescription(), request.getExpectedReleaseAt(), request.getGroupCode(), request.getRepoIds());
         return ApiResponse.success(IterationView.fromDomain(it));
     }
 
@@ -73,7 +73,7 @@ public class IterationController {
     @PutMapping("/{key}")
     @Operation(summary = "Update iteration")
     public ApiResponse<IterationView> update(@PathVariable("key") String key, @RequestBody UpdateIterationRequest request) {
-        var it = iterationAppService.update(key, request.getName(), request.getDescription(), request.getExpectedReleaseAt(), request.getRepoIds());
+        var it = iterationAppService.update(key, request.getName(), request.getDescription(), request.getExpectedReleaseAt(), request.getGroupCode(), request.getRepoIds());
         return ApiResponse.success(IterationView.fromDomain(it));
     }
 
@@ -153,6 +153,8 @@ public class IterationController {
         private String name;
         private String description;
         private LocalDate expectedReleaseAt;
+        @NotBlank
+        private String groupCode;
         private Set<String> repoIds;
     }
 
@@ -161,6 +163,8 @@ public class IterationController {
         private String name;
         private String description;
         private LocalDate expectedReleaseAt;
+        @NotBlank
+        private String groupCode;
         private Set<String> repoIds;
     }
 

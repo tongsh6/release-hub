@@ -3,7 +3,7 @@ package io.releasehub.infrastructure.version;
 import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
 import io.releasehub.application.version.VersionUpdaterPort;
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.BaseException;
 import io.releasehub.domain.version.BuildTool;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -64,7 +64,7 @@ public class GradleVersionUpdaterAdapter implements VersionUpdaterPort {
                     request.repoPath()
             );
             
-        } catch (BizException e) {
+        } catch (BaseException e) {
             return VersionUpdateResult.failure(e.getMessage(), request.gradlePropertiesPath());
         } catch (Exception e) {
             log.error("Failed to update Gradle version", e);

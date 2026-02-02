@@ -24,6 +24,7 @@ public enum ErrorCode {
     AUTH_TOKEN_INVALID("AUTH_003", "error.auth.token_invalid", 401),
     AUTH_USER_DISABLED("AUTH_004", "error.auth.user_disabled", 403),
     AUTH_ACCESS_DENIED("AUTH_005", "error.auth.access_denied", 403),
+    AUTH_REQUIRED("AUTH_006", "error.auth.required", 401),
 
     // ========== 发布窗口 (RW) ==========
     RW_NOT_FOUND("RW_001", "error.rw.not_found", 404),
@@ -48,6 +49,7 @@ public enum ErrorCode {
     REPO_BRANCH_REQUIRED("REPO_008", "error.repo.branch_required", 400),
     REPO_BRANCH_TOO_LONG("REPO_009", "error.repo.branch_too_long", 400),
     REPO_ID_INVALID("REPO_010", "error.repo.id_invalid", 400),
+    REPO_ATTACHED("REPO_011", "error.repo.attached", 400),
 
     // ========== 分组 (GROUP) ==========
     GROUP_NOT_FOUND("GROUP_001", "error.group.not_found", 404),
@@ -62,11 +64,13 @@ public enum ErrorCode {
     GROUP_PARENT_NOT_FOUND("GROUP_010", "error.group.parent_not_found", 404),
     GROUP_PARENT_TOO_LONG("GROUP_011", "error.group.parent_too_long", 400),
     GROUP_ID_INVALID("GROUP_012", "error.group.id_invalid", 400),
+    GROUP_REFERENCED("GROUP_013", "error.group.referenced", 400),
 
     // ========== 迭代 (ITER) ==========
     ITERATION_NOT_FOUND("ITER_001", "error.iter.not_found", 404),
     ITERATION_ATTACHED("ITER_002", "error.iter.attached", 400),
     ITERATION_KEY_INVALID("ITER_003", "error.iter.key_invalid", 400),
+    ITERATION_REPO_NOT_FOUND("ITER_004", "error.iter.repo_not_found", 404),
 
     // ========== 版本策略 (VP) ==========
     VERSION_POLICY_NOT_FOUND("VP_001", "error.vp.not_found", 404),
@@ -78,23 +82,22 @@ public enum ErrorCode {
     VERSION_NOT_FOUND_IN_FILE("VP_007", "error.vp.version_not_found_in_file", 400),
     VERSION_POLICY_ID_INVALID("VP_008", "error.vp.id_invalid", 400),
 
-    // ========== 项目 (PJ) ==========
-    PROJECT_NOT_FOUND("PJ_001", "error.pj.not_found", 404),
-    PROJECT_NAME_REQUIRED("PJ_002", "error.pj.name_required", 400),
-    PROJECT_NAME_TOO_LONG("PJ_003", "error.pj.name_too_long", 400),
-    PROJECT_DESC_TOO_LONG("PJ_004", "error.pj.desc_too_long", 400),
-    PROJECT_ID_INVALID("PJ_005", "error.pj.id_invalid", 400),
-
     // ========== 运行记录 (RUN) ==========
     RUN_NOT_FOUND("RUN_001", "error.run.not_found", 404),
     RUN_ID_INVALID("RUN_002", "error.run.id_invalid", 400),
     RUN_ITEM_ID_INVALID("RUN_003", "error.run.item_id_invalid", 400),
+    RUN_TASK_NOT_FOUND("RUN_004", "error.run.task_not_found", 404),
+    RUN_TASK_NOT_RETRYABLE("RUN_005", "error.run.task_not_retryable", 400),
+    RUN_TASK_TAG_CREATE_FAILED("RUN_006", "error.run.task.tag_create_failed", 500),
+    RUN_TASK_MERGE_CONFLICT("RUN_007", "error.run.task.merge_conflict", 409),
+    RUN_TASK_MERGE_FAILED("RUN_008", "error.run.task.merge_failed", 500),
 
     // ========== 窗口迭代关联 (WI) ==========
     WINDOW_ITERATION_ID_INVALID("WI_001", "error.wi.id_invalid", 400),
 
     // ========== GitLab (GITLAB) ==========
     GITLAB_SETTINGS_MISSING("GITLAB_001", "error.gitlab.settings_missing", 400),
+    GITLAB_PROJECT_NOT_FOUND("GITLAB_002", "error.gitlab.project_not_found", 404),
 
     // ========== 分支规则 (BR) ==========
     BRANCH_RULE_NOT_FOUND("BR_001", "error.br.not_found", 404),

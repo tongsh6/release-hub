@@ -126,7 +126,6 @@ public class GroupController {
         @NotBlank
         @Size(max = 128)
         private String name;
-        @NotBlank
         @Size(max = 64)
         private String code;
         @Size(max = 64)

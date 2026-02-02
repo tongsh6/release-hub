@@ -237,7 +237,7 @@ test_us_val_004() {
     
     if [ "$code" = "OK" ] && [ -n "$derived" ]; then
         log_success "  ✓ 日期版本推导成功: $derived"
-    elif [ "$code" = "POLICY_NOT_FOUND" ]; then
+    elif [ "$code" = "VP_001" ]; then
         log_info "  ⚠ DATE 策略未定义"
     else
         log_info "  日期版本策略测试: $code"

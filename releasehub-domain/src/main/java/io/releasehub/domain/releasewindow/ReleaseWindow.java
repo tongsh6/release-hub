@@ -13,31 +13,35 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
     private final String name;
     private final String description;
     private final Instant plannedReleaseAt;
+    private final String groupCode;
     private ReleaseWindowStatus status;
 
     private boolean frozen;
     private Instant publishedAt;
 
-    private ReleaseWindow(ReleaseWindowId id, String windowKey, String name, String description, Instant plannedReleaseAt, ReleaseWindowStatus status, Instant createdAt, Instant updatedAt, boolean frozen, Instant publishedAt) {
+    private ReleaseWindow(ReleaseWindowId id, String windowKey, String name, String description, Instant plannedReleaseAt, String groupCode, ReleaseWindowStatus status, Instant createdAt, Instant updatedAt, boolean frozen, Instant publishedAt) {
         super(id, createdAt, updatedAt, 0L);
         this.windowKey = windowKey;
         this.name = name;
         this.description = description;
         this.plannedReleaseAt = plannedReleaseAt;
+        this.groupCode = groupCode;
         this.status = status;
         this.frozen = frozen;
         this.publishedAt = publishedAt;
     }
 
-    public static ReleaseWindow createDraft(String windowKey, String name, String description, Instant plannedReleaseAt, Instant now) {
+    public static ReleaseWindow createDraft(String windowKey, String name, String description, Instant plannedReleaseAt, String groupCode, Instant now) {
         validateName(name);
         validateKey(windowKey);
+        validateGroupCode(groupCode);
         return new ReleaseWindow(
                 ReleaseWindowId.newId(),
                 windowKey,
                 name,
                 description,
                 plannedReleaseAt,
+                groupCode,
                 ReleaseWindowStatus.DRAFT,
                 now,
                 now,
@@ -64,8 +68,17 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
         }
     }
 
-    public static ReleaseWindow rehydrate(ReleaseWindowId id, String windowKey, String name, String description, Instant plannedReleaseAt, ReleaseWindowStatus status, Instant createdAt, Instant updatedAt, boolean frozen, Instant publishedAt) {
-        return new ReleaseWindow(id, windowKey, name, description, plannedReleaseAt, status, createdAt, updatedAt, frozen, publishedAt);
+    private static void validateGroupCode(String groupCode) {
+        if (groupCode == null || groupCode.trim().isEmpty()) {
+            throw ValidationException.groupCodeRequired();
+        }
+        if (groupCode.length() > 64) {
+            throw ValidationException.groupCodeTooLong(64);
+        }
+    }
+
+    public static ReleaseWindow rehydrate(ReleaseWindowId id, String windowKey, String name, String description, Instant plannedReleaseAt, String groupCode, ReleaseWindowStatus status, Instant createdAt, Instant updatedAt, boolean frozen, Instant publishedAt) {
+        return new ReleaseWindow(id, windowKey, name, description, plannedReleaseAt, groupCode, status, createdAt, updatedAt, frozen, publishedAt);
     }
 
     public void freeze(Instant now) {

@@ -36,7 +36,8 @@ public class CodeRepositoryController {
                 request.getCloneUrl(),
                 request.getDefaultBranch(),
                 request.isMonoRepo(),
-                request.getInitialVersion()
+                request.getInitialVersion(),
+                request.getGroupCode()
         );
         return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
     }
@@ -50,7 +51,8 @@ public class CodeRepositoryController {
                 request.getCloneUrl(),
                 request.getDefaultBranch(),
                 request.isMonoRepo(),
-                request.getInitialVersion()
+                request.getInitialVersion(),
+                request.getGroupCode()
         );
         return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
     }

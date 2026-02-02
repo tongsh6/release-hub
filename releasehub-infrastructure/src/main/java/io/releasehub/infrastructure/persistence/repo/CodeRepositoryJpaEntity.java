@@ -26,6 +26,8 @@ public class CodeRepositoryJpaEntity {
     private String cloneUrl;
     @Column(name = "default_branch")
     private String defaultBranch;
+    @Column(name = "group_code")
+    private String groupCode;
     @Column(name = "mono_repo", nullable = false)
     private boolean monoRepo;
     @Column(name = "branch_count")

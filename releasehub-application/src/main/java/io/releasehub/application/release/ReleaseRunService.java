@@ -4,6 +4,9 @@ import io.releasehub.application.iteration.IterationAppService;
 import io.releasehub.application.run.RunPort;
 import io.releasehub.application.run.RunTaskPort;
 import io.releasehub.application.window.WindowIterationPort;
+import io.releasehub.common.exception.BaseException;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.repo.RepoId;
@@ -17,6 +20,8 @@ import io.releasehub.domain.run.TargetType;
 import io.releasehub.domain.window.WindowIteration;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +30,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -42,6 +48,7 @@ public class ReleaseRunService {
     private final WindowIterationPort windowIterationPort;
     private final IterationAppService iterationAppService;
     private final RunTaskExecutorRegistry executorRegistry;
+    private final MessageSource messageSource;
     private final Clock clock = Clock.systemUTC();
 
     /**
@@ -181,11 +188,12 @@ public class ReleaseRunService {
                 return true;
 
             } catch (Exception e) {
-                log.error("Task {} execution failed: {}", task.getId().value(), e.getMessage(), e);
+                String errorMessage = resolveErrorMessage(e);
+                log.error("Task {} execution failed: {}", task.getId().value(), errorMessage, e);
                 task.incrementRetry();
 
                 if (!task.canRetry()) {
-                    task.markFailed(e.getMessage(), Instant.now(clock));
+                    task.markFailed(errorMessage, Instant.now(clock));
                     runTaskPort.save(task);
                     return false;
                 }
@@ -201,10 +209,10 @@ public class ReleaseRunService {
     @Transactional
     public RunTask retryTask(String taskId) {
         RunTask task = runTaskPort.findById(taskId)
-                                  .orElseThrow(() -> new IllegalArgumentException("Task not found: " + taskId));
+                                  .orElseThrow(() -> NotFoundException.runTask(taskId));
 
         if (!task.isFailed()) {
-            throw new IllegalStateException("Only failed tasks can be retried");
+            throw BusinessException.runTaskNotRetryable(task.getStatus());
         }
 
         // 重置状态
@@ -229,5 +237,30 @@ public class ReleaseRunService {
      */
     public List<RunTask> getRunTasks(String runId) {
         return runTaskPort.findByRunId(runId);
+    }
+
+    private String resolveErrorMessage(Exception e) {
+        if (e instanceof BaseException baseException) {
+            Locale locale = LocaleContextHolder.getLocale();
+            try {
+                return messageSource.getMessage(baseException.getMessageKey(), baseException.getArgs(), locale);
+            } catch (Exception ignored) {
+                return formatFallback(baseException);
+            }
+        }
+        return e.getMessage() != null ? e.getMessage() : "Unknown error";
+    }
+
+    private String formatFallback(BaseException ex) {
+        Object[] args = ex.getArgs();
+        if (args == null || args.length == 0) {
+            return ex.getMessageKey();
+        }
+        StringBuilder sb = new StringBuilder(ex.getMessageKey()).append(": ");
+        for (int i = 0; i < args.length; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(args[i]);
+        }
+        return sb.toString();
     }
 }

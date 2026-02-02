@@ -88,8 +88,8 @@ public class MockGitLabBranchAdapter implements GitLabBranchPort {
     }
     
     @Override
-    public boolean archiveBranch(String repoCloneUrl, String branchName) {
-        log.info("Mock: Archiving branch '{}' in repo {}", branchName, repoCloneUrl);
+    public boolean archiveBranch(String repoCloneUrl, String branchName, String reason) {
+        log.info("Mock: Archiving branch '{}' in repo {} with reason {}", branchName, repoCloneUrl, reason);
         
         Set<String> branches = mockBranches.get(repoCloneUrl);
         if (branches == null || !branches.contains(branchName)) {
@@ -97,8 +97,8 @@ public class MockGitLabBranchAdapter implements GitLabBranchPort {
             return false;
         }
         
-        // 重命名为 archived/xxx
-        String archivedName = "archived/" + branchName;
+        // 重命名为 archive/<reason>/<original>
+        String archivedName = "archive/" + reason + "/" + branchName;
         branches.remove(branchName);
         branches.add(archivedName);
         

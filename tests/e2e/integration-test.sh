@@ -32,7 +32,6 @@ main() {
     login
     
     # 执行测试套件
-    test_project_crud
     test_branch_rule_crud
     test_dashboard_api
     test_version_policy_api
@@ -47,102 +46,6 @@ main() {
     if [ $FAILED_TESTS -gt 0 ]; then
         exit 1
     fi
-}
-
-# ============================================================
-# 测试套件 1: 项目管理 CRUD
-# ============================================================
-
-test_project_crud() {
-    log_section "测试套件 1: 项目管理 CRUD"
-    
-    local project_id=""
-    
-    # 1.1 获取项目列表
-    echo ""
-    echo "测试 1.1: 获取项目列表"
-    local response=$(api_get "/projects")
-    local success=$(json_get "$response" ".success")
-    assert_equals "True" "$success" "GET /projects 返回成功"
-    
-    # 1.2 创建项目
-    echo ""
-    echo "测试 1.2: 创建项目"
-    response=$(api_post "/projects" '{
-        "name": "Integration Test Project",
-        "description": "Created by integration test"
-    }')
-    success=$(json_get "$response" ".success")
-    project_id=$(json_get "$response" ".data.id")
-    local project_name=$(json_get "$response" ".data.name")
-    local project_status=$(json_get "$response" ".data.status")
-    
-    assert_equals "True" "$success" "POST /projects 创建项目成功"
-    assert_not_empty "$project_id" "项目 ID 不为空"
-    assert_equals "Integration Test Project" "$project_name" "项目名称正确"
-    assert_equals "ACTIVE" "$project_status" "项目初始状态为 ACTIVE"
-    
-    # 1.3 获取项目详情
-    echo ""
-    echo "测试 1.3: 获取项目详情"
-    response=$(api_get "/projects/$project_id")
-    success=$(json_get "$response" ".success")
-    local desc=$(json_get "$response" ".data.description")
-    
-    assert_equals "True" "$success" "GET /projects/{id} 返回成功"
-    assert_equals "Created by integration test" "$desc" "项目描述正确"
-    
-    # 1.4 更新项目
-    echo ""
-    echo "测试 1.4: 更新项目"
-    response=$(api_put "/projects/$project_id" '{
-        "name": "Updated Project Name",
-        "description": "Updated description"
-    }')
-    success=$(json_get "$response" ".success")
-    local updated_name=$(json_get "$response" ".data.name")
-    
-    assert_equals "True" "$success" "PUT /projects/{id} 更新成功"
-    assert_equals "Updated Project Name" "$updated_name" "项目名称已更新"
-    
-    # 1.5 归档项目
-    echo ""
-    echo "测试 1.5: 归档项目"
-    response=$(api_post "/projects/$project_id/archive" "{}")
-    success=$(json_get "$response" ".success")
-    
-    assert_equals "True" "$success" "POST /projects/{id}/archive 归档成功"
-    
-    # 验证归档状态
-    response=$(api_get "/projects/$project_id")
-    local archived_status=$(json_get "$response" ".data.status")
-    assert_equals "ARCHIVED" "$archived_status" "项目状态变为 ARCHIVED"
-    
-    # 1.6 删除项目
-    echo ""
-    echo "测试 1.6: 删除项目"
-    response=$(api_delete "/projects/$project_id")
-    success=$(json_get "$response" ".success")
-    
-    assert_equals "True" "$success" "DELETE /projects/{id} 删除成功"
-    
-    # 验证项目已删除
-    response=$(api_get "/projects/$project_id")
-    success=$(json_get "$response" ".success")
-    assert_equals "False" "$success" "项目已被删除，无法再获取"
-    
-    # 1.7 测试验证规则 - 名称不能为空
-    echo ""
-    echo "测试 1.7: 验证规则 - 名称不能为空"
-    response=$(api_post "/projects" '{
-        "name": "",
-        "description": "Test"
-    }')
-    success=$(json_get "$response" ".success")
-    local code=$(json_get "$response" ".code")
-    
-    assert_equals "False" "$success" "空名称创建应失败"
-    log_info "  错误码: $code"
 }
 
 # ============================================================

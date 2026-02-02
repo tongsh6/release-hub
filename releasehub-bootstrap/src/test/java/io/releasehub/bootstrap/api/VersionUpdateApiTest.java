@@ -44,6 +44,7 @@ class VersionUpdateApiTest {
     private static String token;
     private static String windowId;
     private static String repoId;
+    private static String groupCode;
     private static Path testRepoPath;
     @Autowired
     private MockMvc mockMvc;
@@ -98,6 +99,8 @@ class VersionUpdateApiTest {
         token = objectMapper.readTree(result.getResponse().getContentAsString())
                             .get("data").get("token").asText();
         assertThat(token).isNotBlank();
+
+        groupCode = createGroupAndGetCode(token);
     }
 
     @Test
@@ -105,6 +108,7 @@ class VersionUpdateApiTest {
     void shouldCreateReleaseWindow() throws Exception {
         CreateReleaseWindowRequest request = new CreateReleaseWindowRequest();
         request.setName("Version Update Test Window");
+        request.setGroupCode(groupCode);
 
         MvcResult result = mockMvc.perform(post("/api/v1/release-windows")
                                           .header("Authorization", "Bearer " + token)
@@ -126,6 +130,8 @@ class VersionUpdateApiTest {
         request.setName("Test Repository");
         request.setCloneUrl("git@gitlab.com:test/repo.git");
         request.setMonoRepo(false);
+        request.setGroupCode(groupCode);
+        // 显式设置初始版本，避免从仓库提取版本导致测试不稳定
         request.setInitialVersion("0.1.0");
 
         MvcResult result = mockMvc.perform(post("/api/v1/repositories")
@@ -280,5 +286,17 @@ class VersionUpdateApiTest {
                .andExpect(jsonPath("$.success").value(true))
                .andExpect(jsonPath("$.data.id").value(runId))
                .andExpect(jsonPath("$.data.runType").value("VERSION_UPDATE"));
+    }
+
+    private String createGroupAndGetCode(String token) throws Exception {
+        String code = "G" + System.currentTimeMillis();
+        String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
+        mockMvc.perform(post("/api/v1/groups")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists());
+        return code;
     }
 }

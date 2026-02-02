@@ -1,7 +1,7 @@
 package io.releasehub.interfaces.api.version;
 
 import io.releasehub.application.version.VersionPolicyPort;
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
@@ -56,7 +56,7 @@ public class VersionPolicyController {
     @Operation(summary = "获取版本策略详情")
     public ApiResponse<VersionPolicyView> get(@PathVariable("id") String id) {
         VersionPolicy policy = versionPolicyPort.findById(VersionPolicyId.of(id))
-                .orElseThrow(() -> new BizException("POLICY_NOT_FOUND", "VersionPolicy not found: " + id));
+                .orElseThrow(() -> NotFoundException.versionPolicy(id));
         return ApiResponse.success(VersionPolicyView.fromDomain(policy));
     }
 }

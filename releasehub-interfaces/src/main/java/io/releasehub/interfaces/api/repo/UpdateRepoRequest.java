@@ -14,6 +14,10 @@ public class UpdateRepoRequest {
     @Size(max = 512)
     private String cloneUrl;
 
+    @NotBlank
+    @Size(max = 64)
+    private String groupCode;
+
     @Size(max = 128)
     private String defaultBranch;
 

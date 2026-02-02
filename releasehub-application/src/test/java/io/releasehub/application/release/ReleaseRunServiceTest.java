@@ -4,6 +4,9 @@ import io.releasehub.application.iteration.IterationAppService;
 import io.releasehub.application.run.RunPort;
 import io.releasehub.application.run.RunTaskPort;
 import io.releasehub.application.window.WindowIterationPort;
+import io.releasehub.common.exception.BaseException;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
@@ -26,6 +29,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.MessageSource;
 
 import java.time.Instant;
 import java.util.List;
@@ -35,8 +39,11 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ReleaseRunService 测试")
@@ -52,6 +59,8 @@ class ReleaseRunServiceTest {
     private IterationAppService iterationAppService;
     @Mock
     private RunTaskExecutorRegistry executorRegistry;
+    @Mock
+    private MessageSource messageSource;
 
     @Captor
     private ArgumentCaptor<Run> runCaptor;
@@ -64,7 +73,7 @@ class ReleaseRunServiceTest {
     void setUp() {
         releaseRunService = new ReleaseRunService(
                 runPort, runTaskPort, windowIterationPort,
-                iterationAppService, executorRegistry
+                iterationAppService, executorRegistry, messageSource
         );
     }
 
@@ -90,7 +99,7 @@ class ReleaseRunServiceTest {
 
             // 准备迭代详情
             Iteration iteration = Iteration.rehydrate(
-                    iterKey, "迭代1", "描述", null,
+                    iterKey, "迭代1", "描述", null, "G001",
                     Set.of(RepoId.of("repo-001")),
                     Instant.now(), Instant.now()
             );
@@ -159,13 +168,13 @@ class ReleaseRunServiceTest {
 
             // 迭代1有2个仓库
             Iteration iteration1 = Iteration.rehydrate(
-                    iterKey1, "迭代1", null, null,
+                    iterKey1, "迭代1", null, null, "G001",
                     Set.of(RepoId.of("repo-001"), RepoId.of("repo-002")),
                     Instant.now(), Instant.now()
             );
             // 迭代2有1个仓库
             Iteration iteration2 = Iteration.rehydrate(
-                    iterKey2, "迭代2", null, null,
+                    iterKey2, "迭代2", null, null, "G001",
                     Set.of(RepoId.of("repo-003")),
                     Instant.now(), Instant.now()
             );
@@ -220,8 +229,11 @@ class ReleaseRunServiceTest {
             when(runTaskPort.findById(taskId)).thenReturn(Optional.of(completedTask));
 
             assertThatThrownBy(() -> releaseRunService.retryTask(taskId))
-                    .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("Only failed tasks can be retried");
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> {
+                        BaseException base = (BaseException) ex;
+                        assertThat(base.getCode()).isEqualTo("RUN_005");
+                    });
         }
 
         @Test
@@ -230,8 +242,11 @@ class ReleaseRunServiceTest {
             when(runTaskPort.findById("unknown")).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> releaseRunService.retryTask("unknown"))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("Task not found");
+                    .isInstanceOf(NotFoundException.class)
+                    .satisfies(ex -> {
+                        BaseException base = (BaseException) ex;
+                        assertThat(base.getCode()).isEqualTo("RUN_004");
+                    });
         }
     }
 

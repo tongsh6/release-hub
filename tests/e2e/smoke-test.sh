@@ -15,7 +15,6 @@ source "$SCRIPT_DIR/test_utils.sh"
 # ============================================================
 
 TIMESTAMP=$(date +%s)
-PROJECT_ID="smoke-project-$TIMESTAMP"
 
 # 仓库信息 (10个仓库)
 declare -a REPO_NAMES=(
@@ -563,62 +562,6 @@ if [ "$success" = "True" ] || [ "$success" = "true" ]; then
     fi
 else
     log_fail "  ✗ 创建分支规则失败: $response"
-fi
-
-# ============================================================
-# 步骤 6.9: 测试项目管理 API (任务8验证)
-# ============================================================
-
-log_section "步骤 6.9: 测试项目管理 API"
-
-echo "场景: 验证项目 CRUD"
-echo "  Given 系统已登录"
-echo "  When  我执行项目 CRUD 操作"
-echo "  Then  所有操作应成功"
-echo ""
-
-# 获取项目列表
-response=$(api_get "/projects")
-success=$(json_get "$response" ".success")
-
-if [ "$success" = "True" ] || [ "$success" = "true" ]; then
-    project_count=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('data',[])) if d.get('data') else 0)" 2>/dev/null || echo "0")
-    log_success "  ✓ 项目列表 API 返回成功 (共 $project_count 个项目)"
-else
-    log_fail "  ✗ 项目列表 API 调用失败: $response"
-fi
-
-# 创建测试项目
-echo ""
-echo "场景: 创建新项目"
-response=$(api_post "/projects" '{"name":"Test Project","description":"Test project for smoke test"}')
-success=$(json_get "$response" ".success")
-
-if [ "$success" = "True" ] || [ "$success" = "true" ]; then
-    project_id=$(json_get "$response" ".data.id")
-    project_name=$(json_get "$response" ".data.name")
-    log_success "  ✓ 创建项目成功 (ID: $project_id, 名称: $project_name)"
-    
-    # 更新项目
-    update_response=$(api_put "/projects/$project_id" '{"name":"Updated Project","description":"Updated description"}')
-    update_success=$(json_get "$update_response" ".success")
-    if [ "$update_success" = "True" ] || [ "$update_success" = "true" ]; then
-        updated_name=$(json_get "$update_response" ".data.name")
-        log_success "  ✓ 更新项目成功 (新名称: $updated_name)"
-    else
-        log_info "  更新项目响应: $update_response"
-    fi
-    
-    # 删除测试项目
-    delete_response=$(api_delete "/projects/$project_id")
-    delete_success=$(json_get "$delete_response" ".success")
-    if [ "$delete_success" = "True" ] || [ "$delete_success" = "true" ]; then
-        log_success "  ✓ 删除测试项目成功"
-    else
-        log_info "  删除项目响应: $delete_response"
-    fi
-else
-    log_fail "  ✗ 创建项目失败: $response"
 fi
 
 # ============================================================

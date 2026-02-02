@@ -1,9 +1,18 @@
 package io.releasehub.application.group;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.application.iteration.IterationPort;
+import io.releasehub.application.releasewindow.ReleaseWindowPort;
+import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
+import io.releasehub.domain.iteration.Iteration;
+import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.releasewindow.ReleaseWindow;
+import io.releasehub.domain.releasewindow.ReleaseWindowId;
+import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.RepoId;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +33,7 @@ class GroupDeleteTest {
     @Test
     void deleteByCode_ShouldSucceed_ForLeaf() {
         InMemoryPort port = new InMemoryPort();
-        GroupAppService svc = new GroupAppService(port);
+        GroupAppService svc = new GroupAppService(port, new EmptyReleaseWindowPort(), new EmptyIterationPort(), new EmptyRepoPort());
         Instant now = Instant.now();
         Group a = Group.create("A", "001", null, now);
         Group b = Group.create("B", "001001", "001", now);
@@ -37,7 +46,7 @@ class GroupDeleteTest {
     @Test
     void deleteByCode_ShouldFail_WhenHasChildren() {
         InMemoryPort port = new InMemoryPort();
-        GroupAppService svc = new GroupAppService(port);
+        GroupAppService svc = new GroupAppService(port, new EmptyReleaseWindowPort(), new EmptyIterationPort(), new EmptyRepoPort());
         Instant now = Instant.now();
         Group a = Group.create("A", "001", null, now);
         Group b = Group.create("B", "001001", "001", now);
@@ -45,8 +54,8 @@ class GroupDeleteTest {
         port.save(a);
         port.save(b);
         port.save(c);
-        BizException ex = assertThrows(BizException.class, () -> svc.deleteByCode("001001"));
-        assertEquals("GROUP_DELETE_HAS_CHILDREN", ex.getCode());
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.deleteByCode("001001"));
+        assertEquals("GROUP_008", ex.getCode());
     }
 
     static class InMemoryPort implements GroupPort {
@@ -114,6 +123,91 @@ class GroupDeleteTest {
             long cnt = 0;
             for (Group g : byId.values()) if (Objects.equals(parentCode, g.getParentCode())) cnt++;
             return cnt;
+        }
+    }
+
+    static class EmptyReleaseWindowPort implements ReleaseWindowPort {
+        @Override
+        public void save(ReleaseWindow releaseWindow) {
+        }
+
+        @Override
+        public Optional<ReleaseWindow> findById(ReleaseWindowId id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<ReleaseWindow> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public PageResult<ReleaseWindow> findPaged(String name, int page, int size) {
+            return new PageResult<>(List.of(), 0);
+        }
+    }
+
+    static class EmptyIterationPort implements IterationPort {
+        @Override
+        public void save(Iteration iteration) {
+        }
+
+        @Override
+        public Optional<Iteration> findByKey(IterationKey key) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<Iteration> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public PageResult<Iteration> findPaged(String keyword, int page, int size) {
+            return new PageResult<>(List.of(), 0);
+        }
+
+        @Override
+        public void deleteByKey(IterationKey key) {
+        }
+    }
+
+    static class EmptyRepoPort implements CodeRepositoryPort {
+        @Override
+        public void save(CodeRepository domain) {
+        }
+
+        @Override
+        public Optional<CodeRepository> findById(RepoId id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<CodeRepository> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public void deleteById(RepoId id) {
+        }
+
+        @Override
+        public List<CodeRepository> search(String keyword) {
+            return List.of();
+        }
+
+        @Override
+        public PageResult<CodeRepository> searchPaged(String keyword, int page, int size) {
+            return new PageResult<>(List.of(), 0);
+        }
+
+        @Override
+        public void updateInitialVersion(String repoId, String initialVersion, String versionSource) {
+        }
+
+        @Override
+        public Optional<String> getInitialVersion(String repoId) {
+            return Optional.empty();
         }
     }
 }

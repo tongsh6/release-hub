@@ -3,6 +3,8 @@ package io.releasehub.application.release.executors;
 import io.releasehub.application.port.out.GitLabBranchPort;
 import io.releasehub.application.release.AbstractRunTaskExecutor;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.MergeStatus;
@@ -34,7 +36,7 @@ public class MergeReleaseToMasterExecutor extends AbstractRunTaskExecutor {
         log.info("Merging release to master for repo: {}", repoId);
         
         CodeRepository repo = codeRepositoryPort.findById(RepoId.of(repoId))
-                .orElseThrow(() -> new RuntimeException("Repository not found: " + repoId));
+                .orElseThrow(() -> NotFoundException.repository(repoId));
         
         // TODO: 获取 release 分支名
         String releaseBranch = "release/RW-xxx"; // 需要从上下文获取
@@ -45,11 +47,11 @@ public class MergeReleaseToMasterExecutor extends AbstractRunTaskExecutor {
                 "Merge " + releaseBranch + " into " + masterBranch);
         
         if (result.status() == MergeStatus.CONFLICT) {
-            throw new RuntimeException("Merge conflict: " + result.conflictInfo());
+            throw BusinessException.runTaskMergeConflict(result.conflictInfo());
         }
         
         if (result.status() == MergeStatus.FAILED) {
-            throw new RuntimeException("Merge failed: " + result.conflictInfo());
+            throw BusinessException.runTaskMergeFailed(result.conflictInfo());
         }
         
         log.info("Release merged to master for repo: {}", repoId);

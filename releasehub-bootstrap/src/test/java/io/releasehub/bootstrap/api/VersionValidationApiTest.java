@@ -32,6 +32,7 @@ class VersionValidationApiTest {
 
     private static String token;
     private static String windowId;
+    private static String groupCode;
     @Autowired
     private MockMvc mockMvc;
     @Autowired
@@ -54,6 +55,8 @@ class VersionValidationApiTest {
         token = objectMapper.readTree(result.getResponse().getContentAsString())
                             .get("data").get("token").asText();
         assertThat(token).isNotBlank();
+
+        groupCode = createGroupAndGetCode(token);
     }
 
     @Test
@@ -61,6 +64,7 @@ class VersionValidationApiTest {
     void shouldCreateReleaseWindow() throws Exception {
         CreateReleaseWindowRequest request = new CreateReleaseWindowRequest();
         request.setName("Version Validation Test Window");
+        request.setGroupCode(groupCode);
 
         MvcResult result = mockMvc.perform(post("/api/v1/release-windows")
                                           .header("Authorization", "Bearer " + token)
@@ -131,5 +135,17 @@ class VersionValidationApiTest {
                        .contentType(MediaType.APPLICATION_JSON)
                        .content(objectMapper.writeValueAsString(request)))
                .andExpect(status().isNotFound());
+    }
+
+    private String createGroupAndGetCode(String token) throws Exception {
+        String code = "G" + System.currentTimeMillis();
+        String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
+        mockMvc.perform(post("/api/v1/groups")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists());
+        return code;
     }
 }

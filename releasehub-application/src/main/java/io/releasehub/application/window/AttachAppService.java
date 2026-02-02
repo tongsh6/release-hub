@@ -1,14 +1,20 @@
 package io.releasehub.application.window;
 
+import io.releasehub.application.branchrule.BranchRuleAppService;
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.iteration.IterationRepoPort;
 import io.releasehub.application.port.out.GitLabBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
+import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
+import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.window.WindowIteration;
 import lombok.RequiredArgsConstructor;
@@ -29,11 +35,16 @@ public class AttachAppService {
     private final WindowIterationPort windowIterationPort;
     private final IterationRepoPort iterationRepoPort;
     private final GitLabBranchPort gitLabBranchPort;
+    private final CodeRepositoryPort codeRepositoryPort;
+    private final BranchRuleAppService branchRuleAppService;
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
     public List<WindowIteration> attach(String windowId, List<String> iterationKeys) {
         ReleaseWindow releaseWindow = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
+        if (releaseWindow.isFrozen()) {
+            throw BusinessException.rwAlreadyFrozen();
+        }
         Instant now = Instant.now(clock);
         
         return iterationKeys.stream()
@@ -62,10 +73,15 @@ public class AttachAppService {
     /**
      * 为仓库设置 release 分支：创建分支并合并 feature 分支
      */
-    private void setupReleaseBranchForRepo(ReleaseWindow releaseWindow, Iteration iteration, 
+    private void setupReleaseBranchForRepo(ReleaseWindow releaseWindow, Iteration iteration,
             IterationKey iterationKey, RepoId repoId, Instant now) {
+        CodeRepository repo = codeRepositoryPort.findById(repoId)
+                .orElseThrow(() -> NotFoundException.repository(repoId.value()));
         // 生成 release 分支名
         String releaseBranch = "release/" + releaseWindow.getWindowKey();
+        if (!branchRuleAppService.isCompliant(releaseBranch)) {
+            throw ValidationException.invalidParameter("branchName");
+        }
         
         // 获取 feature 分支名
         String featureBranch = iterationRepoPort.getVersionInfo(iterationKey.value(), repoId.value())
@@ -73,16 +89,16 @@ public class AttachAppService {
                 .orElse("feature/" + iterationKey.value());
         
         // 1. 创建 release 分支（如果不存在）
-        boolean branchCreated = gitLabBranchPort.createBranch(repoId.value(), releaseBranch, "master");
+        boolean branchCreated = gitLabBranchPort.createBranch(repo.getCloneUrl(), releaseBranch, repo.getDefaultBranch());
         if (branchCreated) {
             log.info("Created release branch {} for repo {}", releaseBranch, repoId.value());
         }
         
         // 2. 将 feature 分支合并到 release 分支
         var mergeResult = gitLabBranchPort.mergeBranch(
-                repoId.value(), 
-                featureBranch, 
-                releaseBranch, 
+                repo.getCloneUrl(),
+                featureBranch,
+                releaseBranch,
                 "Merge " + featureBranch + " to " + releaseBranch + " for iteration " + iteration.getName());
         
         if (mergeResult.status() == io.releasehub.domain.run.MergeStatus.SUCCESS) {
@@ -108,8 +124,20 @@ public class AttachAppService {
 
     @Transactional
     public void detach(String windowId, String iterationKey) {
-        releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
-        iterationPort.findByKey(IterationKey.of(iterationKey)).orElseThrow();
+        ReleaseWindow releaseWindow = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
+        if (releaseWindow.isFrozen()) {
+            throw BusinessException.rwAlreadyFrozen();
+        }
+        Iteration iteration = iterationPort.findByKey(IterationKey.of(iterationKey)).orElseThrow();
+        String releaseBranch = "release/" + releaseWindow.getWindowKey();
+        for (RepoId repoId : iteration.getRepos()) {
+            codeRepositoryPort.findById(repoId).ifPresent(repo -> {
+                boolean archived = gitLabBranchPort.archiveBranch(repo.getCloneUrl(), releaseBranch, "unpublished");
+                if (!archived) {
+                    log.warn("Failed to archive release branch {} for repo {}", releaseBranch, repoId.value());
+                }
+            });
+        }
         windowIterationPort.detach(ReleaseWindowId.of(windowId), IterationKey.of(iterationKey));
     }
 
@@ -134,10 +162,15 @@ public class AttachAppService {
         Instant now = Instant.now(clock);
         
         String releaseBranch = "release/" + releaseWindow.getWindowKey();
+        if (!branchRuleAppService.isCompliant(releaseBranch)) {
+            throw ValidationException.invalidParameter("branchName");
+        }
         
         for (RepoId repoId : iteration.getRepos()) {
             try {
-                boolean created = gitLabBranchPort.createBranch(repoId.value(), releaseBranch, "master");
+                CodeRepository repo = codeRepositoryPort.findById(repoId)
+                        .orElseThrow(() -> NotFoundException.repository(repoId.value()));
+                boolean created = gitLabBranchPort.createBranch(repo.getCloneUrl(), releaseBranch, repo.getDefaultBranch());
                 if (created) {
                     log.info("Created release branch {} for repo {}", releaseBranch, repoId.value());
                 }
@@ -166,18 +199,20 @@ public class AttachAppService {
         
         for (RepoId repoId : iteration.getRepos()) {
             try {
+                CodeRepository repo = codeRepositoryPort.findById(repoId)
+                        .orElseThrow(() -> NotFoundException.repository(repoId.value()));
                 String featureBranch = iterationRepoPort.getVersionInfo(iterationKey.value(), repoId.value())
                         .map(info -> info.getFeatureBranch())
                         .orElse("feature/" + iterationKey.value());
-                
+
                 var mergeResult = gitLabBranchPort.mergeBranch(
-                        repoId.value(),
+                        repo.getCloneUrl(),
                         featureBranch,
                         releaseBranch,
                         "Merge " + featureBranch + " to " + releaseBranch + " for iteration " + iteration.getName());
-                
+
                 if (mergeResult.status() == io.releasehub.domain.run.MergeStatus.SUCCESS) {
-                    log.info("Merged feature branch {} to release branch {} for repo {}", 
+                    log.info("Merged feature branch {} to release branch {} for repo {}",
                             featureBranch, releaseBranch, repoId.value());
                 }
             } catch (Exception e) {
