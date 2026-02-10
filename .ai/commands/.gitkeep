@@ -1,0 +1,5 @@
+# commands/ - 命令入口
+# 存放用户可调用的命令定义
+#
+# 命名规范：{action}-{target}.md
+# 示例：analyze-code.md, generate-test.md
