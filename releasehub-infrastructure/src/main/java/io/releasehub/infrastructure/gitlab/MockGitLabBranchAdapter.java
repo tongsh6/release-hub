@@ -123,6 +123,16 @@ public class MockGitLabBranchAdapter implements GitLabBranchPort {
         return true;
     }
     
+    @Override
+    public String triggerPipeline(String repoCloneUrl, String ref) {
+        log.info("Mock: Triggering pipeline for ref '{}' in repo {}", ref, repoCloneUrl);
+        
+        // 模拟返回一个 pipeline ID
+        String pipelineId = "mock-pipeline-" + System.currentTimeMillis();
+        log.info("Mock: Pipeline triggered successfully with ID: {}", pipelineId);
+        return pipelineId;
+    }
+    
     // 用于测试的辅助方法
     
     /**

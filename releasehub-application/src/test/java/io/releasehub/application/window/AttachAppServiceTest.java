@@ -10,6 +10,7 @@ import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
@@ -73,7 +74,7 @@ class AttachAppServiceTest {
                 now, "G001", ReleaseWindowStatus.DRAFT, now, now, false, null);
         Iteration iteration = Iteration.rehydrate(
                 IterationKey.of("ITER-1"), "Iter", null, null, "G001",
-                Set.of(RepoId.of("repo-1")), now, now);
+                Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
         CodeRepository repo = CodeRepository.rehydrate(
                 RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git",
                 "master", "G001", false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
@@ -108,7 +109,7 @@ class AttachAppServiceTest {
                 now, "G001", ReleaseWindowStatus.DRAFT, now, now, false, null);
         Iteration iteration = Iteration.rehydrate(
                 IterationKey.of("ITER-1"), "Iter", null, null, "G001",
-                Set.of(RepoId.of("repo-1"), RepoId.of("repo-2")), now, now);
+                Set.of(RepoId.of("repo-1"), RepoId.of("repo-2")), IterationStatus.ACTIVE, now, now);
         CodeRepository repo1 = CodeRepository.rehydrate(
                 RepoId.of("repo-1"), "Repo1", "git@gitlab.com:test/repo1.git",
                 "master", "G001", false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);

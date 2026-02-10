@@ -3,6 +3,8 @@ package io.releasehub.application.release.executors;
 import io.releasehub.application.port.out.GitLabBranchPort;
 import io.releasehub.application.release.AbstractRunTaskExecutor;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.run.RunTaskContext;
+import io.releasehub.application.run.RunTaskContextPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.repo.CodeRepository;
@@ -24,6 +26,7 @@ public class MergeReleaseToMasterExecutor extends AbstractRunTaskExecutor {
     
     private final GitLabBranchPort gitLabBranchPort;
     private final CodeRepositoryPort codeRepositoryPort;
+    private final RunTaskContextPort runTaskContextPort;
     
     @Override
     public RunTaskType getTaskType() {
@@ -38,8 +41,15 @@ public class MergeReleaseToMasterExecutor extends AbstractRunTaskExecutor {
         CodeRepository repo = codeRepositoryPort.findById(RepoId.of(repoId))
                 .orElseThrow(() -> NotFoundException.repository(repoId));
         
-        // TODO: 获取 release 分支名
-        String releaseBranch = "release/RW-xxx"; // 需要从上下文获取
+        // 从上下文获取 release 分支名
+        RunTaskContext context = runTaskContextPort.getContext(task)
+                .orElseThrow(() -> BusinessException.runTaskContextNotFound(task.getId().value()));
+        
+        String releaseBranch = context.getReleaseBranch();
+        if (releaseBranch == null || releaseBranch.isBlank()) {
+            throw BusinessException.runTaskContextNotFound("Release branch not found for task " + task.getId().value());
+        }
+        
         String masterBranch = repo.getDefaultBranch();
         
         GitLabBranchPort.MergeResult result = gitLabBranchPort.mergeBranch(
@@ -54,6 +64,6 @@ public class MergeReleaseToMasterExecutor extends AbstractRunTaskExecutor {
             throw BusinessException.runTaskMergeFailed(result.conflictInfo());
         }
         
-        log.info("Release merged to master for repo: {}", repoId);
+        log.info("Release {} merged to master for repo: {}", releaseBranch, repoId);
     }
 }

@@ -12,6 +12,7 @@ import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
+import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 import org.junit.jupiter.api.BeforeEach;
@@ -177,7 +178,7 @@ class GroupAppServiceValidationTest {
         }
 
         @Override
-        public PageResult<ReleaseWindow> findPaged(String name, int page, int size) {
+        public PageResult<ReleaseWindow> findPaged(String name, ReleaseWindowStatus status, int page, int size) {
             return new PageResult<>(List.of(), 0);
         }
     }

@@ -5,6 +5,7 @@ import io.releasehub.application.releasewindow.ReleaseWindowView;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
+import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -55,9 +56,22 @@ public class ReleaseWindowController {
     @Operation(summary = "List release windows (paged)")
     public ApiPageResponse<List<ReleaseWindowView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
                                                               @RequestParam(name = "size", defaultValue = "20") int size,
-                                                              @RequestParam(name = "name", required = false) String name) {
-        var result = appService.listPaged(name, page, size);
+                                                              @RequestParam(name = "name", required = false) String name,
+                                                              @RequestParam(name = "status", required = false) String status) {
+        ReleaseWindowStatus statusEnum = parseStatus(status);
+        var result = appService.listPaged(name, statusEnum, page, size);
         return ApiPageResponse.success(result.items(), new PageMeta(page, size, result.total()));
+    }
+
+    private ReleaseWindowStatus parseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        try {
+            return ReleaseWindowStatus.valueOf(status.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null; // 无效状态值时返回 null，不筛选
+        }
     }
 
     @PostMapping("/{id}/publish")

@@ -14,6 +14,7 @@ import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.repo.CodeRepository;
@@ -121,7 +122,7 @@ class IterationAppServiceTest {
     void shouldCreateFeatureBranchAndSaveVersionInfoWhenAddRepos() {
         Instant now = Instant.now();
         Iteration existing = Iteration.rehydrate(
-                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.<RepoId>of(), now, now);
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.<RepoId>of(), IterationStatus.ACTIVE, now, now);
         CodeRepository repo = CodeRepository.rehydrate(
                 RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git",
                 "master", "G001", false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
@@ -148,7 +149,7 @@ class IterationAppServiceTest {
     void shouldArchiveFeatureBranchWithReasonUnpublishedWhenRemoveRepos() {
         Instant now = Instant.now();
         Iteration existing = Iteration.rehydrate(
-                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(RepoId.of("repo-1")), now, now);
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
         CodeRepository repo = CodeRepository.rehydrate(
                 RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git",
                 "master", "G001", false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
@@ -173,7 +174,7 @@ class IterationAppServiceTest {
     void shouldFailDeleteWhenHasRepos() {
         Instant now = Instant.now();
         Iteration existing = Iteration.rehydrate(
-                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(RepoId.of("repo-1")), now, now);
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
 
         when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
 
@@ -188,7 +189,7 @@ class IterationAppServiceTest {
     void shouldFailDeleteWhenAttachedToWindow() {
         Instant now = Instant.now();
         Iteration existing = Iteration.rehydrate(
-                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.<RepoId>of(), now, now);
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.<RepoId>of(), IterationStatus.ACTIVE, now, now);
         ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
         WindowIteration wi = WindowIteration.attach(ReleaseWindowId.of("window-1"), IterationKey.of("ITER-1"), now, now);
 
@@ -207,7 +208,7 @@ class IterationAppServiceTest {
     void shouldDeleteWhenNoReposAndNotAttached() {
         Instant now = Instant.now();
         Iteration existing = Iteration.rehydrate(
-                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.<RepoId>of(), now, now);
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.<RepoId>of(), IterationStatus.ACTIVE, now, now);
 
         when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
         when(releaseWindowPort.findAll()).thenReturn(List.of());

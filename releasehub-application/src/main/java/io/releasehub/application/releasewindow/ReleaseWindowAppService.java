@@ -9,6 +9,7 @@ import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
+import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.releasehub.domain.run.Run;
 import io.releasehub.domain.window.WindowIteration;
 import lombok.RequiredArgsConstructor;
@@ -77,8 +78,8 @@ public class ReleaseWindowAppService {
                                 .toList();
     }
 
-    public PageResult<ReleaseWindowView> listPaged(String name, int page, int size) {
-        PageResult<ReleaseWindow> result = releaseWindowPort.findPaged(name, page, size);
+    public PageResult<ReleaseWindowView> listPaged(String name, ReleaseWindowStatus status, int page, int size) {
+        PageResult<ReleaseWindow> result = releaseWindowPort.findPaged(name, status, page, size);
         List<ReleaseWindowView> views = result.items().stream()
                                               .map(ReleaseWindowView::from)
                                               .toList();
@@ -98,15 +99,8 @@ public class ReleaseWindowAppService {
         rw.publish(Instant.now(clock));
         releaseWindowPort.save(rw);
 
-        // 创建发布运行任务并异步执行
-        try {
-            Run run = releaseRunService.createReleaseRun(id, rw.getWindowKey(), "system"); // TODO: 获取当前用户
-            releaseRunService.executeRunAsync(run.getId().value());
-            log.info("Created and started release run {} for window {}", run.getId().value(), id);
-        } catch (Exception e) {
-            log.error("Failed to create release run for window {}: {}", id, e.getMessage());
-            // 发布成功但运行任务创建失败时，不回滚发布状态
-        }
+        // 发布只是状态变更，收尾编排在 close() 时触发
+        log.info("Published release window {}", id);
 
         return ReleaseWindowView.from(rw);
     }
@@ -137,6 +131,17 @@ public class ReleaseWindowAppService {
         ReleaseWindow rw = findById(id);
         rw.close(Instant.now(clock));
         releaseWindowPort.save(rw);
+
+        // 触发收尾编排任务（归档分支、关闭迭代等）
+        try {
+            Run run = releaseRunService.createReleaseRun(id, rw.getWindowKey(), "system"); // TODO: 获取当前用户
+            releaseRunService.executeRunAsync(run.getId().value());
+            log.info("Created and started release run {} for closing window {}", run.getId().value(), id);
+        } catch (Exception e) {
+            log.error("Failed to create release run for closing window {}: {}", id, e.getMessage());
+            // 关闭成功但运行任务创建失败时，不回滚关闭状态
+        }
+
         return ReleaseWindowView.from(rw);
     }
 }

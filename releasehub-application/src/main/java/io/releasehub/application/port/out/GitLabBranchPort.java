@@ -53,6 +53,14 @@ public interface GitLabBranchPort {
     boolean createTag(String repoCloneUrl, String tagName, String ref, String message);
     
     /**
+     * 触发 CI Pipeline
+     * @param repoCloneUrl 仓库克隆地址
+     * @param ref 分支名或 tag 名
+     * @return Pipeline 运行 ID，失败返回 null
+     */
+    String triggerPipeline(String repoCloneUrl, String ref);
+    
+    /**
      * 合并结果
      */
     record MergeResult(MergeStatus status, String conflictInfo) {

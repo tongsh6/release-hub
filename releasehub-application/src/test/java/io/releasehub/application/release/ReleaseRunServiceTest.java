@@ -9,6 +9,7 @@ import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.Run;
@@ -100,7 +101,7 @@ class ReleaseRunServiceTest {
             // 准备迭代详情
             Iteration iteration = Iteration.rehydrate(
                     iterKey, "迭代1", "描述", null, "G001",
-                    Set.of(RepoId.of("repo-001")),
+                    Set.of(RepoId.of("repo-001")), IterationStatus.ACTIVE,
                     Instant.now(), Instant.now()
             );
             when(iterationAppService.get("iter-001")).thenReturn(iteration);
@@ -169,13 +170,13 @@ class ReleaseRunServiceTest {
             // 迭代1有2个仓库
             Iteration iteration1 = Iteration.rehydrate(
                     iterKey1, "迭代1", null, null, "G001",
-                    Set.of(RepoId.of("repo-001"), RepoId.of("repo-002")),
+                    Set.of(RepoId.of("repo-001"), RepoId.of("repo-002")), IterationStatus.ACTIVE,
                     Instant.now(), Instant.now()
             );
             // 迭代2有1个仓库
             Iteration iteration2 = Iteration.rehydrate(
                     iterKey2, "迭代2", null, null, "G001",
-                    Set.of(RepoId.of("repo-003")),
+                    Set.of(RepoId.of("repo-003")), IterationStatus.ACTIVE,
                     Instant.now(), Instant.now()
             );
 

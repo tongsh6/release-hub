@@ -55,15 +55,15 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
     }
 
     @Override
-    public PageResult<ReleaseWindow> findPaged(String name, int page, int size) {
+    public PageResult<ReleaseWindow> findPaged(String name, ReleaseWindowStatus status, int page, int size) {
         int pageIndex = Math.max(page - 1, 0);
         PageRequest pageable = PageRequest.of(pageIndex, size);
-        Page<ReleaseWindowJpaEntity> result;
-        if (name == null || name.isBlank()) {
-            result = jpaRepository.findAll(pageable);
-        } else {
-            result = jpaRepository.findByNameContainingIgnoreCase(name.trim(), pageable);
-        }
+        
+        String nameParam = (name == null || name.isBlank()) ? null : name.trim();
+        String statusParam = (status == null) ? null : status.name();
+        
+        Page<ReleaseWindowJpaEntity> result = jpaRepository.findByNameAndStatus(nameParam, statusParam, pageable);
+        
         List<ReleaseWindow> items = result.getContent().stream()
                 .map(this::toDomain)
                 .collect(Collectors.toList());

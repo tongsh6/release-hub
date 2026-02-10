@@ -106,4 +106,12 @@ public class BusinessException extends BaseException {
     public static BusinessException runTaskMergeFailed(Object details) {
         return of(ErrorCode.RUN_TASK_MERGE_FAILED, details);
     }
+
+    public static BusinessException runTaskContextNotFound(Object taskId) {
+        return of(ErrorCode.RUN_TASK_CONTEXT_NOT_FOUND, taskId);
+    }
+
+    public static BusinessException runTaskCiTriggerFailed(Object details) {
+        return of(ErrorCode.RUN_TASK_CI_TRIGGER_FAILED, details);
+    }
 }

@@ -34,6 +34,9 @@ public class IterationJpaEntity {
     
     @Column(name = "expected_release_at")
     private LocalDate expectedReleaseAt;
+
+    @Column(length = 20)
+    private String status;
     
     private Instant createdAt;
     private Instant updatedAt;

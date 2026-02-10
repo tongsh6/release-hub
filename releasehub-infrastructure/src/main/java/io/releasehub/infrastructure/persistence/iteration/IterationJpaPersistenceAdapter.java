@@ -4,6 +4,7 @@ import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.repo.RepoId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Primary;
@@ -33,6 +34,7 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
                 iteration.getGroupCode(),
                 iteration.getDescription(),
                 iteration.getExpectedReleaseAt(),
+                iteration.getStatus() != null ? iteration.getStatus().name() : IterationStatus.ACTIVE.name(),
                 iteration.getCreatedAt(),
                 iteration.getUpdatedAt()
         );
@@ -58,7 +60,8 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
                 .map(e -> {
                     List<IterationRepoJpaEntity> repos = iterationRepoRepository.findByIdIterationKey(e.getKey());
                     Set<RepoId> repoIds = repos.stream().map(r -> RepoId.of(r.getId().getRepoId())).collect(Collectors.toCollection(HashSet::new));
-                    return Iteration.rehydrate(IterationKey.of(e.getKey()), e.getName(), e.getDescription(), e.getExpectedReleaseAt(), e.getGroupCode(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
+                    IterationStatus status = parseStatus(e.getStatus());
+                    return Iteration.rehydrate(IterationKey.of(e.getKey()), e.getName(), e.getDescription(), e.getExpectedReleaseAt(), e.getGroupCode(), repoIds, status, e.getCreatedAt(), e.getUpdatedAt());
                 });
     }
 
@@ -97,6 +100,7 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
         Set<RepoId> repoIds = repos.stream()
                 .map(r -> RepoId.of(r.getId().getRepoId()))
                 .collect(Collectors.toCollection(HashSet::new));
+        IterationStatus status = parseStatus(entity.getStatus());
         return Iteration.rehydrate(
                 IterationKey.of(entity.getKey()),
                 entity.getName(),
@@ -104,8 +108,20 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
                 entity.getExpectedReleaseAt(),
                 entity.getGroupCode(),
                 repoIds,
+                status,
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
         );
+    }
+
+    private IterationStatus parseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return IterationStatus.ACTIVE;
+        }
+        try {
+            return IterationStatus.valueOf(status);
+        } catch (IllegalArgumentException e) {
+            return IterationStatus.ACTIVE;
+        }
     }
 }

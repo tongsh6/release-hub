@@ -68,8 +68,37 @@ public class GitLabAdapter implements GitLabPort {
 
     @Override
     public boolean branchExists(long projectId, String ref) {
-        // Implementation omitted for brevity in this step, but should use real API
-        return true;
+        var settings = settingsPort.getGitLab();
+        if (settings.isEmpty()) {
+            log.warn("GitLab settings not configured, assuming branch exists");
+            return true;
+        }
+        String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
+        String token = settings.get().tokenMasked();
+        
+        try {
+            String encodedRef = URLEncoder.encode(ref, StandardCharsets.UTF_8);
+            String url = String.format("%s/api/v4/projects/%d/repository/branches/%s", 
+                    baseUrl, projectId, encodedRef);
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("PRIVATE-TOKEN", token);
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    new ParameterizedTypeReference<>() {}
+            );
+            
+            return response.getStatusCode().is2xxSuccessful();
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            return false;
+        } catch (Exception e) {
+            log.warn("Error checking branch existence for project {} ref {}: {}", projectId, ref, e.getMessage());
+            return false;
+        }
     }
 
     @Override

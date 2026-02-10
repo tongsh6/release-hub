@@ -147,7 +147,7 @@ class GroupAppServiceTest {
         }
 
         @Override
-        public PageResult<io.releasehub.domain.releasewindow.ReleaseWindow> findPaged(String name, int page, int size) {
+        public PageResult<io.releasehub.domain.releasewindow.ReleaseWindow> findPaged(String name, io.releasehub.domain.releasewindow.ReleaseWindowStatus status, int page, int size) {
             return new PageResult<>(List.of(), 0);
         }
     }

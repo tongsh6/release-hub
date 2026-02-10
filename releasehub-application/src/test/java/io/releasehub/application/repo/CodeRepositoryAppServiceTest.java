@@ -11,6 +11,7 @@ import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.version.VersionSource;
@@ -135,7 +136,7 @@ class CodeRepositoryAppServiceTest {
                 false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
         Iteration iteration = Iteration.rehydrate(
                 IterationKey.of("ITER-1"), "Iter", null, null, "G001",
-                Set.of(RepoId.of("repo-1")), now, now);
+                Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
 
         when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
         when(iterationPort.findAll()).thenReturn(List.of(iteration));

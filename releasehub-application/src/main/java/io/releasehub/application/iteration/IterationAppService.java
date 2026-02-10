@@ -88,7 +88,7 @@ public class IterationAppService {
         Set<RepoId> repos = safeRepoIds.stream().map(RepoId::new).collect(java.util.stream.Collectors.toSet());
         Instant now = Instant.now(clock);
         ensureLeafGroup(groupCode);
-        Iteration updated = Iteration.rehydrate(existing.getId(), name, description, expectedReleaseAt, groupCode, repos, existing.getCreatedAt(), now);
+        Iteration updated = Iteration.rehydrate(existing.getId(), name, description, expectedReleaseAt, groupCode, repos, existing.getStatus(), existing.getCreatedAt(), now);
         iterationPort.save(updated);
         return updated;
     }
@@ -118,7 +118,7 @@ public class IterationAppService {
         }
 
         merged.addAll(toAdd);
-        Iteration updated = Iteration.rehydrate(existing.getId(), existing.getName(), existing.getDescription(), existing.getExpectedReleaseAt(), existing.getGroupCode(), merged, existing.getCreatedAt(), now);
+        Iteration updated = Iteration.rehydrate(existing.getId(), existing.getName(), existing.getDescription(), existing.getExpectedReleaseAt(), existing.getGroupCode(), merged, existing.getStatus(), existing.getCreatedAt(), now);
         iterationPort.save(updated);
         return updated;
     }
@@ -192,7 +192,7 @@ public class IterationAppService {
             }
         }
         Instant now = Instant.now(clock);
-        Iteration updated = Iteration.rehydrate(existing.getId(), existing.getName(), existing.getDescription(), existing.getExpectedReleaseAt(), existing.getGroupCode(), filtered, existing.getCreatedAt(), now);
+        Iteration updated = Iteration.rehydrate(existing.getId(), existing.getName(), existing.getDescription(), existing.getExpectedReleaseAt(), existing.getGroupCode(), filtered, existing.getStatus(), existing.getCreatedAt(), now);
         iterationPort.save(updated);
         return updated;
     }

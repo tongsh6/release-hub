@@ -3,6 +3,9 @@ package io.releasehub.application.release.executors;
 import io.releasehub.application.port.out.GitLabBranchPort;
 import io.releasehub.application.release.AbstractRunTaskExecutor;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.run.RunTaskContext;
+import io.releasehub.application.run.RunTaskContextPort;
+import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
@@ -22,6 +25,7 @@ public class ArchiveFeatureBranchExecutor extends AbstractRunTaskExecutor {
     
     private final GitLabBranchPort gitLabBranchPort;
     private final CodeRepositoryPort codeRepositoryPort;
+    private final RunTaskContextPort runTaskContextPort;
     
     @Override
     public RunTaskType getTaskType() {
@@ -36,14 +40,21 @@ public class ArchiveFeatureBranchExecutor extends AbstractRunTaskExecutor {
         CodeRepository repo = codeRepositoryPort.findById(RepoId.of(repoId))
                 .orElseThrow(() -> NotFoundException.repository(repoId));
         
-        // TODO: 获取 feature 分支名
-        String featureBranch = "feature/ITER-xxx"; // 需要从上下文获取
+        // 从上下文获取 feature 分支名
+        RunTaskContext context = runTaskContextPort.getContext(task)
+                .orElseThrow(() -> BusinessException.runTaskContextNotFound(task.getId().value()));
+        
+        String featureBranch = context.getFeatureBranch();
+        if (featureBranch == null || featureBranch.isBlank()) {
+            log.warn("Feature branch not found in context for repo: {}, skipping archive", repoId);
+            return;
+        }
         
         boolean success = gitLabBranchPort.archiveBranch(repo.getCloneUrl(), featureBranch, "released");
         if (!success) {
             log.warn("Failed to archive branch {} (may not exist)", featureBranch);
         }
         
-        log.info("Feature branch archived for repo: {} (mock)", repoId);
+        log.info("Feature branch {} archived for repo: {}", featureBranch, repoId);
     }
 }

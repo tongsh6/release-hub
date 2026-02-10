@@ -10,6 +10,7 @@ import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
@@ -75,7 +76,7 @@ class CodeMergeServiceTest {
                 IterationKey.of("iter-001"),
                 "测试迭代",
                 null, null, "G001",
-                repos,
+                repos, IterationStatus.ACTIVE,
                 Instant.now(), Instant.now()
         );
     }
