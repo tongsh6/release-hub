@@ -1,8 +1,19 @@
 package io.releasehub.application.group;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.application.iteration.IterationPort;
+import io.releasehub.application.releasewindow.ReleaseWindowPort;
+import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
+import io.releasehub.domain.iteration.Iteration;
+import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.releasewindow.ReleaseWindow;
+import io.releasehub.domain.releasewindow.ReleaseWindowId;
+import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
+import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.RepoId;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +34,7 @@ class GroupGetByCodeTest {
     @Test
     void getByCode_ShouldReturnGroup_WhenExists() {
         InMemoryPort port = new InMemoryPort();
-        GroupAppService svc = new GroupAppService(port);
+        GroupAppService svc = new GroupAppService(port, new EmptyReleaseWindowPort(), new EmptyIterationPort(), new EmptyRepoPort());
         Instant now = Instant.now();
         Group a = Group.create("A", "001", null, now);
         Group b = Group.create("B", "001001", "001", now);
@@ -38,10 +49,10 @@ class GroupGetByCodeTest {
     @Test
     void getByCode_ShouldThrow_WhenNotExists() {
         InMemoryPort port = new InMemoryPort();
-        GroupAppService svc = new GroupAppService(port);
+        GroupAppService svc = new GroupAppService(port, new EmptyReleaseWindowPort(), new EmptyIterationPort(), new EmptyRepoPort());
 
-        BizException ex = assertThrows(BizException.class, () -> svc.getByCode("NOPE"));
-        assertEquals("GROUP_CODE_NOT_FOUND", ex.getCode());
+        NotFoundException ex = assertThrows(NotFoundException.class, () -> svc.getByCode("NOPE"));
+        assertEquals("GROUP_002", ex.getCode());
     }
 
     static class InMemoryPort implements GroupPort {
@@ -65,6 +76,15 @@ class GroupGetByCodeTest {
         @Override
         public List<Group> findAll() {
             return new ArrayList<>(byId.values());
+        }
+
+        @Override
+        public PageResult<Group> findPaged(int page, int size) {
+            List<Group> all = findAll();
+            int pageIndex = Math.max(page - 1, 0);
+            int from = Math.min(pageIndex * size, all.size());
+            int to = Math.min(from + size, all.size());
+            return new PageResult<>(all.subList(from, to), all.size());
         }
 
         @Override
@@ -106,6 +126,91 @@ class GroupGetByCodeTest {
             long cnt = 0;
             for (Group g : byId.values()) if (Objects.equals(parentCode, g.getParentCode())) cnt++;
             return cnt;
+        }
+    }
+
+    static class EmptyReleaseWindowPort implements ReleaseWindowPort {
+        @Override
+        public void save(ReleaseWindow releaseWindow) {
+        }
+
+        @Override
+        public Optional<ReleaseWindow> findById(ReleaseWindowId id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<ReleaseWindow> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public PageResult<ReleaseWindow> findPaged(String name, ReleaseWindowStatus status, int page, int size) {
+            return new PageResult<>(List.of(), 0);
+        }
+    }
+
+    static class EmptyIterationPort implements IterationPort {
+        @Override
+        public void save(Iteration iteration) {
+        }
+
+        @Override
+        public Optional<Iteration> findByKey(IterationKey key) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<Iteration> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public PageResult<Iteration> findPaged(String keyword, int page, int size) {
+            return new PageResult<>(List.of(), 0);
+        }
+
+        @Override
+        public void deleteByKey(IterationKey key) {
+        }
+    }
+
+    static class EmptyRepoPort implements CodeRepositoryPort {
+        @Override
+        public void save(CodeRepository domain) {
+        }
+
+        @Override
+        public Optional<CodeRepository> findById(RepoId id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<CodeRepository> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public void deleteById(RepoId id) {
+        }
+
+        @Override
+        public List<CodeRepository> search(String keyword) {
+            return List.of();
+        }
+
+        @Override
+        public PageResult<CodeRepository> searchPaged(String keyword, int page, int size) {
+            return new PageResult<>(List.of(), 0);
+        }
+
+        @Override
+        public void updateInitialVersion(String repoId, String initialVersion, String versionSource) {
+        }
+
+        @Override
+        public Optional<String> getInitialVersion(String repoId) {
+            return Optional.empty();
         }
     }
 }

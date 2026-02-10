@@ -1,14 +1,20 @@
 package io.releasehub.infrastructure.persistence.window;
 
 import io.releasehub.application.window.WindowIterationPort;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.window.WindowIteration;
+import io.releasehub.domain.window.WindowIterationId;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Repository
 @RequiredArgsConstructor
@@ -18,7 +24,7 @@ public class WindowIterationPersistenceAdapter implements WindowIterationPort {
 
     @Override
     public WindowIteration attach(ReleaseWindowId windowId, IterationKey iterationKey, Instant attachAt) {
-        String id = windowId.value() + "::" + iterationKey.value();
+        WindowIterationId id = WindowIterationId.generate(windowId, iterationKey);
         Instant now = Instant.now();
         WindowIterationJpaEntity entity = jpaRepository.findByWindowIdAndIterationKey(windowId.value(), iterationKey.value())
                 .map(e -> {
@@ -27,7 +33,7 @@ public class WindowIterationPersistenceAdapter implements WindowIterationPort {
                     return e;
                 })
                 .orElseGet(() -> new WindowIterationJpaEntity(
-                        id,
+                        id.value(),
                         windowId.value(),
                         iterationKey.value(),
                         attachAt,
@@ -36,9 +42,9 @@ public class WindowIterationPersistenceAdapter implements WindowIterationPort {
                 ));
         jpaRepository.save(entity);
         return WindowIteration.rehydrate(
-                id,
-                new ReleaseWindowId(entity.getWindowId()),
-                new IterationKey(entity.getIterationKey()),
+                WindowIterationId.of(entity.getId()),
+                ReleaseWindowId.of(entity.getWindowId()),
+                IterationKey.of(entity.getIterationKey()),
                 entity.getAttachAt(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
@@ -54,13 +60,72 @@ public class WindowIterationPersistenceAdapter implements WindowIterationPort {
     public List<WindowIteration> listByWindow(ReleaseWindowId windowId) {
         return jpaRepository.findByWindowId(windowId.value()).stream()
                 .map(e -> WindowIteration.rehydrate(
-                        e.getId(),
-                        new ReleaseWindowId(e.getWindowId()),
-                        new IterationKey(e.getIterationKey()),
+                        WindowIterationId.of(e.getId()),
+                        ReleaseWindowId.of(e.getWindowId()),
+                        IterationKey.of(e.getIterationKey()),
                         e.getAttachAt(),
                         e.getCreatedAt(),
                         e.getUpdatedAt()
                 ))
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public PageResult<WindowIteration> listByWindowPaged(ReleaseWindowId windowId, int page, int size) {
+        int pageIndex = Math.max(page - 1, 0);
+        PageRequest pageable = PageRequest.of(pageIndex, size);
+        Page<WindowIterationJpaEntity> result = jpaRepository.findByWindowId(windowId.value(), pageable);
+        List<WindowIteration> items = result.getContent().stream()
+                .map(e -> WindowIteration.rehydrate(
+                        WindowIterationId.of(e.getId()),
+                        ReleaseWindowId.of(e.getWindowId()),
+                        IterationKey.of(e.getIterationKey()),
+                        e.getAttachAt(),
+                        e.getCreatedAt(),
+                        e.getUpdatedAt()
+                ))
+                .collect(Collectors.toList());
+        return new PageResult<>(items, result.getTotalElements());
+    }
+
+    @Override
+    public Optional<WindowIteration> findByWindowIdAndIterationKey(ReleaseWindowId windowId, IterationKey iterationKey) {
+        return jpaRepository.findByWindowIdAndIterationKey(windowId.value(), iterationKey.value())
+                .map(e -> WindowIteration.rehydrate(
+                        WindowIterationId.of(e.getId()),
+                        ReleaseWindowId.of(e.getWindowId()),
+                        IterationKey.of(e.getIterationKey()),
+                        e.getAttachAt(),
+                        e.getCreatedAt(),
+                        e.getUpdatedAt()
+                ));
+    }
+
+    @Override
+    public void updateReleaseBranch(String windowId, String iterationKey, String releaseBranch, Instant now) {
+        jpaRepository.findByWindowIdAndIterationKey(windowId, iterationKey)
+                .ifPresent(e -> {
+                    e.setReleaseBranch(releaseBranch);
+                    e.setBranchCreated(true);
+                    e.setUpdatedAt(now);
+                    jpaRepository.save(e);
+                });
+    }
+
+    @Override
+    public void updateLastMergeAt(String windowId, String iterationKey, Instant lastMergeAt) {
+        jpaRepository.findByWindowIdAndIterationKey(windowId, iterationKey)
+                .ifPresent(e -> {
+                    e.setLastMergeAt(lastMergeAt);
+                    e.setUpdatedAt(lastMergeAt);
+                    jpaRepository.save(e);
+                });
+    }
+
+    @Override
+    public String getReleaseBranch(String windowId, String iterationKey) {
+        return jpaRepository.findByWindowIdAndIterationKey(windowId, iterationKey)
+                .map(WindowIterationJpaEntity::getReleaseBranch)
+                .orElse(null);
     }
 }

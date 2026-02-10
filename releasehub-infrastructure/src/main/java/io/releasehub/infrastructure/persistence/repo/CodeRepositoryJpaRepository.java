@@ -1,10 +1,11 @@
 package io.releasehub.infrastructure.persistence.repo;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import java.util.List;
-
 public interface CodeRepositoryJpaRepository extends JpaRepository<CodeRepositoryJpaEntity, String> {
-    List<CodeRepositoryJpaEntity> findByProjectId(String projectId);
     void deleteById(String id);
+
+    Page<CodeRepositoryJpaEntity> findByNameContainingIgnoreCaseOrCloneUrlContainingIgnoreCase(String name, String cloneUrl, Pageable pageable);
 }

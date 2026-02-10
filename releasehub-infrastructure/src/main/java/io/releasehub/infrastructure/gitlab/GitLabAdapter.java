@@ -2,6 +2,9 @@ package io.releasehub.infrastructure.gitlab;
 
 import io.releasehub.application.gitlab.GitLabPort;
 import io.releasehub.application.settings.SettingsPort;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.exception.ValidationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
@@ -12,10 +15,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.Collections;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -27,9 +32,73 @@ public class GitLabAdapter implements GitLabPort {
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Override
+    public long resolveProjectId(String repoCloneUrl) {
+        var settings = settingsPort.getGitLab();
+        if (settings.isEmpty()) {
+            throw BusinessException.gitlabSettingsMissing();
+        }
+        String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
+        String token = settings.get().tokenMasked();
+
+        String projectPath = extractProjectPath(repoCloneUrl);
+        String encoded = URLEncoder.encode(projectPath, StandardCharsets.UTF_8);
+
+        String url = String.format("%s/api/v4/projects/%s", baseUrl, encoded);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("PRIVATE-TOKEN", token);
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                entity,
+                new ParameterizedTypeReference<>() {
+                }
+        );
+        Map<String, Object> body = response.getBody();
+        if (body == null || body.get("id") == null) {
+            throw NotFoundException.gitlabProject(repoCloneUrl);
+        }
+        Object id = body.get("id");
+        if (id instanceof Number n) {
+            return n.longValue();
+        }
+        return Long.parseLong(String.valueOf(id));
+    }
+
+    @Override
     public boolean branchExists(long projectId, String ref) {
-        // Implementation omitted for brevity in this step, but should use real API
-        return true; 
+        var settings = settingsPort.getGitLab();
+        if (settings.isEmpty()) {
+            log.warn("GitLab settings not configured, assuming branch exists");
+            return true;
+        }
+        String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
+        String token = settings.get().tokenMasked();
+        
+        try {
+            String encodedRef = URLEncoder.encode(ref, StandardCharsets.UTF_8);
+            String url = String.format("%s/api/v4/projects/%d/repository/branches/%s", 
+                    baseUrl, projectId, encodedRef);
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("PRIVATE-TOKEN", token);
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    new ParameterizedTypeReference<>() {}
+            );
+            
+            return response.getStatusCode().is2xxSuccessful();
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            return false;
+        } catch (Exception e) {
+            log.warn("Error checking branch existence for project {} ref {}: {}", projectId, ref, e.getMessage());
+            return false;
+        }
     }
 
     @Override
@@ -40,8 +109,68 @@ public class GitLabAdapter implements GitLabPort {
 
     @Override
     public GateSummary fetchGateSummary(long projectId) {
-        // Implementation omitted for brevity
-        return new GateSummary(false, false, false, false);
+        var settings = settingsPort.getGitLab();
+        if (settings.isEmpty()) {
+            return new GateSummary(false, false, false, false);
+        }
+        String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
+        String token = settings.get().tokenMasked();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("PRIVATE-TOKEN", token);
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        boolean protectedBranch = false;
+        boolean approvalRequired = false;
+        boolean pipelineGate = false;
+
+        try {
+            String projectUrl = String.format("%s/api/v4/projects/%d", baseUrl, projectId);
+            ResponseEntity<Map<String, Object>> projectResp = restTemplate.exchange(
+                    projectUrl,
+                    HttpMethod.GET,
+                    entity,
+                    new ParameterizedTypeReference<>() {
+                    }
+            );
+            Map<String, Object> project = projectResp.getBody();
+            if (project != null) {
+                pipelineGate = asBoolean(project.get("only_allow_merge_if_pipeline_succeeds"));
+                Object approvals = project.get("approvals_before_merge");
+                if (approvals instanceof Number n) {
+                    approvalRequired = n.intValue() > 0;
+                } else if (approvals != null) {
+                    try {
+                        approvalRequired = Integer.parseInt(String.valueOf(approvals)) > 0;
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+
+                String defaultBranch = project.get("default_branch") != null ? String.valueOf(project.get("default_branch")) : null;
+                if (defaultBranch != null && !defaultBranch.isBlank()) {
+                    String protectedUrl = String.format("%s/api/v4/projects/%d/protected_branches?per_page=100", baseUrl, projectId);
+                    ResponseEntity<List<Map<String, Object>>> pbResp = restTemplate.exchange(
+                            protectedUrl,
+                            HttpMethod.GET,
+                            entity,
+                            new ParameterizedTypeReference<>() {
+                            }
+                    );
+                    List<Map<String, Object>> branches = pbResp.getBody();
+                    if (branches != null) {
+                        protectedBranch = branches.stream()
+                                                  .map(b -> b.get("name"))
+                                                  .filter(v -> v != null)
+                                                  .map(String::valueOf)
+                                                  .anyMatch(defaultBranch::equals);
+                    }
+                }
+            }
+            return new GateSummary(protectedBranch, approvalRequired, pipelineGate, false);
+        } catch (Exception e) {
+            log.warn("Failed to fetch gate summary for project {}: {}", projectId, e.getMessage());
+            return new GateSummary(false, false, false, true);
+        }
     }
 
     @Override
@@ -50,7 +179,7 @@ public class GitLabAdapter implements GitLabPort {
         if (settings.isEmpty()) {
             return new BranchStatistics(0, 0, 0);
         }
-        String baseUrl = settings.get().baseUrl();
+        String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
         String token = settings.get().tokenMasked();
 
         String url = String.format("%s/api/v4/projects/%d/repository/branches?per_page=100", baseUrl, projectId);
@@ -63,7 +192,8 @@ public class GitLabAdapter implements GitLabPort {
                     url,
                     HttpMethod.GET,
                     entity,
-                    new ParameterizedTypeReference<>() {}
+                    new ParameterizedTypeReference<>() {
+                    }
             );
 
             List<Map<String, Object>> branches = response.getBody();
@@ -73,14 +203,14 @@ public class GitLabAdapter implements GitLabPort {
 
             int total = branches.size();
             // Assuming all returned are active for now, or check 'commit' date if needed
-            int active = total; 
-            
+            int active = total;
+
             // Check compliance
             Pattern compliantPattern = Pattern.compile("^(main|master|develop|feature/.*|fix/.*|release/.*|hotfix/.*)$");
             int nonCompliant = (int) branches.stream()
-                    .map(b -> (String) b.get("name"))
-                    .filter(name -> !compliantPattern.matcher(name).matches())
-                    .count();
+                                             .map(b -> (String) b.get("name"))
+                                             .filter(name -> !compliantPattern.matcher(name).matches())
+                                             .count();
 
             return new BranchStatistics(total, active, nonCompliant);
 
@@ -96,7 +226,7 @@ public class GitLabAdapter implements GitLabPort {
         if (settings.isEmpty()) {
             return new MrStatistics(0, 0, 0, 0);
         }
-        String baseUrl = settings.get().baseUrl();
+        String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
         String token = settings.get().tokenMasked();
 
         int open = getCount(baseUrl, projectId, token, "merge_requests", "opened");
@@ -120,7 +250,8 @@ public class GitLabAdapter implements GitLabPort {
                     url,
                     HttpMethod.GET,
                     entity,
-                    new ParameterizedTypeReference<>() {}
+                    new ParameterizedTypeReference<>() {
+                    }
             );
             String total = response.getHeaders().getFirst("X-Total");
             if (total != null) {
@@ -133,5 +264,34 @@ public class GitLabAdapter implements GitLabPort {
             log.warn("Failed to get count for {} {}: {}", resource, state, e.getMessage());
             return 0;
         }
+    }
+
+    private boolean asBoolean(Object v) {
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s) return Boolean.parseBoolean(s);
+        return false;
+    }
+
+    private String normalizeBaseUrl(String baseUrl) {
+        if (baseUrl == null) {
+            return "";
+        }
+        return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    private String extractProjectPath(String cloneUrl) {
+        if (cloneUrl == null || cloneUrl.isBlank()) {
+            throw ValidationException.invalidParameter("cloneUrl");
+        }
+
+        Matcher sshMatch = Pattern.compile("^git@([^:]+):(.+?)(\\.git)?$").matcher(cloneUrl.trim());
+        if (sshMatch.find()) {
+            return sshMatch.group(2);
+        }
+        Matcher httpsMatch = Pattern.compile("^https?://([^/]+)/(.+?)(\\.git)?$").matcher(cloneUrl.trim());
+        if (httpsMatch.find()) {
+            return httpsMatch.group(2);
+        }
+        throw ValidationException.invalidParameter("cloneUrl");
     }
 }

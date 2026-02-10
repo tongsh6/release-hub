@@ -4,7 +4,6 @@ import io.releasehub.application.repo.CodeRepositoryAppService;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
-import io.releasehub.domain.repo.CodeRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -32,14 +31,29 @@ public class CodeRepositoryController {
     @PostMapping
     @Operation(summary = "Create repository")
     public ApiResponse<CodeRepositoryView> create(@RequestBody @Valid CreateRepoRequest request) {
-        var repo = appService.create(request.getProjectId(), request.getGitlabProjectId(), request.getName(), request.getCloneUrl(), request.getDefaultBranch(), request.isMonoRepo());
+        var repo = appService.create(
+                request.getName(),
+                request.getCloneUrl(),
+                request.getDefaultBranch(),
+                request.isMonoRepo(),
+                request.getInitialVersion(),
+                request.getGroupCode()
+        );
         return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
     }
 
     @PutMapping("/{id}")
     @Operation(summary = "Update repository")
     public ApiResponse<CodeRepositoryView> update(@PathVariable("id") String id, @RequestBody @Valid UpdateRepoRequest request) {
-        var repo = appService.update(id, request.getGitlabProjectId(), request.getName(), request.getCloneUrl(), request.getDefaultBranch(), request.isMonoRepo());
+        var repo = appService.update(
+                id,
+                request.getName(),
+                request.getCloneUrl(),
+                request.getDefaultBranch(),
+                request.isMonoRepo(),
+                request.getInitialVersion(),
+                request.getGroupCode()
+        );
         return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
     }
 
@@ -82,32 +96,49 @@ public class CodeRepositoryController {
         ));
     }
 
-    @PostMapping("/{id}/sync")
-    @Operation(summary = "Sync repository statistics from GitLab")
-    public ApiResponse<Boolean> sync(@PathVariable("id") String id) {
-        appService.syncRepository(id);
-        return ApiResponse.success(true);
-    }
-
     @GetMapping
     @Operation(summary = "List repositories")
-    public ApiResponse<List<CodeRepositoryView>> list(@RequestParam(name = "keyword", required = false) String keyword,
-                                                      @RequestParam(name = "projectId", required = false) String projectId,
-                                                      @RequestParam(name = "gitlabProjectId", required = false) Long gitlabProjectId) {
-        return ApiResponse.success(appService.search(keyword, projectId, gitlabProjectId).stream().map(CodeRepositoryView::fromDomain).collect(Collectors.toList()));
+    public ApiResponse<List<CodeRepositoryView>> list(@RequestParam(name = "keyword", required = false) String keyword) {
+        return ApiResponse.success(appService.search(keyword).stream().map(CodeRepositoryView::fromDomain).collect(Collectors.toList()));
     }
 
     @GetMapping("/paged")
     @Operation(summary = "List repositories (paged)")
-    public ApiPageResponse<List<CodeRepositoryView>> listPaged(@RequestParam(name = "page", defaultValue = "0") int page,
+    public ApiPageResponse<List<CodeRepositoryView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
                                                                @RequestParam(name = "size", defaultValue = "20") int size,
-                                                               @RequestParam(name = "keyword", required = false) String keyword,
-                                                               @RequestParam(name = "projectId", required = false) String projectId,
-                                                               @RequestParam(name = "gitlabProjectId", required = false) Long gitlabProjectId) {
-        List<CodeRepository> all = appService.search(keyword, projectId, gitlabProjectId);
-        int from = Math.max(page * size, 0);
-        int to = Math.min(from + size, all.size());
-        List<CodeRepository> slice = from >= all.size() ? List.of() : all.subList(from, to);
-        return ApiPageResponse.success(slice.stream().map(CodeRepositoryView::fromDomain).collect(Collectors.toList()), new PageMeta(page, size, all.size()));
+                                                               @RequestParam(name = "keyword", required = false) String keyword) {
+        var result = appService.searchPaged(keyword, page, size);
+        List<CodeRepositoryView> views = result.items().stream()
+                .map(CodeRepositoryView::fromDomain)
+                .collect(Collectors.toList());
+        return ApiPageResponse.success(views, new PageMeta(page, size, result.total()));
+    }
+
+    @GetMapping("/{id}/initial-version")
+    @Operation(summary = "Get repository initial version")
+    public ApiResponse<InitialVersionView> getInitialVersion(@PathVariable("id") String id) {
+        String version = appService.getInitialVersion(id);
+        return ApiResponse.success(new InitialVersionView(id, version));
+    }
+
+    @PutMapping("/{id}/initial-version")
+    @Operation(summary = "Set repository initial version manually")
+    public ApiResponse<InitialVersionView> setInitialVersion(@PathVariable("id") String id, @RequestBody @Valid SetInitialVersionRequest request) {
+        appService.setInitialVersion(id, request.getVersion());
+        return ApiResponse.success(new InitialVersionView(id, request.getVersion()));
+    }
+
+    @PostMapping("/{id}/sync-version")
+    @Operation(summary = "Sync initial version from repository")
+    public ApiResponse<InitialVersionView> syncInitialVersion(@PathVariable("id") String id) {
+        String version = appService.syncInitialVersionFromRepo(id);
+        return ApiResponse.success(new InitialVersionView(id, version));
+    }
+
+    @PostMapping("/{id}/sync")
+    @Operation(summary = "Sync repository statistics from GitLab")
+    public ApiResponse<CodeRepositoryView> sync(@PathVariable("id") String id) {
+        var repo = appService.sync(id);
+        return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
     }
 }

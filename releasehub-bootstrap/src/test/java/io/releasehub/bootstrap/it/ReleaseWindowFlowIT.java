@@ -42,9 +42,11 @@ class ReleaseWindowFlowIT {
 
     @Test
     void should_complete_release_window_lifecycle() throws Exception {
+        String groupCode = createGroupAndGetCode();
         // 1. Create
         CreateReleaseWindowRequest createRequest = new CreateReleaseWindowRequest();
         createRequest.setName("2024-IT-01");
+        createRequest.setGroupCode(groupCode);
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/release-windows")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -94,5 +96,15 @@ class ReleaseWindowFlowIT {
         assertThat(publishResponse.getData().getStatus()).isEqualTo("PUBLISHED");
         assertThat(publishResponse.getData().isFrozen()).isTrue();
         assertThat(publishResponse.getData().getPublishedAt()).isNotNull();
+    }
+
+    private String createGroupAndGetCode() throws Exception {
+        String code = "G" + System.currentTimeMillis();
+        String req = "{\"name\":\"IT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
+        mockMvc.perform(post("/api/v1/groups")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(objectMapper.readTree(req))))
+                .andExpect(status().isOk());
+        return code;
     }
 }

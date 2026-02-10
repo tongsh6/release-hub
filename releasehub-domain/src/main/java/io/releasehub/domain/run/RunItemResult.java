@@ -6,5 +6,8 @@ public enum RunItemResult {
     MERGE_BLOCKED,
     FAILED,
     SKIPPED_DUE_TO_BLOCK,
-    SKIPPED
+    SKIPPED,
+    SUCCESS,
+    VERSION_UPDATE_SUCCESS,
+    VERSION_UPDATE_FAILED
 }

@@ -1,0 +1,135 @@
+package io.releasehub.common.exception;
+
+/**
+ * 参数校验异常 (HTTP 400)
+ * <p>
+ * 用于字段校验失败、格式错误等场景
+ */
+public class ValidationException extends BaseException {
+
+    public ValidationException(ErrorCode errorCode, Object... args) {
+        super(errorCode, args);
+    }
+
+    // ========== 静态工厂方法 ==========
+
+    public static ValidationException of(ErrorCode errorCode, Object... args) {
+        return new ValidationException(errorCode, args);
+    }
+
+    // ========== 通用快捷方法 ==========
+
+    public static ValidationException invalidParameter(Object paramName) {
+        return of(ErrorCode.INVALID_PARAMETER, paramName);
+    }
+
+    // ========== ReleaseWindow ==========
+
+    public static ValidationException rwKeyRequired() {
+        return of(ErrorCode.RW_KEY_REQUIRED);
+    }
+
+    public static ValidationException rwKeyTooLong(int maxLength) {
+        return of(ErrorCode.RW_KEY_TOO_LONG, maxLength);
+    }
+
+    public static ValidationException rwNameRequired() {
+        return of(ErrorCode.RW_NAME_REQUIRED);
+    }
+
+    public static ValidationException rwNameTooLong(int maxLength) {
+        return of(ErrorCode.RW_NAME_TOO_LONG, maxLength);
+    }
+
+    // ========== Repository ==========
+
+    public static ValidationException repoNameRequired() {
+        return of(ErrorCode.REPO_NAME_REQUIRED);
+    }
+
+    public static ValidationException repoNameTooLong(int maxLength) {
+        return of(ErrorCode.REPO_NAME_TOO_LONG, maxLength);
+    }
+
+    public static ValidationException repoUrlRequired() {
+        return of(ErrorCode.REPO_URL_REQUIRED);
+    }
+
+    public static ValidationException repoUrlTooLong(int maxLength) {
+        return of(ErrorCode.REPO_URL_TOO_LONG, maxLength);
+    }
+
+    public static ValidationException repoBranchRequired() {
+        return of(ErrorCode.REPO_BRANCH_REQUIRED);
+    }
+
+    public static ValidationException repoBranchTooLong(int maxLength) {
+        return of(ErrorCode.REPO_BRANCH_TOO_LONG, maxLength);
+    }
+
+    // ========== Group ==========
+
+    public static ValidationException groupNameRequired() {
+        return of(ErrorCode.GROUP_NAME_REQUIRED);
+    }
+
+    public static ValidationException groupNameTooLong(int maxLength) {
+        return of(ErrorCode.GROUP_NAME_TOO_LONG, maxLength);
+    }
+
+    public static ValidationException groupCodeRequired() {
+        return of(ErrorCode.GROUP_CODE_REQUIRED);
+    }
+
+    public static ValidationException groupCodeTooLong(int maxLength) {
+        return of(ErrorCode.GROUP_CODE_TOO_LONG, maxLength);
+    }
+
+    public static ValidationException groupParentTooLong(int maxLength) {
+        return of(ErrorCode.GROUP_PARENT_TOO_LONG, maxLength);
+    }
+
+    public static ValidationException groupIdInvalid() {
+        return of(ErrorCode.GROUP_ID_INVALID);
+    }
+
+    // ========== VersionPolicy ==========
+
+    public static ValidationException vpNameRequired() {
+        return of(ErrorCode.VERSION_POLICY_NAME_REQUIRED);
+    }
+
+    public static ValidationException vpNameTooLong(int maxLength) {
+        return of(ErrorCode.VERSION_POLICY_NAME_TOO_LONG, maxLength);
+    }
+
+    public static ValidationException vpInvalidFormat(String version) {
+        return of(ErrorCode.VERSION_INVALID_FORMAT, version);
+    }
+
+    public static ValidationException vpCurrentVersionRequired() {
+        return of(ErrorCode.VERSION_CURRENT_REQUIRED);
+    }
+
+    // ========== BranchRule ==========
+
+    public static ValidationException brNameRequired() {
+        return of(ErrorCode.BRANCH_RULE_NAME_REQUIRED);
+    }
+
+    public static ValidationException brNameTooLong(int maxLength) {
+        return of(ErrorCode.BRANCH_RULE_NAME_TOO_LONG, maxLength);
+    }
+
+    public static ValidationException brPatternRequired() {
+        return of(ErrorCode.BRANCH_RULE_PATTERN_REQUIRED);
+    }
+
+    public static ValidationException brPatternTooLong(int maxLength) {
+        return of(ErrorCode.BRANCH_RULE_PATTERN_TOO_LONG, maxLength);
+    }
+
+    public static ValidationException brPatternInvalid(String details) {
+        return of(ErrorCode.BRANCH_RULE_PATTERN_INVALID, details);
+    }
+}

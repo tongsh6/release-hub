@@ -25,15 +25,18 @@ public class ReleaseWindowJpaEntity {
     private String id;
     private String windowKey;
     private String name;
+    @Column(name = "group_code")
+    private String groupCode;
+    
+    @Column(columnDefinition = "TEXT")
+    private String description;
+    
+    @Column(name = "planned_release_at")
+    private Instant plannedReleaseAt;
+    
     private String status;
     private Instant createdAt;
     private Instant updatedAt;
-
-    @Column(name = "start_at")
-    private Instant startAt;
-
-    @Column(name = "end_at")
-    private Instant endAt;
 
     @Column(name = "frozen", nullable = false)
     private boolean frozen;

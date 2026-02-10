@@ -1,10 +1,13 @@
 package io.releasehub.infrastructure.persistence.group;
 
 import io.releasehub.application.group.GroupPort;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -52,6 +55,16 @@ public class GroupJpaPersistenceAdapter implements GroupPort {
     }
 
     @Override
+    public PageResult<Group> findPaged(int page, int size) {
+        int pageIndex = Math.max(page - 1, 0);
+        Page<GroupJpaEntity> result = repository.findAll(PageRequest.of(pageIndex, size));
+        List<Group> items = result.getContent().stream()
+                .map(this::toDomain)
+                .collect(Collectors.toList());
+        return new PageResult<>(items, result.getTotalElements());
+    }
+
+    @Override
     public List<Group> findByParentCode(String parentCode) {
         if (parentCode == null) {
             return repository.findByParentCodeIsNull().stream()
@@ -87,7 +100,7 @@ public class GroupJpaPersistenceAdapter implements GroupPort {
 
     private Group toDomain(GroupJpaEntity entity) {
         return Group.rehydrate(
-                new GroupId(entity.getId()),
+                GroupId.of(entity.getId()),
                 entity.getName(),
                 entity.getCode(),
                 entity.getParentCode(),

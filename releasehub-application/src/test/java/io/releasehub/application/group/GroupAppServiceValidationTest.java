@@ -1,8 +1,20 @@
 package io.releasehub.application.group;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.application.iteration.IterationPort;
+import io.releasehub.application.releasewindow.ReleaseWindowPort;
+import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
+import io.releasehub.domain.iteration.Iteration;
+import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.releasewindow.ReleaseWindow;
+import io.releasehub.domain.releasewindow.ReleaseWindowId;
+import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
+import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.RepoId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +38,7 @@ class GroupAppServiceValidationTest {
     @BeforeEach
     void setUp() {
         port = new InMemoryPort();
-        svc = new GroupAppService(port);
+        svc = new GroupAppService(port, new EmptyReleaseWindowPort(), new EmptyIterationPort(), new EmptyRepoPort());
         now = Instant.now();
     }
 
@@ -34,30 +46,30 @@ class GroupAppServiceValidationTest {
     void createShouldFailWhenCodeExists() {
         port.save(Group.create("A", "A", null, now));
 
-        BizException ex = assertThrows(BizException.class, () -> svc.create("Another", "A", null));
-        assertEquals("GROUP_CODE_EXISTS", ex.getCode());
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.create("Another", "A", null));
+        assertEquals("GROUP_007", ex.getCode());
     }
 
     @Test
     void createShouldFailWhenParentMissing() {
-        BizException ex = assertThrows(BizException.class, () -> svc.create("Child", "C", "NO_PARENT"));
-        assertEquals("GROUP_PARENT_NOT_FOUND", ex.getCode());
+        NotFoundException ex = assertThrows(NotFoundException.class, () -> svc.create("Child", "C", "NO_PARENT"));
+        assertEquals("GROUP_010", ex.getCode());
     }
 
     @Test
     void updateShouldFailWhenParentIsSelf() {
         port.save(Group.create("Self", "SELF", null, now));
 
-        BizException ex = assertThrows(BizException.class, () -> svc.update("SELF", "Self", "SELF"));
-        assertEquals("GROUP_PARENT_SAME_AS_SELF", ex.getCode());
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.update("SELF", "Self", "SELF"));
+        assertEquals("GROUP_009", ex.getCode());
     }
 
     @Test
     void updateShouldFailWhenParentMissing() {
         port.save(Group.create("Node", "NODE", null, now));
 
-        BizException ex = assertThrows(BizException.class, () -> svc.update("NODE", "Node2", "MISSING"));
-        assertEquals("GROUP_PARENT_NOT_FOUND", ex.getCode());
+        NotFoundException ex = assertThrows(NotFoundException.class, () -> svc.update("NODE", "Node2", "MISSING"));
+        assertEquals("GROUP_010", ex.getCode());
     }
 
     @Test
@@ -92,6 +104,15 @@ class GroupAppServiceValidationTest {
         @Override
         public List<Group> findAll() {
             return new ArrayList<>(byId.values());
+        }
+
+        @Override
+        public PageResult<Group> findPaged(int page, int size) {
+            List<Group> all = findAll();
+            int pageIndex = Math.max(page - 1, 0);
+            int from = Math.min(pageIndex * size, all.size());
+            int to = Math.min(from + size, all.size());
+            return new PageResult<>(all.subList(from, to), all.size());
         }
 
         @Override
@@ -138,6 +159,91 @@ class GroupAppServiceValidationTest {
         @Override
         public long countChildren(String parentCode) {
             return byId.values().stream().filter(g -> Objects.equals(parentCode, g.getParentCode())).count();
+        }
+    }
+
+    static class EmptyReleaseWindowPort implements ReleaseWindowPort {
+        @Override
+        public void save(ReleaseWindow releaseWindow) {
+        }
+
+        @Override
+        public Optional<ReleaseWindow> findById(ReleaseWindowId id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<ReleaseWindow> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public PageResult<ReleaseWindow> findPaged(String name, ReleaseWindowStatus status, int page, int size) {
+            return new PageResult<>(List.of(), 0);
+        }
+    }
+
+    static class EmptyIterationPort implements IterationPort {
+        @Override
+        public void save(Iteration iteration) {
+        }
+
+        @Override
+        public Optional<Iteration> findByKey(IterationKey key) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<Iteration> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public PageResult<Iteration> findPaged(String keyword, int page, int size) {
+            return new PageResult<>(List.of(), 0);
+        }
+
+        @Override
+        public void deleteByKey(IterationKey key) {
+        }
+    }
+
+    static class EmptyRepoPort implements CodeRepositoryPort {
+        @Override
+        public void save(CodeRepository domain) {
+        }
+
+        @Override
+        public Optional<CodeRepository> findById(RepoId id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<CodeRepository> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public void deleteById(RepoId id) {
+        }
+
+        @Override
+        public List<CodeRepository> search(String keyword) {
+            return List.of();
+        }
+
+        @Override
+        public PageResult<CodeRepository> searchPaged(String keyword, int page, int size) {
+            return new PageResult<>(List.of(), 0);
+        }
+
+        @Override
+        public void updateInitialVersion(String repoId, String initialVersion, String versionSource) {
+        }
+
+        @Override
+        public Optional<String> getInitialVersion(String repoId) {
+            return Optional.empty();
         }
     }
 }

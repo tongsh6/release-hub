@@ -46,21 +46,49 @@ public class AttachController {
     @Operation(summary = "List window iterations")
     public ApiResponse<List<WindowIterationView>> list(@PathVariable("id") String windowId) {
         var list = attachAppService.list(windowId);
-        return ApiResponse.success(list.stream().map(x -> new WindowIterationView(x.getIterationKey().value(), x.getAttachAt())).toList());
+        return ApiResponse.success(list.stream().map(x -> new WindowIterationView(
+                x.getIterationKey().value(), 
+                x.getAttachAt(),
+                null,  // releaseBranch - TODO: 从 WindowIterationPort 获取
+                null,  // branchCreated
+                null   // lastMergeAt
+        )).toList());
     }
 
     @GetMapping("/{id}/iterations/paged")
     @Operation(summary = "List window iterations (paged)")
     public ApiPageResponse<List<WindowIterationView>> listPaged(@PathVariable("id") String windowId,
-                                                                @RequestParam(name = "page", defaultValue = "0") int page,
+                                                                @RequestParam(name = "page", defaultValue = "1") int page,
                                                                 @RequestParam(name = "size", defaultValue = "20") int size) {
-        var all = attachAppService.list(windowId).stream()
-                                  .map(x -> new WindowIterationView(x.getIterationKey().value(), x.getAttachAt()))
-                                  .toList();
-        int from = Math.max(page * size, 0);
-        int to = Math.min(from + size, all.size());
-        List<WindowIterationView> slice = from >= all.size() ? List.<WindowIterationView>of() : all.subList(from, to);
-        return ApiPageResponse.success(slice, new PageMeta(page, size, all.size()));
+        var result = attachAppService.listPaged(windowId, page, size);
+        List<WindowIterationView> views = result.items().stream()
+                .map(x -> new WindowIterationView(
+                        x.getIterationKey().value(),
+                        x.getAttachAt(),
+                        null,  // releaseBranch - TODO: 从 WindowIterationPort 获取
+                        null,  // branchCreated
+                        null   // lastMergeAt
+                ))
+                .toList();
+        return ApiPageResponse.success(views, new PageMeta(page, size, result.total()));
+    }
+
+    @PostMapping("/{id}/iterations/{iterationKey}/create-release-branch")
+    @Operation(summary = "Create release branch for iteration")
+    public ApiResponse<Boolean> createReleaseBranch(
+            @PathVariable("id") String windowId,
+            @PathVariable("iterationKey") String iterationKey) {
+        attachAppService.createReleaseBranchForIteration(windowId, iterationKey);
+        return ApiResponse.success(true);
+    }
+
+    @PostMapping("/{id}/iterations/{iterationKey}/merge-feature")
+    @Operation(summary = "Merge feature branches to release branch")
+    public ApiResponse<Boolean> mergeFeatureToRelease(
+            @PathVariable("id") String windowId,
+            @PathVariable("iterationKey") String iterationKey) {
+        attachAppService.mergeFeatureToRelease(windowId, iterationKey);
+        return ApiResponse.success(true);
     }
 
     @Data
@@ -77,5 +105,8 @@ public class AttachController {
     public static class WindowIterationView {
         private final String iterationKey;
         private final java.time.Instant attachAt;
+        private final String releaseBranch;
+        private final Boolean branchCreated;
+        private final java.time.Instant lastMergeAt;
     }
 }

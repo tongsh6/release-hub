@@ -1,8 +1,7 @@
 package io.releasehub.domain.repo;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.base.BaseEntity;
-import io.releasehub.domain.project.ProjectId;
 import lombok.Getter;
 
 import java.time.Instant;
@@ -12,12 +11,11 @@ import java.time.Instant;
  */
 @Getter
 public class CodeRepository extends BaseEntity<RepoId> {
-    private final ProjectId projectId;
-    private Long gitlabProjectId;
     private String name;
     private String cloneUrl;
     private boolean monoRepo;
     private String defaultBranch;
+    private String groupCode;
     private int branchCount;
     private int activeBranchCount;
     private int nonCompliantBranchCount;
@@ -27,13 +25,12 @@ public class CodeRepository extends BaseEntity<RepoId> {
     private int closedMrCount;
     private Instant lastSyncAt;
 
-    public CodeRepository(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt) {
+    public CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt) {
         super(id, createdAt, updatedAt, 0L);
-        this.projectId = projectId;
-        this.gitlabProjectId = gitlabProjectId;
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
+        this.groupCode = groupCode;
         this.monoRepo = monoRepo;
         this.branchCount = branchCount;
         this.activeBranchCount = activeBranchCount;
@@ -45,13 +42,12 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.lastSyncAt = lastSyncAt;
     }
 
-    private CodeRepository(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
+    private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
         super(id, createdAt, updatedAt, version);
-        this.projectId = projectId;
-        this.gitlabProjectId = gitlabProjectId;
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
+        this.groupCode = groupCode;
         this.monoRepo = monoRepo;
         this.branchCount = branchCount;
         this.activeBranchCount = activeBranchCount;
@@ -63,27 +59,21 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.lastSyncAt = lastSyncAt;
     }
 
-    public static CodeRepository rehydrate(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
-        return new CodeRepository(id, projectId, gitlabProjectId, name, cloneUrl, defaultBranch, monoRepo, branchCount, activeBranchCount, nonCompliantBranchCount, mrCount, openMrCount, mergedMrCount, closedMrCount, lastSyncAt, createdAt, updatedAt, version);
+    public static CodeRepository rehydrate(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
+        return new CodeRepository(id, name, cloneUrl, defaultBranch, groupCode, monoRepo, branchCount, activeBranchCount, nonCompliantBranchCount, mrCount, openMrCount, mergedMrCount, closedMrCount, lastSyncAt, createdAt, updatedAt, version);
     }
 
-    private CodeRepository(RepoId id, ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
+    private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, boolean monoRepo, Instant now) {
         super(id, now);
-        if (projectId == null) {
-            throw new BizException("REPO_PROJECT_REQUIRED", "Project ID is required");
-        }
-        if (gitlabProjectId == null) {
-            throw new BizException("REPO_GITLAB_ID_REQUIRED", "GitLab Project ID is required");
-        }
         validateName(name);
         validateUrl(cloneUrl);
         validateBranch(defaultBranch);
+        validateGroupCode(groupCode);
 
-        this.projectId = projectId;
-        this.gitlabProjectId = gitlabProjectId;
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
+        this.groupCode = groupCode;
         this.monoRepo = monoRepo;
         this.branchCount = 0;
         this.activeBranchCount = 0;
@@ -97,33 +87,42 @@ public class CodeRepository extends BaseEntity<RepoId> {
 
     private void validateName(String name) {
         if (name == null || name.isBlank()) {
-            throw new BizException("REPO_NAME_REQUIRED", "Repository name is required");
+            throw ValidationException.repoNameRequired();
         }
         if (name.length() > 128) {
-            throw new BizException("REPO_NAME_TOO_LONG", "Repository name is too long (max 128)");
+            throw ValidationException.repoNameTooLong(128);
         }
     }
 
     private void validateUrl(String url) {
         if (url == null || url.isBlank()) {
-            throw new BizException("REPO_URL_REQUIRED", "Clone URL is required");
+            throw ValidationException.repoUrlRequired();
         }
         if (url.length() > 512) {
-            throw new BizException("REPO_URL_TOO_LONG", "Clone URL is too long (max 512)");
+            throw ValidationException.repoUrlTooLong(512);
         }
     }
 
     private void validateBranch(String branch) {
         if (branch == null || branch.isBlank()) {
-            throw new BizException("REPO_BRANCH_REQUIRED", "Default branch is required");
+            throw ValidationException.repoBranchRequired();
         }
         if (branch.length() > 128) {
-            throw new BizException("REPO_BRANCH_TOO_LONG", "Default branch is too long (max 128)");
+            throw ValidationException.repoBranchTooLong(128);
         }
     }
 
-    public static CodeRepository create(ProjectId projectId, Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
-        return new CodeRepository(RepoId.newId(), projectId, gitlabProjectId, name, cloneUrl, defaultBranch, monoRepo, now);
+    private void validateGroupCode(String groupCode) {
+        if (groupCode == null || groupCode.isBlank()) {
+            throw ValidationException.groupCodeRequired();
+        }
+        if (groupCode.length() > 64) {
+            throw ValidationException.groupCodeTooLong(64);
+        }
+    }
+
+    public static CodeRepository create(String name, String cloneUrl, String defaultBranch, String groupCode, boolean monoRepo, Instant now) {
+        return new CodeRepository(RepoId.newId(), name, cloneUrl, defaultBranch, groupCode, monoRepo, now);
     }
 
     public void changeDefaultBranch(String branch, Instant now) {
@@ -144,17 +143,15 @@ public class CodeRepository extends BaseEntity<RepoId> {
         touch(now);
     }
 
-    public void update(Long gitlabProjectId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, Instant now) {
-        if (gitlabProjectId == null) {
-            throw new BizException("REPO_GITLAB_ID_REQUIRED", "GitLab Project ID is required");
-        }
+    public void update(String name, String cloneUrl, String defaultBranch, String groupCode, boolean monoRepo, Instant now) {
         validateName(name);
         validateUrl(cloneUrl);
         validateBranch(defaultBranch);
-        this.gitlabProjectId = gitlabProjectId;
+        validateGroupCode(groupCode);
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
+        this.groupCode = groupCode;
         this.monoRepo = monoRepo;
         touch(now);
     }

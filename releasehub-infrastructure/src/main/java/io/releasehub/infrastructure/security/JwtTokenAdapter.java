@@ -21,17 +21,26 @@ public class JwtTokenAdapter implements TokenPort {
 
     private final Key key;
     private final long ttlMinutes;
+    private final long rememberMeTtlMinutes;
 
     public JwtTokenAdapter(@Value("${security.jwt.secret}") String secret,
-                      @Value("${security.jwt.ttlMinutes:120}") long ttlMinutes) {
+                      @Value("${security.jwt.ttlMinutes:120}") long ttlMinutes,
+                      @Value("${security.jwt.rememberMeTtlMinutes:10080}") long rememberMeTtlMinutes) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.ttlMinutes = ttlMinutes;
+        this.rememberMeTtlMinutes = rememberMeTtlMinutes; // default 7 days (7 * 24 * 60)
     }
 
     @Override
     public TokenInfo createToken(User user) {
+        return createToken(user, false);
+    }
+
+    @Override
+    public TokenInfo createToken(User user, boolean rememberMe) {
         Instant now = Instant.now();
-        Instant expiresAt = now.plus(ttlMinutes, ChronoUnit.MINUTES);
+        long expirationMinutes = rememberMe ? rememberMeTtlMinutes : ttlMinutes;
+        Instant expiresAt = now.plus(expirationMinutes, ChronoUnit.MINUTES);
 
         String token = Jwts.builder()
                 .setSubject(user.getUsername())

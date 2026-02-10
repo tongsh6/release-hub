@@ -37,7 +37,7 @@ public class RunJsonView {
 
     public static RunJsonView from(Run run) {
         RunJsonView v = new RunJsonView();
-        v.setRunId(run.getId());
+        v.setRunId(run.getId().value());
         v.setRunType(run.getRunType().name());
         v.setStartedAt(run.getStartedAt().toEpochMilli());
         v.setFinishedAt(run.getFinishedAt() == null ? null : run.getFinishedAt().toEpochMilli());

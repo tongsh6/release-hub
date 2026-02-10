@@ -25,7 +25,7 @@ public class OrchestrateController {
     @Operation(summary = "Start orchestration for window")
     public ApiResponse<String> orchestrate(@PathVariable("id") String windowId, @RequestBody OrchestrateRequest request) {
         var run = runAppService.startOrchestrate(windowId, request.getRepoIds(), request.getIterationKeys(), request.isFailFast(), request.getOperator());
-        return ApiResponse.success(run.getId());
+        return ApiResponse.success(run.getId().value());
     }
 
     @Data

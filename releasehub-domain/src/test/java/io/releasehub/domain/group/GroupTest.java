@@ -1,11 +1,14 @@
 package io.releasehub.domain.group;
 
-import io.releasehub.common.exception.BizException;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.ValidationException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class GroupTest {
 
@@ -26,30 +29,30 @@ class GroupTest {
     void create_ShouldThrow_WhenNameInvalid() {
         Instant now = Instant.now();
 
-        BizException ex1 = assertThrows(BizException.class, () -> Group.create(null, "CODE", null, now));
-        assertEquals("GROUP_NAME_REQUIRED", ex1.getCode());
+        ValidationException ex1 = assertThrows(ValidationException.class, () -> Group.create(null, "CODE", null, now));
+        assertEquals("GROUP_003", ex1.getCode());
 
-        BizException ex2 = assertThrows(BizException.class, () -> Group.create("", "CODE", null, now));
-        assertEquals("GROUP_NAME_REQUIRED", ex2.getCode());
+        ValidationException ex2 = assertThrows(ValidationException.class, () -> Group.create("", "CODE", null, now));
+        assertEquals("GROUP_003", ex2.getCode());
 
         String longName = "a".repeat(129);
-        BizException ex3 = assertThrows(BizException.class, () -> Group.create(longName, "CODE", null, now));
-        assertEquals("GROUP_NAME_TOO_LONG", ex3.getCode());
+        ValidationException ex3 = assertThrows(ValidationException.class, () -> Group.create(longName, "CODE", null, now));
+        assertEquals("GROUP_004", ex3.getCode());
     }
 
     @Test
     void create_ShouldThrow_WhenCodeInvalid() {
         Instant now = Instant.now();
 
-        BizException ex1 = assertThrows(BizException.class, () -> Group.create("Name", null, null, now));
-        assertEquals("GROUP_ID_INVALID", ex1.getCode());
+        ValidationException ex1 = assertThrows(ValidationException.class, () -> Group.create("Name", null, null, now));
+        assertEquals("GROUP_012", ex1.getCode());
 
-        BizException ex2 = assertThrows(BizException.class, () -> Group.create("Name", "", null, now));
-        assertEquals("GROUP_ID_INVALID", ex2.getCode());
+        ValidationException ex2 = assertThrows(ValidationException.class, () -> Group.create("Name", "", null, now));
+        assertEquals("GROUP_012", ex2.getCode());
 
         String longCode = "a".repeat(65);
-        BizException ex3 = assertThrows(BizException.class, () -> Group.create("Name", longCode, null, now));
-        assertEquals("GROUP_CODE_TOO_LONG", ex3.getCode());
+        ValidationException ex3 = assertThrows(ValidationException.class, () -> Group.create("Name", longCode, null, now));
+        assertEquals("GROUP_006", ex3.getCode());
     }
 
     @Test
@@ -57,11 +60,12 @@ class GroupTest {
         Instant now = Instant.now();
 
         String longParent = "a".repeat(65);
-        BizException ex1 = assertThrows(BizException.class, () -> Group.create("Name", "CODE", longParent, now));
-        assertEquals("GROUP_PARENT_CODE_TOO_LONG", ex1.getCode());
+        ValidationException ex1 = assertThrows(ValidationException.class, () -> Group.create("Name", "CODE", longParent, now));
+        assertEquals("GROUP_011", ex1.getCode());
 
-        BizException ex2 = assertThrows(BizException.class, () -> Group.create("Name", "CODE", "CODE", now));
-        assertEquals("GROUP_PARENT_SAME_AS_SELF", ex2.getCode());
+        // parentCode 等于自身是业务规则错误
+        BusinessException ex2 = assertThrows(BusinessException.class, () -> Group.create("Name", "CODE", "CODE", now));
+        assertEquals("GROUP_009", ex2.getCode());
     }
 
     @Test
@@ -88,4 +92,3 @@ class GroupTest {
         assertEquals(later, group.getUpdatedAt());
     }
 }
-

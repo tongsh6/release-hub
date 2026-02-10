@@ -2,7 +2,12 @@ package io.releasehub.application.run;
 
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
+import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.version.VersionUpdateAppService;
+import io.releasehub.application.version.VersionUpdateRequest;
+import io.releasehub.application.version.VersionUpdateResult;
 import io.releasehub.application.window.WindowIterationPort;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
@@ -14,6 +19,7 @@ import io.releasehub.domain.run.RunItem;
 import io.releasehub.domain.run.RunItemResult;
 import io.releasehub.domain.run.RunStep;
 import io.releasehub.domain.run.RunType;
+import io.releasehub.domain.version.BuildTool;
 import io.releasehub.domain.window.WindowIteration;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,6 +37,8 @@ public class RunAppService {
     private final ReleaseWindowPort releaseWindowPort;
     private final WindowIterationPort windowIterationPort;
     private final IterationPort iterationPort;
+    private final CodeRepositoryPort codeRepositoryPort;
+    private final VersionUpdateAppService versionUpdateAppService;
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
@@ -62,13 +70,13 @@ public class RunAppService {
     @Transactional
     public Run startOrchestrate(String windowId, List<String> repoIds, List<String> iterationKeys, boolean failFast, String operator) {
         Run run = Run.start(RunType.WINDOW_ORCHESTRATION, operator, Instant.now(clock));
-        ReleaseWindow rw = releaseWindowPort.findById(new ReleaseWindowId(windowId)).orElseThrow();
-        List<WindowIteration> bindings = windowIterationPort.listByWindow(new ReleaseWindowId(windowId));
+        ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
+        List<WindowIteration> bindings = windowIterationPort.listByWindow(ReleaseWindowId.of(windowId));
         bindings.sort(Comparator.comparing(WindowIteration::getAttachAt));
         List<IterationKey> orderedIterations = bindings.stream().map(WindowIteration::getIterationKey).distinct().toList();
 
         for (String repoIdStr : repoIds) {
-            RepoId repoId = new RepoId(repoIdStr);
+            RepoId repoId = RepoId.of(repoIdStr);
             for (IterationKey ik : orderedIterations) {
                 if (!iterationKeys.isEmpty() && iterationKeys.stream().noneMatch(k -> k.equals(ik.value()))) {
                     continue;
@@ -99,4 +107,173 @@ public class RunAppService {
         runPort.save(run);
         return run;
     }
+
+    /**
+     * 执行版本更新
+     *
+     * @param windowId 发布窗口 ID
+     * @param repoId 仓库 ID
+     * @param targetVersion 目标版本号
+     * @param buildTool 构建工具类型
+     * @param repoPath 仓库路径（本地文件系统路径）
+     * @param pomPath Maven pom.xml 路径（可选，Maven 时使用）
+     * @param gradlePropertiesPath Gradle properties 路径（可选，Gradle 时使用）
+     * @param operator 操作者
+     * @return 执行记录
+     */
+    @Transactional
+    public Run executeVersionUpdate(
+            String windowId,
+            String repoId,
+            String targetVersion,
+            BuildTool buildTool,
+            String repoPath,
+            String pomPath,
+            String gradlePropertiesPath,
+            String operator
+    ) {
+        Instant now = Instant.now(clock);
+        Run run = Run.start(RunType.VERSION_UPDATE, operator, now);
+        
+        ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId))
+                .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
+        
+        // 验证仓库存在
+        codeRepositoryPort.findById(RepoId.of(repoId))
+                .orElseThrow(() -> NotFoundException.repository(repoId));
+        
+        // 创建版本更新请求
+        VersionUpdateRequest request = buildTool == BuildTool.MAVEN
+                ? VersionUpdateRequest.forMaven(RepoId.of(repoId), repoPath, targetVersion, pomPath)
+                : VersionUpdateRequest.forGradle(RepoId.of(repoId), repoPath, targetVersion, gradlePropertiesPath);
+        
+        // 执行版本更新
+        Instant stepStart = Instant.now(clock);
+        VersionUpdateResult result = versionUpdateAppService.updateVersion(request);
+        Instant stepEnd = Instant.now(clock);
+        
+        // 创建 RunItem（版本更新不关联迭代，使用虚拟迭代 key）
+        IterationKey dummyIterationKey = IterationKey.of("VERSION_UPDATE");
+        RunItem item = RunItem.create(rw.getName(), RepoId.of(repoId), dummyIterationKey, 1, now);
+        
+        // 创建执行步骤
+        RunItemResult stepResult = result.success()
+                ? RunItemResult.VERSION_UPDATE_SUCCESS
+                : RunItemResult.VERSION_UPDATE_FAILED;
+        
+        // 构建步骤消息，包含版本信息和 diff
+        // 数据库字段已更新为 TEXT，可以存储完整的 diff 信息
+        String stepMessage;
+        if (result.success()) {
+            String baseMessage = String.format("Version updated from %s to %s. File: %s", 
+                    result.oldVersion(), result.newVersion(), result.filePath());
+            // 如果 diff 存在，添加到消息中（使用统一的 "--- Diff ---" 格式）
+            if (result.diff() != null && !result.diff().isBlank()) {
+                stepMessage = baseMessage + "\n--- Diff ---\n" + result.diff();
+            } else {
+                stepMessage = baseMessage;
+            }
+        } else {
+            stepMessage = result.errorMessage();
+        }
+        
+        RunStep step = new RunStep(ActionType.UPDATE_VERSION, stepResult, stepStart, stepEnd, stepMessage);
+        item.addStep(step);
+        item.setExecutedOrder(1);
+        item.finishWith(stepResult, stepEnd);
+        
+        run.addItem(item);
+        run.finish(stepEnd);
+        runPort.save(run);
+        
+        return run;
+    }
+
+    /**
+     * 批量执行版本更新
+     *
+     * @param windowId 发布窗口 ID
+     * @param repositories 仓库更新列表
+     * @param targetVersion 目标版本号
+     * @param operator 操作者
+     * @return 执行记录
+     */
+    @Transactional
+    public Run executeBatchVersionUpdate(
+            String windowId,
+            List<RepoVersionUpdateInfo> repositories,
+            String targetVersion,
+            String operator
+    ) {
+        Instant now = Instant.now(clock);
+        Run run = Run.start(RunType.VERSION_UPDATE, operator, now);
+        
+        ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId))
+                .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
+
+        int order = 1;
+        for (RepoVersionUpdateInfo repoInfo : repositories) {
+            // 验证仓库存在
+            codeRepositoryPort.findById(RepoId.of(repoInfo.repoId()))
+                    .orElseThrow(() -> NotFoundException.repository(repoInfo.repoId()));
+
+            // 创建版本更新请求
+            VersionUpdateRequest request = repoInfo.buildTool() == BuildTool.MAVEN
+                    ? VersionUpdateRequest.forMaven(RepoId.of(repoInfo.repoId()), repoInfo.repoPath(), targetVersion, repoInfo.pomPath())
+                    : VersionUpdateRequest.forGradle(RepoId.of(repoInfo.repoId()), repoInfo.repoPath(), targetVersion, repoInfo.gradlePropertiesPath());
+
+            // 执行版本更新
+            Instant stepStart = Instant.now(clock);
+            VersionUpdateResult result = versionUpdateAppService.updateVersion(request);
+            Instant stepEnd = Instant.now(clock);
+
+            // 创建 RunItem（版本更新不关联迭代，使用虚拟迭代 key）
+            IterationKey dummyIterationKey = IterationKey.of("VERSION_UPDATE");
+            RunItem item = RunItem.create(rw.getName(), RepoId.of(repoInfo.repoId()), dummyIterationKey, order, now);
+
+            // 创建执行步骤
+            RunItemResult stepResult = result.success()
+                    ? RunItemResult.VERSION_UPDATE_SUCCESS
+                    : RunItemResult.VERSION_UPDATE_FAILED;
+
+            // 构建步骤消息，包含版本信息和 diff
+            String stepMessage;
+            if (result.success()) {
+                String baseMessage = String.format("Version updated from %s to %s. File: %s", 
+                        result.oldVersion(), result.newVersion(), result.filePath());
+                // 如果 diff 存在，添加到消息中
+                if (result.diff() != null && !result.diff().isBlank()) {
+                    stepMessage = baseMessage + "\n--- Diff ---\n" + result.diff();
+                } else {
+                    stepMessage = baseMessage;
+                }
+            } else {
+                stepMessage = result.errorMessage();
+            }
+
+            RunStep step = new RunStep(ActionType.UPDATE_VERSION, stepResult, stepStart, stepEnd, stepMessage);
+            item.addStep(step);
+            item.setExecutedOrder(order);
+            item.finishWith(stepResult, stepEnd);
+
+            run.addItem(item);
+            order++;
+        }
+
+        run.finish(Instant.now(clock));
+        runPort.save(run);
+
+        return run;
+    }
+
+    /**
+     * 仓库版本更新信息
+     */
+    public record RepoVersionUpdateInfo(
+            String repoId,
+            BuildTool buildTool,
+            String repoPath,
+            String pomPath,
+            String gradlePropertiesPath
+    ) {}
 }

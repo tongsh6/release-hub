@@ -5,4 +5,9 @@ target/
 *.DS_Store
 *.log
 .flattened-pom.xml
-BACKEND_STRUCTURE_REPORT.md
+
+# Eclipse IDE
+.classpath
+.project
+.settings/
+.factorypath

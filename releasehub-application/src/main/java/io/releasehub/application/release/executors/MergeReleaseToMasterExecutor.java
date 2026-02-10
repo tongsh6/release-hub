@@ -1,0 +1,69 @@
+package io.releasehub.application.release.executors;
+
+import io.releasehub.application.port.out.GitLabBranchPort;
+import io.releasehub.application.release.AbstractRunTaskExecutor;
+import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.run.RunTaskContext;
+import io.releasehub.application.run.RunTaskContextPort;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.run.MergeStatus;
+import io.releasehub.domain.run.RunTask;
+import io.releasehub.domain.run.RunTaskType;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+/**
+ * 合并 release 分支到 master 任务执行器
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class MergeReleaseToMasterExecutor extends AbstractRunTaskExecutor {
+    
+    private final GitLabBranchPort gitLabBranchPort;
+    private final CodeRepositoryPort codeRepositoryPort;
+    private final RunTaskContextPort runTaskContextPort;
+    
+    @Override
+    public RunTaskType getTaskType() {
+        return RunTaskType.MERGE_RELEASE_TO_MASTER;
+    }
+    
+    @Override
+    public void execute(RunTask task) throws Exception {
+        String repoId = task.getTargetId();
+        log.info("Merging release to master for repo: {}", repoId);
+        
+        CodeRepository repo = codeRepositoryPort.findById(RepoId.of(repoId))
+                .orElseThrow(() -> NotFoundException.repository(repoId));
+        
+        // 从上下文获取 release 分支名
+        RunTaskContext context = runTaskContextPort.getContext(task)
+                .orElseThrow(() -> BusinessException.runTaskContextNotFound(task.getId().value()));
+        
+        String releaseBranch = context.getReleaseBranch();
+        if (releaseBranch == null || releaseBranch.isBlank()) {
+            throw BusinessException.runTaskContextNotFound("Release branch not found for task " + task.getId().value());
+        }
+        
+        String masterBranch = repo.getDefaultBranch();
+        
+        GitLabBranchPort.MergeResult result = gitLabBranchPort.mergeBranch(
+                repo.getCloneUrl(), releaseBranch, masterBranch,
+                "Merge " + releaseBranch + " into " + masterBranch);
+        
+        if (result.status() == MergeStatus.CONFLICT) {
+            throw BusinessException.runTaskMergeConflict(result.conflictInfo());
+        }
+        
+        if (result.status() == MergeStatus.FAILED) {
+            throw BusinessException.runTaskMergeFailed(result.conflictInfo());
+        }
+        
+        log.info("Release {} merged to master for repo: {}", releaseBranch, repoId);
+    }
+}

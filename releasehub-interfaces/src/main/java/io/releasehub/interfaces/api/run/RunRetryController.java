@@ -28,7 +28,7 @@ public class RunRetryController {
     @Operation(summary = "Retry run with selected items")
     public ApiResponse<String> retry(@PathVariable("id") String runId, @RequestBody RetryRequest request) {
         var run = runAppService.retry(runId, request.getItems(), request.getOperator());
-        return ApiResponse.success(run.getId());
+        return ApiResponse.success(run.getId().value());
     }
 
     @Data

@@ -11,11 +11,10 @@ import java.time.Instant;
 @Data
 public class CodeRepositoryView {
     private String id;
-    private String projectId;
-    private Long gitlabProjectId;
     private String name;
     private String cloneUrl;
     private String defaultBranch;
+    private String groupCode;
     private boolean monoRepo;
     private int branchCount;
     private int activeBranchCount;
@@ -34,11 +33,10 @@ public class CodeRepositoryView {
         }
         CodeRepositoryView view = new CodeRepositoryView();
         view.setId(domain.getId().value());
-        view.setProjectId(domain.getProjectId().value());
-        view.setGitlabProjectId(domain.getGitlabProjectId());
         view.setName(domain.getName());
         view.setCloneUrl(domain.getCloneUrl());
         view.setDefaultBranch(domain.getDefaultBranch());
+        view.setGroupCode(domain.getGroupCode());
         view.setMonoRepo(domain.isMonoRepo());
         view.setBranchCount(domain.getBranchCount());
         view.setActiveBranchCount(domain.getActiveBranchCount());

@@ -5,6 +5,7 @@ import io.releasehub.application.releasewindow.ReleaseWindowView;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
+import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -12,7 +13,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,7 +34,7 @@ public class ReleaseWindowController {
     @PostMapping
     @Operation(summary = "Create release window")
     public ApiResponse<ReleaseWindowView> create(@Valid @RequestBody CreateReleaseWindowRequest request) {
-        ReleaseWindowView view = appService.create(request.getWindowKey(), request.getName());
+        ReleaseWindowView view = appService.create(request.getName(), request.getDescription(), request.getPlannedReleaseAt(), request.getGroupCode());
         return ApiResponse.success(view);
     }
 
@@ -54,28 +54,30 @@ public class ReleaseWindowController {
 
     @GetMapping("/paged")
     @Operation(summary = "List release windows (paged)")
-    public ApiPageResponse<List<ReleaseWindowView>> listPaged(@RequestParam(name = "page", defaultValue = "0") int page,
-                                                              @RequestParam(name = "size", defaultValue = "20") int size) {
-        List<ReleaseWindowView> all = appService.list();
-        int from = Math.max(page * size, 0);
-        int to = Math.min(from + size, all.size());
-        List<ReleaseWindowView> slice = from >= all.size() ? List.of() : all.subList(from, to);
-        return ApiPageResponse.success(slice, new PageMeta(page, size, all.size()));
+    public ApiPageResponse<List<ReleaseWindowView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
+                                                              @RequestParam(name = "size", defaultValue = "20") int size,
+                                                              @RequestParam(name = "name", required = false) String name,
+                                                              @RequestParam(name = "status", required = false) String status) {
+        ReleaseWindowStatus statusEnum = parseStatus(status);
+        var result = appService.listPaged(name, statusEnum, page, size);
+        return ApiPageResponse.success(result.items(), new PageMeta(page, size, result.total()));
+    }
+
+    private ReleaseWindowStatus parseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        try {
+            return ReleaseWindowStatus.valueOf(status.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null; // 无效状态值时返回 null，不筛选
+        }
     }
 
     @PostMapping("/{id}/publish")
     @Operation(summary = "Publish release window")
     public ApiResponse<ReleaseWindowView> publish(@PathVariable("id") String id, @RequestBody(required = false) PublishReleaseWindowRequest request) {
-        // 中文注释：发布窗口，需先完成配置
         ReleaseWindowView view = appService.publish(id);
-        return ApiResponse.success(view);
-    }
-
-    @PutMapping("/{id}/window")
-    @Operation(summary = "Configure release window")
-    public ApiResponse<ReleaseWindowView> configureWindow(@PathVariable("id") String id, @Valid @RequestBody ConfigureReleaseWindowRequest request) {
-        // 中文注释：配置时间窗口，需在冻结前执行
-        ReleaseWindowView view = appService.configureWindow(id, request.getStartAtInstant(), request.getEndAtInstant());
         return ApiResponse.success(view);
     }
 
@@ -91,13 +93,6 @@ public class ReleaseWindowController {
     @Operation(summary = "Unfreeze release window")
     public ApiResponse<ReleaseWindowView> unfreeze(@PathVariable("id") String id) {
         ReleaseWindowView view = appService.unfreeze(id);
-        return ApiResponse.success(view);
-    }
-
-    @PostMapping("/{id}/release")
-    @Operation(summary = "Release")
-    public ApiResponse<ReleaseWindowView> release(@PathVariable("id") String id) {
-        ReleaseWindowView view = appService.release(id);
         return ApiResponse.success(view);
     }
 

@@ -13,7 +13,6 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -31,8 +30,9 @@ class WindowIterationApiTest {
     @Test
     void shouldListAttachAndDetachIterations() throws Exception {
         String token = loginAndGetToken();
+        String groupCode = createGroupAndGetCode(token);
 
-        String createWindow = "{\"windowKey\":\"WK-ITER\",\"name\":\"RW-ITER\"}";
+        String createWindow = "{\"name\":\"RW-ITER\",\"groupCode\":\"" + groupCode + "\"}";
         MvcResult rwCreate = mockMvc.perform(post("/api/v1/release-windows")
                                             .header("Authorization", "Bearer " + token)
                                             .contentType(MediaType.APPLICATION_JSON)
@@ -42,33 +42,30 @@ class WindowIterationApiTest {
                                     .andReturn();
         String windowId = objectMapper.readTree(rwCreate.getResponse().getContentAsString()).get("data").get("id").asText();
 
-        String nowStart = java.time.Instant.now().minusSeconds(60).toString();
-        String nowEnd = java.time.Instant.now().plusSeconds(3600).toString();
-        String configReq = "{\"startAt\":\"" + nowStart + "\",\"endAt\":\"" + nowEnd + "\"}";
-        mockMvc.perform(put("/api/v1/release-windows/" + windowId + "/window")
+        var itAResult = mockMvc.perform(post("/api/v1/iterations")
                        .header("Authorization", "Bearer " + token)
                        .contentType(MediaType.APPLICATION_JSON)
-                       .content(configReq))
-               .andExpect(status().isOk());
-
-        mockMvc.perform(post("/api/v1/iterations")
+                       .content("{\"name\":\"IT-A\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"repo-1\"]}"))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.data.key").exists())
+               .andReturn();
+        String itAKey = objectMapper.readTree(itAResult.getResponse().getContentAsString()).get("data").get("key").asText();
+        var itBResult = mockMvc.perform(post("/api/v1/iterations")
                        .header("Authorization", "Bearer " + token)
                        .contentType(MediaType.APPLICATION_JSON)
-                       .content("{\"iterationKey\":\"IT-A\",\"description\":\"d\",\"repoIds\":[\"repo-1\"]}"))
-               .andExpect(status().isOk());
-        mockMvc.perform(post("/api/v1/iterations")
-                       .header("Authorization", "Bearer " + token)
-                       .contentType(MediaType.APPLICATION_JSON)
-                       .content("{\"iterationKey\":\"IT-B\",\"description\":\"d\",\"repoIds\":[\"repo-2\"]}"))
-               .andExpect(status().isOk());
+                       .content("{\"name\":\"IT-B\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"repo-2\"]}"))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.data.key").exists())
+               .andReturn();
+        String itBKey = objectMapper.readTree(itBResult.getResponse().getContentAsString()).get("data").get("key").asText();
 
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/attach")
                        .header("Authorization", "Bearer " + token)
                        .contentType(MediaType.APPLICATION_JSON)
-                       .content("{\"iterationKeys\":[\"IT-A\",\"IT-B\"]}"))
+                       .content(objectMapper.writeValueAsString(java.util.Map.of("iterationKeys", java.util.List.of(itAKey, itBKey)))))
                .andExpect(status().isOk())
-               .andExpect(jsonPath("$.data[0]").value("IT-A"))
-               .andExpect(jsonPath("$.data[1]").value("IT-B"));
+               .andExpect(jsonPath("$.data[0]").value(itAKey))
+               .andExpect(jsonPath("$.data[1]").value(itBKey));
 
         mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/iterations")
                        .header("Authorization", "Bearer " + token))
@@ -81,7 +78,7 @@ class WindowIterationApiTest {
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/detach")
                        .header("Authorization", "Bearer " + token)
                        .contentType(MediaType.APPLICATION_JSON)
-                       .content("{\"iterationKey\":\"IT-A\"}"))
+                       .content(objectMapper.writeValueAsString(java.util.Map.of("iterationKey", itAKey))))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.data").value(true));
 
@@ -89,6 +86,18 @@ class WindowIterationApiTest {
                        .header("Authorization", "Bearer " + token))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.data").isArray());
+    }
+
+    private String createGroupAndGetCode(String token) throws Exception {
+        String code = "G" + System.currentTimeMillis();
+        String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
+        mockMvc.perform(post("/api/v1/groups")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists());
+        return code;
     }
 
     private String loginAndGetToken() throws Exception {

@@ -1,10 +1,13 @@
 package io.releasehub.infrastructure.persistence.releasewindow;
 
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -26,11 +29,12 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
                 releaseWindow.getId().value(),
                 releaseWindow.getWindowKey(),
                 releaseWindow.getName(),
+                releaseWindow.getGroupCode(),
+                releaseWindow.getDescription(),
+                releaseWindow.getPlannedReleaseAt(),
                 releaseWindow.getStatus().name(),
                 releaseWindow.getCreatedAt(),
                 releaseWindow.getUpdatedAt(),
-                releaseWindow.getStartAt(),
-                releaseWindow.getEndAt(),
                 releaseWindow.isFrozen(),
                 releaseWindow.getPublishedAt()
         );
@@ -50,17 +54,34 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
                             .collect(Collectors.toList());
     }
 
+    @Override
+    public PageResult<ReleaseWindow> findPaged(String name, ReleaseWindowStatus status, int page, int size) {
+        int pageIndex = Math.max(page - 1, 0);
+        PageRequest pageable = PageRequest.of(pageIndex, size);
+        
+        String nameParam = (name == null || name.isBlank()) ? null : name.trim();
+        String statusParam = (status == null) ? null : status.name();
+        
+        Page<ReleaseWindowJpaEntity> result = jpaRepository.findByNameAndStatus(nameParam, statusParam, pageable);
+        
+        List<ReleaseWindow> items = result.getContent().stream()
+                .map(this::toDomain)
+                .collect(Collectors.toList());
+        return new PageResult<>(items, result.getTotalElements());
+    }
+
     private ReleaseWindow toDomain(ReleaseWindowJpaEntity entity) {
         try {
-            return ReleaseWindow.rehydrate(
-                    new ReleaseWindowId(entity.getId()),
-                    entity.getWindowKey(),
-                    entity.getName(),
-                    ReleaseWindowStatus.valueOf(entity.getStatus()),
-                    entity.getCreatedAt(),
-                    entity.getUpdatedAt(),
-                    entity.getStartAt(),
-                    entity.getEndAt(),
+        return ReleaseWindow.rehydrate(
+                ReleaseWindowId.of(entity.getId()),
+                entity.getWindowKey(),
+                entity.getName(),
+                entity.getDescription(),
+                entity.getPlannedReleaseAt(),
+                entity.getGroupCode(),
+                ReleaseWindowStatus.valueOf(entity.getStatus()),
+                entity.getCreatedAt(),
+                entity.getUpdatedAt(),
                     entity.isFrozen(),
                     entity.getPublishedAt()
             );

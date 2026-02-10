@@ -1,11 +1,15 @@
 package io.releasehub.infrastructure.persistence.iteration;
 
 import io.releasehub.application.iteration.IterationPort;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.repo.RepoId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.util.HashSet;
@@ -26,7 +30,11 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
     public void save(Iteration iteration) {
         IterationJpaEntity entity = new IterationJpaEntity(
                 iteration.getId().value(),
+                iteration.getName(),
+                iteration.getGroupCode(),
                 iteration.getDescription(),
+                iteration.getExpectedReleaseAt(),
+                iteration.getStatus() != null ? iteration.getStatus().name() : IterationStatus.ACTIVE.name(),
                 iteration.getCreatedAt(),
                 iteration.getUpdatedAt()
         );
@@ -51,20 +59,34 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
         return iterationRepository.findById(key.value())
                 .map(e -> {
                     List<IterationRepoJpaEntity> repos = iterationRepoRepository.findByIdIterationKey(e.getKey());
-                    Set<RepoId> repoIds = repos.stream().map(r -> new RepoId(r.getId().getRepoId())).collect(Collectors.toCollection(HashSet::new));
-                    return Iteration.rehydrate(new IterationKey(e.getKey()), e.getDescription(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
+                    Set<RepoId> repoIds = repos.stream().map(r -> RepoId.of(r.getId().getRepoId())).collect(Collectors.toCollection(HashSet::new));
+                    IterationStatus status = parseStatus(e.getStatus());
+                    return Iteration.rehydrate(IterationKey.of(e.getKey()), e.getName(), e.getDescription(), e.getExpectedReleaseAt(), e.getGroupCode(), repoIds, status, e.getCreatedAt(), e.getUpdatedAt());
                 });
     }
 
     @Override
     public List<Iteration> findAll() {
         return iterationRepository.findAll().stream()
-                .map(e -> {
-                    List<IterationRepoJpaEntity> repos = iterationRepoRepository.findByIdIterationKey(e.getKey());
-                    Set<RepoId> repoIds = repos.stream().map(r -> new RepoId(r.getId().getRepoId())).collect(Collectors.toCollection(HashSet::new));
-                    return Iteration.rehydrate(new IterationKey(e.getKey()), e.getDescription(), repoIds, e.getCreatedAt(), e.getUpdatedAt());
-                })
+                .map(this::toDomain)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public PageResult<Iteration> findPaged(String keyword, int page, int size) {
+        int pageIndex = Math.max(page - 1, 0);
+        PageRequest pageable = PageRequest.of(pageIndex, size);
+        Page<IterationJpaEntity> result;
+        if (keyword == null || keyword.isBlank()) {
+            result = iterationRepository.findAll(pageable);
+        } else {
+            String k = keyword.trim();
+            result = iterationRepository.findByKeyContainingIgnoreCaseOrNameContainingIgnoreCaseOrDescriptionContainingIgnoreCase(k, k, k, pageable);
+        }
+        List<Iteration> items = result.getContent().stream()
+                .map(this::toDomain)
+                .collect(Collectors.toList());
+        return new PageResult<>(items, result.getTotalElements());
     }
 
     @Override
@@ -72,5 +94,34 @@ public class IterationJpaPersistenceAdapter implements IterationPort {
         iterationRepoRepository.deleteByIdIterationKey(key.value());
         iterationRepository.deleteById(key.value());
     }
-}
 
+    private Iteration toDomain(IterationJpaEntity entity) {
+        List<IterationRepoJpaEntity> repos = iterationRepoRepository.findByIdIterationKey(entity.getKey());
+        Set<RepoId> repoIds = repos.stream()
+                .map(r -> RepoId.of(r.getId().getRepoId()))
+                .collect(Collectors.toCollection(HashSet::new));
+        IterationStatus status = parseStatus(entity.getStatus());
+        return Iteration.rehydrate(
+                IterationKey.of(entity.getKey()),
+                entity.getName(),
+                entity.getDescription(),
+                entity.getExpectedReleaseAt(),
+                entity.getGroupCode(),
+                repoIds,
+                status,
+                entity.getCreatedAt(),
+                entity.getUpdatedAt()
+        );
+    }
+
+    private IterationStatus parseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return IterationStatus.ACTIVE;
+        }
+        try {
+            return IterationStatus.valueOf(status);
+        } catch (IllegalArgumentException e) {
+            return IterationStatus.ACTIVE;
+        }
+    }
+}
