@@ -1,0 +1,28 @@
+# OS
+.DS_Store
+
+# IDEs
+.idea/
+.vscode/
+.trae/
+
+# AI/IDE 工具配置
+.ai/temp/
+.amazonq/
+.cursor/
+.claude/
+.vercel/
+
+# 独立子仓库
+release-hub/
+release-hub-web/
+
+# Logs
+*.log
+
+# Node
+node_modules/
+
+# Build outputs
+dist/
+target/

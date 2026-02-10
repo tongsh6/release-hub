@@ -33,3 +33,4 @@
   - `releasehub-interfaces`: 版本更新 API 控制器
   - `releasehub-domain`: 版本值对象（如需要）
   - `release-hub-web`: 版本更新 UI 组件
+- Requirement doc: [添加版本号自动更新功能](../../../requirements/completed/添加版本号自动更新功能.md)

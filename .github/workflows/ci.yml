@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  requirements-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Requirements Gate
+        run: bash scripts/dev/validate-requirements-gate.sh
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Test
+        working-directory: release-hub
+        run: mvn -q -B test
+
+  frontend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+          cache-dependency-path: release-hub-web/pnpm-lock.yaml
+      - name: Install dependencies
+        working-directory: release-hub-web
+        run: pnpm install --frozen-lockfile
+      - name: Type Check
+        working-directory: release-hub-web
+        run: pnpm typecheck
+      - name: Lint
+        working-directory: release-hub-web
+        run: pnpm lint
+      - name: Test
+        working-directory: release-hub-web
+        run: pnpm test
+      - name: Build
+        working-directory: release-hub-web
+        run: pnpm build

@@ -168,11 +168,61 @@ const fetchData = async () => {
 </script>
 ```
 
+## TDD Development Principle (MANDATORY)
+
+This project **enforces TDD (Test-Driven Development)** for all code implementation.
+
+### Red-Green-Refactor Cycle
+
+```
+1. RED    → Write a failing test FIRST
+2. GREEN  → Write minimum code to pass
+3. REFACTOR → Optimize while keeping tests green
+4. REPEAT → Continue with next test case
+```
+
+### Development Flow
+
+| Step | Action | Description |
+|------|--------|-------------|
+| 1 | **Write Test** | Before any business code, write a failing test |
+| 2 | **Run Test** | Confirm test fails (RED) |
+| 3 | **Implement** | Write just enough code to pass |
+| 4 | **Confirm Pass** | Run test, confirm green (GREEN) |
+| 5 | **Refactor** | Optimize code, keep tests green |
+| 6 | **Repeat** | Continue with next test case |
+
+### Bug Fix Flow
+
+```
+1. Write a test that reproduces the bug
+2. Confirm test fails
+3. Fix the code
+4. Confirm test passes
+5. Ensure no other tests broken
+```
+
 ## Testing Strategies
 - Domain models: Pure unit tests (no Spring context)
-- Application services: Integration tests with `@SpringBootTest`
-- API layer: `@WebMvcTest` or full end-to-end tests
-- Frontend: Vitest for logic, manual UI validation (E2E TBD)
+- Application services: Integration tests with `@SpringBootTest` or unit tests with in-memory ports
+- Infrastructure: Unit tests with `@TempDir` for file operations
+- API layer: Integration tests with `@SpringBootTest` + MockMvc
+- Architecture: ArchUnit tests for layer dependency validation
+- Frontend: Vitest for logic, Vue Test Utils for components
+
+### Test Commands
+
+```bash
+# Backend
+mvn -q clean test                        # All tests
+mvn -pl releasehub-domain test           # Domain layer tests
+mvn -pl releasehub-bootstrap test        # API integration tests
+
+# Frontend
+pnpm test              # Run all tests
+pnpm test:watch        # Watch mode
+pnpm test:coverage     # With coverage
+```
 
 ## OpenSpec Integration
 This project uses OpenSpec for spec-driven development:
@@ -192,11 +242,14 @@ See [@/openspec/AGENTS.md](../openspec/AGENTS.md) for full workflow.
 
 ## Dependency Versions (Current)
 - Java: 21
-- Spring Boot: 3.2.8
+- Spring Boot: 3.4.1
+- Spring Framework: 6.2.x
+- Spring Security: 6.4.x
 - Lombok: 1.18.36
-- Vue: 3.x
-- Vite: Latest
-- Element Plus: Latest
+- PostgreSQL Driver: 42.7.7
+- Vue: 3.5+
+- Vite: rolldown-vite 7.x
+- Element Plus: 2.12+
 
 ## Known Issues & Gotchas
 - **Lombok getters missing**: Ensure annotation processing is enabled in IDE
