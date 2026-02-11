@@ -11,6 +11,7 @@ import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.repo.RepoType;
 import io.releasehub.domain.version.VersionSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,10 +35,10 @@ public class CodeRepositoryAppService {
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
-    public CodeRepository create(String name, String cloneUrl, String defaultBranch, boolean monoRepo, String initialVersion, String groupCode) {
+    public CodeRepository create(String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode) {
         String normalizedBranch = normalizeBranch(cloneUrl, defaultBranch);
         ensureLeafGroup(groupCode);
-        CodeRepository repo = CodeRepository.create(name, cloneUrl, normalizedBranch, groupCode, monoRepo, Instant.now(clock));
+        CodeRepository repo = CodeRepository.create(name, cloneUrl, normalizedBranch, groupCode, repoType, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
 
         if (initialVersion != null && !initialVersion.isBlank()) {
@@ -86,11 +87,11 @@ public class CodeRepositoryAppService {
     }
 
     @Transactional
-    public CodeRepository update(String repoId, String name, String cloneUrl, String defaultBranch, boolean monoRepo, String initialVersion, String groupCode) {
+    public CodeRepository update(String repoId, String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode) {
         CodeRepository repo = get(repoId);
         String normalizedBranch = normalizeBranch(cloneUrl, defaultBranch);
         ensureLeafGroup(groupCode);
-        repo.update(name, cloneUrl, normalizedBranch, groupCode, monoRepo, Instant.now(clock));
+        repo.update(name, cloneUrl, normalizedBranch, groupCode, repoType, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
         if (initialVersion != null && !initialVersion.isBlank()) {
             codeRepositoryPort.updateInitialVersion(repoId, initialVersion.trim(), VersionSource.MANUAL.name());

@@ -14,6 +14,7 @@ import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.repo.RepoType;
 import io.releasehub.domain.version.VersionSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -71,7 +72,7 @@ class CodeRepositoryAppServiceTest {
         when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L)));
         when(groupPort.countChildren("G001")).thenReturn(0L);
 
-        appService.create("Repo", "git@gitlab.com:test/repo.git", " ", false, null, "G001");
+        appService.create("Repo", "git@gitlab.com:test/repo.git", " ", null, false, null, "G001");
 
         verify(codeRepositoryPort).save(captor.capture());
         assertThat(captor.getValue().getDefaultBranch()).isEqualTo("main");
@@ -89,7 +90,7 @@ class CodeRepositoryAppServiceTest {
         when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L)));
         when(groupPort.countChildren("G001")).thenReturn(0L);
 
-        appService.create("Repo", "git@gitlab.com:test/repo.git", null, false, null, "G001");
+        appService.create("Repo", "git@gitlab.com:test/repo.git", null, null, false, null, "G001");
 
         verify(codeRepositoryPort).save(captor.capture());
         assertThat(captor.getValue().getDefaultBranch()).isEqualTo("master");
@@ -103,7 +104,7 @@ class CodeRepositoryAppServiceTest {
         when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L)));
         when(groupPort.countChildren("G001")).thenReturn(0L);
 
-        appService.create("Repo", "git@gitlab.com:test/repo.git", "main", false, null, "G001");
+        appService.create("Repo", "git@gitlab.com:test/repo.git", "main", null, false, null, "G001");
 
         verify(codeRepositoryPort).save(captor.capture());
         String repoId = captor.getValue().getId().value();
@@ -116,13 +117,13 @@ class CodeRepositoryAppServiceTest {
         Instant now = Instant.now();
         CodeRepository repo = CodeRepository.rehydrate(
                 RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git", "main", "G001",
-                false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+                RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
 
         when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
         when(groupPort.findByCode("G002")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G002"), "Group", "G002", null, now, now, 0L)));
         when(groupPort.countChildren("G002")).thenReturn(0L);
 
-        appService.update("repo-1", "Repo", "git@gitlab.com:test/repo.git", "main", false, "2.0.0", "G002");
+        appService.update("repo-1", "Repo", "git@gitlab.com:test/repo.git", "main", null, false, "2.0.0", "G002");
 
         verify(codeRepositoryPort).updateInitialVersion("repo-1", "2.0.0", VersionSource.MANUAL.name());
     }
@@ -133,7 +134,7 @@ class CodeRepositoryAppServiceTest {
         Instant now = Instant.now();
         CodeRepository repo = CodeRepository.rehydrate(
                 RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git", "main", "G001",
-                false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+                RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
         Iteration iteration = Iteration.rehydrate(
                 IterationKey.of("ITER-1"), "Iter", null, null, "G001",
                 Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
@@ -153,7 +154,7 @@ class CodeRepositoryAppServiceTest {
         when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L)));
         when(groupPort.countChildren("G001")).thenReturn(2L);
 
-        assertThatThrownBy(() -> appService.create("Repo", "git@gitlab.com:test/repo.git", "main", false, null, "G001"))
+        assertThatThrownBy(() -> appService.create("Repo", "git@gitlab.com:test/repo.git", "main", null, false, null, "G001"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("GROUP_008"));
     }
@@ -163,7 +164,7 @@ class CodeRepositoryAppServiceTest {
     void shouldFailCreateWhenGroupNotFound() {
         when(groupPort.findByCode("G404")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appService.create("Repo", "git@gitlab.com:test/repo.git", "main", false, null, "G404"))
+        assertThatThrownBy(() -> appService.create("Repo", "git@gitlab.com:test/repo.git", "main", null, false, null, "G404"))
                 .isInstanceOf(NotFoundException.class)
                 .satisfies(ex -> assertThat(((NotFoundException) ex).getCode()).isEqualTo("GROUP_002"));
     }

@@ -28,6 +28,8 @@ public class CodeRepositoryJpaEntity {
     private String defaultBranch;
     @Column(name = "group_code")
     private String groupCode;
+    @Column(name = "repo_type", length = 32, nullable = false)
+    private String repoType;
     @Column(name = "mono_repo", nullable = false)
     private boolean monoRepo;
     @Column(name = "branch_count")

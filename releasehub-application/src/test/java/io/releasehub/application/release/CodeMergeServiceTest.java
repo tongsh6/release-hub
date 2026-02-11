@@ -14,6 +14,7 @@ import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.repo.RepoType;
 import io.releasehub.domain.run.MergeStatus;
 import io.releasehub.domain.window.WindowIteration;
 import org.junit.jupiter.api.BeforeEach;
@@ -89,6 +90,7 @@ class CodeMergeServiceTest {
                 cloneUrl,
                 "master",
                 "G001",
+                RepoType.SERVICE,
                 false,
                 0, 0, 0, 0, 0, 0, 0,  // branch/mr counts
                 now, now, now, 0L

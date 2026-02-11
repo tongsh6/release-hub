@@ -4,6 +4,7 @@ import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.repo.RepoType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.domain.Page;
@@ -35,6 +36,7 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
                 domain.getCloneUrl(),
                 domain.getDefaultBranch(),
                 domain.getGroupCode(),
+                domain.getRepoType().name(),
                 domain.isMonoRepo(),
                 domain.getBranchCount(),
                 domain.getActiveBranchCount(),
@@ -102,12 +104,19 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
     }
 
     private CodeRepository toDomain(CodeRepositoryJpaEntity entity) {
+        RepoType repoType;
+        try {
+            repoType = RepoType.valueOf(entity.getRepoType());
+        } catch (Exception e) {
+            repoType = RepoType.SERVICE;
+        }
         return CodeRepository.rehydrate(
                 RepoId.of(entity.getId()),
                 entity.getName(),
                 entity.getCloneUrl(),
                 entity.getDefaultBranch(),
                 entity.getGroupCode(),
+                repoType,
                 entity.isMonoRepo(),
                 entity.getBranchCount(),
                 entity.getActiveBranchCount(),

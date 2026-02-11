@@ -15,6 +15,7 @@ public class CodeRepositoryView {
     private String cloneUrl;
     private String defaultBranch;
     private String groupCode;
+    private String repoType;
     private boolean monoRepo;
     private int branchCount;
     private int activeBranchCount;
@@ -37,6 +38,7 @@ public class CodeRepositoryView {
         view.setCloneUrl(domain.getCloneUrl());
         view.setDefaultBranch(domain.getDefaultBranch());
         view.setGroupCode(domain.getGroupCode());
+        view.setRepoType(domain.getRepoType().name());
         view.setMonoRepo(domain.isMonoRepo());
         view.setBranchCount(domain.getBranchCount());
         view.setActiveBranchCount(domain.getActiveBranchCount());
