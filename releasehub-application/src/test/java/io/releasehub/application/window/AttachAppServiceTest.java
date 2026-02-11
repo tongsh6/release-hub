@@ -16,6 +16,7 @@ import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.repo.RepoType;
 import io.releasehub.domain.window.WindowIteration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -77,7 +78,7 @@ class AttachAppServiceTest {
                 Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
         CodeRepository repo = CodeRepository.rehydrate(
                 RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git",
-                "master", "G001", false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+                "master", "G001", RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
 
         when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
         when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(iteration));
@@ -112,10 +113,10 @@ class AttachAppServiceTest {
                 Set.of(RepoId.of("repo-1"), RepoId.of("repo-2")), IterationStatus.ACTIVE, now, now);
         CodeRepository repo1 = CodeRepository.rehydrate(
                 RepoId.of("repo-1"), "Repo1", "git@gitlab.com:test/repo1.git",
-                "master", "G001", false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+                "master", "G001", RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
         CodeRepository repo2 = CodeRepository.rehydrate(
                 RepoId.of("repo-2"), "Repo2", "git@gitlab.com:test/repo2.git",
-                "master", "G001", false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+                "master", "G001", RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
 
         when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
         when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(iteration));

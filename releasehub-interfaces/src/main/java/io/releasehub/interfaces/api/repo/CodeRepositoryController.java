@@ -1,6 +1,7 @@
 package io.releasehub.interfaces.api.repo;
 
 import io.releasehub.application.repo.CodeRepositoryAppService;
+import io.releasehub.domain.repo.RepoType;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
@@ -35,6 +36,7 @@ public class CodeRepositoryController {
                 request.getName(),
                 request.getCloneUrl(),
                 request.getDefaultBranch(),
+                parseRepoType(request.getRepoType()),
                 request.isMonoRepo(),
                 request.getInitialVersion(),
                 request.getGroupCode()
@@ -50,6 +52,7 @@ public class CodeRepositoryController {
                 request.getName(),
                 request.getCloneUrl(),
                 request.getDefaultBranch(),
+                parseRepoType(request.getRepoType()),
                 request.isMonoRepo(),
                 request.getInitialVersion(),
                 request.getGroupCode()
@@ -140,5 +143,16 @@ public class CodeRepositoryController {
     public ApiResponse<CodeRepositoryView> sync(@PathVariable("id") String id) {
         var repo = appService.sync(id);
         return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
+    }
+
+    private RepoType parseRepoType(String repoType) {
+        if (repoType == null || repoType.isBlank()) {
+            return RepoType.SERVICE;
+        }
+        try {
+            return RepoType.valueOf(repoType.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return RepoType.SERVICE;
+        }
     }
 }

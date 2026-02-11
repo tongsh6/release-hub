@@ -19,6 +19,7 @@ import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.repo.RepoType;
 import io.releasehub.domain.window.WindowIteration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -125,7 +126,7 @@ class IterationAppServiceTest {
                 IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.<RepoId>of(), IterationStatus.ACTIVE, now, now);
         CodeRepository repo = CodeRepository.rehydrate(
                 RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git",
-                "master", "G001", false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+                "master", "G001", RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
 
         when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
         when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
@@ -152,7 +153,7 @@ class IterationAppServiceTest {
                 IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
         CodeRepository repo = CodeRepository.rehydrate(
                 RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git",
-                "master", "G001", false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+                "master", "G001", RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
 
         when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
         IterationRepoVersionInfo versionInfo = IterationRepoVersionInfo.builder()

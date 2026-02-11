@@ -21,6 +21,8 @@ public class CreateRepoRequest {
     @Size(max = 128)
     private String defaultBranch;
     
+    private String repoType;
+
     private boolean monoRepo;
 
     @Size(max = 50)
