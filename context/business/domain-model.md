@@ -72,6 +72,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
     private String name;                     // 名称
     private String cloneUrl;                 // 克隆地址
     private String defaultBranch;            // 默认分支
+    private RepoType repoType;              // 仓库类型：SERVICE（服务）/ LIBRARY（类库）
     private boolean monoRepo;                // 是否单体仓库
     // 统计信息
     private int branchCount;
@@ -89,6 +90,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
 - `name`、`cloneUrl`、`defaultBranch` 必填
 - 名称长度限制 128 字符
 - URL 长度限制 512 字符
+- `repoType` 默认为 `SERVICE`，可选值：`SERVICE`（可部署服务）、`LIBRARY`（被依赖的类库）
 
 ---
 
