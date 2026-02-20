@@ -90,6 +90,40 @@
 
 ---
 
+### 问题类别：JPQL null 参数类型推断
+
+- **问题**：JPQL 查询中 null 参数被 PostgreSQL JDBC 推断为 bytea，导致 lower()/concat() 报错
+- **解决方案**：使用 `cast(:keyword as string)` 显式指定参数类型
+- **相关文件**：`context/experience/lessons/jpql-null-param-bytea.md`
+- **标签**：`PostgreSQL`, `JPQL`, `bytea`, `null`, `cast`
+- **相关度关键词**：bytea, lower, null, cast, JPQL, parameter, keyword search, 类型推断
+
+### 问题类别：常量修改纪律
+
+- **问题**：修改错误码后忘记更新测试中的断言，导致测试失败
+- **解决方案**：修改任何常量/错误码/枚举值时，必须全局搜索所有引用（含测试），一次性全部更新
+- **相关文件**：`context/experience/lessons/constant-change-global-search.md`
+- **标签**：`error-code`, `constant`, `refactor`, `global-search`
+- **相关度关键词**：错误码, error code, 常量, constant, 枚举, enum, 重命名, rename, 全局搜索
+
+### 问题类别：E2E 测试工程化
+
+- **问题**：用一次性 curl 命令做 E2E 测试，不可复现、无自动断言、数据残留
+- **解决方案**：编写持久化自动化测试代码（Spring Boot IT + TestContainers 或 Playwright），带自动清理
+- **相关文件**：`context/experience/lessons/e2e-testing-workflow.md`
+- **标签**：`e2e`, `testing`, `automation`, `TestContainers`
+- **相关度关键词**：e2e, 端到端, 测试, test, curl, 自动化, automation, 可复现, reproducible
+
+### 问题类别：TestContainers macOS Docker Desktop 配置
+
+- **问题**：TestContainers 1.20.x 在 Docker Desktop 29.x 下 Ryuk 无法通过属性文件禁用；多测试类间容器重启导致端口变化报 500
+- **解决方案**：在 Surefire 插件注入 `TESTCONTAINERS_RYUK_DISABLED=true`；改用静态初始化块 Singleton 容器模式；`~/.docker-java.properties` 设置 `api.version=1.44`
+- **相关文件**：`context/experience/lessons/testcontainers-docker-setup.md`
+- **标签**：`TestContainers`, `Docker`, `macOS`, `Ryuk`, `Singleton`, `Surefire`
+- **相关度关键词**：testcontainers, ryuk, docker.raw.sock, api.version, TESTCONTAINERS_RYUK_DISABLED, Singleton container, @DynamicPropertySource, 容器重启, 端口变化, surefire
+
+---
+
 ## 添加新经验
 
 ### 模板
