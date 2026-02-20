@@ -157,6 +157,16 @@
 
 ---
 
+### Git 工作流：所有变更必须走 PR
+
+- **类别**：工程纪律
+- **日期**：2026-02-20
+- **关键词**：`git`, `PR`, `pull request`, `main`, `feature branch`, `工作流`, `直接推送`, `文档变更`
+- **摘要**：无论变更类型（代码/配置/文档/经验归档），一律通过 feature 分支 → PR → merge to main。"这只是文档"不是直接推 main 的理由。
+- **文档**：[lessons/git-workflow.md](lessons/git-workflow.md)
+
+---
+
 ## 按领域索引
 
 ### ReleaseWindow（发布窗口）
@@ -237,6 +247,7 @@
 - [修改常量需全局搜索](lessons/constant-change-global-search.md)
 - [E2E 测试自动化与前置检查](lessons/e2e-testing-workflow.md)
 - [临时产物即时归档](lessons/temp-artifacts-archiving.md)
+- [Git 工作流：所有变更必须走 PR](lessons/git-workflow.md)
 
 ### 实现模式
 
