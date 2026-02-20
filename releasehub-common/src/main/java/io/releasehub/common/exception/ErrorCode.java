@@ -65,6 +65,7 @@ public enum ErrorCode {
     GROUP_PARENT_TOO_LONG("GROUP_011", "error.group.parent_too_long", 400),
     GROUP_ID_INVALID("GROUP_012", "error.group.id_invalid", 400),
     GROUP_REFERENCED("GROUP_013", "error.group.referenced", 400),
+    GROUP_NOT_LEAF("GROUP_014", "error.group.not_leaf", 400),
 
     // ========== 迭代 (ITER) ==========
     ITERATION_NOT_FOUND("ITER_001", "error.iter.not_found", 404),

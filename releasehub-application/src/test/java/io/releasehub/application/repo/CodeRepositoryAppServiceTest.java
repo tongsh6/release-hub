@@ -156,7 +156,7 @@ class CodeRepositoryAppServiceTest {
 
         assertThatThrownBy(() -> appService.create("Repo", "git@gitlab.com:test/repo.git", "main", null, false, null, "G001"))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("GROUP_008"));
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("GROUP_014"));
     }
 
     @Test

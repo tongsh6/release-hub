@@ -82,6 +82,9 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
     }
 
     public void freeze(Instant now) {
+        if (this.status == ReleaseWindowStatus.CLOSED) {
+            throw BusinessException.rwInvalidState(this.status);
+        }
         if (this.frozen) {
             return;
         }
@@ -90,6 +93,9 @@ public class ReleaseWindow extends BaseEntity<ReleaseWindowId> {
     }
 
     public void unfreeze(Instant now) {
+        if (this.status == ReleaseWindowStatus.CLOSED) {
+            throw BusinessException.rwInvalidState(this.status);
+        }
         if (!this.frozen) {
             return;
         }
