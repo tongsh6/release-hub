@@ -1,6 +1,6 @@
 # ReleaseHub 项目进度分析
 
-> 分析时间：2026-01-27
+> 分析时间：2026-02-20
 
 ## 📊 总体进度概览
 
@@ -8,9 +8,9 @@
 
 | 状态 | 数量 | 占比 |
 |------|------|------|
-| ✅ 已完成 | 2 | 66.7% |
-| 🔄 进行中 | 1 | 33.3% |
-| 📋 总计 | 3 | 100% |
+| ✅ 已完成 | 3 | 75% |
+| 🔄 进行中 | 1 | 25% |
+| 📋 总计 | 4 | 100% |
 
 ---
 
@@ -26,6 +26,23 @@
   - ✅ 手动同步仓库统计信息
   - ✅ 前端表单校验与错误处理
   - ✅ 统一使用 1-based page/size 分页
+
+### 3. E2E 自动化测试基础设施
+- **状态**: ✅ 已完成
+- **完成时间**: 2026-02-20
+- **相关 PR**: [release-hub#4](https://github.com/tongsh6/release-hub/pull/4)
+- **主要成果**:
+  - ✅ TestContainers 驱动真实 PostgreSQL 容器的 E2E 测试套件
+  - ✅ Singleton 容器模式，多测试类共享容器（避免重启开销）
+  - ✅ `ReleaseWorkflowE2ETest`：核心链路 Group→Repo→Iteration→RW→Attach→Freeze→Publish
+  - ✅ `VersionPolicyE2ETest`：PostgreSQL cast 修复验证
+  - ✅ `ErrorHandlingE2ETest`：GROUP_014 / RW_009 / 空迭代列表错误场景
+  - ✅ Surefire 插件注入 `TESTCONTAINERS_RYUK_DISABLED=true`，兼容 Docker 29.x
+  - ✅ 全量测试 52/52 通过（H2 + E2E 共存）
+- **同步修复的 Bug**:
+  - ✅ `VersionPolicyJpaRepository`: `cast(:keyword as varchar)` 修复 PostgreSQL bytea 问题
+  - ✅ `ReleaseWindow.close()`: 添加 PUBLISHED 状态前置校验
+  - ✅ `ReleaseWindowFlowIT`: 补充 JWT 认证与迭代关联步骤
 
 ### 2. 添加版本号自动更新功能
 - **状态**: ✅ 核心功能已完成
@@ -149,8 +166,9 @@
 
 ### 优先级低 🟢
 3. **测试完善**
-   - 添加前端 E2E 测试
-   - 增强集成测试覆盖
+   - ~~添加后端 E2E 测试（TestContainers）~~ ✅ 已完成
+   - 添加前端 E2E 测试（Playwright）
+   - CI/CD 流水线 Docker-in-Docker 的 TestContainers 配置
 
 ---
 
@@ -163,4 +181,4 @@
 
 ---
 
-*最后更新：2026-01-27*
+*最后更新：2026-02-20*
