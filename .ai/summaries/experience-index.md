@@ -92,11 +92,11 @@
 
 ### 问题类别：JPQL null 参数类型推断
 
-- **问题**：JPQL 查询中 null 参数被 PostgreSQL JDBC 推断为 bytea，导致 lower()/concat() 报错
-- **解决方案**：使用 `cast(:keyword as string)` 显式指定参数类型
+- **问题**：JPQL 查询中 null 参数被 PostgreSQL JDBC 推断为 bytea，导致 lower()/concat() 报错；`cast as string` 在 H2 通过但 PostgreSQL 报 type "string" does not exist
+- **解决方案**：使用 `cast(:keyword as varchar)` 显式指定参数类型（SQL 标准类型名）；修改 JPQL 后必须在 TestContainers E2E（真实 PostgreSQL）回归
 - **相关文件**：`context/experience/lessons/jpql-null-param-bytea.md`
-- **标签**：`PostgreSQL`, `JPQL`, `bytea`, `null`, `cast`
-- **相关度关键词**：bytea, lower, null, cast, JPQL, parameter, keyword search, 类型推断
+- **标签**：`PostgreSQL`, `JPQL`, `bytea`, `null`, `cast`, `varchar`, `H2`
+- **相关度关键词**：bytea, lower, null, cast, varchar, string, JPQL, parameter, keyword search, 类型推断, H2 PostgreSQL 差异
 
 ### 问题类别：常量修改纪律
 
@@ -108,11 +108,19 @@
 
 ### 问题类别：E2E 测试工程化
 
-- **问题**：用一次性 curl 命令做 E2E 测试，不可复现、无自动断言、数据残留
-- **解决方案**：编写持久化自动化测试代码（Spring Boot IT + TestContainers 或 Playwright），带自动清理
+- **问题**：用一次性 curl 命令做 E2E 测试，不可复现、无自动断言、数据残留；写测试前未读 API 实现导致反复遭遇"端点不存在"或"业务前置条件未满足"
+- **解决方案**：写 E2E 测试前先通读 Controller + AppService；使用 TestContainers 自动化，带断言和隔离
 - **相关文件**：`context/experience/lessons/e2e-testing-workflow.md`
-- **标签**：`e2e`, `testing`, `automation`, `TestContainers`
-- **相关度关键词**：e2e, 端到端, 测试, test, curl, 自动化, automation, 可复现, reproducible
+- **标签**：`e2e`, `testing`, `automation`, `TestContainers`, `前置检查`
+- **相关度关键词**：e2e, 端到端, 测试, test, curl, 自动化, automation, 可复现, reproducible, 业务前置条件, 端点不存在
+
+### 问题类别：临时产物管理
+
+- **问题**：worktree 或临时分支中的报告、脚本未提交，随 worktree 删除永久丢失
+- **解决方案**：完成即归档（.ai/summaries 或 context/experience），关闭 worktree 前先 `git status` 确认无未跟踪文件
+- **相关文件**：`context/experience/lessons/temp-artifacts-archiving.md`
+- **标签**：`worktree`, `git`, `archiving`, `workflow`
+- **相关度关键词**：worktree, 未跟踪, untracked, 临时文件, 归档, 丢失, 报告, 测试脚本
 
 ### 问题类别：TestContainers macOS Docker Desktop 配置
 
