@@ -1,13 +1,11 @@
 package io.releasehub.bootstrap.it;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.releasehub.application.releasewindow.ReleaseWindowView;
 import io.releasehub.bootstrap.ReleaseHubApplication;
 import io.releasehub.common.response.ApiResponse;
-import io.releasehub.interfaces.api.releasewindow.ConfigureReleaseWindowRequest;
 import io.releasehub.interfaces.api.releasewindow.CreateReleaseWindowRequest;
-import io.releasehub.interfaces.api.releasewindow.FreezeReleaseWindowRequest;
-import io.releasehub.interfaces.api.releasewindow.PublishReleaseWindowRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -17,12 +15,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -42,13 +37,16 @@ class ReleaseWindowFlowIT {
 
     @Test
     void should_complete_release_window_lifecycle() throws Exception {
-        String groupCode = createGroupAndGetCode();
+        String token = loginAndGetToken();
+        String groupCode = createGroupAndGetCode(token);
+
         // 1. Create
         CreateReleaseWindowRequest createRequest = new CreateReleaseWindowRequest();
         createRequest.setName("2024-IT-01");
         createRequest.setGroupCode(groupCode);
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/release-windows")
+                        .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
                 .andExpect(status().isOk())
@@ -62,29 +60,26 @@ class ReleaseWindowFlowIT {
         assertThat(id).isNotNull();
         assertThat(createResponse.getData().getStatus()).isEqualTo("DRAFT");
 
-        // 2. Configure
-        ConfigureReleaseWindowRequest configRequest = new ConfigureReleaseWindowRequest();
-        Instant now = Instant.now();
-        configRequest.setStartAt(now.plus(1, ChronoUnit.DAYS).toString());
-        configRequest.setEndAt(now.plus(3, ChronoUnit.DAYS).toString());
-
-        mockMvc.perform(put("/api/v1/release-windows/" + id + "/window")
+        // 2. Attach iteration（publish 需要至少一个迭代）
+        String iterKey = createIterationAndGetKey(token, groupCode);
+        mockMvc.perform(post("/api/v1/release-windows/" + id + "/attach")
+                        .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(configRequest)))
+                        .content("{\"iterationKeys\":[\"" + iterKey + "\"]}"))
                 .andExpect(status().isOk());
 
-        // 3. Freeze
-        FreezeReleaseWindowRequest freezeRequest = new FreezeReleaseWindowRequest();
+        // 4. Freeze
         mockMvc.perform(post("/api/v1/release-windows/" + id + "/freeze")
+                        .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(freezeRequest)))
+                        .content("{}"))
                 .andExpect(status().isOk());
 
-        // 4. Publish
-        PublishReleaseWindowRequest publishRequest = new PublishReleaseWindowRequest();
+        // 5. Publish
         MvcResult publishResult = mockMvc.perform(post("/api/v1/release-windows/" + id + "/publish")
+                        .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(publishRequest)))
+                        .content("{}"))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -98,13 +93,39 @@ class ReleaseWindowFlowIT {
         assertThat(publishResponse.getData().getPublishedAt()).isNotNull();
     }
 
-    private String createGroupAndGetCode() throws Exception {
+    private String loginAndGetToken() throws Exception {
+        String body = "{\"username\":\"admin\",\"password\":\"admin\"}";
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.token").exists())
+                .andReturn();
+        JsonNode node = objectMapper.readTree(result.getResponse().getContentAsString());
+        return node.get("data").get("token").asText();
+    }
+
+    private String createGroupAndGetCode(String token) throws Exception {
         String code = "G" + System.currentTimeMillis();
         String req = "{\"name\":\"IT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
         mockMvc.perform(post("/api/v1/groups")
+                        .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(objectMapper.readTree(req))))
                 .andExpect(status().isOk());
         return code;
+    }
+
+    private String createIterationAndGetKey(String token, String groupCode) throws Exception {
+        String name = "IT-Iter-" + System.currentTimeMillis();
+        String req = String.format("{\"name\":\"%s\",\"description\":\"IT iter\",\"groupCode\":\"%s\"}", name, groupCode);
+        MvcResult result = mockMvc.perform(post("/api/v1/iterations")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("key").asText();
     }
 }

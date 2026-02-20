@@ -105,7 +105,7 @@ class IterationAppServiceTest {
 
         assertThatThrownBy(() -> iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", null))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("GROUP_008"));
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("GROUP_014"));
     }
 
     @Test

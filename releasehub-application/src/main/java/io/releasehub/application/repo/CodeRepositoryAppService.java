@@ -112,7 +112,7 @@ public class CodeRepositoryAppService {
         groupPort.findByCode(groupCode)
                 .orElseThrow(() -> NotFoundException.groupCode(groupCode));
         if (groupPort.countChildren(groupCode) > 0) {
-            throw BusinessException.groupHasChildren(groupCode);
+            throw BusinessException.groupNotLeaf(groupCode);
         }
     }
 

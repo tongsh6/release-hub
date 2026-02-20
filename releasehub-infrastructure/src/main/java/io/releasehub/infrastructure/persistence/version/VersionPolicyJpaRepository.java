@@ -13,9 +13,8 @@ public interface VersionPolicyJpaRepository extends JpaRepository<VersionPolicyJ
     @Query("""
             select v from VersionPolicyJpaEntity v
             where (:keyword is null
-                or lower(v.name) like lower(concat('%', :keyword, '%'))
-                or lower(v.scheme) like lower(concat('%', :keyword, '%'))
-                or lower(v.bumpRule) like lower(concat('%', :keyword, '%')))
+                or lower(v.name) like lower(concat('%', cast(:keyword as string), '%'))
+                or lower(v.id) like lower(concat('%', cast(:keyword as string), '%')))
             """)
     Page<VersionPolicyJpaEntity> searchByKeyword(@Param("keyword") String keyword, Pageable pageable);
 }

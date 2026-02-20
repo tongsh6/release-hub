@@ -6,6 +6,8 @@ import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,7 +32,7 @@ public class AttachController {
 
     @PostMapping("/{id}/attach")
     @Operation(summary = "Attach iterations to window")
-    public ApiResponse<List<String>> attach(@PathVariable("id") String windowId, @RequestBody AttachRequest request) {
+    public ApiResponse<List<String>> attach(@PathVariable("id") String windowId, @Valid @RequestBody AttachRequest request) {
         var list = attachAppService.attach(windowId, request.getIterationKeys());
         return ApiResponse.success(list.stream().map(x -> x.getIterationKey().value()).toList());
     }
@@ -93,6 +95,7 @@ public class AttachController {
 
     @Data
     public static class AttachRequest {
+        @NotEmpty(message = "迭代列表不能为空")
         private List<String> iterationKeys;
     }
 

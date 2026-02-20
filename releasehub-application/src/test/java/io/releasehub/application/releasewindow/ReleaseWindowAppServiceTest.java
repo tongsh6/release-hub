@@ -86,7 +86,7 @@ class ReleaseWindowAppServiceTest {
 
             assertThatThrownBy(() -> releaseWindowAppService.create("Window", "Desc", Instant.now(), "G001"))
                     .isInstanceOf(BusinessException.class)
-                    .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("GROUP_008"));
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("GROUP_014"));
         }
 
         @Test

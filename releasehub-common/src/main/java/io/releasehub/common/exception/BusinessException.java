@@ -61,6 +61,10 @@ public class BusinessException extends BaseException {
         return of(ErrorCode.GROUP_REFERENCED, code);
     }
 
+    public static BusinessException groupNotLeaf(Object code) {
+        return of(ErrorCode.GROUP_NOT_LEAF, code);
+    }
+
     // ========== Iteration ==========
 
     public static BusinessException iterationAttached(Object key) {
