@@ -137,6 +137,69 @@ class VersionValidationApiTest {
                .andExpect(status().isNotFound());
     }
 
+    @Test
+    @Order(7)
+    void shouldReturnErrorForMissingCurrentVersion() throws Exception {
+        // currentVersion 现在是必填字段，缺失时应该返回 400
+        VersionValidationRequest request = new VersionValidationRequest();
+        request.setPolicyId("MINOR");
+        // 故意不设置 currentVersion
+
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/validate")
+                       .header("Authorization", "Bearer " + token)
+                       .contentType(MediaType.APPLICATION_JSON)
+                       .content(objectMapper.writeValueAsString(request)))
+               .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @Order(8)
+    void shouldDerivePatchVersion() throws Exception {
+        VersionValidationRequest request = new VersionValidationRequest();
+        request.setPolicyId("PATCH");
+        request.setCurrentVersion("1.2.3");
+
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/validate")
+                       .header("Authorization", "Bearer " + token)
+                       .contentType(MediaType.APPLICATION_JSON)
+                       .content(objectMapper.writeValueAsString(request)))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.data.valid").value(true))
+               .andExpect(jsonPath("$.data.derivedVersion").value("1.2.4"));
+    }
+
+    @Test
+    @Order(9)
+    void shouldDeriveMinorVersion() throws Exception {
+        VersionValidationRequest request = new VersionValidationRequest();
+        request.setPolicyId("MINOR");
+        request.setCurrentVersion("1.2.3");
+
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/validate")
+                       .header("Authorization", "Bearer " + token)
+                       .contentType(MediaType.APPLICATION_JSON)
+                       .content(objectMapper.writeValueAsString(request)))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.data.valid").value(true))
+               .andExpect(jsonPath("$.data.derivedVersion").value("1.3.0"));
+    }
+
+    @Test
+    @Order(10)
+    void shouldDeriveMajorVersion() throws Exception {
+        VersionValidationRequest request = new VersionValidationRequest();
+        request.setPolicyId("MAJOR");
+        request.setCurrentVersion("1.2.3");
+
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/validate")
+                       .header("Authorization", "Bearer " + token)
+                       .contentType(MediaType.APPLICATION_JSON)
+                       .content(objectMapper.writeValueAsString(request)))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.data.valid").value(true))
+               .andExpect(jsonPath("$.data.derivedVersion").value("2.0.0"));
+    }
+
     private String createGroupAndGetCode(String token) throws Exception {
         String code = "G" + System.currentTimeMillis();
         String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
