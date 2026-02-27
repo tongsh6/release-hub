@@ -48,6 +48,7 @@ context/
 - [项目规划](business/project-plan.md) - 整体规划与里程碑
 
 ### 技术文档
+- [仓库快照](tech/REPO_SNAPSHOT.md) - 技术栈、模块划分、基础命令（AI 快速理解）
 - [后端架构](tech/architecture/backend.md) - 模块划分与依赖
 - [Release Window API](tech/api/release-window.md) - 核心 API 文档
 

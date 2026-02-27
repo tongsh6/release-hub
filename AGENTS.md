@@ -22,6 +22,10 @@
 | [context/experience/](context/experience/INDEX.md) | 经验索引（可检索） | 实现类任务前必读 |
 | [requirements/](requirements/INDEX.md) | 需求管理 | 日常需求跟踪 |
 | [openspec/](openspec/AGENTS.md) | 规范驱动开发 | 规划/提案/规范变更 |
+| [context/tech/REPO_SNAPSHOT.md](context/tech/REPO_SNAPSHOT.md) | 仓库快照（快速理解） | 首次会话/快速定位 |
+| [workflow/](workflow/INDEX.md) | 工作流阶段定义 | 理解流程/阶段路由 |
+| [.ai/standards/](.ai/standards/AIEF_EXTENSION_PROPOSAL.md) | AIEF 标准规范与可复用模式 | 扩展 AI 工程化框架 |
+| [.ai-adapters/](.ai-adapters/README.md) | 多工具适配层 | 配置/对齐 AI 工具 |
 
 ### 知识库结构 (context/)
 
@@ -170,6 +174,7 @@ context/experience/lessons/release-window-lifecycle.md
 
 | 场景 | 推荐加载 |
 |------|----------|
+| 快速了解项目 | `context/tech/REPO_SNAPSHOT.md` |
 | 理解业务需求 | `context/business/` |
 | 技术实现决策 | `context/tech/architecture/` |
 | API 开发 | `context/tech/api/` |

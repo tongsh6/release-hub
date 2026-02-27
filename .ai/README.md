@@ -26,6 +26,11 @@
 ├── agents/            # 🤖 Agent 定义（决策层）
 ├── commands/          # ⚡ 命令入口
 ├── skills/            # 🔧 Skill 定义（执行层）
+├── standards/         # 📐 AIEF 标准规范与可复用模式
+│   ├── skill-spec.md
+│   ├── command-spec.md
+│   ├── agent-spec.md
+│   └── patterns/
 ├── reports/           # 📊 分析报告
 │   ├── code-review/
 │   ├── architecture/
@@ -208,7 +213,7 @@ Agent A    Agent B    Agent C
 
 ### Git 策略
 
-- ✅ `agents/`、`commands/`、`skills/`、`reports/`、`proposals/`、`summaries/` - 提交到 Git
+- ✅ `agents/`、`commands/`、`skills/`、`standards/`、`reports/`、`proposals/`、`summaries/` - 提交到 Git
 - ❌ `temp/` - 已添加到 `.gitignore`，不提交
 
 ---
