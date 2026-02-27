@@ -56,6 +56,14 @@ class CodeRepositoryTest {
     }
 
     @Test
+    void create_ShouldDefaultGitProviderToMock() {
+        Instant now = Instant.now();
+        CodeRepository repo = CodeRepository.create("Repo1", "http://git.com/repo1.git", "main", "G001", RepoType.SERVICE, false, now);
+
+        assertEquals(GitProvider.MOCK, repo.getGitProvider());
+    }
+
+    @Test
     void create_ShouldThrow_WhenInvalid() {
         Instant now = Instant.now();
 
