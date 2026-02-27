@@ -11,5 +11,6 @@ public class VersionValidationRequest {
     @NotBlank(message = "版本策略 ID 不能为空")
     private String policyId;
 
+    @NotBlank(message = "当前版本号不能为空")
     private String currentVersion;
 }

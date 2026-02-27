@@ -30,14 +30,7 @@ public class VersionValidationAppService {
                 .orElseThrow(() -> NotFoundException.versionPolicy(policyId));
 
         try {
-            String derivedVersion;
-            if (currentVersion != null && !currentVersion.isBlank()) {
-                // 根据当前版本推导下一个版本
-                derivedVersion = policy.deriveNextVersion(currentVersion);
-            } else {
-                // 如果没有当前版本，使用策略的默认推导（如日期版本）
-                derivedVersion = policy.deriveNextVersion("0.0.0");
-            }
+            String derivedVersion = policy.deriveNextVersion(currentVersion);
 
             // 校验推导出的版本号格式
             if (!policy.validateVersion(derivedVersion)) {
