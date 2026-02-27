@@ -10,6 +10,7 @@ import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.repo.RepoType;
 import io.releasehub.domain.version.VersionSource;
@@ -36,9 +37,14 @@ public class CodeRepositoryAppService {
 
     @Transactional
     public CodeRepository create(String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode) {
+        return create(name, cloneUrl, defaultBranch, repoType, monoRepo, initialVersion, groupCode, GitProvider.MOCK, null);
+    }
+
+    @Transactional
+    public CodeRepository create(String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode, GitProvider gitProvider, String gitToken) {
         String normalizedBranch = normalizeBranch(cloneUrl, defaultBranch);
         ensureLeafGroup(groupCode);
-        CodeRepository repo = CodeRepository.create(name, cloneUrl, normalizedBranch, groupCode, repoType, monoRepo, Instant.now(clock));
+        CodeRepository repo = CodeRepository.create(name, cloneUrl, normalizedBranch, groupCode, repoType, gitProvider, gitToken, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
 
         if (initialVersion != null && !initialVersion.isBlank()) {
@@ -88,10 +94,17 @@ public class CodeRepositoryAppService {
 
     @Transactional
     public CodeRepository update(String repoId, String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode) {
+        return update(repoId, name, cloneUrl, defaultBranch, repoType, monoRepo, initialVersion, groupCode, GitProvider.MOCK, null);
+    }
+
+    @Transactional
+    public CodeRepository update(String repoId, String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode, GitProvider gitProvider, String gitToken) {
         CodeRepository repo = get(repoId);
         String normalizedBranch = normalizeBranch(cloneUrl, defaultBranch);
         ensureLeafGroup(groupCode);
-        repo.update(name, cloneUrl, normalizedBranch, groupCode, repoType, monoRepo, Instant.now(clock));
+        GitProvider effectiveProvider = gitProvider != null ? gitProvider : repo.getGitProvider();
+        String effectiveToken = (gitToken != null && !gitToken.isBlank()) ? gitToken.trim() : repo.getGitToken();
+        repo.update(name, cloneUrl, normalizedBranch, groupCode, repoType, effectiveProvider, effectiveToken, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
         if (initialVersion != null && !initialVersion.isBlank()) {
             codeRepositoryPort.updateInitialVersion(repoId, initialVersion.trim(), VersionSource.MANUAL.name());
