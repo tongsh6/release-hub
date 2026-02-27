@@ -23,6 +23,12 @@ public class UpdateRepoRequest {
 
     private String repoType;
 
+    @Size(max = 20)
+    private String gitProvider;
+
+    @Size(max = 500)
+    private String gitToken;
+
     private boolean monoRepo;
 
     @Size(max = 50)

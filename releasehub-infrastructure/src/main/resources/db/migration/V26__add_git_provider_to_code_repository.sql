@@ -1,0 +1,5 @@
+ALTER TABLE code_repository
+    ADD COLUMN IF NOT EXISTS git_provider VARCHAR(20) NOT NULL DEFAULT 'MOCK';
+
+ALTER TABLE code_repository
+    ADD COLUMN IF NOT EXISTS git_token VARCHAR(500);

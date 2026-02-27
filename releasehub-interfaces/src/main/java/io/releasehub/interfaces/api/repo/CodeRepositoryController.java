@@ -1,10 +1,11 @@
 package io.releasehub.interfaces.api.repo;
 
 import io.releasehub.application.repo.CodeRepositoryAppService;
-import io.releasehub.domain.repo.RepoType;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
+import io.releasehub.domain.repo.GitProvider;
+import io.releasehub.domain.repo.RepoType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -39,7 +40,9 @@ public class CodeRepositoryController {
                 parseRepoType(request.getRepoType()),
                 request.isMonoRepo(),
                 request.getInitialVersion(),
-                request.getGroupCode()
+                request.getGroupCode(),
+                parseGitProvider(request.getGitProvider()),
+                request.getGitToken()
         );
         return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
     }
@@ -55,7 +58,9 @@ public class CodeRepositoryController {
                 parseRepoType(request.getRepoType()),
                 request.isMonoRepo(),
                 request.getInitialVersion(),
-                request.getGroupCode()
+                request.getGroupCode(),
+                parseGitProvider(request.getGitProvider()),
+                request.getGitToken()
         );
         return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
     }
@@ -153,6 +158,17 @@ public class CodeRepositoryController {
             return RepoType.valueOf(repoType.toUpperCase());
         } catch (IllegalArgumentException e) {
             return RepoType.SERVICE;
+        }
+    }
+
+    private GitProvider parseGitProvider(String gitProvider) {
+        if (gitProvider == null || gitProvider.isBlank()) {
+            return null;
+        }
+        try {
+            return GitProvider.valueOf(gitProvider.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 }
