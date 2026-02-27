@@ -16,8 +16,7 @@ import java.util.regex.Pattern;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class VersionExtractor {
-    
+public class VersionExtractor implements VersionExtractorUseCase {
     private final GitLabFilePort gitLabFilePort;
     
     // Maven pom.xml 中的版本号正则
@@ -32,17 +31,17 @@ public class VersionExtractor {
      * 从仓库提取版本号
      * @return 版本号和来源
      */
-    public Optional<VersionInfo> extractVersion(String repoCloneUrl, String branch) {
+    public Optional<VersionExtractorUseCase.VersionInfo> extractVersion(String repoCloneUrl, String branch) {
         // 优先尝试 Maven pom.xml
         Optional<String> pomVersion = extractFromPom(repoCloneUrl, branch);
         if (pomVersion.isPresent()) {
-            return Optional.of(new VersionInfo(pomVersion.get(), VersionSource.POM));
+            return Optional.of(new VersionExtractorUseCase.VersionInfo(pomVersion.get(), VersionSource.POM));
         }
         
         // 尝试 Gradle gradle.properties
         Optional<String> gradleVersion = extractFromGradle(repoCloneUrl, branch);
         if (gradleVersion.isPresent()) {
-            return Optional.of(new VersionInfo(gradleVersion.get(), VersionSource.GRADLE));
+            return Optional.of(new VersionExtractorUseCase.VersionInfo(gradleVersion.get(), VersionSource.GRADLE));
         }
         
         log.warn("Cannot extract version from repository: {} branch: {}", repoCloneUrl, branch);
@@ -100,5 +99,5 @@ public class VersionExtractor {
     /**
      * 版本信息
      */
-    public record VersionInfo(String version, VersionSource source) {}
+    // 使用接口中的 VersionInfo 记录类
 }

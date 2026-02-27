@@ -1,6 +1,6 @@
 package io.releasehub.application.window;
 
-import io.releasehub.application.branchrule.BranchRuleAppService;
+import io.releasehub.application.branchrule.BranchRuleUseCase;
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.iteration.IterationRepoPort;
 import io.releasehub.application.port.out.GitLabBranchPort;
@@ -36,7 +36,7 @@ public class AttachAppService {
     private final IterationRepoPort iterationRepoPort;
     private final GitLabBranchPort gitLabBranchPort;
     private final CodeRepositoryPort codeRepositoryPort;
-    private final BranchRuleAppService branchRuleAppService;
+    private final BranchRuleUseCase branchRuleUseCase;
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
@@ -79,7 +79,7 @@ public class AttachAppService {
                 .orElseThrow(() -> NotFoundException.repository(repoId.value()));
         // 生成 release 分支名
         String releaseBranch = "release/" + releaseWindow.getWindowKey();
-        if (!branchRuleAppService.isCompliant(releaseBranch)) {
+        if (!branchRuleUseCase.isCompliant(releaseBranch)) {
             throw ValidationException.invalidParameter("branchName");
         }
         
@@ -162,7 +162,7 @@ public class AttachAppService {
         Instant now = Instant.now(clock);
         
         String releaseBranch = "release/" + releaseWindow.getWindowKey();
-        if (!branchRuleAppService.isCompliant(releaseBranch)) {
+        if (!branchRuleUseCase.isCompliant(releaseBranch)) {
             throw ValidationException.invalidParameter("branchName");
         }
         

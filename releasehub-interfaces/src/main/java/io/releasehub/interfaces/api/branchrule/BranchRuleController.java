@@ -1,6 +1,6 @@
 package io.releasehub.interfaces.api.branchrule;
 
-import io.releasehub.application.branchrule.BranchRuleAppService;
+import io.releasehub.application.branchrule.BranchRuleUseCase;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
@@ -30,12 +30,12 @@ import java.util.List;
 @Tag(name = "BranchRule", description = "分支规则管理 API")
 public class BranchRuleController {
 
-    private final BranchRuleAppService branchRuleAppService;
+    private final BranchRuleUseCase branchRuleUseCase;
 
     @GetMapping
     @Operation(summary = "获取所有分支规则")
     public ApiResponse<List<BranchRuleView>> list() {
-        List<BranchRule> rules = branchRuleAppService.list();
+        List<BranchRule> rules = branchRuleUseCase.list();
         List<BranchRuleView> views = rules.stream()
                                           .map(this::toView)
                                           .toList();
@@ -47,7 +47,7 @@ public class BranchRuleController {
     public ApiPageResponse<List<BranchRuleView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
                                                            @RequestParam(name = "size", defaultValue = "20") int size,
                                                            @RequestParam(name = "name", required = false) String name) {
-        var result = branchRuleAppService.listPaged(name, page, size);
+        var result = branchRuleUseCase.listPaged(name, page, size);
         List<BranchRuleView> views = result.items().stream()
                 .map(this::toView)
                 .toList();
@@ -68,7 +68,7 @@ public class BranchRuleController {
     @GetMapping("/{id}")
     @Operation(summary = "获取分支规则详情")
     public ApiResponse<BranchRuleView> get(@PathVariable String id) {
-        BranchRule rule = branchRuleAppService.get(id);
+        BranchRule rule = branchRuleUseCase.get(id);
         return ApiResponse.success(toView(rule));
     }
 
@@ -76,7 +76,7 @@ public class BranchRuleController {
     @Operation(summary = "创建分支规则")
     public ApiResponse<BranchRuleView> create(@RequestBody CreateBranchRuleRequest request) {
         BranchRuleType type = BranchRuleType.valueOf(request.type().toUpperCase());
-        BranchRule rule = branchRuleAppService.create(request.name(), request.pattern(), type);
+        BranchRule rule = branchRuleUseCase.create(request.name(), request.pattern(), type);
         return ApiResponse.success(toView(rule));
     }
 
@@ -84,21 +84,21 @@ public class BranchRuleController {
     @Operation(summary = "更新分支规则")
     public ApiResponse<BranchRuleView> update(@PathVariable String id, @RequestBody UpdateBranchRuleRequest request) {
         BranchRuleType type = BranchRuleType.valueOf(request.type().toUpperCase());
-        BranchRule rule = branchRuleAppService.update(id, request.name(), request.pattern(), type);
+        BranchRule rule = branchRuleUseCase.update(id, request.name(), request.pattern(), type);
         return ApiResponse.success(toView(rule));
     }
 
     @DeleteMapping("/{id}")
     @Operation(summary = "删除分支规则")
     public ApiResponse<Void> delete(@PathVariable String id) {
-        branchRuleAppService.delete(id);
+        branchRuleUseCase.delete(id);
         return ApiResponse.success(null);
     }
 
     @GetMapping("/check")
     @Operation(summary = "检查分支名称是否符合规则")
     public ApiResponse<BranchCheckResult> check(@RequestParam String branchName) {
-        boolean compliant = branchRuleAppService.isCompliant(branchName);
+        boolean compliant = branchRuleUseCase.isCompliant(branchName);
         return ApiResponse.success(new BranchCheckResult(branchName, compliant));
     }
 

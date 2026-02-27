@@ -1,5 +1,6 @@
 package io.releasehub.infrastructure.git;
 
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.repo.GitProvider;
@@ -10,10 +11,11 @@ import java.util.List;
 
 @Component
 @RequiredArgsConstructor
-public class GitBranchAdapterFactory {
+public class GitBranchAdapterFactoryImpl implements GitBranchAdapterFactory {
 
     private final List<GitBranchPort> adapters;
 
+    @Override
     public GitBranchPort getAdapter(GitProvider provider) {
         GitProvider effectiveProvider = provider == null ? GitProvider.MOCK : provider;
         return adapters.stream()

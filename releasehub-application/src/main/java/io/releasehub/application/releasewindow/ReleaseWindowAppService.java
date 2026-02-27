@@ -1,7 +1,7 @@
 package io.releasehub.application.releasewindow;
 
 import io.releasehub.application.group.GroupPort;
-import io.releasehub.application.release.ReleaseRunService;
+import io.releasehub.application.release.ReleaseRunUseCase;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
@@ -32,7 +32,7 @@ public class ReleaseWindowAppService {
     private static final DateTimeFormatter KEY_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private final ReleaseWindowPort releaseWindowPort;
     private final WindowIterationPort windowIterationPort;
-    private final ReleaseRunService releaseRunService;
+    private final ReleaseRunUseCase releaseRunUseCase;
     private final GroupPort groupPort;
     private final Clock clock = Clock.systemUTC();
 
@@ -134,8 +134,8 @@ public class ReleaseWindowAppService {
 
         // 触发收尾编排任务（归档分支、关闭迭代等）
         try {
-            Run run = releaseRunService.createReleaseRun(id, rw.getWindowKey(), "system"); // TODO: 获取当前用户
-            releaseRunService.executeRunAsync(run.getId().value());
+            Run run = releaseRunUseCase.createReleaseRun(id, rw.getWindowKey(), "system"); // TODO: 获取当前用户
+            releaseRunUseCase.executeRunAsync(run.getId().value());
             log.info("Created and started release run {} for closing window {}", run.getId().value(), id);
         } catch (Exception e) {
             log.error("Failed to create release run for closing window {}: {}", id, e.getMessage());

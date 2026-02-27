@@ -1,6 +1,6 @@
 package io.releasehub.application.release;
 
-import io.releasehub.application.iteration.IterationAppService;
+import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.run.RunPort;
 import io.releasehub.application.run.RunTaskPort;
 import io.releasehub.application.window.WindowIterationPort;
@@ -8,6 +8,7 @@ import io.releasehub.common.exception.BaseException;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.iteration.Iteration;
+import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.Run;
@@ -40,13 +41,13 @@ import java.util.concurrent.CompletableFuture;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ReleaseRunService {
+public class ReleaseRunService implements ReleaseRunUseCase {
 
     private static final int DEFAULT_MAX_RETRIES = 3;
     private final RunPort runPort;
     private final RunTaskPort runTaskPort;
     private final WindowIterationPort windowIterationPort;
-    private final IterationAppService iterationAppService;
+    private final IterationPort iterationPort;
     private final RunTaskExecutorRegistry executorRegistry;
     private final MessageSource messageSource;
     private final Clock clock = Clock.systemUTC();
@@ -106,7 +107,8 @@ public class ReleaseRunService {
 
         // 2-6. 对每个迭代的每个仓库创建任务
         for (WindowIteration wi : iterations) {
-            Iteration iteration = iterationAppService.get(wi.getIterationKey().value());
+            Iteration iteration = iterationPort.findByKey(IterationKey.of(wi.getIterationKey().value()))
+                    .orElseThrow(() -> NotFoundException.iteration(wi.getIterationKey().value()));
 
             for (RepoId repoId : iteration.getRepos()) {
                 // 归档 feature 分支

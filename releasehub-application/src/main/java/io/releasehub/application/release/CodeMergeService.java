@@ -1,10 +1,11 @@
 package io.releasehub.application.release;
 
-import io.releasehub.application.iteration.IterationAppService;
+import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.iteration.IterationRepoPort;
 import io.releasehub.application.iteration.IterationRepoVersionInfo;
-import io.releasehub.application.port.out.GitLabBranchPort;
-import io.releasehub.application.port.out.GitLabBranchPort.MergeResult;
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
+import io.releasehub.application.port.out.GitBranchPort;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.domain.iteration.Iteration;
@@ -34,9 +35,9 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class CodeMergeService {
     
-    private final GitLabBranchPort gitLabBranchPort;
+    private final GitBranchAdapterFactory gitBranchAdapterFactory;
     private final WindowIterationPort windowIterationPort;
-    private final IterationAppService iterationAppService;
+    private final IterationPort iterationPort;
     private final IterationRepoPort iterationRepoPort;
     private final CodeRepositoryPort codeRepositoryPort;
     private final Clock clock = Clock.systemUTC();
@@ -57,7 +58,6 @@ public class CodeMergeService {
             return results;
         }
         
-        WindowIteration wi = wiOpt.get();
         String releaseBranch = windowIterationPort.getReleaseBranch(windowId, iterationKey);
         
         if (releaseBranch == null || releaseBranch.isEmpty()) {
@@ -66,7 +66,8 @@ public class CodeMergeService {
         }
         
         // 获取迭代信息
-        Iteration iteration = iterationAppService.get(iterationKey);
+        Iteration iteration = iterationPort.findByKey(IterationKey.of(iterationKey))
+                                           .orElseThrow(() -> NotFoundException.iteration(iterationKey));
         
         // 遍历迭代的所有仓库
         for (RepoId repoId : iteration.getRepos()) {
@@ -77,6 +78,8 @@ public class CodeMergeService {
             
             CodeRepository repo = repoOpt.get();
             String repoUrl = repo.getCloneUrl();
+            GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
+            String gitToken = repo.getGitToken();
             
             // 获取仓库的 feature 分支信息
             Optional<IterationRepoVersionInfo> versionInfo = iterationRepoPort.getVersionInfo(iterationKey, repoId.value());
@@ -85,7 +88,7 @@ public class CodeMergeService {
             
             try {
                 // 检查 feature 分支是否存在
-                if (!gitLabBranchPort.branchExists(repoUrl, featureBranch)) {
+                if (!gitBranchPort.getBranchStatus(repoUrl, gitToken, featureBranch).exists()) {
                     log.info("Feature branch {} does not exist for repo {}", featureBranch, repo.getName());
                     results.add(CodeMergeResult.skipped(repoId.value(), repo.getName(), featureBranch, releaseBranch, 
                             "Feature branch does not exist"));
@@ -93,7 +96,7 @@ public class CodeMergeService {
                 }
                 
                 // 检查 release 分支是否存在
-                if (!gitLabBranchPort.branchExists(repoUrl, releaseBranch)) {
+                if (!gitBranchPort.getBranchStatus(repoUrl, gitToken, releaseBranch).exists()) {
                     log.warn("Release branch {} does not exist for repo {}", releaseBranch, repo.getName());
                     results.add(CodeMergeResult.failed(repoId.value(), repo.getName(), featureBranch, releaseBranch, 
                             "Release branch does not exist"));
@@ -101,8 +104,8 @@ public class CodeMergeService {
                 }
                 
                 // 执行合并
-                MergeResult mergeResult = gitLabBranchPort.mergeBranch(
-                        repoUrl, featureBranch, releaseBranch,
+                GitBranchPort.MergeResult mergeResult = gitBranchPort.mergeBranch(
+                        repoUrl, gitToken, featureBranch, releaseBranch,
                         "Merge " + featureBranch + " into " + releaseBranch);
                 
                 Instant now = Instant.now(clock);
@@ -111,10 +114,10 @@ public class CodeMergeService {
                     results.add(CodeMergeResult.success(repoId.value(), repo.getName(), featureBranch, releaseBranch, now));
                 } else if (mergeResult.status() == MergeStatus.CONFLICT) {
                     results.add(CodeMergeResult.conflict(repoId.value(), repo.getName(), featureBranch, releaseBranch, 
-                            mergeResult.conflictInfo()));
+                            mergeResult.detail()));
                 } else {
                     results.add(CodeMergeResult.failed(repoId.value(), repo.getName(), featureBranch, releaseBranch, 
-                            mergeResult.conflictInfo()));
+                            mergeResult.detail()));
                 }
                 
             } catch (Exception e) {

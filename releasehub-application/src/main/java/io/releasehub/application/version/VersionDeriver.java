@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
  * 版本号推导工具
  */
 @Component
-public class VersionDeriver {
+public class VersionDeriver implements VersionDeriverUseCase {
     
     private static final String SNAPSHOT_SUFFIX = "-SNAPSHOT";
     

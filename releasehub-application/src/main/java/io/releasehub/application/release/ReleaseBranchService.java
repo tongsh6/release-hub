@@ -1,13 +1,15 @@
 package io.releasehub.application.release;
 
-import io.releasehub.application.iteration.IterationAppService;
+import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.iteration.IterationRepoPort;
 import io.releasehub.application.iteration.IterationRepoVersionInfo;
-import io.releasehub.application.port.out.GitLabBranchPort;
-import io.releasehub.application.port.out.GitLabBranchPort.MergeResult;
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
+import io.releasehub.application.port.out.GitBranchPort;
+import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.domain.iteration.Iteration;
+import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.MergeStatus;
@@ -30,9 +32,9 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class ReleaseBranchService {
 
-    private final GitLabBranchPort gitLabBranchPort;
+    private final GitBranchAdapterFactory gitBranchAdapterFactory;
     private final WindowIterationPort windowIterationPort;
-    private final IterationAppService iterationAppService;
+    private final IterationPort iterationPort;
     private final IterationRepoPort iterationRepoPort;
     private final CodeRepositoryPort codeRepositoryPort;
     private final Clock clock = Clock.systemUTC();
@@ -45,7 +47,8 @@ public class ReleaseBranchService {
         List<BranchOperationResult> results = new ArrayList<>();
 
         // 获取迭代信息
-        Iteration iteration = iterationAppService.get(iterationKey);
+        Iteration iteration = iterationPort.findByKey(IterationKey.of(iterationKey))
+                                          .orElseThrow(() -> NotFoundException.iteration(iterationKey));
         String releaseBranch = "release/" + windowKey;
 
         // 遍历迭代的所有仓库
@@ -58,6 +61,8 @@ public class ReleaseBranchService {
 
             CodeRepository repo = repoOpt.get();
             String repoUrl = repo.getCloneUrl();
+            GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
+            String gitToken = repo.getGitToken();
 
             // 获取仓库的 feature 分支信息
             Optional<IterationRepoVersionInfo> versionInfo = iterationRepoPort.getVersionInfo(iterationKey, repoId.value());
@@ -66,8 +71,8 @@ public class ReleaseBranchService {
 
             try {
                 // 1. 检查 release 分支是否存在，不存在则创建
-                if (!gitLabBranchPort.branchExists(repoUrl, releaseBranch)) {
-                    boolean created = gitLabBranchPort.createBranch(repoUrl, releaseBranch, repo.getDefaultBranch());
+                if (!gitBranchPort.getBranchStatus(repoUrl, gitToken, releaseBranch).exists()) {
+                    boolean created = gitBranchPort.createBranch(repoUrl, gitToken, releaseBranch, repo.getDefaultBranch());
                     if (!created) {
                         results.add(BranchOperationResult.failed(repoId.value(), repo.getName(),
                                 "Failed to create release branch: " + releaseBranch));
@@ -77,17 +82,17 @@ public class ReleaseBranchService {
                 }
 
                 // 2. 合并 feature 分支到 release 分支
-                if (gitLabBranchPort.branchExists(repoUrl, featureBranch)) {
-                    MergeResult mergeResult = gitLabBranchPort.mergeBranch(
-                            repoUrl, featureBranch, releaseBranch,
+                if (gitBranchPort.getBranchStatus(repoUrl, gitToken, featureBranch).exists()) {
+                    GitBranchPort.MergeResult mergeResult = gitBranchPort.mergeBranch(
+                            repoUrl, gitToken, featureBranch, releaseBranch,
                             "Merge " + featureBranch + " into " + releaseBranch);
 
                     if (mergeResult.status() == MergeStatus.SUCCESS) {
                         results.add(BranchOperationResult.success(repoId.value(), repo.getName()));
                     } else if (mergeResult.status() == MergeStatus.CONFLICT) {
-                        results.add(BranchOperationResult.conflict(repoId.value(), repo.getName(), mergeResult.conflictInfo()));
+                        results.add(BranchOperationResult.conflict(repoId.value(), repo.getName(), mergeResult.detail()));
                     } else {
-                        results.add(BranchOperationResult.failed(repoId.value(), repo.getName(), mergeResult.conflictInfo()));
+                        results.add(BranchOperationResult.failed(repoId.value(), repo.getName(), mergeResult.detail()));
                     }
                 } else {
                     log.info("Feature branch {} does not exist for repo {}, skipping merge", featureBranch, repo.getName());
