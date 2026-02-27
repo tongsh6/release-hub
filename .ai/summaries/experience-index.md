@@ -132,6 +132,16 @@
 
 ---
 
+### 问题类别：AppService fallback 导致推导结果固定
+
+- **问题**：`VersionValidationAppService.validateVersion()` 在 `currentVersion` 为空时 fallback 到 `"0.0.0"`，MINOR 策略推导出 `"0.1.0"`，所有缺少参数的请求都返回相同的错误值（`derivedVersion` 始终为 "0.1.0"）
+- **解决方案**：为 DTO 字段添加 `@NotBlank`（Bean Validation），使其在接口层被拦截返回 400，移除 AppService 中的 fallback；用 `mvn clean test` 强制重编译多模块确认修复生效
+- **相关文件**：`releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/releasewindow/VersionValidationRequest.java`
+- **标签**：`version`, `validation`, `fallback`, `bean-validation`, `AppService`, `maven-clean`
+- **相关度关键词**：derivedVersion, 推导版本, fallback, @NotBlank, currentVersion, 必填, 400, AppService, mvn clean, 多模块编译缓存
+
+---
+
 ## 添加新经验
 
 ### 模板
