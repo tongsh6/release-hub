@@ -2,11 +2,11 @@
 
 ## 1. 数据模型扩展
 
-- [ ] 1.1 Flyway 迁移：`code_repository` 表添加 `git_provider` VARCHAR(20)、`git_token` VARCHAR(500) 字段
-- [ ] 1.2 `CodeRepositoryJpaEntity` 添加对应字段
-- [ ] 1.3 `CodeRepository` 领域对象添加 `gitProvider`、`gitToken` 字段
-- [ ] 1.4 `CodeRepositoryAppService` 创建/更新时支持传入上述字段
-- [ ] 1.5 `CodeRepositoryController` 和 DTO（`CreateCodeRepositoryRequest` / `UpdateCodeRepositoryRequest`）添加字段
+- [x] 1.1 Flyway 迁移：`code_repository` 表添加 `git_provider` VARCHAR(20)、`git_token` VARCHAR(500) 字段
+- [x] 1.2 `CodeRepositoryJpaEntity` 添加对应字段
+- [x] 1.3 `CodeRepository` 领域对象添加 `gitProvider`、`gitToken` 字段
+- [x] 1.4 `CodeRepositoryAppService` 创建/更新时支持传入上述字段
+- [x] 1.5 `CodeRepositoryController` 和 DTO（`CreateCodeRepositoryRequest` / `UpdateCodeRepositoryRequest`）添加字段
 
 ## 2. GitBranchPort 接口
 
@@ -16,7 +16,7 @@
   - `mergeBranch(repoUrl, token, sourceBranch, targetBranch)` → `MergeResult`
   - `createTag(repoUrl, token, tagName, ref, message)`
   - `getBranchStatus(repoUrl, token, branchName)` → `BranchStatus`
-- [ ] 2.2 创建 `GitProvider` 枚举（`GITHUB` / `GITLAB` / `MOCK`）
+- [x] 2.2 创建 `GitProvider` 枚举（`GITHUB` / `GITLAB` / `MOCK`）
 - [ ] 2.3 创建 `MergeResult` DTO（成功/冲突/失败 + 详情）
 - [ ] 2.4 创建 `BranchStatus` DTO（存在/不存在、最新 commit SHA、ahead/behind）
 
