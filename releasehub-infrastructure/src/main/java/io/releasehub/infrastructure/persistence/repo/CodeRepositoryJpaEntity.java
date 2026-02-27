@@ -30,6 +30,10 @@ public class CodeRepositoryJpaEntity {
     private String groupCode;
     @Column(name = "repo_type", length = 32, nullable = false)
     private String repoType;
+    @Column(name = "git_provider", length = 20, nullable = false)
+    private String gitProvider;
+    @Column(name = "git_token", length = 500)
+    private String gitToken;
     @Column(name = "mono_repo", nullable = false)
     private boolean monoRepo;
     @Column(name = "branch_count")

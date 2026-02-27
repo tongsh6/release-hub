@@ -3,6 +3,7 @@ package io.releasehub.infrastructure.persistence.repo;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.repo.RepoType;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +38,8 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
                 domain.getDefaultBranch(),
                 domain.getGroupCode(),
                 domain.getRepoType().name(),
+                domain.getGitProvider().name(),
+                domain.getGitToken(),
                 domain.isMonoRepo(),
                 domain.getBranchCount(),
                 domain.getActiveBranchCount(),
@@ -105,10 +108,16 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
 
     private CodeRepository toDomain(CodeRepositoryJpaEntity entity) {
         RepoType repoType;
+        GitProvider gitProvider;
         try {
             repoType = RepoType.valueOf(entity.getRepoType());
         } catch (Exception e) {
             repoType = RepoType.SERVICE;
+        }
+        try {
+            gitProvider = GitProvider.valueOf(entity.getGitProvider());
+        } catch (Exception e) {
+            gitProvider = GitProvider.MOCK;
         }
         return CodeRepository.rehydrate(
                 RepoId.of(entity.getId()),
@@ -117,6 +126,8 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
                 entity.getDefaultBranch(),
                 entity.getGroupCode(),
                 repoType,
+                gitProvider,
+                entity.getGitToken(),
                 entity.isMonoRepo(),
                 entity.getBranchCount(),
                 entity.getActiveBranchCount(),
