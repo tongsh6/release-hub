@@ -1,15 +1,23 @@
 package io.releasehub.application.releasewindow;
 
 import io.releasehub.application.group.GroupPort;
+import io.releasehub.application.iteration.IterationPort;
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
+import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.release.ReleaseRunUseCase;
+import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
+import io.releasehub.domain.iteration.Iteration;
+import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
+import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.Run;
 import io.releasehub.domain.window.WindowIteration;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +29,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,6 +43,9 @@ public class ReleaseWindowAppService {
     private final WindowIterationPort windowIterationPort;
     private final ReleaseRunUseCase releaseRunUseCase;
     private final GroupPort groupPort;
+    private final IterationPort iterationPort;
+    private final CodeRepositoryPort codeRepositoryPort;
+    private final GitBranchAdapterFactory gitBranchAdapterFactory;
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
@@ -143,5 +155,70 @@ public class ReleaseWindowAppService {
         }
 
         return ReleaseWindowView.from(rw);
+    }
+
+    /**
+     * 获取发布窗口内各仓库的分支状态
+     */
+    public BranchStatusView getBranchStatus(String id) {
+        ReleaseWindow rw = findById(id);
+        List<WindowIteration> windowIterations = windowIterationPort.listByWindow(ReleaseWindowId.of(id));
+        List<BranchStatusView.RepoBranchStatus> repoStatuses = new ArrayList<>();
+
+        for (WindowIteration wi : windowIterations) {
+            String iterationKey = wi.getIterationKey().value();
+            Iteration iteration = iterationPort.findByKey(wi.getIterationKey()).orElse(null);
+            if (iteration == null) {
+                continue;
+            }
+
+            String releaseBranchName = windowIterationPort.getReleaseBranch(id, iterationKey);
+            if (releaseBranchName == null) {
+                releaseBranchName = "release/" + rw.getWindowKey();
+            }
+            String featureBranchName = "feature/" + iterationKey;
+
+            for (RepoId repoId : iteration.getRepos()) {
+                CodeRepository repo = codeRepositoryPort.findById(repoId).orElse(null);
+                if (repo == null) {
+                    continue;
+                }
+
+                GitBranchPort adapter = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
+                String repoUrl = repo.getCloneUrl();
+                String token = repo.getGitToken();
+
+                // 查询 feature 分支状态
+                GitBranchPort.BranchStatus featureStatus;
+                try {
+                    featureStatus = adapter.getBranchStatus(repoUrl, token, featureBranchName);
+                } catch (Exception e) {
+                    log.warn("Failed to get feature branch status for repo {}: {}", repo.getName(), e.getMessage());
+                    featureStatus = GitBranchPort.BranchStatus.missing();
+                }
+
+                // 查询 release 分支状态
+                GitBranchPort.BranchStatus releaseStatus;
+                try {
+                    releaseStatus = adapter.getBranchStatus(repoUrl, token, releaseBranchName);
+                } catch (Exception e) {
+                    log.warn("Failed to get release branch status for repo {}: {}", repo.getName(), e.getMessage());
+                    releaseStatus = GitBranchPort.BranchStatus.missing();
+                }
+
+                String mergeStatus = releaseStatus.exists() ? "MERGED" : "PENDING";
+
+                BranchStatusView.FeatureBranchInfo featureInfo = new BranchStatusView.FeatureBranchInfo(
+                        featureBranchName, featureStatus.exists(), featureStatus.latestCommit());
+                BranchStatusView.ReleaseBranchInfo releaseInfo = new BranchStatusView.ReleaseBranchInfo(
+                        releaseBranchName, releaseStatus.exists(), releaseStatus.latestCommit(), mergeStatus);
+
+                repoStatuses.add(new BranchStatusView.RepoBranchStatus(
+                        repoId.value(), repo.getName(), repo.getCloneUrl(),
+                        iterationKey, featureInfo, releaseInfo));
+            }
+        }
+
+        return new BranchStatusView(id, rw.getWindowKey(), repoStatuses);
     }
 }
