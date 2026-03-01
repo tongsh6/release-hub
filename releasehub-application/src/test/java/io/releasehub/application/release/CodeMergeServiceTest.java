@@ -1,10 +1,11 @@
 package io.releasehub.application.release;
 
-import io.releasehub.application.iteration.IterationAppService;
+import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.iteration.IterationRepoPort;
 import io.releasehub.application.iteration.IterationRepoVersionInfo;
-import io.releasehub.application.port.out.GitLabBranchPort;
-import io.releasehub.application.port.out.GitLabBranchPort.MergeResult;
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
+import io.releasehub.application.port.out.GitBranchPort;
+import io.releasehub.application.port.out.GitBranchPort.MergeResult;
 import io.releasehub.application.release.CodeMergeService.CodeMergeResult;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.WindowIterationPort;
@@ -34,7 +35,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -43,11 +47,13 @@ import static org.mockito.Mockito.when;
 class CodeMergeServiceTest {
 
     @Mock
-    private GitLabBranchPort gitLabBranchPort;
+    private GitBranchAdapterFactory gitBranchAdapterFactory;
+    @Mock
+    private GitBranchPort gitBranchPort;
     @Mock
     private WindowIterationPort windowIterationPort;
     @Mock
-    private IterationAppService iterationAppService;
+    private IterationPort iterationPort;
     @Mock
     private IterationRepoPort iterationRepoPort;
     @Mock
@@ -58,9 +64,10 @@ class CodeMergeServiceTest {
     @BeforeEach
     void setUp() {
         codeMergeService = new CodeMergeService(
-                gitLabBranchPort, windowIterationPort, iterationAppService,
+                gitBranchAdapterFactory, windowIterationPort, iterationPort,
                 iterationRepoPort, codeRepositoryPort
         );
+        lenient().when(gitBranchAdapterFactory.getAdapter(any())).thenReturn(gitBranchPort);
     }
 
     private WindowIteration createWindowIteration() {
@@ -123,9 +130,9 @@ class CodeMergeServiceTest {
         void shouldMergeFeatureToReleaseSuccessfully() {
             setupMocks();
 
-            when(gitLabBranchPort.branchExists(REPO_URL, FEATURE_BRANCH)).thenReturn(true);
-            when(gitLabBranchPort.branchExists(REPO_URL, RELEASE_BRANCH)).thenReturn(true);
-            when(gitLabBranchPort.mergeBranch(eq(REPO_URL), eq(FEATURE_BRANCH), eq(RELEASE_BRANCH), anyString()))
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, FEATURE_BRANCH)).thenReturn(GitBranchPort.BranchStatus.present("sha-f"));
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, RELEASE_BRANCH)).thenReturn(GitBranchPort.BranchStatus.present("sha-r"));
+            when(gitBranchPort.mergeBranch(eq(REPO_URL), isNull(), eq(FEATURE_BRANCH), eq(RELEASE_BRANCH), anyString()))
                     .thenReturn(MergeResult.success());
 
             List<CodeMergeResult> results = codeMergeService.mergeFeatureToRelease(WINDOW_ID, ITERATION_KEY);
@@ -147,7 +154,7 @@ class CodeMergeServiceTest {
             when(windowIterationPort.getReleaseBranch(WINDOW_ID, ITERATION_KEY)).thenReturn(RELEASE_BRANCH);
 
             Iteration iteration = createIteration(Set.of(RepoId.of(REPO_ID)));
-            when(iterationAppService.get(ITERATION_KEY)).thenReturn(iteration);
+            when(iterationPort.findByKey(IterationKey.of(ITERATION_KEY))).thenReturn(Optional.of(iteration));
 
             CodeRepository repo = createRepository(REPO_ID, REPO_URL);
             when(codeRepositoryPort.findById(RepoId.of(REPO_ID))).thenReturn(Optional.of(repo));
@@ -161,9 +168,9 @@ class CodeMergeServiceTest {
         void shouldReturnConflictWhenMergeConflicts() {
             setupMocks();
 
-            when(gitLabBranchPort.branchExists(REPO_URL, FEATURE_BRANCH)).thenReturn(true);
-            when(gitLabBranchPort.branchExists(REPO_URL, RELEASE_BRANCH)).thenReturn(true);
-            when(gitLabBranchPort.mergeBranch(eq(REPO_URL), eq(FEATURE_BRANCH), eq(RELEASE_BRANCH), anyString()))
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, FEATURE_BRANCH)).thenReturn(GitBranchPort.BranchStatus.present("sha-f"));
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, RELEASE_BRANCH)).thenReturn(GitBranchPort.BranchStatus.present("sha-r"));
+            when(gitBranchPort.mergeBranch(eq(REPO_URL), isNull(), eq(FEATURE_BRANCH), eq(RELEASE_BRANCH), anyString()))
                     .thenReturn(MergeResult.conflict("Conflict in pom.xml"));
 
             List<CodeMergeResult> results = codeMergeService.mergeFeatureToRelease(WINDOW_ID, ITERATION_KEY);
@@ -178,7 +185,7 @@ class CodeMergeServiceTest {
         void shouldSkipWhenFeatureBranchNotExists() {
             setupMocks();
 
-            when(gitLabBranchPort.branchExists(REPO_URL, FEATURE_BRANCH)).thenReturn(false);
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, FEATURE_BRANCH)).thenReturn(GitBranchPort.BranchStatus.missing());
 
             List<CodeMergeResult> results = codeMergeService.mergeFeatureToRelease(WINDOW_ID, ITERATION_KEY);
 
@@ -186,7 +193,7 @@ class CodeMergeServiceTest {
             assertThat(results.get(0).status()).isEqualTo(MergeStatus.SUCCESS); // 跳过视为成功
             assertThat(results.get(0).message()).contains("does not exist");
 
-            verify(gitLabBranchPort, never()).mergeBranch(anyString(), anyString(), anyString(), anyString());
+            verify(gitBranchPort, never()).mergeBranch(anyString(), any(), anyString(), anyString(), anyString());
         }
 
         @Test
@@ -194,8 +201,8 @@ class CodeMergeServiceTest {
         void shouldFailWhenReleaseBranchNotExists() {
             setupMocks();
 
-            when(gitLabBranchPort.branchExists(REPO_URL, FEATURE_BRANCH)).thenReturn(true);
-            when(gitLabBranchPort.branchExists(REPO_URL, RELEASE_BRANCH)).thenReturn(false);
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, FEATURE_BRANCH)).thenReturn(GitBranchPort.BranchStatus.present("sha-f"));
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, RELEASE_BRANCH)).thenReturn(GitBranchPort.BranchStatus.missing());
 
             List<CodeMergeResult> results = codeMergeService.mergeFeatureToRelease(WINDOW_ID, ITERATION_KEY);
 

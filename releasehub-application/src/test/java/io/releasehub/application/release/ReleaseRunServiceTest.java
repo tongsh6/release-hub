@@ -1,6 +1,6 @@
 package io.releasehub.application.release;
 
-import io.releasehub.application.iteration.IterationAppService;
+import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.run.RunPort;
 import io.releasehub.application.run.RunTaskPort;
 import io.releasehub.application.window.WindowIterationPort;
@@ -57,8 +57,7 @@ class ReleaseRunServiceTest {
     @Mock
     private WindowIterationPort windowIterationPort;
     @Mock
-    private IterationAppService iterationAppService;
-    @Mock
+    private IterationPort iterationPort;
     private RunTaskExecutorRegistry executorRegistry;
     @Mock
     private MessageSource messageSource;
@@ -72,9 +71,12 @@ class ReleaseRunServiceTest {
 
     @BeforeEach
     void setUp() {
+        // 创建空的执行器注册表
+        executorRegistry = new RunTaskExecutorRegistry(List.of());
+        
         releaseRunService = new ReleaseRunService(
                 runPort, runTaskPort, windowIterationPort,
-                iterationAppService, executorRegistry, messageSource
+                iterationPort, executorRegistry, messageSource
         );
     }
 
@@ -104,7 +106,7 @@ class ReleaseRunServiceTest {
                     Set.of(RepoId.of("repo-001")), IterationStatus.ACTIVE,
                     Instant.now(), Instant.now()
             );
-            when(iterationAppService.get("iter-001")).thenReturn(iteration);
+            when(iterationPort.findByKey(IterationKey.of("iter-001"))).thenReturn(Optional.of(iteration));
 
             // 执行
             Run run = releaseRunService.createReleaseRun(windowId, windowKey, operator);
@@ -180,8 +182,8 @@ class ReleaseRunServiceTest {
                     Instant.now(), Instant.now()
             );
 
-            when(iterationAppService.get("iter-001")).thenReturn(iteration1);
-            when(iterationAppService.get("iter-002")).thenReturn(iteration2);
+            when(iterationPort.findByKey(IterationKey.of("iter-001"))).thenReturn(Optional.of(iteration1));
+            when(iterationPort.findByKey(IterationKey.of("iter-002"))).thenReturn(Optional.of(iteration2));
 
             releaseRunService.createReleaseRun(windowId, windowKey, "admin");
 

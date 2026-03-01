@@ -17,7 +17,7 @@ import java.util.List;
  */
 @Service
 @RequiredArgsConstructor
-public class BranchRuleAppService {
+public class BranchRuleAppService implements BranchRuleUseCase {
 
     private final BranchRulePort branchRulePort;
 

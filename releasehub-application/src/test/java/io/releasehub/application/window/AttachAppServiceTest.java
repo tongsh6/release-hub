@@ -1,6 +1,6 @@
 package io.releasehub.application.window;
 
-import io.releasehub.application.branchrule.BranchRuleAppService;
+import io.releasehub.application.branchrule.BranchRuleUseCase;
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.iteration.IterationRepoPort;
 import io.releasehub.application.iteration.IterationRepoVersionInfo;
@@ -54,7 +54,7 @@ class AttachAppServiceTest {
     @Mock
     private CodeRepositoryPort codeRepositoryPort;
     @Mock
-    private BranchRuleAppService branchRuleAppService;
+    private BranchRuleUseCase branchRuleUseCase;
 
     private AttachAppService attachAppService;
 
@@ -62,7 +62,7 @@ class AttachAppServiceTest {
     void setUp() {
         attachAppService = new AttachAppService(
                 releaseWindowPort, iterationPort, windowIterationPort,
-                iterationRepoPort, gitLabBranchPort, codeRepositoryPort, branchRuleAppService
+                iterationRepoPort, gitLabBranchPort, codeRepositoryPort, branchRuleUseCase
         );
     }
 
@@ -88,7 +88,7 @@ class AttachAppServiceTest {
         when(iterationRepoPort.getVersionInfo("ITER-1", "repo-1")).thenReturn(Optional.of(
                 IterationRepoVersionInfo.builder().repoId("repo-1").featureBranch("feature/ITER-1").build()
         ));
-        when(branchRuleAppService.isCompliant("release/RW-1")).thenReturn(true);
+        when(branchRuleUseCase.isCompliant("release/RW-1")).thenReturn(true);
         when(gitLabBranchPort.createBranch(repo.getCloneUrl(), "release/RW-1", "master")).thenReturn(true);
         when(gitLabBranchPort.mergeBranch(eq(repo.getCloneUrl()), eq("feature/ITER-1"), eq("release/RW-1"), any()))
                 .thenReturn(GitLabBranchPort.MergeResult.success());

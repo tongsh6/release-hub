@@ -1,6 +1,7 @@
 package io.releasehub.application.release.executors;
 
-import io.releasehub.application.port.out.GitLabBranchPort;
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
+import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.release.AbstractRunTaskExecutor;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.run.RunTaskContext;
@@ -23,7 +24,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ArchiveFeatureBranchExecutor extends AbstractRunTaskExecutor {
     
-    private final GitLabBranchPort gitLabBranchPort;
+    private final GitBranchAdapterFactory gitBranchAdapterFactory;
     private final CodeRepositoryPort codeRepositoryPort;
     private final RunTaskContextPort runTaskContextPort;
     
@@ -50,11 +51,12 @@ public class ArchiveFeatureBranchExecutor extends AbstractRunTaskExecutor {
             return;
         }
         
-        boolean success = gitLabBranchPort.archiveBranch(repo.getCloneUrl(), featureBranch, "released");
+        GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
+        boolean success = gitBranchPort.deleteBranch(repo.getCloneUrl(), repo.getGitToken(), featureBranch);
         if (!success) {
-            log.warn("Failed to archive branch {} (may not exist)", featureBranch);
+            log.warn("Failed to delete feature branch {} (may not exist)", featureBranch);
         }
         
-        log.info("Feature branch {} archived for repo: {}", featureBranch, repoId);
+        log.info("Feature branch {} deleted for repo: {}", featureBranch, repoId);
     }
 }

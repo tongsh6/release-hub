@@ -170,4 +170,12 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.monoRepo = monoRepo;
         touch(now);
     }
+
+    public GitProvider getGitProvider() {
+        return gitProvider;
+    }
+
+    public String getGitToken() {
+        return gitToken;
+    }
 }

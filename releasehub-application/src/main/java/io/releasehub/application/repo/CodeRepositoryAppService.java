@@ -4,7 +4,7 @@ import io.releasehub.application.gitlab.GitLabPort;
 import io.releasehub.application.group.GroupPort;
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.settings.SettingsPort;
-import io.releasehub.application.version.VersionExtractor;
+import io.releasehub.application.version.VersionExtractorUseCase;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.common.exception.ValidationException;
@@ -28,7 +28,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CodeRepositoryAppService {
     private final CodeRepositoryPort codeRepositoryPort;
-    private final VersionExtractor versionExtractor;
+    private final VersionExtractorUseCase versionExtractorUseCase;
     private final SettingsPort settingsPort;
     private final GitLabPort gitLabPort;
     private final IterationPort iterationPort;
@@ -53,7 +53,7 @@ public class CodeRepositoryAppService {
         } else {
             // 尝试从仓库获取初始版本号
             try {
-                versionExtractor.extractVersion(cloneUrl, normalizedBranch)
+                versionExtractorUseCase.extractVersion(cloneUrl, normalizedBranch)
                                 .ifPresent(versionInfo -> {
                                     codeRepositoryPort.updateInitialVersion(
                                             repo.getId().value(),
@@ -205,7 +205,7 @@ public class CodeRepositoryAppService {
     @Transactional
     public String syncInitialVersionFromRepo(String repoId) {
         CodeRepository repo = get(repoId);
-        return versionExtractor.extractVersion(repo.getCloneUrl(), repo.getDefaultBranch())
+        return versionExtractorUseCase.extractVersion(repo.getCloneUrl(), repo.getDefaultBranch())
                                .map(versionInfo -> {
                                    codeRepositoryPort.updateInitialVersion(repoId, versionInfo.version(), versionInfo.source().name());
                                    log.info("Synced initial version {} from {} for repo {}",

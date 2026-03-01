@@ -1,6 +1,7 @@
 package io.releasehub.application.release.executors;
 
-import io.releasehub.application.port.out.GitLabBranchPort;
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
+import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.release.AbstractRunTaskExecutor;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.run.RunTaskContext;
@@ -24,7 +25,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class MergeReleaseToMasterExecutor extends AbstractRunTaskExecutor {
     
-    private final GitLabBranchPort gitLabBranchPort;
+    private final GitBranchAdapterFactory gitBranchAdapterFactory;
     private final CodeRepositoryPort codeRepositoryPort;
     private final RunTaskContextPort runTaskContextPort;
     
@@ -52,16 +53,17 @@ public class MergeReleaseToMasterExecutor extends AbstractRunTaskExecutor {
         
         String masterBranch = repo.getDefaultBranch();
         
-        GitLabBranchPort.MergeResult result = gitLabBranchPort.mergeBranch(
-                repo.getCloneUrl(), releaseBranch, masterBranch,
+        GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
+        GitBranchPort.MergeResult result = gitBranchPort.mergeBranch(
+                repo.getCloneUrl(), repo.getGitToken(), releaseBranch, masterBranch,
                 "Merge " + releaseBranch + " into " + masterBranch);
         
         if (result.status() == MergeStatus.CONFLICT) {
-            throw BusinessException.runTaskMergeConflict(result.conflictInfo());
+            throw BusinessException.runTaskMergeConflict(result.detail());
         }
         
         if (result.status() == MergeStatus.FAILED) {
-            throw BusinessException.runTaskMergeFailed(result.conflictInfo());
+            throw BusinessException.runTaskMergeFailed(result.detail());
         }
         
         log.info("Release {} merged to master for repo: {}", releaseBranch, repoId);

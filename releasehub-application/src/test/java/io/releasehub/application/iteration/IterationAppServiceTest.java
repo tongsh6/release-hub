@@ -1,12 +1,13 @@
 package io.releasehub.application.iteration;
 
-import io.releasehub.application.branchrule.BranchRuleAppService;
+import io.releasehub.application.branchrule.BranchRuleUseCase;
 import io.releasehub.application.group.GroupPort;
 import io.releasehub.application.port.out.GitLabBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.version.VersionDeriver;
-import io.releasehub.application.version.VersionExtractor;
+import io.releasehub.application.version.VersionDeriverUseCase;
+import io.releasehub.application.version.VersionExtractorUseCase;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
@@ -60,11 +61,11 @@ class IterationAppServiceTest {
     @Mock
     private GitLabBranchPort gitLabBranchPort;
     @Mock
-    private VersionDeriver versionDeriver;
+    private VersionDeriverUseCase versionDeriverUseCase;
     @Mock
-    private VersionExtractor versionExtractor;
+    private VersionExtractorUseCase versionExtractorUseCase;
     @Mock
-    private BranchRuleAppService branchRuleAppService;
+    private BranchRuleUseCase branchRuleUseCase;
     @Mock
     private GroupPort groupPort;
 
@@ -75,7 +76,7 @@ class IterationAppServiceTest {
         iterationAppService = new IterationAppService(
                 iterationPort, releaseWindowPort, windowIterationPort,
                 codeRepositoryPort, iterationRepoPort, gitLabBranchPort,
-                branchRuleAppService, versionDeriver, versionExtractor, groupPort
+                branchRuleUseCase, versionDeriverUseCase, versionExtractorUseCase, groupPort
         );
     }
 
@@ -131,9 +132,9 @@ class IterationAppServiceTest {
         when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
         when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
         when(codeRepositoryPort.getInitialVersion("repo-1")).thenReturn(Optional.of("1.0.0"));
-        when(versionDeriver.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
-        when(versionDeriver.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
-        when(branchRuleAppService.isCompliant("feature/ITER-1")).thenReturn(true);
+        when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
+        when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
+        when(branchRuleUseCase.isCompliant("feature/ITER-1")).thenReturn(true);
         when(gitLabBranchPort.createBranch(repo.getCloneUrl(), "feature/ITER-1", "master")).thenReturn(true);
 
         iterationAppService.addRepos("ITER-1", Set.of("repo-1"));
