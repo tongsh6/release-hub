@@ -1,6 +1,6 @@
 # ReleaseHub 项目进度分析
 
-> 分析时间：2026-02-27
+> 分析时间：2026-03-02
 
 ## 总体概览
 
@@ -8,9 +8,9 @@
 
 | 状态 | 数量 | 占比 |
 |------|------|------|
-| 已完成 | 4 | 57% |
-| 进行中 | 3 | 43% |
-| 总计 | 7 | 100% |
+| 已完成 | 5 | 63% |
+| 进行中 | 3 | 37% |
+| 总计 | 8 | 100% |
 
 ## 已完成里程碑
 
@@ -18,14 +18,19 @@
 2. 版本更新核心能力（已归档）
 3. 分页标准化（已归档）
 4. E2E 自动化测试基础设施（TestContainers，52/52）
-5. GitFlow 分支生命周期 Stage 1（`release-hub` 已发布 `v0.1.1`）
+5. GitFlow 分支生命周期 Stage 1-4（v0.1.1 → v0.1.4）
+   - Stage 1: 数据模型扩展（gitProvider/gitToken 字段 + Flyway V26）
+   - Stage 2: Port/Adapter 接口骨架（GitBranchPort + GitHub/GitLab/Mock Adapter）
+   - Stage 3: 执行器全量迁移到 GitBranchAdapterFactory + Java 25 Mockito 兼容修复
+   - Stage 4a: branch-status API + 前端分支状态面板
+   - Stage 4b: 仓库对话框 Git 配置 UI（gitProvider 下拉 + gitToken 密码输入 + 脱敏）
 
 ## 进行中项
 
-1. GitFlow 分支生命周期 Stage 2+
+1. GitFlow 分支生命周期 — 收尾
    - OpenSpec：`openspec/changes/add-gitflow-branch-lifecycle/`
-   - 当前进展：Stage 1（仓库 `gitProvider/gitToken`）已完成
-   - 下一步：`GitBranchPort`、`GitHub/GitLab Adapter`、Executor 切换
+   - 功能全部完成（Section 1-7），剩余 Section 8（测试增强）
+   - 可选：Adapter 单测、Factory 单测、MockMvc 集成测试、E2E 测试
 
 2. 版本更新功能增强
    - 需求：`requirements/in-progress/版本更新功能增强.md`
@@ -37,21 +42,24 @@
 
 ## GitFlow 与发布现状
 
-- `releasehub`（主仓库）：当前有待合并 PR `#5`
-- `release-hub`（后端）：`main` 干净，已完成 `feature -> release -> tag -> main`，标签 `v0.1.1`
-- `release-hub-web`（前端）：`main` 干净，待规划下一阶段功能分支
+- `releasehub`（主仓库）：`main` 干净
+- `release-hub`（后端）：`main` 干净，最新标签 `v0.1.3`（含 branch-status API）
+- `release-hub-web`（前端）：`main` 干净，最新标签 `v0.1.4`（含 Git 配置 UI）
 
-## 接下来一周计划
+## 版本发布历史
 
-1. 完成 GitFlow Stage 2（Port + Adapter + Factory）
-2. 完成 GitFlow Stage 3（RunTask Executor 切换）
-3. 完成 GitFlow Stage 4（branch-status API + 前端面板）
-4. 同步更新 OpenSpec tasks、requirements 状态与发布标签
+| 版本 | 包含内容 | 日期 |
+|------|----------|------|
+| v0.1.1 | Stage 1: gitProvider/gitToken 数据模型 | 2026-02-27 |
+| v0.1.2 | Stage 2+3: Port/Adapter + Executor 切换 | 2026-03-02 |
+| v0.1.3 | Stage 4a: branch-status API + 前端面板 | 2026-03-02 |
+| v0.1.4 | Stage 4b: 仓库 Git 配置 UI（前端） | 2026-03-02 |
 
 ## 相关文档
 
 - `requirements/INDEX.md`
 - `openspec/changes/add-gitflow-branch-lifecycle/proposal.md`
+- `openspec/changes/add-gitflow-branch-lifecycle/tasks.md`
 - `context/business/NEXT_STEPS_TASKS.md`
 
-*最后更新：2026-02-27*
+*最后更新：2026-03-02*
