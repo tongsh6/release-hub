@@ -1,10 +1,11 @@
 package io.releasehub.application.release;
 
-import io.releasehub.application.iteration.IterationAppService;
+import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.iteration.IterationRepoPort;
 import io.releasehub.application.iteration.IterationRepoVersionInfo;
-import io.releasehub.application.port.out.GitLabBranchPort;
-import io.releasehub.application.port.out.GitLabBranchPort.MergeResult;
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
+import io.releasehub.application.port.out.GitBranchPort;
+import io.releasehub.application.port.out.GitBranchPort.MergeResult;
 import io.releasehub.application.release.ReleaseBranchService.BranchOperationResult;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.WindowIterationPort;
@@ -32,8 +33,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,11 +46,13 @@ import static org.mockito.Mockito.when;
 class ReleaseBranchServiceTest {
 
     @Mock
-    private GitLabBranchPort gitLabBranchPort;
+    private GitBranchAdapterFactory gitBranchAdapterFactory;
+    @Mock
+    private GitBranchPort gitBranchPort;
     @Mock
     private WindowIterationPort windowIterationPort;
     @Mock
-    private IterationAppService iterationAppService;
+    private IterationPort iterationPort;
     @Mock
     private IterationRepoPort iterationRepoPort;
     @Mock
@@ -57,9 +63,10 @@ class ReleaseBranchServiceTest {
     @BeforeEach
     void setUp() {
         releaseBranchService = new ReleaseBranchService(
-                gitLabBranchPort, windowIterationPort, iterationAppService,
+                gitBranchAdapterFactory, windowIterationPort, iterationPort,
                 iterationRepoPort, codeRepositoryPort
         );
+        lenient().when(gitBranchAdapterFactory.getAdapter(any())).thenReturn(gitBranchPort);
     }
 
     @Nested
@@ -77,7 +84,7 @@ class ReleaseBranchServiceTest {
         void shouldCreateReleaseBranchAndMergeFeature() {
             // 准备迭代数据
             Iteration iteration = createIteration(Set.of(RepoId.of(REPO_ID)));
-            when(iterationAppService.get(ITERATION_KEY)).thenReturn(iteration);
+            when(iterationPort.findByKey(IterationKey.of(ITERATION_KEY))).thenReturn(Optional.of(iteration));
 
             // 准备仓库数据
             CodeRepository repo = createRepository(REPO_ID, REPO_URL);
@@ -88,10 +95,10 @@ class ReleaseBranchServiceTest {
             when(iterationRepoPort.getVersionInfo(ITERATION_KEY, REPO_ID)).thenReturn(Optional.of(versionInfo));
 
             // 配置分支操作
-            when(gitLabBranchPort.branchExists(REPO_URL, "release/v1.0.0")).thenReturn(false);
-            when(gitLabBranchPort.createBranch(REPO_URL, "release/v1.0.0", "master")).thenReturn(true);
-            when(gitLabBranchPort.branchExists(REPO_URL, "feature/iter-001")).thenReturn(true);
-            when(gitLabBranchPort.mergeBranch(eq(REPO_URL), eq("feature/iter-001"), eq("release/v1.0.0"), anyString()))
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, "release/v1.0.0")).thenReturn(GitBranchPort.BranchStatus.missing());
+            when(gitBranchPort.createBranch(REPO_URL, null, "release/v1.0.0", "master")).thenReturn(true);
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, "feature/iter-001")).thenReturn(GitBranchPort.BranchStatus.present("sha1"));
+            when(gitBranchPort.mergeBranch(eq(REPO_URL), isNull(), eq("feature/iter-001"), eq("release/v1.0.0"), anyString()))
                     .thenReturn(MergeResult.success());
 
             // 执行
@@ -104,8 +111,8 @@ class ReleaseBranchServiceTest {
             assertThat(results.get(0).status()).isEqualTo(MergeStatus.SUCCESS);
             assertThat(results.get(0).repoId()).isEqualTo(REPO_ID);
 
-            verify(gitLabBranchPort).createBranch(REPO_URL, "release/v1.0.0", "master");
-            verify(gitLabBranchPort).mergeBranch(eq(REPO_URL), eq("feature/iter-001"), eq("release/v1.0.0"), anyString());
+            verify(gitBranchPort).createBranch(REPO_URL, null, "release/v1.0.0", "master");
+            verify(gitBranchPort).mergeBranch(eq(REPO_URL), isNull(), eq("feature/iter-001"), eq("release/v1.0.0"), anyString());
             verify(windowIterationPort).updateReleaseBranch(eq(WINDOW_ID), eq(ITERATION_KEY), eq("release/v1.0.0"), any(Instant.class));
         }
 
@@ -149,7 +156,7 @@ class ReleaseBranchServiceTest {
         @DisplayName("release 分支已存在时跳过创建")
         void shouldSkipCreationWhenReleaseBranchExists() {
             Iteration iteration = createIteration(Set.of(RepoId.of(REPO_ID)));
-            when(iterationAppService.get(ITERATION_KEY)).thenReturn(iteration);
+            when(iterationPort.findByKey(IterationKey.of(ITERATION_KEY))).thenReturn(Optional.of(iteration));
 
             CodeRepository repo = createRepository(REPO_ID, REPO_URL);
             when(codeRepositoryPort.findById(RepoId.of(REPO_ID))).thenReturn(Optional.of(repo));
@@ -158,9 +165,9 @@ class ReleaseBranchServiceTest {
             when(iterationRepoPort.getVersionInfo(ITERATION_KEY, REPO_ID)).thenReturn(Optional.of(versionInfo));
 
             // release 分支已存在
-            when(gitLabBranchPort.branchExists(REPO_URL, "release/v1.0.0")).thenReturn(true);
-            when(gitLabBranchPort.branchExists(REPO_URL, "feature/iter-001")).thenReturn(true);
-            when(gitLabBranchPort.mergeBranch(eq(REPO_URL), eq("feature/iter-001"), eq("release/v1.0.0"), anyString()))
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, "release/v1.0.0")).thenReturn(GitBranchPort.BranchStatus.present("sha-r"));
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, "feature/iter-001")).thenReturn(GitBranchPort.BranchStatus.present("sha-f"));
+            when(gitBranchPort.mergeBranch(eq(REPO_URL), isNull(), eq("feature/iter-001"), eq("release/v1.0.0"), anyString()))
                     .thenReturn(MergeResult.success());
 
             List<BranchOperationResult> results = releaseBranchService.createReleaseBranchAndMerge(
@@ -171,14 +178,14 @@ class ReleaseBranchServiceTest {
             assertThat(results.get(0).status()).isEqualTo(MergeStatus.SUCCESS);
 
             // 不应创建分支
-            verify(gitLabBranchPort, never()).createBranch(anyString(), anyString(), anyString());
+            verify(gitBranchPort, never()).createBranch(anyString(), any(), anyString(), anyString());
         }
 
         @Test
         @DisplayName("合并冲突时返回冲突状态")
         void shouldReturnConflictStatusWhenMergeConflict() {
             Iteration iteration = createIteration(Set.of(RepoId.of(REPO_ID)));
-            when(iterationAppService.get(ITERATION_KEY)).thenReturn(iteration);
+            when(iterationPort.findByKey(IterationKey.of(ITERATION_KEY))).thenReturn(Optional.of(iteration));
 
             CodeRepository repo = createRepository(REPO_ID, REPO_URL);
             when(codeRepositoryPort.findById(RepoId.of(REPO_ID))).thenReturn(Optional.of(repo));
@@ -186,9 +193,9 @@ class ReleaseBranchServiceTest {
             IterationRepoVersionInfo versionInfo = createVersionInfo("feature/iter-001");
             when(iterationRepoPort.getVersionInfo(ITERATION_KEY, REPO_ID)).thenReturn(Optional.of(versionInfo));
 
-            when(gitLabBranchPort.branchExists(REPO_URL, "release/v1.0.0")).thenReturn(true);
-            when(gitLabBranchPort.branchExists(REPO_URL, "feature/iter-001")).thenReturn(true);
-            when(gitLabBranchPort.mergeBranch(eq(REPO_URL), eq("feature/iter-001"), eq("release/v1.0.0"), anyString()))
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, "release/v1.0.0")).thenReturn(GitBranchPort.BranchStatus.present("sha-r"));
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, "feature/iter-001")).thenReturn(GitBranchPort.BranchStatus.present("sha-f"));
+            when(gitBranchPort.mergeBranch(eq(REPO_URL), isNull(), eq("feature/iter-001"), eq("release/v1.0.0"), anyString()))
                     .thenReturn(MergeResult.conflict("pom.xml has conflicts"));
 
             List<BranchOperationResult> results = releaseBranchService.createReleaseBranchAndMerge(
@@ -204,15 +211,15 @@ class ReleaseBranchServiceTest {
         @DisplayName("feature 分支不存在时跳过合并")
         void shouldSkipMergeWhenFeatureBranchNotExists() {
             Iteration iteration = createIteration(Set.of(RepoId.of(REPO_ID)));
-            when(iterationAppService.get(ITERATION_KEY)).thenReturn(iteration);
+            when(iterationPort.findByKey(IterationKey.of(ITERATION_KEY))).thenReturn(Optional.of(iteration));
 
             CodeRepository repo = createRepository(REPO_ID, REPO_URL);
             when(codeRepositoryPort.findById(RepoId.of(REPO_ID))).thenReturn(Optional.of(repo));
 
             when(iterationRepoPort.getVersionInfo(ITERATION_KEY, REPO_ID)).thenReturn(Optional.empty());
 
-            when(gitLabBranchPort.branchExists(REPO_URL, "release/v1.0.0")).thenReturn(true);
-            when(gitLabBranchPort.branchExists(REPO_URL, "feature/iter-001")).thenReturn(false);
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, "release/v1.0.0")).thenReturn(GitBranchPort.BranchStatus.present("sha-r"));
+            when(gitBranchPort.getBranchStatus(REPO_URL, null, "feature/iter-001")).thenReturn(GitBranchPort.BranchStatus.missing());
 
             List<BranchOperationResult> results = releaseBranchService.createReleaseBranchAndMerge(
                     WINDOW_ID, WINDOW_KEY, ITERATION_KEY
@@ -221,7 +228,7 @@ class ReleaseBranchServiceTest {
             assertThat(results).hasSize(1);
             assertThat(results.get(0).status()).isEqualTo(MergeStatus.SUCCESS);
 
-            verify(gitLabBranchPort, never()).mergeBranch(anyString(), anyString(), anyString(), anyString());
+            verify(gitBranchPort, never()).mergeBranch(anyString(), any(), anyString(), anyString(), anyString());
         }
 
         @Test
@@ -231,7 +238,7 @@ class ReleaseBranchServiceTest {
             String repoUrl2 = "git@gitlab.com:test/repo2.git";
 
             Iteration iteration = createIteration(Set.of(RepoId.of(REPO_ID), RepoId.of(repoId2)));
-            when(iterationAppService.get(ITERATION_KEY)).thenReturn(iteration);
+            when(iterationPort.findByKey(IterationKey.of(ITERATION_KEY))).thenReturn(Optional.of(iteration));
 
             CodeRepository repo1 = createRepository(REPO_ID, REPO_URL);
             CodeRepository repo2 = createRepository(repoId2, repoUrl2);
@@ -240,8 +247,8 @@ class ReleaseBranchServiceTest {
 
             when(iterationRepoPort.getVersionInfo(eq(ITERATION_KEY), anyString())).thenReturn(Optional.empty());
 
-            when(gitLabBranchPort.branchExists(anyString(), eq("release/v1.0.0"))).thenReturn(true);
-            when(gitLabBranchPort.branchExists(anyString(), startsWith("feature/"))).thenReturn(false);
+            when(gitBranchPort.getBranchStatus(anyString(), isNull(), eq("release/v1.0.0"))).thenReturn(GitBranchPort.BranchStatus.present("sha-r"));
+            when(gitBranchPort.getBranchStatus(anyString(), isNull(), startsWith("feature/"))).thenReturn(GitBranchPort.BranchStatus.missing());
 
             List<BranchOperationResult> results = releaseBranchService.createReleaseBranchAndMerge(
                     WINDOW_ID, WINDOW_KEY, ITERATION_KEY

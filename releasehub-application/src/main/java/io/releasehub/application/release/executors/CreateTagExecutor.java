@@ -1,6 +1,7 @@
 package io.releasehub.application.release.executors;
 
-import io.releasehub.application.port.out.GitLabBranchPort;
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
+import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.release.AbstractRunTaskExecutor;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.run.RunTaskContext;
@@ -23,7 +24,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class CreateTagExecutor extends AbstractRunTaskExecutor {
     
-    private final GitLabBranchPort gitLabBranchPort;
+    private final GitBranchAdapterFactory gitBranchAdapterFactory;
     private final CodeRepositoryPort codeRepositoryPort;
     private final RunTaskContextPort runTaskContextPort;
     
@@ -52,8 +53,9 @@ public class CreateTagExecutor extends AbstractRunTaskExecutor {
         String tagName = "v" + targetVersion;
         String masterBranch = repo.getDefaultBranch();
         
-        boolean success = gitLabBranchPort.createTag(
-                repo.getCloneUrl(), tagName, masterBranch,
+        GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
+        boolean success = gitBranchPort.createTag(
+                repo.getCloneUrl(), repo.getGitToken(), tagName, masterBranch,
                 "Release " + tagName);
         
         if (!success) {

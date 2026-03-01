@@ -4,7 +4,7 @@ import io.releasehub.application.gitlab.GitLabPort;
 import io.releasehub.application.group.GroupPort;
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.settings.SettingsPort;
-import io.releasehub.application.version.VersionExtractor;
+import io.releasehub.application.version.VersionExtractorUseCase;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.group.Group;
@@ -44,7 +44,7 @@ class CodeRepositoryAppServiceTest {
     @Mock
     private CodeRepositoryPort codeRepositoryPort;
     @Mock
-    private VersionExtractor versionExtractor;
+    private VersionExtractorUseCase versionExtractorUseCase;
     @Mock
     private SettingsPort settingsPort;
     @Mock
@@ -58,7 +58,7 @@ class CodeRepositoryAppServiceTest {
 
     @BeforeEach
     void setUp() {
-        appService = new CodeRepositoryAppService(codeRepositoryPort, versionExtractor, settingsPort, gitLabPort, iterationPort, groupPort);
+        appService = new CodeRepositoryAppService(codeRepositoryPort, versionExtractorUseCase, settingsPort, gitLabPort, iterationPort, groupPort);
     }
 
     @Test
@@ -68,7 +68,7 @@ class CodeRepositoryAppServiceTest {
         when(settingsPort.getGitLab()).thenReturn(Optional.of(new SettingsPort.SettingsGitLab("http://git", "token")));
         when(gitLabPort.resolveProjectId("git@gitlab.com:test/repo.git")).thenReturn(1L);
         when(gitLabPort.branchExists(1L, "main")).thenReturn(true);
-        when(versionExtractor.extractVersion(anyString(), anyString())).thenReturn(Optional.empty());
+        when(versionExtractorUseCase.extractVersion(anyString(), anyString())).thenReturn(Optional.empty());
         when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L)));
         when(groupPort.countChildren("G001")).thenReturn(0L);
 
@@ -86,7 +86,7 @@ class CodeRepositoryAppServiceTest {
         when(gitLabPort.resolveProjectId("git@gitlab.com:test/repo.git")).thenReturn(1L);
         when(gitLabPort.branchExists(1L, "main")).thenReturn(false);
         when(gitLabPort.branchExists(1L, "master")).thenReturn(true);
-        when(versionExtractor.extractVersion(anyString(), anyString())).thenReturn(Optional.empty());
+        when(versionExtractorUseCase.extractVersion(anyString(), anyString())).thenReturn(Optional.empty());
         when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L)));
         when(groupPort.countChildren("G001")).thenReturn(0L);
 
@@ -100,7 +100,7 @@ class CodeRepositoryAppServiceTest {
     @DisplayName("版本解析失败时标记 VERSION_UNRESOLVED")
     void shouldMarkVersionUnresolvedWhenExtractorThrows() {
         ArgumentCaptor<CodeRepository> captor = ArgumentCaptor.forClass(CodeRepository.class);
-        when(versionExtractor.extractVersion(anyString(), anyString())).thenThrow(new RuntimeException("boom"));
+        when(versionExtractorUseCase.extractVersion(anyString(), anyString())).thenThrow(new RuntimeException("boom"));
         when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L)));
         when(groupPort.countChildren("G001")).thenReturn(0L);
 

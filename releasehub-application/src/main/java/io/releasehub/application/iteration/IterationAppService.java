@@ -1,12 +1,14 @@
 package io.releasehub.application.iteration;
 
-import io.releasehub.application.branchrule.BranchRuleAppService;
+import io.releasehub.application.branchrule.BranchRuleUseCase;
 import io.releasehub.application.group.GroupPort;
 import io.releasehub.application.port.out.GitLabBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.version.VersionDeriver;
+import io.releasehub.application.version.VersionDeriverUseCase;
 import io.releasehub.application.version.VersionExtractor;
+import io.releasehub.application.version.VersionExtractorUseCase;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
@@ -46,9 +48,9 @@ public class IterationAppService {
     private final CodeRepositoryPort codeRepositoryPort;
     private final IterationRepoPort iterationRepoPort;
     private final GitLabBranchPort gitLabBranchPort;
-    private final BranchRuleAppService branchRuleAppService;
-    private final VersionDeriver versionDeriver;
-    private final VersionExtractor versionExtractor;
+    private final BranchRuleUseCase branchRuleUseCase;
+    private final VersionDeriverUseCase versionDeriverUseCase;
+    private final VersionExtractorUseCase versionExtractorUseCase;
     private final GroupPort groupPort;
     private final Clock clock = Clock.systemUTC();
 
@@ -139,7 +141,7 @@ public class IterationAppService {
 
         // 3. 创建 feature 分支
         String featureBranch = "feature/" + iterationKey.value();
-        if (!branchRuleAppService.isCompliant(featureBranch)) {
+        if (!branchRuleUseCase.isCompliant(featureBranch)) {
             throw ValidationException.invalidParameter("branchName");
         }
         boolean branchCreated = gitLabBranchPort.createBranch(repo.getCloneUrl(), featureBranch, masterBranch);
@@ -148,8 +150,8 @@ public class IterationAppService {
         }
 
         // 4. 推导开发版本和目标版本
-        String devVersion = versionDeriver.deriveDevVersion(baseVersion);
-        String targetVersion = versionDeriver.deriveTargetVersion(devVersion);
+        String devVersion = versionDeriverUseCase.deriveDevVersion(baseVersion);
+        String targetVersion = versionDeriverUseCase.deriveTargetVersion(devVersion);
 
         // 5. 保存版本信息到关联记录
         iterationRepoPort.saveWithVersion(
@@ -237,8 +239,8 @@ public class IterationAppService {
         CodeRepository repo = codeRepositoryPort.findById(repoId)
                                                 .orElseThrow(() -> NotFoundException.repository(repoIdStr));
 
-        String repoVersion = versionExtractor.extractVersion(repo.getCloneUrl(), versionInfo.getFeatureBranch())
-                                             .map(VersionExtractor.VersionInfo::version)
+        String repoVersion = versionExtractorUseCase.extractVersion(repo.getCloneUrl(), versionInfo.getFeatureBranch())
+                                             .map(VersionExtractorUseCase.VersionInfo::version)
                                              .orElse(null);
 
         if (repoVersion == null) {
@@ -307,8 +309,8 @@ public class IterationAppService {
         CodeRepository repo = codeRepositoryPort.findById(repoId)
                                                 .orElseThrow(() -> NotFoundException.repository(repoId.value()));
 
-        String repoVersion = versionExtractor.extractVersion(repo.getCloneUrl(), versionInfo.getFeatureBranch())
-                                             .map(VersionExtractor.VersionInfo::version)
+        String repoVersion = versionExtractorUseCase.extractVersion(repo.getCloneUrl(), versionInfo.getFeatureBranch())
+                                             .map(VersionExtractorUseCase.VersionInfo::version)
                                              .orElse(versionInfo.getDevVersion());
 
         Instant now = Instant.now(clock);
