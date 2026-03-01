@@ -1,5 +1,7 @@
 # Change: GitFlow 分支生命周期管理
 
+> 关联需求：`requirements/in-progress/GitFlow分支生命周期管理.md`
+
 ## Why
 
 平台已有发布自动化框架（RunTask + 各 Executor），但分支操作（创建 feature、创建 release、合并、打标签、删除分支）全是 Mock 实现，无法在真实仓库上执行。当前分支状态也没有可视化界面，用户需手工在 Git 平台确认进度。
