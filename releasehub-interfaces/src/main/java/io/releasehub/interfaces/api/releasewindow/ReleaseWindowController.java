@@ -1,6 +1,7 @@
 package io.releasehub.interfaces.api.releasewindow;
 
 import io.releasehub.application.releasewindow.ReleaseWindowAppService;
+import io.releasehub.application.releasewindow.BranchStatusView;
 import io.releasehub.application.releasewindow.ReleaseWindowView;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
@@ -100,6 +101,13 @@ public class ReleaseWindowController {
     @Operation(summary = "Close release window")
     public ApiResponse<ReleaseWindowView> close(@PathVariable("id") String id) {
         ReleaseWindowView view = appService.close(id);
+        return ApiResponse.success(view);
+    }
+
+    @GetMapping("/{id}/branch-status")
+    @Operation(summary = "Get branch status for all repos in the release window")
+    public ApiResponse<BranchStatusView> getBranchStatus(@PathVariable("id") String id) {
+        BranchStatusView view = appService.getBranchStatus(id);
         return ApiResponse.success(view);
     }
 }

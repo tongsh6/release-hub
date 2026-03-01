@@ -1,15 +1,24 @@
 package io.releasehub.application.releasewindow;
 
 import io.releasehub.application.group.GroupPort;
+import io.releasehub.application.iteration.IterationPort;
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
+import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.release.ReleaseRunUseCase;
+import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
+import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
+import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.GitProvider;
+import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.Run;
 import io.releasehub.domain.run.RunType;
 import io.releasehub.domain.window.WindowIteration;
@@ -23,8 +32,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -46,12 +57,20 @@ class ReleaseWindowAppServiceTest {
     private ReleaseRunUseCase releaseRunUseCase;
     @Mock
     private GroupPort groupPort;
+    @Mock
+    private IterationPort iterationPort;
+    @Mock
+    private CodeRepositoryPort codeRepositoryPort;
+    @Mock
+    private GitBranchAdapterFactory gitBranchAdapterFactory;
 
     private ReleaseWindowAppService releaseWindowAppService;
 
     @BeforeEach
     void setUp() {
-        releaseWindowAppService = new ReleaseWindowAppService(releaseWindowPort, windowIterationPort, releaseRunUseCase, groupPort);
+        releaseWindowAppService = new ReleaseWindowAppService(
+                releaseWindowPort, windowIterationPort, releaseRunUseCase, groupPort,
+                iterationPort, codeRepositoryPort, gitBranchAdapterFactory);
     }
 
     @Nested
@@ -173,6 +192,75 @@ class ReleaseWindowAppServiceTest {
             verify(releaseWindowPort).save(any(ReleaseWindow.class));
             verify(releaseRunUseCase, never()).executeRunAsync(any());
             assertThat(view.getStatus()).isEqualTo("CLOSED");
+        }
+    }
+
+    @Nested
+    @DisplayName("getBranchStatus 方法")
+    class GetBranchStatusTests {
+
+        @Test
+        @DisplayName("窗口存在迭代和仓库时返回分支状态")
+        void shouldReturnBranchStatusForReposInWindow() {
+            Instant now = Instant.now();
+            String windowId = "window-1";
+            String windowKey = "RW-20260101-ABCD";
+            String iterKey = "ITER-1";
+            String repoId = "repo-1";
+
+            ReleaseWindow window = ReleaseWindow.rehydrate(
+                    ReleaseWindowId.of(windowId), windowKey, "Window", null, now, "G001",
+                    io.releasehub.domain.releasewindow.ReleaseWindowStatus.PUBLISHED, now, now, false, null);
+            when(releaseWindowPort.findById(ReleaseWindowId.of(windowId))).thenReturn(Optional.of(window));
+
+            WindowIteration wi = WindowIteration.attach(ReleaseWindowId.of(windowId), IterationKey.of(iterKey), now, now);
+            when(windowIterationPort.listByWindow(ReleaseWindowId.of(windowId))).thenReturn(List.of(wi));
+
+            Iteration iteration = Iteration.rehydrate(
+                    IterationKey.of(iterKey), "Iter", null, LocalDate.now(), "G001",
+                    Set.of(RepoId.of(repoId)), IterationStatus.ACTIVE, now, now);
+            when(iterationPort.findByKey(IterationKey.of(iterKey))).thenReturn(Optional.of(iteration));
+
+            when(windowIterationPort.getReleaseBranch(windowId, iterKey)).thenReturn("release/" + windowKey);
+
+            CodeRepository repo = CodeRepository.rehydrate(
+                    RepoId.of(repoId), "my-repo", "https://github.com/org/repo.git",
+                    "main", "G001", null, GitProvider.MOCK, "token", false,
+                    0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+            when(codeRepositoryPort.findById(RepoId.of(repoId))).thenReturn(Optional.of(repo));
+
+            GitBranchPort mockAdapter = org.mockito.Mockito.mock(GitBranchPort.class);
+            when(gitBranchAdapterFactory.getAdapter(GitProvider.MOCK)).thenReturn(mockAdapter);
+            when(mockAdapter.getBranchStatus(any(), any(), eq("feature/" + iterKey)))
+                    .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
+            when(mockAdapter.getBranchStatus(any(), any(), eq("release/" + windowKey)))
+                    .thenReturn(GitBranchPort.BranchStatus.missing());
+
+            BranchStatusView result = releaseWindowAppService.getBranchStatus(windowId);
+
+            assertThat(result.windowId()).isEqualTo(windowId);
+            assertThat(result.windowKey()).isEqualTo(windowKey);
+            assertThat(result.repos()).hasSize(1);
+            BranchStatusView.RepoBranchStatus repoStatus = result.repos().get(0);
+            assertThat(repoStatus.repoId()).isEqualTo(repoId);
+            assertThat(repoStatus.featureBranch().exists()).isTrue();
+            assertThat(repoStatus.featureBranch().latestCommit()).isEqualTo("abc123");
+            assertThat(repoStatus.releaseBranch().exists()).isFalse();
+            assertThat(repoStatus.releaseBranch().mergeStatus()).isEqualTo("PENDING");
+        }
+
+        @Test
+        @DisplayName("无迭代时返回空仓库列表")
+        void shouldReturnEmptyReposWhenNoIterations() {
+            Instant now = Instant.now();
+            String windowId = "window-1";
+            ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
+            when(releaseWindowPort.findById(ReleaseWindowId.of(windowId))).thenReturn(Optional.of(window));
+            when(windowIterationPort.listByWindow(ReleaseWindowId.of(windowId))).thenReturn(List.of());
+
+            BranchStatusView result = releaseWindowAppService.getBranchStatus(windowId);
+
+            assertThat(result.repos()).isEmpty();
         }
     }
 }
