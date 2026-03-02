@@ -66,12 +66,12 @@
 
 ## 8. 测试
 
-- [ ] 8.1 `GitHubBranchAdapter` 单元测试（Mock HTTP 客户端）
-- [ ] 8.2 `GitLabBranchAdapter` 单元测试
-- [ ] 8.3 `GitBranchAdapterFactory` 单元测试
-- [ ] 8.4 `BranchStatusView` API 集成测试（MockMvc）
-- [ ] 8.5 各 Executor 切换后集成测试（使用 `MockGitBranchAdapter`）
-- [ ] 8.6 E2E 测试：发布窗口发布流程（Mock Provider）
+- [x] 8.1 `GitHubBranchAdapter` 单元测试（Mock HTTP 客户端）
+- [x] 8.2 `GitLabBranchAdapter` 单元测试
+- [x] 8.3 `GitBranchAdapterFactory` 单元测试
+- [x] 8.4 `BranchStatusView` API 集成测试（MockMvc）
+- [x] 8.5 各 Executor 切换后集成测试（使用 `MockGitBranchAdapter`）
+- [x] 8.6 E2E 测试：发布窗口发布流程（Mock Provider）
 
 ## 发布记录
 
