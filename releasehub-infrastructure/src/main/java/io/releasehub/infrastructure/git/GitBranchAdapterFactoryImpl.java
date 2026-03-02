@@ -4,16 +4,18 @@ import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.repo.GitProvider;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Component
-@RequiredArgsConstructor
 public class GitBranchAdapterFactoryImpl implements GitBranchAdapterFactory {
 
     private final List<GitBranchPort> adapters;
+
+    public GitBranchAdapterFactoryImpl(List<GitBranchPort> adapters) {
+        this.adapters = adapters;
+    }
 
     @Override
     public GitBranchPort getAdapter(GitProvider provider) {
