@@ -81,3 +81,4 @@
 | v0.1.2 | Stage 2+3: Port/Adapter + Executor 切换 | 2026-03-02 |
 | v0.1.3 | Stage 4a: branch-status API + 前端面板 | 2026-03-02 |
 | v0.1.4 | Stage 4b: 仓库 Git 配置 UI | 2026-03-02 |
+| v0.1.5 | Stage 8: 测试增强（18 个测试全覆盖）| 2026-03-02 |
