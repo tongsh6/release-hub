@@ -25,7 +25,11 @@ import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Maven 版本更新器实现
@@ -52,13 +56,9 @@ public class MavenVersionUpdaterAdapter implements VersionUpdaterPort {
                 );
             }
 
-            // 读取原始内容
-            String originalContent = Files.readString(pomFile);
-            
-            // 解析并更新版本
-            Document doc = parsePom(pomFile.toFile());
-            String oldVersion = extractVersion(doc);
-            
+            Document rootDoc = parsePom(pomFile.toFile());
+            String oldVersion = extractProjectVersion(rootDoc);
+
             if (oldVersion == null) {
                 return VersionUpdateResult.failure(
                         "POM 文件中未找到 <version> 元素。请确保 pom.xml 包含版本号定义。",
@@ -66,21 +66,44 @@ public class MavenVersionUpdaterAdapter implements VersionUpdaterPort {
                 );
             }
 
-            // 更新版本
-            updateVersion(doc, request.targetVersion());
-            
-            // 生成更新后的内容
-            String updatedContent = serializeDocument(doc);
-            
-            // 生成 diff
-            String diff = generateDiff(originalContent, updatedContent);
-            
-            // 写回文件（注意：根据设计，MVP 阶段只做文件改写，不做 Git 操作）
-            Files.writeString(pomFile, updatedContent);
+            String rootGroupId = extractProjectGroupId(rootDoc);
+            String rootArtifactId = extractProjectArtifactId(rootDoc);
+            List<Path> pomFiles = collectModulePomFiles(pomFile);
+            StringBuilder combinedDiff = new StringBuilder();
+
+            for (Path currentPom : pomFiles) {
+                String originalContent = Files.readString(currentPom);
+                Document currentDoc = parsePom(currentPom.toFile());
+
+                boolean changed = applyVersionUpdate(
+                        currentDoc,
+                        currentPom.equals(pomFile),
+                        rootGroupId,
+                        rootArtifactId,
+                        oldVersion,
+                        request.targetVersion()
+                );
+
+                if (!changed) {
+                    continue;
+                }
+
+                String updatedContent = serializeDocument(currentDoc);
+                Files.writeString(currentPom, updatedContent);
+
+                String fileDiff = generateDiff(originalContent, updatedContent);
+                if (!fileDiff.isBlank()) {
+                    combinedDiff.append("## ")
+                            .append(pomFile.getParent().relativize(currentPom))
+                            .append("\n")
+                            .append(fileDiff)
+                            .append("\n");
+                }
+            }
             
             log.info("Updated Maven version from {} to {} in {}", oldVersion, request.targetVersion(), pomPath);
             
-            return VersionUpdateResult.success(oldVersion, request.targetVersion(), diff, pomPath);
+            return VersionUpdateResult.success(oldVersion, request.targetVersion(), combinedDiff.toString(), pomPath);
             
         } catch (BaseException e) {
             return VersionUpdateResult.failure(e.getMessage(), request.pomPath());
@@ -112,36 +135,145 @@ public class MavenVersionUpdaterAdapter implements VersionUpdaterPort {
     /**
      * 提取当前版本号
      */
-    private String extractVersion(Document doc) {
+    private String extractProjectVersion(Document doc) {
         Element root = doc.getDocumentElement();
-        NodeList versionNodes = root.getElementsByTagName("version");
-        
-        if (versionNodes.getLength() == 0) {
+        Element versionElement = getDirectChildElement(root, "version");
+        if (versionElement == null) {
             return null;
         }
-        
-        // 获取第一个 version 元素（通常是项目版本）
-        Node versionNode = versionNodes.item(0);
-        return versionNode.getTextContent().trim();
+        return versionElement.getTextContent().trim();
     }
 
-    /**
-     * 更新版本号
-     */
-    private void updateVersion(Document doc, String newVersion) {
+    private String extractProjectGroupId(Document doc) {
         Element root = doc.getDocumentElement();
-        NodeList versionNodes = root.getElementsByTagName("version");
-        
-        if (versionNodes.getLength() == 0) {
-            throw BusinessException.versionNotFoundInFile();
+        Element groupIdElement = getDirectChildElement(root, "groupId");
+        if (groupIdElement != null) {
+            return groupIdElement.getTextContent().trim();
         }
-        
-        // 更新第一个 version 元素（项目版本）
-        Node versionNode = versionNodes.item(0);
-        versionNode.setTextContent(newVersion);
-        
-        // 注意：多模块场景下，子模块通常继承父版本，不需要单独更新
-        // 如果子模块有显式 version，这里不处理（根据设计文档的策略）
+        Element parentElement = getDirectChildElement(root, "parent");
+        return parentElement == null ? null : getDirectChildText(parentElement, "groupId");
+    }
+
+    private String extractProjectArtifactId(Document doc) {
+        Element root = doc.getDocumentElement();
+        return getDirectChildText(root, "artifactId");
+    }
+
+    private List<Path> collectModulePomFiles(Path rootPomPath) throws Exception {
+        List<Path> pomFiles = new ArrayList<>();
+        ArrayDeque<Path> queue = new ArrayDeque<>();
+        Set<Path> visited = new HashSet<>();
+
+        queue.add(rootPomPath.toAbsolutePath().normalize());
+
+        while (!queue.isEmpty()) {
+            Path currentPom = queue.removeFirst();
+            if (!visited.add(currentPom)) {
+                continue;
+            }
+
+            pomFiles.add(currentPom);
+            Document doc = parsePom(currentPom.toFile());
+            Element root = doc.getDocumentElement();
+            Element modulesElement = getDirectChildElement(root, "modules");
+            if (modulesElement == null) {
+                continue;
+            }
+
+            NodeList children = modulesElement.getChildNodes();
+            for (int i = 0; i < children.getLength(); i++) {
+                Node child = children.item(i);
+                if (child.getNodeType() != Node.ELEMENT_NODE) {
+                    continue;
+                }
+                String localName = child.getLocalName() != null ? child.getLocalName() : child.getNodeName();
+                if (!"module".equals(localName)) {
+                    continue;
+                }
+                String moduleName = child.getTextContent().trim();
+                if (moduleName.isEmpty()) {
+                    continue;
+                }
+                Path modulePom = currentPom.getParent().resolve(moduleName).resolve("pom.xml").normalize();
+                if (!Files.exists(modulePom)) {
+                    throw new IllegalStateException("Module POM not found: " + modulePom);
+                }
+                queue.add(modulePom);
+            }
+        }
+
+        return pomFiles;
+    }
+
+    private boolean applyVersionUpdate(
+            Document doc,
+            boolean isRootPom,
+            String rootGroupId,
+            String rootArtifactId,
+            String oldVersion,
+            String newVersion
+    ) {
+        Element root = doc.getDocumentElement();
+        boolean changed = false;
+
+        if (isRootPom) {
+            if (!setDirectChildText(root, "version", newVersion)) {
+                throw BusinessException.versionNotFoundInFile();
+            }
+            return true;
+        }
+
+        Element parentElement = getDirectChildElement(root, "parent");
+        if (parentElement != null) {
+            String parentGroupId = getDirectChildText(parentElement, "groupId");
+            String parentArtifactId = getDirectChildText(parentElement, "artifactId");
+            if (rootGroupId != null
+                    && rootArtifactId != null
+                    && rootGroupId.equals(parentGroupId)
+                    && rootArtifactId.equals(parentArtifactId)) {
+                changed |= setDirectChildText(parentElement, "version", newVersion);
+            }
+        }
+
+        Element projectVersionElement = getDirectChildElement(root, "version");
+        if (projectVersionElement != null && oldVersion.equals(projectVersionElement.getTextContent().trim())) {
+            projectVersionElement.setTextContent(newVersion);
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private Element getDirectChildElement(Element parent, String childName) {
+        NodeList children = parent.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node child = children.item(i);
+            if (child.getNodeType() != Node.ELEMENT_NODE) {
+                continue;
+            }
+            String localName = child.getLocalName() != null ? child.getLocalName() : child.getNodeName();
+            if (childName.equals(localName)) {
+                return (Element) child;
+            }
+        }
+        return null;
+    }
+
+    private String getDirectChildText(Element parent, String childName) {
+        Element child = getDirectChildElement(parent, childName);
+        return child == null ? null : child.getTextContent().trim();
+    }
+
+    private boolean setDirectChildText(Element parent, String childName, String value) {
+        Element child = getDirectChildElement(parent, childName);
+        if (child == null) {
+            return false;
+        }
+        if (value.equals(child.getTextContent().trim())) {
+            return false;
+        }
+        child.setTextContent(value);
+        return true;
     }
 
     /**
