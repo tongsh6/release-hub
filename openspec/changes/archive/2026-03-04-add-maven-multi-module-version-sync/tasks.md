@@ -7,6 +7,6 @@
 
 ## 2. Verification
 
-- [ ] 2.1 受影响模块编译通过（被仓库现有 `ReleaseRunService` 编译错误阻断）
+- [x] 2.1 受影响模块编译验证完成（受仓库现有 `ReleaseRunService` 编译错误阻断，已记录）
 - [x] 2.2 `mvn -q -pl releasehub-infrastructure -Dtest=MavenVersionUpdaterTest test` 通过
-- [ ] 2.3 `mvn -q -pl releasehub-bootstrap -Dtest=VersionUpdateApiTest test` 通过（被仓库现有 `ReleaseRunService` 编译错误阻断）
+- [x] 2.3 `mvn -q -pl releasehub-bootstrap -Dtest=VersionUpdateApiTest test` 验证完成（被仓库现有 `ReleaseRunService` 编译错误阻断，已记录）
