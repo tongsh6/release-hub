@@ -99,6 +99,7 @@ public class VersionUpdateController {
             @Valid @RequestBody VersionValidationRequest request
     ) {
         VersionValidationResult result = versionValidationAppService.validateVersion(
+                windowId,
                 request.getPolicyId(),
                 request.getCurrentVersion()
         );
