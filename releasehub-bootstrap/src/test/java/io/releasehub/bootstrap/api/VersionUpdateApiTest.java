@@ -288,6 +288,90 @@ class VersionUpdateApiTest {
                .andExpect(jsonPath("$.data.runType").value("VERSION_UPDATE"));
     }
 
+    @Test
+    @Order(8)
+    void shouldExecuteVersionUpdateForMavenMultiModuleProject() throws Exception {
+        Path multiRepoPath = Files.createDirectories(testRepoPath.resolve("multi-parent"));
+        Path module1Path = Files.createDirectories(multiRepoPath.resolve("module1"));
+        Path module2Path = Files.createDirectories(multiRepoPath.resolve("module2"));
+
+        Files.writeString(multiRepoPath.resolve("pom.xml"), """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <project xmlns="http://maven.apache.org/POM/4.0.0"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+                    <modelVersion>4.0.0</modelVersion>
+                    <groupId>com.test</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0.0</version>
+                    <packaging>pom</packaging>
+                    <modules>
+                        <module>module1</module>
+                        <module>module2</module>
+                    </modules>
+                </project>
+                """);
+
+        Files.writeString(module1Path.resolve("pom.xml"), """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <project xmlns="http://maven.apache.org/POM/4.0.0"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+                    <modelVersion>4.0.0</modelVersion>
+                    <parent>
+                        <groupId>com.test</groupId>
+                        <artifactId>parent</artifactId>
+                        <version>1.0.0</version>
+                    </parent>
+                    <artifactId>module1</artifactId>
+                    <version>1.0.0</version>
+                </project>
+                """);
+
+        Files.writeString(module2Path.resolve("pom.xml"), """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <project xmlns="http://maven.apache.org/POM/4.0.0"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+                    <modelVersion>4.0.0</modelVersion>
+                    <parent>
+                        <groupId>com.test</groupId>
+                        <artifactId>parent</artifactId>
+                        <version>1.0.0</version>
+                    </parent>
+                    <artifactId>module2</artifactId>
+                    <version>0.9.0</version>
+                </project>
+                """);
+
+        VersionUpdateRequest request = new VersionUpdateRequest();
+        request.setRepoId(repoId);
+        request.setBuildTool(BuildTool.MAVEN);
+        request.setTargetVersion("6.0.0");
+        request.setRepoPath(multiRepoPath.toString());
+        request.setPomPath(multiRepoPath.resolve("pom.xml").toString());
+
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/execute/version-update")
+                       .header("Authorization", "Bearer " + token)
+                       .contentType(MediaType.APPLICATION_JSON)
+                       .content(objectMapper.writeValueAsString(request)))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.success").value(true))
+               .andExpect(jsonPath("$.data.runId").exists())
+               .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+
+        String parentPom = Files.readString(multiRepoPath.resolve("pom.xml"));
+        assertThat(parentPom).contains("<version>6.0.0</version>");
+
+        String module1Pom = Files.readString(module1Path.resolve("pom.xml"));
+        assertThat(module1Pom).contains("<version>6.0.0</version>");
+        assertThat(module1Pom).doesNotContain("<version>1.0.0</version>");
+
+        String module2Pom = Files.readString(module2Path.resolve("pom.xml"));
+        assertThat(module2Pom).contains("<version>6.0.0</version>");
+        assertThat(module2Pom).contains("<version>0.9.0</version>");
+    }
+
     private String createGroupAndGetCode(String token) throws Exception {
         String code = "G" + System.currentTimeMillis();
         String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";

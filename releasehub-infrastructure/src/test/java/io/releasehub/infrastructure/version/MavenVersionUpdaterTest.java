@@ -123,11 +123,18 @@ class MavenVersionUpdaterTest {
     }
 
     @Test
-    void should_handle_multi_module_pom() throws IOException {
-        // 创建多模块 pom.xml
-        String pomContent = """
+    void should_sync_parent_and_child_versions_for_multi_module_project() throws IOException {
+        Path parentPom = tempDir.resolve("pom.xml");
+        Path module1Dir = Files.createDirectories(tempDir.resolve("module1"));
+        Path module2Dir = Files.createDirectories(tempDir.resolve("module2"));
+        Path module1Pom = module1Dir.resolve("pom.xml");
+        Path module2Pom = module2Dir.resolve("pom.xml");
+
+        Files.writeString(parentPom, """
                 <?xml version="1.0" encoding="UTF-8"?>
-                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                <project xmlns="http://maven.apache.org/POM/4.0.0"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
                     <modelVersion>4.0.0</modelVersion>
                     <groupId>com.example</groupId>
                     <artifactId>parent-project</artifactId>
@@ -138,16 +145,45 @@ class MavenVersionUpdaterTest {
                         <module>module2</module>
                     </modules>
                 </project>
-                """;
+                """);
 
-        Path pomFile = tempDir.resolve("pom.xml");
-        Files.writeString(pomFile, pomContent);
+        Files.writeString(module1Pom, """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <project xmlns="http://maven.apache.org/POM/4.0.0"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+                    <modelVersion>4.0.0</modelVersion>
+                    <parent>
+                        <groupId>com.example</groupId>
+                        <artifactId>parent-project</artifactId>
+                        <version>1.0.0</version>
+                    </parent>
+                    <artifactId>module1</artifactId>
+                    <version>1.0.0</version>
+                </project>
+                """);
+
+        Files.writeString(module2Pom, """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <project xmlns="http://maven.apache.org/POM/4.0.0"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+                    <modelVersion>4.0.0</modelVersion>
+                    <parent>
+                        <groupId>com.example</groupId>
+                        <artifactId>parent-project</artifactId>
+                        <version>1.0.0</version>
+                    </parent>
+                    <artifactId>module2</artifactId>
+                    <version>0.9.0</version>
+                </project>
+                """);
 
         VersionUpdateRequest request = VersionUpdateRequest.forMaven(
                 RepoId.newId(),
                 tempDir.toString(),
                 "2.0.0",
-                pomFile.toString()
+                parentPom.toString()
         );
 
         VersionUpdateResult result = updater.update(request);
@@ -156,8 +192,17 @@ class MavenVersionUpdaterTest {
         assertEquals("1.0.0", result.oldVersion());
         assertEquals("2.0.0", result.newVersion());
 
-        // 验证父 POM 版本已更新
-        String updatedContent = Files.readString(pomFile);
-        assertTrue(updatedContent.contains("<version>2.0.0</version>"));
+        String parentContent = Files.readString(parentPom);
+        assertTrue(parentContent.contains("<version>2.0.0</version>"));
+
+        String module1Content = Files.readString(module1Pom);
+        assertTrue(module1Content.contains("<parent>"));
+        assertTrue(module1Content.contains("<version>2.0.0</version>"));
+        assertFalse(module1Content.contains("<version>1.0.0</version>"));
+
+        String module2Content = Files.readString(module2Pom);
+        assertTrue(module2Content.contains("<parent>"));
+        assertTrue(module2Content.contains("<version>2.0.0</version>"));
+        assertTrue(module2Content.contains("<version>0.9.0</version>"));
     }
 }
