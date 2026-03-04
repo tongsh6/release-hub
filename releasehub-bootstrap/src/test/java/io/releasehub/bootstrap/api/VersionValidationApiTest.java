@@ -32,6 +32,7 @@ class VersionValidationApiTest {
 
     private static String token;
     private static String windowId;
+    private static String windowKey;
     private static String groupCode;
     @Autowired
     private MockMvc mockMvc;
@@ -76,7 +77,10 @@ class VersionValidationApiTest {
 
         windowId = objectMapper.readTree(result.getResponse().getContentAsString())
                                .get("data").get("id").asText();
+        windowKey = objectMapper.readTree(result.getResponse().getContentAsString())
+                                .get("data").get("windowKey").asText();
         assertThat(windowId).isNotBlank();
+        assertThat(windowKey).isNotBlank();
     }
 
     @Test
@@ -165,7 +169,8 @@ class VersionValidationApiTest {
                        .content(objectMapper.writeValueAsString(request)))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.data.valid").value(true))
-               .andExpect(jsonPath("$.data.derivedVersion").value("1.2.4"));
+               .andExpect(jsonPath("$.data.derivedVersion").value("1.2.4"))
+               .andExpect(jsonPath("$.data.derivedBranch").value("release/" + windowKey));
     }
 
     @Test
@@ -181,7 +186,8 @@ class VersionValidationApiTest {
                        .content(objectMapper.writeValueAsString(request)))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.data.valid").value(true))
-               .andExpect(jsonPath("$.data.derivedVersion").value("1.3.0"));
+               .andExpect(jsonPath("$.data.derivedVersion").value("1.3.0"))
+               .andExpect(jsonPath("$.data.derivedBranch").value("release/" + windowKey));
     }
 
     @Test
@@ -197,7 +203,8 @@ class VersionValidationApiTest {
                        .content(objectMapper.writeValueAsString(request)))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.data.valid").value(true))
-               .andExpect(jsonPath("$.data.derivedVersion").value("2.0.0"));
+               .andExpect(jsonPath("$.data.derivedVersion").value("2.0.0"))
+               .andExpect(jsonPath("$.data.derivedBranch").value("release/" + windowKey));
     }
 
     private String createGroupAndGetCode(String token) throws Exception {
