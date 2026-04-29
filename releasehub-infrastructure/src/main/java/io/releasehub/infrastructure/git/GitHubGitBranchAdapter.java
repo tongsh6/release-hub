@@ -114,24 +114,47 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     public MergeabilityResult checkMergeability(String repoCloneUrl, String token, String sourceBranch, String targetBranch) {
         try {
             RepoRef ref = parseRepoRef(repoCloneUrl);
-            String compareEndpoint = String.format(
-                    "https://api.github.com/repos/%s/%s/compare/%s...%s",
-                    ref.owner, ref.repo, targetBranch, sourceBranch);
 
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                    compareEndpoint, HttpMethod.GET,
-                    new HttpEntity<>(headers(token)),
+            // Create a temporary PR to check mergeability
+            String prEndpoint = String.format("https://api.github.com/repos/%s/%s/pulls",
+                    ref.owner, ref.repo);
+            Map<String, String> prBody = new HashMap<>();
+            prBody.put("title", "[ReleaseHub] merge check: " + sourceBranch + " → " + targetBranch);
+            prBody.put("head", sourceBranch);
+            prBody.put("base", targetBranch);
+
+            ResponseEntity<Map<String, Object>> prResponse = restTemplate.exchange(
+                    prEndpoint, HttpMethod.POST,
+                    new HttpEntity<>(prBody, headers(token)),
                     new ParameterizedTypeReference<>() {});
 
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return MergeabilityResult.mergeable();
+            if (!prResponse.getStatusCode().is2xxSuccessful() || prResponse.getBody() == null) {
+                return MergeabilityResult.error("failed to create pull request");
             }
-            return MergeabilityResult.error("compare API returned unexpected response");
+
+            Map<String, Object> pr = prResponse.getBody();
+            int number = ((Number) pr.get("number")).intValue();
+
+            // Close the temporary PR
+            String closeEndpoint = String.format("https://api.github.com/repos/%s/%s/pulls/%d",
+                    ref.owner, ref.repo, number);
+            Map<String, String> closeBody = Map.of("state", "closed");
+            restTemplate.exchange(closeEndpoint, HttpMethod.PATCH,
+                    new HttpEntity<>(closeBody, headers(token)),
+                    new ParameterizedTypeReference<>() {});
+
+            // Check mergeable field (may be null if GitHub hasn't computed it yet)
+            Boolean mergeable = (Boolean) pr.get("mergeable");
+            if (Boolean.FALSE.equals(mergeable)) {
+                return MergeabilityResult.conflict("merge conflict detected");
+            }
+            return MergeabilityResult.mergeable();
         } catch (HttpClientErrorException e) {
-            if (e.getStatusCode().value() == 404) {
-                return MergeabilityResult.conflict("branches have no common ancestor");
+            String body = e.getResponseBodyAsString();
+            if (e.getStatusCode().value() == 422 || e.getStatusCode().value() == 404) {
+                return MergeabilityResult.conflict("branch not found or no commits in common: " + body);
             }
-            return MergeabilityResult.error(e.getResponseBodyAsString());
+            return MergeabilityResult.error(body);
         } catch (Exception e) {
             return MergeabilityResult.error(e.getMessage());
         }

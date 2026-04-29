@@ -109,23 +109,47 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     public MergeabilityResult checkMergeability(String repoCloneUrl, String token, String sourceBranch, String targetBranch) {
         try {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);
-            String compareEndpoint = String.format("%s/api/v4/projects/%s/repository/compare?from=%s&to=%s",
-                    repoRef.baseUrl, repoRef.encodedPath,
-                    urlEncode(targetBranch), urlEncode(sourceBranch));
 
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                    compareEndpoint, HttpMethod.GET,
-                    new HttpEntity<>(headers(token)),
+            // Create a temporary MR to check merge_status
+            String mrEndpoint = String.format("%s/api/v4/projects/%s/merge_requests", repoRef.baseUrl, repoRef.encodedPath);
+            Map<String, Object> mrBody = new HashMap<>();
+            mrBody.put("source_branch", sourceBranch);
+            mrBody.put("target_branch", targetBranch);
+            mrBody.put("title", "[ReleaseHub] merge check: " + sourceBranch + " → " + targetBranch);
+            mrBody.put("remove_source_branch", false);
+
+            ResponseEntity<Map<String, Object>> mrResponse = restTemplate.exchange(
+                    mrEndpoint, HttpMethod.POST,
+                    new HttpEntity<>(mrBody, headers(token)),
                     new ParameterizedTypeReference<>() {});
 
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return MergeabilityResult.mergeable();
+            if (!mrResponse.getStatusCode().is2xxSuccessful() || mrResponse.getBody() == null) {
+                return MergeabilityResult.error("failed to create merge request");
             }
-            return MergeabilityResult.error("compare API returned unexpected response");
+
+            Map<String, Object> mr = mrResponse.getBody();
+            int iid = toInt(mr.get("iid"));
+            String mergeStatus = String.valueOf(mr.getOrDefault("merge_status", ""));
+
+            // Close the temporary MR
+            String closeEndpoint = String.format("%s/api/v4/projects/%s/merge_requests/%d",
+                    repoRef.baseUrl, repoRef.encodedPath, iid);
+            Map<String, String> closeBody = Map.of("state_event", "close");
+            restTemplate.exchange(closeEndpoint, HttpMethod.PUT,
+                    new HttpEntity<>(closeBody, headers(token)),
+                    new ParameterizedTypeReference<>() {});
+
+            if ("cannot_be_merged".equals(mergeStatus)) {
+                return MergeabilityResult.conflict("merge conflict detected");
+            }
+            return MergeabilityResult.mergeable();
         } catch (HttpClientErrorException e) {
             String body = e.getResponseBodyAsString();
-            if (e.getStatusCode().is4xxClientError()) {
-                return MergeabilityResult.conflict("branches have diverged: " + body);
+            if (e.getStatusCode().value() == 400 || e.getStatusCode().value() == 404) {
+                return MergeabilityResult.conflict("branch not found or invalid: " + body);
+            }
+            if (e.getStatusCode().value() == 409) {
+                return MergeabilityResult.conflict("merge conflict: " + body);
             }
             return MergeabilityResult.error(body);
         } catch (Exception e) {
