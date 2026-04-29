@@ -38,8 +38,8 @@ public class ConflictItem {
                 .iterationKey(iterationKey)
                 .systemVersion(systemVersion)
                 .repoVersion(repoVersion)
-                .message("系统版本(" + systemVersion + ")与仓库版本(" + repoVersion + ")不一致")
-                .suggestion("请使用版本同步功能解决冲突")
+                .message("System version (" + systemVersion + ") does not match repo version (" + repoVersion + ")")
+                .suggestion("Resolve the version inconsistency via version sync")
                 .build();
     }
 
@@ -50,8 +50,8 @@ public class ConflictItem {
                 .iterationKey(iterationKey)
                 .systemVersion(systemVersion)
                 .repoVersion(repoVersion)
-                .message("仓库版本(" + repoVersion + ")高于系统记录(" + systemVersion + ")")
-                .suggestion("请同步仓库版本到系统")
+                .message("Repo version (" + repoVersion + ") is ahead of system record (" + systemVersion + ")")
+                .suggestion("Sync repo version to system")
                 .build();
     }
 
@@ -62,8 +62,8 @@ public class ConflictItem {
                 .iterationKey(iterationKey)
                 .systemVersion(systemVersion)
                 .repoVersion(repoVersion)
-                .message("系统版本(" + systemVersion + ")高于仓库版本(" + repoVersion + ")")
-                .suggestion("请同步系统版本到仓库")
+                .message("System version (" + systemVersion + ") is ahead of repo version (" + repoVersion + ")")
+                .suggestion("Sync system version to repo")
                 .build();
     }
 
@@ -73,8 +73,8 @@ public class ConflictItem {
                 .repoName(repoName)
                 .iterationKey(iterationKey)
                 .sourceBranch(branchName)
-                .message("分支 " + branchName + " 已存在")
-                .suggestion("请删除或归档已存在的分支后重试")
+                .message("Branch " + branchName + " already exists")
+                .suggestion("Delete or archive the existing branch before retrying")
                 .build();
     }
 
@@ -84,8 +84,8 @@ public class ConflictItem {
                 .repoName(repoName)
                 .iterationKey(iterationKey)
                 .sourceBranch(branchName)
-                .message("分支名 " + branchName + " 不符合命名规则")
-                .suggestion("请修改分支名以符合 BranchRule 规则")
+                .message("Branch name '" + branchName + "' does not comply with branch rules")
+                .suggestion("Rename the branch to comply with BranchRule")
                 .build();
     }
 
@@ -96,8 +96,8 @@ public class ConflictItem {
                 .iterationKey(iterationKey)
                 .systemVersion(version)
                 .repoVersion(otherVersion)
-                .message("仓库 " + repoId + " 版本(" + version + ")与 " + otherRepoId + " 版本(" + otherVersion + ")不一致")
-                .suggestion("请统一迭代内所有仓库的目标版本")
+                .message("Repo " + repoId + " version (" + version + ") mismatches " + otherRepoId + " (" + otherVersion + ")")
+                .suggestion("Align target versions across all repos in this iteration")
                 .build();
     }
 
@@ -108,8 +108,8 @@ public class ConflictItem {
                 .iterationKey(iterationKey)
                 .sourceBranch(sourceBranch)
                 .targetBranch(targetBranch)
-                .message(sourceBranch + " → " + targetBranch + " 存在合并冲突: " + (detail != null ? detail : ""))
-                .suggestion("请手动解决冲突")
+                .message(sourceBranch + " → " + targetBranch + " has merge conflict" + (detail != null ? ": " + detail : ""))
+                .suggestion("Resolve conflicts manually on the Git platform")
                 .build();
     }
 
