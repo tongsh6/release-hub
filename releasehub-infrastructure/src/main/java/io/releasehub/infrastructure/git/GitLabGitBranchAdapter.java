@@ -106,6 +106,34 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     }
 
     @Override
+    public MergeabilityResult checkMergeability(String repoCloneUrl, String token, String sourceBranch, String targetBranch) {
+        try {
+            RepoRef repoRef = parseRepoRef(repoCloneUrl);
+            String compareEndpoint = String.format("%s/api/v4/projects/%s/repository/compare?from=%s&to=%s",
+                    repoRef.baseUrl, repoRef.encodedPath,
+                    urlEncode(targetBranch), urlEncode(sourceBranch));
+
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    compareEndpoint, HttpMethod.GET,
+                    new HttpEntity<>(headers(token)),
+                    new ParameterizedTypeReference<>() {});
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return MergeabilityResult.mergeable();
+            }
+            return MergeabilityResult.error("compare API returned unexpected response");
+        } catch (HttpClientErrorException e) {
+            String body = e.getResponseBodyAsString();
+            if (e.getStatusCode().is4xxClientError()) {
+                return MergeabilityResult.conflict("branches have diverged: " + body);
+            }
+            return MergeabilityResult.error(body);
+        } catch (Exception e) {
+            return MergeabilityResult.error(e.getMessage());
+        }
+    }
+
+    @Override
     public BranchStatus getBranchStatus(String repoCloneUrl, String token, String branchName) {
         try {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);

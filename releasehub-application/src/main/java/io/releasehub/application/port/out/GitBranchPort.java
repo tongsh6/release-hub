@@ -40,4 +40,28 @@ public interface GitBranchPort {
             return new BranchStatus(true, latestCommit, 0, 0);
         }
     }
+
+    record MergeabilityResult(boolean canMerge, String detail) {
+        public static MergeabilityResult mergeable() {
+            return new MergeabilityResult(true, null);
+        }
+
+        public static MergeabilityResult conflict(String detail) {
+            return new MergeabilityResult(false, detail);
+        }
+
+        public static MergeabilityResult error(String detail) {
+            return new MergeabilityResult(false, detail);
+        }
+    }
+
+    /**
+     * 检查两个分支是否可合并（不实际执行合并）
+     * @param repoCloneUrl 仓库克隆地址
+     * @param token Git 访问令牌
+     * @param sourceBranch 源分支
+     * @param targetBranch 目标分支
+     * @return MergeabilityResult, mergeable=true 表示无冲突可自动合并
+     */
+    MergeabilityResult checkMergeability(String repoCloneUrl, String token, String sourceBranch, String targetBranch);
 }

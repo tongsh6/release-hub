@@ -62,6 +62,11 @@ public class MockGitBranchAdapter implements GitBranchPort {
     }
 
     @Override
+    public MergeabilityResult checkMergeability(String repoCloneUrl, String token, String sourceBranch, String targetBranch) {
+        return MergeabilityResult.mergeable();
+    }
+
+    @Override
     public BranchStatus getBranchStatus(String repoCloneUrl, String token, String branchName) {
         Set<String> branchSet = branches.get(repoCloneUrl);
         boolean exists = branchSet != null && branchSet.contains(branchName);

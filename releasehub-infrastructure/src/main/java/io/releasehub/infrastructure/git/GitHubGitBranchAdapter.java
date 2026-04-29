@@ -111,6 +111,33 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     }
 
     @Override
+    public MergeabilityResult checkMergeability(String repoCloneUrl, String token, String sourceBranch, String targetBranch) {
+        try {
+            RepoRef ref = parseRepoRef(repoCloneUrl);
+            String compareEndpoint = String.format(
+                    "https://api.github.com/repos/%s/%s/compare/%s...%s",
+                    ref.owner, ref.repo, targetBranch, sourceBranch);
+
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    compareEndpoint, HttpMethod.GET,
+                    new HttpEntity<>(headers(token)),
+                    new ParameterizedTypeReference<>() {});
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return MergeabilityResult.mergeable();
+            }
+            return MergeabilityResult.error("compare API returned unexpected response");
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode().value() == 404) {
+                return MergeabilityResult.conflict("branches have no common ancestor");
+            }
+            return MergeabilityResult.error(e.getResponseBodyAsString());
+        } catch (Exception e) {
+            return MergeabilityResult.error(e.getMessage());
+        }
+    }
+
+    @Override
     public BranchStatus getBranchStatus(String repoCloneUrl, String token, String branchName) {
         try {
             RepoRef ref = parseRepoRef(repoCloneUrl);
