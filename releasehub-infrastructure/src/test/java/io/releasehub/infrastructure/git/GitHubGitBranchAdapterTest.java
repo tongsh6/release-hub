@@ -105,4 +105,55 @@ class GitHubGitBranchAdapterTest {
         assertNull(status.latestCommit());
         server.verify();
     }
+
+    @Test
+    void shouldCheckMergeabilityAsMergeable() {
+        server.expect(requestTo("https://api.github.com/repos/acme/releasehub/pulls"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"number\":301,\"mergeable\":true}"));
+
+        server.expect(requestTo("https://api.github.com/repos/acme/releasehub/pulls/301"))
+                .andExpect(method(HttpMethod.PATCH))
+                .andRespond(withStatus(HttpStatus.OK)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{}"));
+
+        GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
+                "https://github.com/acme/releasehub.git",
+                "token",
+                "feature/ITER-1",
+                "release/RW-1"
+        );
+
+        assertTrue(result.canMerge());
+        server.verify();
+    }
+
+    @Test
+    void shouldCheckMergeabilityAsConflict() {
+        server.expect(requestTo("https://api.github.com/repos/acme/releasehub/pulls"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"number\":302,\"mergeable\":false}"));
+
+        server.expect(requestTo("https://api.github.com/repos/acme/releasehub/pulls/302"))
+                .andExpect(method(HttpMethod.PATCH))
+                .andRespond(withStatus(HttpStatus.OK)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{}"));
+
+        GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
+                "https://github.com/acme/releasehub.git",
+                "token",
+                "feature/ITER-1",
+                "release/RW-1"
+        );
+
+        assertFalse(result.canMerge());
+        assertTrue(result.detail().contains("conflict"));
+        server.verify();
+    }
 }

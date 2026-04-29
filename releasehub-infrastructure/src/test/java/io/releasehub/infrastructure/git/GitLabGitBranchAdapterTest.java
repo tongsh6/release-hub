@@ -123,4 +123,55 @@ class GitLabGitBranchAdapterTest {
         assertEquals("abc123", status.latestCommit());
         server.verify();
     }
+
+    @Test
+    void shouldCheckMergeabilityAsMergeable() {
+        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/merge_requests"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"iid\":201,\"merge_status\":\"can_be_merged\"}"));
+
+        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/merge_requests/201"))
+                .andExpect(method(HttpMethod.PUT))
+                .andRespond(withStatus(HttpStatus.OK)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{}"));
+
+        GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
+                "https://gitlab.example.com/acme/releasehub.git",
+                "token",
+                "feature/ITER-1",
+                "release/RW-1"
+        );
+
+        assertTrue(result.canMerge());
+        server.verify();
+    }
+
+    @Test
+    void shouldCheckMergeabilityAsConflict() {
+        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/merge_requests"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"iid\":202,\"merge_status\":\"cannot_be_merged\"}"));
+
+        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/merge_requests/202"))
+                .andExpect(method(HttpMethod.PUT))
+                .andRespond(withStatus(HttpStatus.OK)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{}"));
+
+        GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
+                "https://gitlab.example.com/acme/releasehub.git",
+                "token",
+                "feature/ITER-1",
+                "release/RW-1"
+        );
+
+        assertFalse(result.canMerge());
+        assertTrue(result.detail().contains("conflict"));
+        server.verify();
+    }
 }
