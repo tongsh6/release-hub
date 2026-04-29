@@ -108,7 +108,10 @@ public enum ErrorCode {
     BRANCH_RULE_NAME_TOO_LONG("BR_003", "error.br.name_too_long", 400),
     BRANCH_RULE_PATTERN_REQUIRED("BR_004", "error.br.pattern_required", 400),
     BRANCH_RULE_PATTERN_TOO_LONG("BR_005", "error.br.pattern_too_long", 400),
-    BRANCH_RULE_PATTERN_INVALID("BR_006", "error.br.pattern_invalid", 400);
+    BRANCH_RULE_PATTERN_INVALID("BR_006", "error.br.pattern_invalid", 400),
+
+    // ========== 冲突检测 (CONFLICT) ==========
+    CONFLICT_DETECTED("CONFLICT_001", "error.conflict.detected", 409);
 
     /**
      * 错误码

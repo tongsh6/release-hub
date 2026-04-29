@@ -118,4 +118,10 @@ public class BusinessException extends BaseException {
     public static BusinessException runTaskCiTriggerFailed(Object details) {
         return of(ErrorCode.RUN_TASK_CI_TRIGGER_FAILED, details);
     }
+
+    // ========== Conflict Detection ==========
+
+    public static BusinessException conflictDetected(String detail) {
+        return of(ErrorCode.CONFLICT_DETECTED, detail);
+    }
 }

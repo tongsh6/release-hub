@@ -1,5 +1,6 @@
 package io.releasehub.application.run;
 
+import io.releasehub.application.conflict.ConflictDetectionAppService;
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
@@ -7,7 +8,9 @@ import io.releasehub.application.version.VersionUpdateAppService;
 import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
 import io.releasehub.application.window.WindowIterationPort;
+import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.domain.conflict.ConflictReport;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
@@ -39,6 +42,7 @@ public class RunAppService {
     private final IterationPort iterationPort;
     private final CodeRepositoryPort codeRepositoryPort;
     private final VersionUpdateAppService versionUpdateAppService;
+    private final ConflictDetectionAppService conflictDetectionAppService;
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
@@ -141,7 +145,15 @@ public class RunAppService {
         // 验证仓库存在
         codeRepositoryPort.findById(RepoId.of(repoId))
                 .orElseThrow(() -> NotFoundException.repository(repoId));
-        
+
+        // 冲突预检 — 存在未解决的冲突时阻断执行
+        ConflictReport conflictReport = conflictDetectionAppService.getLatestReport(windowId)
+                .orElseGet(() -> conflictDetectionAppService.checkWindowConflicts(windowId));
+        if (conflictReport.hasConflicts()) {
+            throw BusinessException.conflictDetected(
+                    "发布窗口存在 " + conflictReport.totalCount() + " 个冲突，请先解决所有冲突");
+        }
+
         // 创建版本更新请求
         VersionUpdateRequest request = buildTool == BuildTool.MAVEN
                 ? VersionUpdateRequest.forMaven(RepoId.of(repoId), repoPath, targetVersion, pomPath)
@@ -210,6 +222,14 @@ public class RunAppService {
         
         ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId))
                 .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
+
+        // 冲突预检 — 存在未解决的冲突时阻断执行
+        ConflictReport conflictReport = conflictDetectionAppService.getLatestReport(windowId)
+                .orElseGet(() -> conflictDetectionAppService.checkWindowConflicts(windowId));
+        if (conflictReport.hasConflicts()) {
+            throw BusinessException.conflictDetected(
+                    "发布窗口存在 " + conflictReport.totalCount() + " 个冲突，请先解决所有冲突");
+        }
 
         int order = 1;
         for (RepoVersionUpdateInfo repoInfo : repositories) {
