@@ -24,6 +24,7 @@
 | [openspec/](openspec/AGENTS.md) | 规范驱动开发 | 规划/提案/规范变更 |
 | [context/tech/REPO_SNAPSHOT.md](context/tech/REPO_SNAPSHOT.md) | 仓库快照（快速理解） | 首次会话/快速定位 |
 | [workflow/](workflow/INDEX.md) | 工作流阶段定义 | 理解流程/阶段路由 |
+| [context/tech/architecture/ai-engineering-governance.md](context/tech/architecture/ai-engineering-governance.md) | AI 工程治理准则（长期演进原则） | **任何实现类任务前必读** |
 | [.ai/standards/](.ai/standards/AIEF_EXTENSION_PROPOSAL.md) | AIEF 标准规范与可复用模式 | 扩展 AI 工程化框架 |
 | [.ai-adapters/](.ai-adapters/README.md) | 多工具适配层 | 配置/对齐 AI 工具 |
 
@@ -40,6 +41,25 @@ context/
 ---
 
 ## 核心开发规范
+
+### 工程治理准则（长期演进）
+
+任何实现类任务（新功能、Bug 修复、重构、性能优化、架构调整）开始前，必须读取并遵循：
+
+- [AI 工程治理准则](context/tech/architecture/ai-engineering-governance.md)
+
+该准则将以下原则固化为项目级约束：
+
+- **DRY**：消除业务规则重复，而不是表面去重
+- **开闭原则**：新增变化点优先走 Port / Strategy / Registry
+- **正交性**：生命周期、Git、版本、冲突、执行记录、UI 各自独立
+- **切面化**：权限、审计、幂等、事务、锁、重试、指标统一处理
+- **深模块**：窄接口、深实现，隐藏内部复杂性
+- **复杂时序显式建模**：状态机、RunTask、依赖、执行记录
+- **性能一等约束**：多仓库场景考虑并行、缓存、锁、聚合读模型
+- **前沿建模范式**：DDD、状态机、领域事件、Process Manager、Policy、CQRS、DAG
+
+AI 不得只完成眼前局部改动；必须评估是否破坏长期可维护性。
 
 ### 架构约束 (DDD + 模块化单体)
 
@@ -120,6 +140,7 @@ AI 在接收任务时，应自动判断任务类型并执行相应流程：
 
 | 任务涉及 | 自动加载 |
 |----------|---------|
+| 任何实现类任务 | `context/tech/architecture/ai-engineering-governance.md` |
 | 领域模型（ReleaseWindow/Iteration/VersionPolicy） | `context/business/domain-model.md` |
 | 发布窗口 API | `context/tech/api/release-window.md` |
 | 后端代码 | `context/tech/conventions/backend.md` |
@@ -174,6 +195,7 @@ context/experience/lessons/release-window-lifecycle.md
 
 | 场景 | 推荐加载 |
 |------|----------|
+| 任何实现类任务/长期演进判断 | `context/tech/architecture/ai-engineering-governance.md` |
 | 快速了解项目 | `context/tech/REPO_SNAPSHOT.md` |
 | 理解业务需求 | `context/business/` |
 | 技术实现决策 | `context/tech/architecture/` |
