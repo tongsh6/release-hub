@@ -1,8 +1,8 @@
 # ReleaseHub 项目总体规划书
 
-> 版本：v3.0  
-> 最后更新：2026-01-28（2026-05-01 同步状态）  
-> 状态：MVP 核心功能已完成，M4+M5 已通过 Phase 1-4 完成
+> 版本：v3.1
+> 最后更新：2026-05-02（Phase 1-7 + P0 治理收尾完成）
+> 状态：MVP 核心功能已完成，v0.1.9 质量基线清零
 
 ---
 
@@ -55,7 +55,7 @@ ReleaseHub 面向「多项目、多仓库」场景，统一管理发布窗口、
 | **BranchRule** | 分支规则与合规校验 |
 | **RunTask** | 运行任务与执行步骤 |
 
-> 详细领域模型参见 `release-hub/docs/DOMAIN_MODEL.md`
+> 详细领域模型参见 `docs/DOMAIN_MODEL.md`
 
 ---
 
@@ -69,21 +69,19 @@ ReleaseHub 面向「多项目、多仓库」场景，统一管理发布窗口、
 - VersionUpdater：Maven/Gradle 版本更新 + Diff 生成
 - Run：执行记录 + 导出/重试
 - RunTask：8 种任务执行器
-- 发布准备/收尾：合并与编排 API（手动触发）
+- 发布准备/收尾：合并与编排 API + Publish 自动编排（事件驱动）
 - 前端 UI：核心页面全部可用
 
 ### ⚠️ 待完善
-- 分支创建/合并/归档自动化与规则对齐（提测与收尾流程）
-- 分组 code 自动生成与末端节点校验
-- groupCode 关联到发布窗口/迭代/仓库（实现缺口）
-- BranchRule：前端升级为新 API（TEMPLATE/REGEX）
-- Version Ops Dashboard：对接真实 API
+- 发布准备/收尾自动化对齐（Attach 错误可见性已完成，Run 追踪集成待做）
 
-### ❌ 明确排除（后续 Roadmap）
+### ❌ 明确排除（当前版本不实现）
 - 项目管理（Project）
 - 权限体系（RBAC）
 - 通知（飞书/钉钉/邮件）
 - CI/CD 深度集成
+
+> 注：通知和 RBAC 在早期 Roadmap 中列为 Phase 3/4，但经评估不属于 MVP 范围，已从当前 Roadmap 移除。如后续需求变化可重新评估。
 
 ---
 
@@ -101,14 +99,14 @@ ReleaseHub 面向「多项目、多仓库」场景，统一管理发布窗口、
 ### 5.2 模块结构
 
 ```
-release-hub/                      # 后端（DDD 分层）
+backend/                          # 后端（DDD 分层）
 ├── releasehub-domain/            # 聚合根、实体（无框架依赖）
 ├── releasehub-application/       # 应用服务、Port 接口
 ├── releasehub-infrastructure/    # JPA 实现、VersionUpdater
 ├── releasehub-interfaces/        # REST 控制器
 └── releasehub-bootstrap/         # Spring Boot 启动
 
-release-hub-web/                  # 前端（Vue 3）
+frontend/                         # 前端（Vue 3）
 ├── src/views/                    # 按业务域划分页面
 ├── src/api/                      # API 封装
 └── src/components/               # 可复用组件
@@ -153,7 +151,7 @@ ReleaseWindow: DRAFT → PUBLISHED → CLOSED
 | ReleaseWindow | `/api/v1/release-windows` | CRUD, publish, freeze, attach/detach, plan, orchestrate, merge, validate |
 | Iteration | `/api/v1/iterations` | CRUD, repos add/remove |
 | Repository | `/api/v1/repositories` | CRUD, sync, branch summary |
-| BranchRule | `/api/v1/branch-rules` | CRUD, 合规检查 |
+| BranchRule | `/api/v1/branch-rules` | CRUD, enable/disable, test, 合规检查 |
 | Run | `/api/v1/runs` | 查询, 导出, 重试 |
 | Group | `/api/v1/groups` | tree, CRUD |
 | Settings | `/api/v1/settings/gitlab` | get/save/test |
@@ -196,17 +194,17 @@ ReleaseWindow: DRAFT → PUBLISHED → CLOSED
 
 ### 测试覆盖
 
-- ✅ 单元测试：VersionUpdater（Maven/Gradle）
-- ✅ 集成测试：版本更新 API（13 用例通过）
+- ✅ 后端测试：134/134 通过（52 单元/集成 + 82 E2E TestContainers）
+- ✅ 前端 E2E：62/62 通过（Puppeteer, 6 套件）
 - ✅ 架构测试：ArchUnit（11 个测试通过）
+- ✅ 前端 typecheck / lint 通过
 
 ### 待完成任务
 
-> 2026-05-01 更新：原 P1 任务（分组code/groupCode关联/BranchRule前端/VersionOps Dashboard/冲突检测/日历视图）均已通过 Phase 1-4 完成。
+> 2026-05-02 更新：Phase 1-7 已全部完成（v0.1.8）。P0 治理收尾已完成（v0.1.9）。当前无阻塞性待办项。
 
-1. 发布准备/收尾全自动化触发（P1，2-3 天）
-2. API 文档完善（✅ 2026-05-01 完成 6 模块）
-3. 部署与容器化文档
+- Attach 分支操作集成 Run 追踪（技术债务，较大架构调整，择期处理）
+- 预存 SpotBugs EI_EXPOSE_REP 修复（`releasehub-common` 基础类，全局影响）
 
 ---
 
@@ -215,21 +213,25 @@ ReleaseWindow: DRAFT → PUBLISHED → CLOSED
 | 阶段 | 内容 | 状态 |
 |------|------|------|
 | **Phase 1** | 前端对齐：BranchRule 新 API 对接、Version Ops Dashboard | ✅ 已完成 |
-| **Phase 2** | 体验增强：迭代/发布窗口日历视图（统计视角）、冲突检测可视化 | ✅ 已完成 |
-| **Phase 3** | 通知集成：飞书/钉钉/邮件 | 📋 待开始 |
-| **Phase 4** | 企业级特性：RBAC 权限、多租户 | 📋 待开始 |
+| **Phase 2** | 体验增强：日历视图（月/周 + 冲突可视化） | ✅ 已完成 |
+| **Phase 3** | 部署 & 发布自动化：部署文档、Attach 错误可见性、Publish 自动编排 | ✅ 已完成 |
+| **Phase 4** | E2E & 质量：TestContainers E2E 补齐、静态扫描脚本、文档一致性 | ✅ 已完成 |
+| **Phase 5** | 技术债务清理：预存 SpotBugs 修复、Attach Run 追踪集成 | 📋 择期 |
+| **Phase 6** | 待定（根据用户反馈决定通知/RBAC/性能优化方向） | 💡 讨论中 |
 
 ---
 
 ## 11. 快速开始
 
 ```bash
+# PostgreSQL
+cd docs && docker compose up -d
+
 # 后端
-docker-compose up -d                    # 启动 PostgreSQL
-cd release-hub && ./mvnw spring-boot:run -pl releasehub-bootstrap
+cd backend && mvn -q spring-boot:run -pl releasehub-bootstrap -Dspring-boot.run.profiles=local
 
 # 前端
-cd release-hub-web && pnpm dev
+cd frontend && pnpm dev
 
 # 访问
 # 前端: http://localhost:5173 (admin/admin)
@@ -253,4 +255,4 @@ cd release-hub-web && pnpm dev
 |------|------|
 | `FUNCTION_DEVELOPMENT_PLAN.md` | 功能开发规划 |
 | `NEXT_STEPS_TASKS.md` | 待办任务清单 |
-| `release-hub/docs/DOMAIN_MODEL.md` | 详细领域模型 |
+| `docs/DOMAIN_MODEL.md` | 详细领域模型 |

@@ -35,7 +35,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # ===== AI Tools (local only) =====
+.ai/reports/
 .ai/temp/
+frontend/e2e/screenshots/
 .amazonq/
 .cursor/
 .vercel/

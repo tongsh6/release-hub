@@ -1,5 +1,17 @@
 # ReleaseHub 功能开发规划
 
+> **📦 历史参考文档**：本文档撰写于 2026-01-28，2026-05-01~02 通过 Phase 1-7 将其中所有 P1 任务全部完成（v0.1.8）。
+>
+> **当前计划请查看**：
+> - 推进计划：`tasks/plans/`
+> - 执行记录：`tasks/records/`
+> - 项目进度：`docs/PROJECT_PROGRESS.md`
+> - 任务规范：`tasks/QUICK_START.md` 和 `tasks/CONSTRAINTS.md`
+>
+> 本文档保留作为功能演进历史参考，不再作为当前任务的权威来源。
+>
+> ---
+>
 > 最后更新：2026-01-28（2026-05-01 同步实际完成状态）
 > 基于项目扫描和代码分析
 > ⚠️ 本文档中标记为 P1 的多项功能已于后续迭代中完成，详见项目现状分析
@@ -107,12 +119,11 @@
 - ✅ 版本更新对话框（VersionUpdateDialog）
 - ✅ Diff 查看组件（DiffViewer）
 
-#### 测试覆盖
-- ✅ MavenVersionUpdater 单元测试
-- ✅ GradleVersionUpdater 单元测试
-- ✅ 版本更新 API 集成测试（7 个测试用例）
-- ✅ 版本校验 API 集成测试（6 个测试用例）
+#### 测试覆盖（2026-05-02 更新）
+- ✅ 后端测试：134/134 通过（52 单元/集成 + 82 E2E TestContainers）
+- ✅ 前端 E2E：62/62 通过（Puppeteer, 6 套件）
 - ✅ ArchUnit 架构测试（11 个测试通过）
+- ✅ 前端 typecheck / lint 通过
 
 ### 1.2 部分实现/待完善功能（⚠️）
 
@@ -135,22 +146,19 @@
   - 现状：ReleaseWindow/Iteration/CodeRepository 均包含 groupCode + 叶子节点校验（v0.1.x 完成）
 
 #### 发布准备与收尾自动化
-- ⚠️ **提测合并与收尾编排自动化**
-  - 目标口径：挂载迭代触发 release 分支创建与合并，收尾编排包含归档与合并
-  - 现状：已有接口但未形成自动化触发（实现缺口）
+- ✅ **提测合并与收尾编排自动化**（Phase 6, 2026-05-02）
+  - Attach 错误可见性：`AttachResult` 值对象 + `hasErrors`/`errors` 字段
+  - Publish 自动编排：`WindowPublishedEvent` → `WindowLifecycleListener`（AFTER_COMMIT）
+  - 剩余缺口：Attach 分支操作集成 Run 追踪（技术债务，择期处理）
 
-### 1.3 未实现功能（❌）
+### 1.3 已完成增强功能（✅，原列在"未实现"中）
 
-#### 增强功能（✅ 已完成）
-- ✅ **发布窗口日历视图**
+- ✅ **发布窗口日历视图**（2026-05-01，Phase 3）
   - 月视图 + 周视图 + 同日冲突可视化
-  - **2026-05-01 完成**（Phase 3）
+- ✅ **冲突检测增强**（2026-04-29）
+  - 版本号冲突 / 分支冲突 / 跨仓库一致性 / Git 合并冲突四维预检（7 种冲突类型）
 
-- ✅ **冲突检测增强**
-  - 版本号冲突 / 分支冲突 / 跨仓库一致性 / Git 合并冲突四维预检
-  - **2026-04-29 完成**（全栈实现，7 种冲突类型）
-
-#### 未来功能（Roadmap）
+### 1.4 未来功能（Roadmap）
 - ❌ GitOps（自动建分支、打 tag、生成 changelog）
 - ❌ CI/CD 集成（Jenkins/GHA）
 - ❌ 通知（飞书/钉钉/邮件）
@@ -228,15 +236,17 @@
 
 **预估工作量**：已完成（v0.1.x）
 
-#### 3.4 发布准备与收尾自动化对齐
+#### 3.4 发布准备与收尾自动化对齐 ✅
 **目标**：提测合并与收尾编排按规则自动触发。
 
 **任务清单**：
-- [ ] 挂载迭代自动创建 release 分支并合并 feature/hotfix
-- [ ] 解除挂载归档分支，归档原因为 unpublished
-- [ ] 收尾编排归档分支与迭代，归档原因为 released
+- [x] 挂载迭代自动创建 release 分支并合并 feature/hotfix
+- [x] 解除挂载归档分支，归档原因为 unpublished
+- [x] 收尾编排归档分支与迭代，归档原因为 released
+- [x] Attach 错误可见性（`AttachResult`，Phase 6）
+- [x] Publish 自动编排（`WindowPublishedEvent` → `WindowLifecycleListener`，Phase 6）
 
-**预估工作量**：2-3 天
+**预估工作量**：已完成（2026-05-02 Phase 6），剩余 Attach Run 追踪集成为技术债务
 
 #### 3.5 BranchRule 前端升级 ✅
 **目标**：前端对接新 API，支持 scope/启用/禁用/测试。
@@ -277,6 +287,8 @@
 ---
 
 ## 四、开发计划建议
+
+> **📦 历史参考**：以下为 2026-01-28 制定的 3 周计划。实际执行于 2026-05-01~02 以 7 个 Phase 在 2 天内完成（详见 `tasks/records/`）。以下内容保留作为规划方法参考，不代表实际执行时序。
 
 ### Phase 1：流程对齐（1 周）
 
@@ -341,23 +353,25 @@
 - ✅ 数据库字段类型（message 字段改为 TEXT）
 - ✅ 错误处理改进（BizException + 404 状态码）
 
-### 6.2 已解决的技术债务（2026-05-01 更新）
-1. ~~**BranchRule 前端升级**~~ → ✅ 已升级为 TEMPLATE/REGEX（Phase 1）
-2. ~~**Version Ops Dashboard 未对接**~~ → ✅ 已对接真实 API（Phase 2）
-3. ~~**分组 code 自动生成缺口**~~ → ✅ v0.1.x 已修复
-4. ~~**groupCode 关联缺口**~~ → ✅ v0.1.x 已修复
+### 6.2 已解决的技术债务（2026-05-02 更新）
+1. ~~**BranchRule 前端升级**~~ → ✅ Phase 1
+2. ~~**Version Ops Dashboard 未对接**~~ → ✅ Phase 2
+3. ~~**分组 code 自动生成缺口**~~ → ✅ v0.1.x
+4. ~~**groupCode 关联缺口**~~ → ✅ v0.1.x
+5. ~~**发布准备/收尾自动化缺口**~~ → ✅ Phase 6（Attach 错误可见性 + Publish 自动编排）
 
 ### 6.3 待解决的技术债务
-1. **发布准备/收尾自动化缺口**
-   - 自动创建/合并/归档规则未形成自动触发
-   - 影响：提测与收尾流程依赖人工触发
+1. **Attach 分支操作集成 Run 追踪**（Phase 6 遗留）
+   - AttachAppService 和 RunAppService 存在并行实现，统一两者需要较大架构调整
+2. **预存 SpotBugs EI_EXPOSE_REP × 5**（`releasehub-common`）
+   - PageResult / ApiPageResponse 可变对象暴露，全局影响
 
-### 6.3 风险与对策
-1. **前端与后端模型不一致**
-   - 对策：先完成 BranchRule 前端升级，统一模型
+### 6.4 风险与对策（2026-05-02：以下风险均已解除）
 
-2. **前端日历组件集成**
-   - 对策：选择成熟组件（FullCalendar），减少开发风险
+1. ~~**前端与后端模型不一致**~~ → ✅ Phase 1 已统一
+2. ~~**前端日历组件集成**~~ → ✅ Phase 3 已完成（FullCalendar + 冲突可视化）
+
+当前无活跃风险项。
 
 ---
 
