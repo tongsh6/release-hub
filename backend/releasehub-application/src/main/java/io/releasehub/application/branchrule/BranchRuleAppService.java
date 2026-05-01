@@ -4,6 +4,7 @@ import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.branchrule.BranchRule;
 import io.releasehub.domain.branchrule.BranchRuleId;
+import io.releasehub.domain.branchrule.BranchRuleScope;
 import io.releasehub.domain.branchrule.BranchRuleType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -38,17 +39,19 @@ public class BranchRuleAppService implements BranchRuleUseCase {
     }
 
     @Transactional
-    public BranchRule create(String name, String pattern, BranchRuleType type) {
+    public BranchRule create(String name, String pattern, BranchRuleType type,
+                              String description, BranchRuleScope scope) {
         Instant now = Instant.now();
-        BranchRule rule = BranchRule.create(name, pattern, type, now);
+        BranchRule rule = BranchRule.create(name, pattern, type, description, scope, now);
         branchRulePort.save(rule);
         return rule;
     }
 
     @Transactional
-    public BranchRule update(String id, String name, String pattern, BranchRuleType type) {
+    public BranchRule update(String id, String name, String pattern, BranchRuleType type,
+                              String description, BranchRuleScope scope) {
         BranchRule rule = get(id);
-        rule.update(name, pattern, type, Instant.now());
+        rule.update(name, pattern, type, description, scope, Instant.now());
         branchRulePort.save(rule);
         return rule;
     }
@@ -61,34 +64,50 @@ public class BranchRuleAppService implements BranchRuleUseCase {
         branchRulePort.deleteById(ruleId);
     }
 
+    @Transactional
+    public void enable(String id) {
+        BranchRule rule = get(id);
+        rule.enable(Instant.now());
+        branchRulePort.save(rule);
+    }
+
+    @Transactional
+    public void disable(String id) {
+        BranchRule rule = get(id);
+        rule.disable(Instant.now());
+        branchRulePort.save(rule);
+    }
+
     /**
      * 检查分支名称是否符合规则
-     *
-     * @param branchName 分支名称
-     * @return 是否符合
+     * 新模型：所有规则都是允许规则，只匹配已启用的规则
      */
     @Transactional(readOnly = true)
     public boolean isCompliant(String branchName) {
-        List<BranchRule> rules = branchRulePort.findAll();
-        if (rules.isEmpty()) {
-            return true; // 无规则时默认允许
+        List<BranchRule> enabledRules = branchRulePort.findAllEnabled();
+        if (enabledRules.isEmpty()) {
+            return true; // 无启用规则时默认允许
         }
+        return enabledRules.stream().anyMatch(r -> r.matches(branchName));
+    }
 
-        // 检查是否有阻止规则匹配
-        for (BranchRule rule : rules) {
-            if (rule.getType() == BranchRuleType.BLOCK && rule.matches(branchName)) {
-                return false;
-            }
+    @Transactional(readOnly = true)
+    public BranchRuleTestResult test(String pattern, BranchRuleType type, String branchName) {
+        if (pattern == null || pattern.isBlank()) {
+            return new BranchRuleTestResult(false, null, List.of("Pattern is required"));
         }
-
-        // 检查是否有允许规则匹配
-        boolean hasAllowRule = rules.stream().anyMatch(r -> r.getType() == BranchRuleType.ALLOW);
-        if (hasAllowRule) {
-            return rules.stream()
-                    .filter(r -> r.getType() == BranchRuleType.ALLOW)
-                    .anyMatch(r -> r.matches(branchName));
+        if (branchName == null || branchName.isBlank()) {
+            return new BranchRuleTestResult(false, null, List.of("Branch name is required"));
         }
-
-        return true;
+        try {
+            // Use a temporary rule to test matching
+            BranchRule tempRule = BranchRule.create("_test_", pattern, type,
+                    BranchRuleScope.global(), Instant.now());
+            boolean matched = tempRule.matches(branchName);
+            return new BranchRuleTestResult(matched, null,
+                    matched ? List.of() : List.of("Branch name '" + branchName + "' does not match pattern"));
+        } catch (Exception e) {
+            return new BranchRuleTestResult(false, null, List.of(e.getMessage()));
+        }
     }
 }

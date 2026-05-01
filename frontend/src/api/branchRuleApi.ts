@@ -2,11 +2,24 @@ import { apiGet, apiPost, apiPut, apiDel, http } from '@/api/http'
 import type { PageResult, PageQuery, Id } from '@/types/crud'
 import type { ApiPageResponse } from '@/api/repositoryApi'
 
+export type BranchRuleType = 'TEMPLATE' | 'REGEX'
+export type Status = 'ENABLED' | 'DISABLED'
+export type ScopeLevel = 'GLOBAL' | 'PROJECT' | 'SUB_PROJECT'
+
+export interface ScopeView {
+  level: ScopeLevel
+  projectId?: string
+  subProjectId?: string
+}
+
 export interface BranchRule {
   id: string
   name: string
   pattern: string
-  type: 'ALLOW' | 'BLOCK'
+  type: BranchRuleType
+  description?: string
+  scope: ScopeView
+  status: Status
   createdAt?: string
   updatedAt?: string
 }
@@ -14,13 +27,33 @@ export interface BranchRule {
 export interface CreateBranchRuleReq {
   name: string
   pattern: string
-  type: 'ALLOW' | 'BLOCK'
+  type: BranchRuleType
+  description?: string
+  scopeLevel?: ScopeLevel
+  scopeProjectId?: string
+  scopeSubProjectId?: string
 }
 
 export interface UpdateBranchRuleReq {
   name: string
   pattern: string
-  type: 'ALLOW' | 'BLOCK'
+  type: BranchRuleType
+  description?: string
+  scopeLevel?: ScopeLevel
+  scopeProjectId?: string
+  scopeSubProjectId?: string
+}
+
+export interface BranchRuleTestReq {
+  pattern: string
+  type: BranchRuleType
+  branchName: string
+}
+
+export interface BranchRuleTestResp {
+  ok: boolean
+  rendered?: string
+  errors?: string[]
 }
 
 export const branchRuleApi = {
@@ -53,7 +86,20 @@ export const branchRuleApi = {
     await apiDel<void>(`/v1/branch-rules/${id}`)
   },
 
+  async enable(id: Id): Promise<void> {
+    await apiPost<void>(`/v1/branch-rules/${id}/enable`, {})
+  },
+
+  async disable(id: Id): Promise<void> {
+    await apiPost<void>(`/v1/branch-rules/${id}/disable`, {})
+  },
+
   async check(branchName: string): Promise<{ branchName: string; compliant: boolean }> {
-    return await apiGet<{ branchName: string; compliant: boolean }>(`/v1/branch-rules/check?branchName=${encodeURIComponent(branchName)}`)
+    return await apiGet<{ branchName: string; compliant: boolean }>(
+      `/v1/branch-rules/check?branchName=${encodeURIComponent(branchName)}`)
+  },
+
+  async test(req: BranchRuleTestReq): Promise<BranchRuleTestResp> {
+    return await apiPost<BranchRuleTestResp>('/v1/branch-rules/test', req)
   }
 }

@@ -84,7 +84,7 @@ public class VersionValidationAppService {
         String fallbackBranch = DEFAULT_RELEASE_PREFIX + windowKey;
 
         List<BranchRule> allowRules = branchRuleUseCase.list().stream()
-                .filter(rule -> rule.getType() == BranchRuleType.ALLOW)
+                .filter(BranchRule::isEnabled)
                 .sorted(Comparator
                         .comparing((BranchRule rule) -> !rule.getPattern().startsWith(DEFAULT_RELEASE_PREFIX))
                         .thenComparingInt(rule -> wildcardCount(rule.getPattern()))

@@ -1,9 +1,11 @@
 package io.releasehub.application.version;
 
+import io.releasehub.application.branchrule.BranchRuleTestResult;
 import io.releasehub.application.branchrule.BranchRuleUseCase;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.branchrule.BranchRule;
+import io.releasehub.domain.branchrule.BranchRuleScope;
 import io.releasehub.domain.branchrule.BranchRuleType;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
@@ -59,8 +61,8 @@ class VersionValidationAppServiceTest {
         releaseWindowPort.save(window);
 
         branchRuleUseCase.setRules(List.of(
-                BranchRule.create("feature", "feature/*", BranchRuleType.ALLOW, Instant.now()),
-                BranchRule.create("release", "release/*", BranchRuleType.ALLOW, Instant.now())
+                BranchRule.create("feature", "feature/*", BranchRuleType.TEMPLATE, BranchRuleScope.global(), Instant.now()),
+                BranchRule.create("release", "release/*", BranchRuleType.TEMPLATE, BranchRuleScope.global(), Instant.now())
         ));
 
         VersionValidationResult result = appService.validateVersion(window.getId().value(), "PATCH", "1.2.3");
@@ -71,14 +73,16 @@ class VersionValidationAppServiceTest {
     }
 
     @Test
-    @DisplayName("无允许规则时回退到 release 分支")
-    void shouldFallbackToReleaseBranchWhenNoAllowRules() {
+    @DisplayName("无启用规则时回退到 release 分支")
+    void shouldFallbackToReleaseBranchWhenNoEnabledRules() {
         ReleaseWindow window = ReleaseWindow.createDraft("RW-20260304", "window", null, null, "G1", Instant.now());
         releaseWindowPort.save(window);
 
-        branchRuleUseCase.setRules(List.of(
-                BranchRule.create("main-block", "main", BranchRuleType.BLOCK, Instant.now())
-        ));
+        // 所有规则都禁用
+        BranchRule disabledRule = BranchRule.create("feature", "feature/*",
+                BranchRuleType.TEMPLATE, BranchRuleScope.global(), Instant.now());
+        disabledRule.disable(Instant.now());
+        branchRuleUseCase.setRules(List.of(disabledRule));
 
         VersionValidationResult result = appService.validateVersion(window.getId().value(), "PATCH", "1.2.3");
 
@@ -87,19 +91,21 @@ class VersionValidationAppServiceTest {
     }
 
     @Test
-    @DisplayName("推导分支不合规时返回失败")
-    void shouldFailWhenDerivedBranchIsNotCompliant() {
+    @DisplayName("有匹配规则时使用规则衍生分支（非 release 回退）")
+    void shouldUseMatchingRuleWhenAvailable() {
         ReleaseWindow window = ReleaseWindow.createDraft("RW-20260304", "window", null, null, "G1", Instant.now());
         releaseWindowPort.save(window);
 
+        // 只允许 feature/ 开头的分支 — 衍生器应使用 feature 规则而非回退到 release/
         branchRuleUseCase.setRules(List.of(
-                BranchRule.create("block-release", "release/*", BranchRuleType.BLOCK, Instant.now())
+                BranchRule.create("only-feature", "feature/*",
+                        BranchRuleType.TEMPLATE, BranchRuleScope.global(), Instant.now())
         ));
 
         VersionValidationResult result = appService.validateVersion(window.getId().value(), "PATCH", "1.2.3");
 
-        assertThat(result.valid()).isFalse();
-        assertThat(result.errorMessage()).contains("Derived branch does not match branch rules");
+        assertThat(result.valid()).isTrue();
+        assertThat(result.derivedBranch()).isEqualTo("feature/RW-20260304");
     }
 
     private static class InMemoryVersionPolicyPort implements VersionPolicyPort {
@@ -181,19 +187,19 @@ class VersionValidationAppServiceTest {
         }
 
         @Override
-        public BranchRule create(String name, String pattern, BranchRuleType type) {
-            BranchRule rule = BranchRule.create(name, pattern, type, Instant.now());
+        public BranchRule create(String name, String pattern, BranchRuleType type,
+                                  String description, BranchRuleScope scope) {
+            BranchRule rule = BranchRule.create(name, pattern, type, description, scope, Instant.now());
             rules.add(rule);
             return rule;
         }
 
         @Override
-        public BranchRule update(String id, String name, String pattern, BranchRuleType type) {
+        public BranchRule update(String id, String name, String pattern, BranchRuleType type,
+                                  String description, BranchRuleScope scope) {
             BranchRule existing = get(id);
-            if (existing == null) {
-                return null;
-            }
-            existing.update(name, pattern, type, Instant.now());
+            if (existing == null) return null;
+            existing.update(name, pattern, type, description, scope, Instant.now());
             return existing;
         }
 
@@ -203,25 +209,27 @@ class VersionValidationAppServiceTest {
         }
 
         @Override
+        public void enable(String id) {
+            BranchRule rule = get(id);
+            if (rule != null) rule.enable(Instant.now());
+        }
+
+        @Override
+        public void disable(String id) {
+            BranchRule rule = get(id);
+            if (rule != null) rule.disable(Instant.now());
+        }
+
+        @Override
         public boolean isCompliant(String branchName) {
-            if (rules.isEmpty()) {
-                return true;
-            }
+            List<BranchRule> enabled = rules.stream().filter(BranchRule::isEnabled).toList();
+            if (enabled.isEmpty()) return true;
+            return enabled.stream().anyMatch(r -> r.matches(branchName));
+        }
 
-            for (BranchRule rule : rules) {
-                if (rule.getType() == BranchRuleType.BLOCK && rule.matches(branchName)) {
-                    return false;
-                }
-            }
-
-            boolean hasAllowRule = rules.stream().anyMatch(rule -> rule.getType() == BranchRuleType.ALLOW);
-            if (hasAllowRule) {
-                return rules.stream()
-                        .filter(rule -> rule.getType() == BranchRuleType.ALLOW)
-                        .anyMatch(rule -> rule.matches(branchName));
-            }
-
-            return true;
+        @Override
+        public BranchRuleTestResult test(String pattern, BranchRuleType type, String branchName) {
+            return new BranchRuleTestResult(false, null, List.of("not implemented in stub"));
         }
     }
 }

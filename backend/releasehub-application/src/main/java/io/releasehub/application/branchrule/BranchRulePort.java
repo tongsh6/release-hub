@@ -14,6 +14,7 @@ public interface BranchRulePort {
     void save(BranchRule rule);
     Optional<BranchRule> findById(BranchRuleId id);
     List<BranchRule> findAll();
+    List<BranchRule> findAllEnabled();
     PageResult<BranchRule> findPaged(String name, int page, int size);
     void deleteById(BranchRuleId id);
 }
