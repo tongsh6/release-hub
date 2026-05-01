@@ -1,0 +1,72 @@
+{
+  "name": "release-hub-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:local": "vite",
+    "dev:test": "vite --mode test",
+    "build": "vite build",
+    "build:prd": "vite build --mode prd",
+    "build:test": "vite build --mode test",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "npx tsx e2e/run-all.ts",
+    "test:e2e:login": "npx tsx e2e/tests/login.test.ts",
+    "test:e2e:navigation": "npx tsx e2e/tests/navigation.test.ts",
+    "test:e2e:release-window": "npx tsx e2e/tests/release-window.test.ts",
+    "test:e2e:repository": "npx tsx e2e/tests/repository.test.ts",
+    "test:e2e:iteration": "npx tsx e2e/tests/iteration.test.ts",
+    "test:e2e:smoke": "npx tsx e2e/tests/smoke-business-flow.test.ts",
+    "test:e2e:smoke:headed": "E2E_HEADLESS=false npx tsx e2e/tests/smoke-business-flow.test.ts",
+    "test:e2e:i18n": "npx tsx e2e/tests/i18n.test.ts",
+    "test:e2e:i18n:headed": "E2E_HEADLESS=false npx tsx e2e/tests/i18n.test.ts",
+    "test:e2e:headed": "E2E_HEADLESS=false npx tsx e2e/run-all.ts",
+    "gen:api": "openapi-typescript http://localhost:8080/v3/api-docs -o src/api/schema.d.ts",
+    "gen:crud": "plop --plopfile plop/plopfile.cjs crud",
+    "gen:crud:dry": "plop --plopfile plop/plopfile.cjs crud --dryRun",
+    "gen:crud:force": "plop --plopfile plop/plopfile.cjs crud --force",
+    "i18n:lint": "node scripts/i18n-check.js"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "axios": "^1.13.2",
+    "dayjs": "^1.11.19",
+    "element-plus": "^2.12.0",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.24",
+    "vue-i18n": "9",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^24.10.1",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/test-utils": "^2.4.6",
+    "@vue/tsconfig": "^0.8.1",
+    "change-case": "^5.4.4",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.6.2",
+    "jsdom": "^27.3.0",
+    "openapi-typescript": "^7.10.1",
+    "plop": "^4.0.4",
+    "prettier": "^3.7.4",
+    "puppeteer": "^24.35.0",
+    "sass": "^1.97.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.50.0",
+    "vite": "npm:rolldown-vite@7.2.5",
+    "vitest": "^4.0.16",
+    "vue-tsc": "^3.1.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "vite": "npm:rolldown-vite@7.2.5"
+    }
+  }
+}

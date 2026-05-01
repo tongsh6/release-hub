@@ -1,0 +1,20 @@
+import type { RouteRecordRaw } from 'vue-router'
+
+const {{camel moduleName}}Routes: RouteRecordRaw[] = [
+  {
+    path: '{{kebab moduleName}}',
+    name: '{{pascal moduleName}}List',
+    component: () => import('@/views/{{dashCase moduleName}}/{{pascal moduleName}}List.vue'),
+    meta: { title: '{{entityName}} List', requiresAuth: true, permission: '{{kebab moduleName}}:read' }
+  },
+  {{#if withDetailPage}}
+  {
+    path: '{{kebab moduleName}}/detail/:id?',
+    name: '{{pascal moduleName}}Detail',
+    component: () => import('@/views/{{dashCase moduleName}}/{{pascal moduleName}}Detail.vue'),
+    meta: { title: '{{entityName}} Detail', requiresAuth: true, hidden: true, permission: '{{kebab moduleName}}:read' }
+  }
+  {{/if}}
+]
+
+export default {{camel moduleName}}Routes

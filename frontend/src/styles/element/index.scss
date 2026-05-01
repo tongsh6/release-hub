@@ -1,0 +1,51 @@
+// 覆盖 Element Plus 的默认 SCSS 变量
+// 具体变量参考：https://element-plus.org/zh-CN/guide/theming.html
+
+:root {
+  // 主色
+  --el-color-primary: #409eff;
+  
+  // 布局与间距
+  --el-main-padding: 20px;
+  
+  // 表格
+  --el-table-header-bg-color: #f5f7fa;
+  --el-table-row-hover-bg-color: #f5f7fa;
+  
+  // 字体
+  --el-font-size-base: 14px;
+}
+
+// 全局组件样式统一修正
+// 1. 表格紧凑化与表头加粗
+.el-table {
+  --el-table-header-text-color: #303133;
+  
+  th.el-table__cell {
+    font-weight: 600;
+    background-color: var(--el-table-header-bg-color);
+  }
+}
+
+// 2. 分页组件统一靠右
+.el-pagination {
+  justify-content: flex-end;
+  margin-top: 16px;
+  font-weight: normal;
+}
+
+// 3. 弹窗 body 间距
+.el-dialog__body {
+  padding: 20px 24px;
+}
+
+// 4. 表单 Label 样式
+.el-form-item__label {
+  font-weight: 500;
+}
+
+// 5. 卡片样式微调
+.el-card__header {
+  padding: 16px 20px;
+  font-weight: 600;
+}

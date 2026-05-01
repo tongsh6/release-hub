@@ -1,0 +1,21 @@
+import type { PageQuery } from '@/types/crud'
+
+export interface {{pascal moduleName}}Query extends PageQuery {
+  name?: string
+  status?: string
+}
+
+export interface {{pascal moduleName}}DTO {
+  id: string
+  name: string
+  status: 'active' | 'frozen'
+  createdAt: string
+  description?: string
+}
+
+export interface {{pascal moduleName}}Form {
+  id?: string
+  name: string
+  status: 'active' | 'frozen'
+  description?: string
+}

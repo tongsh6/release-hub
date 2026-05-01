@@ -1,0 +1,200 @@
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+/* 
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+} 
+*/
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+.card {
+  padding: 2em;
+}
+
+/*
+#app {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+*/
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}
+
+/* 中文注释：后台管理系统需要的全局基础样式，替代 Vite 模板的居中布局 */
+html, body, #app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  display: block;              /* 中文注释：禁止 Vite 模板的 flex 居中 */
+  min-height: 100%;            /* 中文注释：避免 100vh + padding 导致溢出 */
+  overflow: hidden;            /* 中文注释：body 不滚动，滚动交给主内容区 */
+}
+
+/* 中文注释：应用根节点不做最大宽度限制、不做额外 padding，交由 Layout 控制 */
+#app {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* 中文注释：可选，稳定滚动条占位（作用在主内容区更合适，但这里先兜底） */
+* {
+  box-sizing: border-box;
+}
+
+/* ========== 全局工具类 ========== */
+
+/* 间距工具类 */
+.mb-2 {
+  margin-bottom: 8px;
+}
+
+.mb-4 {
+  margin-bottom: 16px;
+}
+
+.mb-5 {
+  margin-bottom: 20px;
+}
+
+.mt-2 {
+  margin-top: 8px;
+}
+
+.mt-4 {
+  margin-top: 16px;
+}
+
+.mt-12 {
+  margin-top: 12px;
+}
+
+.mr-4 {
+  margin-right: 16px;
+}
+
+.ml-4 {
+  margin-left: 16px;
+}
+
+/* 页面容器 */
+.page-container {
+  padding: 20px;
+}
+
+/* 列表页面统一样式 */
+.list-page {
+  padding: 0;
+}
+
+/* 操作按钮行样式 */
+.action-bar {
+  margin-bottom: 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 卡片头部样式 */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 文本辅助类 */
+.text-muted {
+  color: #909399;
+}
+
+/* 详情页页头样式 */
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.page-header .page-title {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.page-header .page-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* 描述字段 Tooltip 样式 */
+.description-tooltip {
+  max-width: 400px;
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: pre-wrap;
+}

@@ -1,0 +1,46 @@
+import type { PageResult, PageQuery, Id } from '@/types/crud'
+import { http, apiGet, apiPost, apiPut } from '@/api/http'
+import type { ApiPageResponse } from '@/api/repositoryApi'
+
+// Types
+export interface {{pascal moduleName}} {
+  id: string
+  name: string
+  status: 'active' | 'frozen'
+  createdAt: string
+  description?: string
+}
+
+const BASE = '/v1'
+
+export const {{camel apiName}} = {
+  async list(query: PageQuery & { name?: string; status?: string }): Promise<PageResult<{{pascal moduleName}}>> {
+    const params = {
+      page: query.page,
+      size: query.pageSize,
+      name: query.name,
+      status: query.status
+    }
+    const res = await http.get<ApiPageResponse<{{pascal moduleName}}[]>>(`${BASE}/{{kebab moduleName}}s/paged`, { params })
+    return {
+      list: res.data.data,
+      total: res.data.page.total
+    }
+  },
+
+  async get(id: Id): Promise<{{pascal moduleName}}> {
+    return await apiGet<{{pascal moduleName}}>(`${BASE}/{{kebab moduleName}}s/${id}`)
+  },
+
+  async create(payload: Omit<{{pascal moduleName}}, 'id' | 'createdAt'>): Promise<{{pascal moduleName}}> {
+    return await apiPost<{{pascal moduleName}}>(`${BASE}/{{kebab moduleName}}s`, payload)
+  },
+
+  async update(id: Id, payload: Partial<{{pascal moduleName}}>): Promise<{{pascal moduleName}}> {
+    return await apiPut<{{pascal moduleName}}>(`${BASE}/{{kebab moduleName}}s/${id}`, payload)
+  },
+
+  async freeze(id: Id): Promise<void> {
+    await http.post(`${BASE}/{{kebab moduleName}}s/${id}/freeze`)
+  }
+}
