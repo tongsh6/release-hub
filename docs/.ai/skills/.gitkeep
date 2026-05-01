@@ -1,0 +1,5 @@
+# skills/ - Skill 定义（执行层）
+# 存放原子化技能，可被多个 Agent 复用
+#
+# 命名规范：{verb}-{noun}.md
+# 示例：parse-pom.md, validate-api.md, generate-dto.md

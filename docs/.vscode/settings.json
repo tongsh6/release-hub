@@ -1,0 +1,27 @@
+{
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "chat.promptFilesRecommendations": {
+        "speckit.constitution": true,
+        "speckit.specify": true,
+        "speckit.plan": true,
+        "speckit.tasks": true,
+        "speckit.implement": true
+    },
+    "chat.tools.terminal.autoApprove": {
+        ".specify/scripts/bash/": true,
+        ".specify/scripts/powershell/": true,
+        "/^cd /Users/tongshuanglong/releasehub && \\\\\nmv docs/architecture/DOMAIN_MODEL\\.md context/business/domain-model\\.md && \\\\\nmv docs/planning/PROJECT_PLAN\\.md context/business/project-plan\\.md && \\\\\nmv docs/planning/USER_STORIES\\.md context/business/user-stories\\.md && \\\\\nmv docs/architecture/STRUCTURE_BACKEND\\.md context/tech/architecture/backend\\.md && \\\\\nmv docs/architecture/releasehub-console-ia-v1\\.2\\.md context/tech/architecture/console-ia\\.md && \\\\\nmv docs/api/RELEASE_WINDOW_API\\.md context/tech/api/release-window\\.md && \\\\\nmv docs/reports/BACKEND_STRUCTURE_REPORT\\.md context/experience/reports/backend-structure\\.md && \\\\\nmv docs/reports/INTEGRATION_TEST_REPORT\\.md context/experience/reports/integration-test\\.md && \\\\\nmv docs/reports/PROJECT_AUDIT_SNAPSHOT\\.md context/experience/reports/project-audit\\.md$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^mv docs/planning/FUNCTION_DEVELOPMENT_PLAN\\.md context/business/ && mv docs/planning/NEXT_STEPS_TASKS\\.md context/business/ && mv docs/getting-started/README_START\\.md context/tech/$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^mkdir -p context/tech/conventions && mv \\.cursor/rules/backend\\.mdc context/tech/conventions/backend\\.md && mv \\.cursor/rules/frontend\\.mdc context/tech/conventions/frontend\\.md && mv \\.cursor/rules/testing\\.mdc context/tech/conventions/testing\\.md && mv \\.cursor/rules/database\\.mdc context/tech/conventions/database\\.md$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

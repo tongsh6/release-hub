@@ -1,0 +1,5 @@
+# agents/ - Agent 定义（决策层）
+# 存放 Agent 角色定义，每个 Agent 负责一类决策场景
+# 
+# 命名规范：{domain}-{role}.md
+# 示例：code-reviewer.md, requirement-analyst.md

@@ -1,0 +1,59 @@
+---
+description: ReleaseHub 项目规则 — Cursor AI
+globs:
+alwaysApply: true
+---
+
+# ReleaseHub — Cursor AI 规则
+
+> 权威规范入口：[AGENTS.md](../../../AGENTS.md)
+> 仓库快照：[context/tech/REPO_SNAPSHOT.md](../../../context/tech/REPO_SNAPSHOT.md)
+
+## 项目概述
+
+ReleaseHub 是基于 DDD 的多仓库发布协调平台，管理 Release Windows、版本策略、分支规则和自动化版本更新。
+
+## 关键规则
+
+### 语言
+
+- 交流使用中文；代码、命令、标识符保留英文
+
+### 架构（DDD + 模块化单体）
+
+- `releasehub-domain/` → 聚合根、实体、值对象（**禁止依赖其他层**）
+- `releasehub-application/` → 用例编排、事务边界（定义 Port 接口）
+- `releasehub-infrastructure/` → JPA 实现、外部适配器
+- `releasehub-interfaces/` → REST 控制器、DTO
+- `releasehub-bootstrap/` → Spring Boot 入口
+
+### TDD 强制
+
+1. RED → 先写失败测试
+2. GREEN → 写刚好满足当前测试且不偏离完整规划的实现
+3. REFACTOR → 优化保持绿色
+
+### 实现后静态扫码
+
+- 任何代码实现完成后，最终回复前必须运行 `scripts/dev/static-scan-topn.sh 10` 或等价静态扫描命令
+- 必须优先修复 TopN 问题；不能修复或不应修复的项要记录原因
+- 必须保留 `.ai/reports/static-scan/<timestamp>/summary.md`，并补充处理方式、处理结果和复扫证据
+
+### 前端（Vue 3 + TypeScript）
+
+- 页面状态使用 `reactive`/`ref`，避免 Pinia
+- API 类型：`pnpm gen:api` 自动生成
+- 代理：`/api/*` → `http://localhost:8080`
+
+## 上下文导航
+
+| 场景 | 文档 |
+|------|------|
+| 快速了解项目 | `context/tech/REPO_SNAPSHOT.md` |
+| 领域模型 | `context/business/domain-model.md` |
+| 后端规范 | `context/tech/conventions/backend.md` |
+| 前端规范 | `context/tech/conventions/frontend.md` |
+| 测试规范 | `context/tech/conventions/testing.md` |
+| 经验索引 | `context/experience/INDEX.md` |
+| 工作流阶段 | `workflow/INDEX.md` |
+| 规范驱动 | `openspec/AGENTS.md` |
