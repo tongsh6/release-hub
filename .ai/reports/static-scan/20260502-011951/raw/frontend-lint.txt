@@ -1,0 +1,8 @@
+
+/Users/loong/workspace/code/github/release-hub/frontend/src/views/version-ops/VersionRunDetail.vue
+   9:31  warning  Attribute "v-loading" should go before "class"  vue/attributes-order
+  41:35  warning  Attribute "v-if" should go before "class"       vue/attributes-order
+
+✖ 2 problems (0 errors, 2 warnings)
+  0 errors and 2 warnings potentially fixable with the `--fix` option.
+

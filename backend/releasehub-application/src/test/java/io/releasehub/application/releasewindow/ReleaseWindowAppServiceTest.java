@@ -30,6 +30,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -63,6 +64,8 @@ class ReleaseWindowAppServiceTest {
     private CodeRepositoryPort codeRepositoryPort;
     @Mock
     private GitBranchAdapterFactory gitBranchAdapterFactory;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private ReleaseWindowAppService releaseWindowAppService;
 
@@ -70,7 +73,7 @@ class ReleaseWindowAppServiceTest {
     void setUp() {
         releaseWindowAppService = new ReleaseWindowAppService(
                 releaseWindowPort, windowIterationPort, runAppService, groupPort,
-                iterationPort, codeRepositoryPort, gitBranchAdapterFactory);
+                iterationPort, codeRepositoryPort, gitBranchAdapterFactory, eventPublisher);
     }
 
     @Nested

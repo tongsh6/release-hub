@@ -64,8 +64,8 @@ class WindowIterationApiTest {
                        .contentType(MediaType.APPLICATION_JSON)
                        .content(objectMapper.writeValueAsString(java.util.Map.of("iterationKeys", java.util.List.of(itAKey, itBKey)))))
                .andExpect(status().isOk())
-               .andExpect(jsonPath("$.data[0]").value(itAKey))
-               .andExpect(jsonPath("$.data[1]").value(itBKey));
+               .andExpect(jsonPath("$.data[0].iterationKey").value(itAKey))
+               .andExpect(jsonPath("$.data[1].iterationKey").value(itBKey));
 
         mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/iterations")
                        .header("Authorization", "Bearer " + token))

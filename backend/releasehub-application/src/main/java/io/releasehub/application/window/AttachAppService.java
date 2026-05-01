@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -42,7 +43,7 @@ public class AttachAppService {
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
-    public List<WindowIteration> attach(String windowId, List<String> iterationKeys) {
+    public List<AttachResult> attach(String windowId, List<String> iterationKeys) {
         ReleaseWindow releaseWindow = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
         if (releaseWindow.isFrozen()) {
             throw BusinessException.rwAlreadyFrozen();
@@ -56,16 +57,24 @@ public class AttachAppService {
 
                     WindowIteration wi = windowIterationPort.attach(ReleaseWindowId.of(windowId), iterationKey, now);
 
+                    List<AttachResult.RepoError> errors = new ArrayList<>();
                     for (RepoId repoId : iteration.getRepos()) {
                         try {
                             setupReleaseBranchForRepo(releaseWindow, iteration, iterationKey, repoId, now);
                         } catch (Exception e) {
-                            log.error("Failed to setup release branch for repo {} in window {}: {}",
-                                    repoId.value(), windowId, e.getMessage());
+                            String repoName = codeRepositoryPort.findById(repoId)
+                                    .map(CodeRepository::getName)
+                                    .orElse(repoId.value());
+                            String message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                            log.error("Failed to setup release branch for repo {} ({}) in window {}: {}",
+                                    repoName, repoId.value(), windowId, message);
+                            errors.add(AttachResult.RepoError.of(repoId.value(), repoName, message));
                         }
                     }
 
-                    return wi;
+                    return errors.isEmpty()
+                            ? AttachResult.success(wi)
+                            : AttachResult.partial(wi, errors);
                 })
                 .toList();
     }

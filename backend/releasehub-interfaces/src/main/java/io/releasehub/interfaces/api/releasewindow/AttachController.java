@@ -1,6 +1,7 @@
 package io.releasehub.interfaces.api.releasewindow;
 
 import io.releasehub.application.window.AttachAppService;
+import io.releasehub.application.window.AttachResult;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
@@ -32,9 +33,9 @@ public class AttachController {
 
     @PostMapping("/{id}/attach")
     @Operation(summary = "Attach iterations to window")
-    public ApiResponse<List<String>> attach(@PathVariable("id") String windowId, @Valid @RequestBody AttachRequest request) {
-        var list = attachAppService.attach(windowId, request.getIterationKeys());
-        return ApiResponse.success(list.stream().map(x -> x.getIterationKey().value()).toList());
+    public ApiResponse<List<AttachResultView>> attach(@PathVariable("id") String windowId, @Valid @RequestBody AttachRequest request) {
+        var results = attachAppService.attach(windowId, request.getIterationKeys());
+        return ApiResponse.success(results.stream().map(AttachResultView::from).toList());
     }
 
     @PostMapping("/{id}/detach")
@@ -111,5 +112,29 @@ public class AttachController {
         private final String releaseBranch;
         private final Boolean branchCreated;
         private final java.time.Instant lastMergeAt;
+    }
+
+    @Data
+    public static class AttachResultView {
+        private final String iterationKey;
+        private final boolean hasErrors;
+        private final List<AttachErrorView> errors;
+
+        public static AttachResultView from(AttachResult result) {
+            List<AttachErrorView> errors = result.getErrors().stream()
+                    .map(e -> new AttachErrorView(e.repoId(), e.repoName(), e.message()))
+                    .toList();
+            return new AttachResultView(
+                    result.getWindowIteration().getIterationKey().value(),
+                    result.hasErrors(),
+                    errors);
+        }
+    }
+
+    @Data
+    public static class AttachErrorView {
+        private final String repoId;
+        private final String repoName;
+        private final String message;
     }
 }

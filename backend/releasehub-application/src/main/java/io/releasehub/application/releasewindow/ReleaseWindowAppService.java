@@ -22,6 +22,7 @@ import io.releasehub.domain.run.Run;
 import io.releasehub.domain.window.WindowIteration;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +47,7 @@ public class ReleaseWindowAppService {
     private final IterationPort iterationPort;
     private final CodeRepositoryPort codeRepositoryPort;
     private final GitBranchAdapterFactory gitBranchAdapterFactory;
+    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
@@ -110,9 +112,10 @@ public class ReleaseWindowAppService {
 
         rw.publish(Instant.now(clock));
         releaseWindowPort.save(rw);
-
-        // 发布只是状态变更，收尾编排在 close() 时触发
         log.info("Published release window {}", id);
+
+        // 事务提交后由 WindowLifecycleListener 触发自动编排
+        eventPublisher.publishEvent(new WindowPublishedEvent(id));
 
         return ReleaseWindowView.from(rw);
     }

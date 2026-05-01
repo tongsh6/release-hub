@@ -79,8 +79,8 @@ class WindowRunApiTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(java.util.Map.of("iterationKeys", java.util.List.of(it1Key, it2Key)))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data[0]").value(it1Key))
-            .andExpect(jsonPath("$.data[1]").value(it2Key));
+            .andExpect(jsonPath("$.data[0].iterationKey").value(it1Key))
+            .andExpect(jsonPath("$.data[1].iterationKey").value(it2Key));
 
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/freeze")
                 .header("Authorization", "Bearer " + token))

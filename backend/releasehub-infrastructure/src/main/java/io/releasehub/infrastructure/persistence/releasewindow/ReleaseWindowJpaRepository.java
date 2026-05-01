@@ -17,7 +17,7 @@ public interface ReleaseWindowJpaRepository extends JpaRepository<ReleaseWindowJ
     Page<ReleaseWindowJpaEntity> findByStatus(String status, Pageable pageable);
 
     @Query("SELECT r FROM ReleaseWindowJpaEntity r WHERE " +
-           "(:name IS NULL OR LOWER(r.name) LIKE LOWER(CONCAT('%', :name, '%'))) AND " +
+           "(:name IS NULL OR LOWER(r.name) LIKE LOWER(CONCAT('%', CAST(:name AS string), '%'))) AND " +
            "(:status IS NULL OR r.status = :status)")
     Page<ReleaseWindowJpaEntity> findByNameAndStatus(
             @Param("name") String name,

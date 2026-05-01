@@ -2,7 +2,7 @@
 
 set -uo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TOP_N="${1:-${TOP_N:-10}}"
 
 if ! [[ "$TOP_N" =~ ^[1-9][0-9]*$ ]]; then
@@ -90,27 +90,27 @@ append ""
 
 run_scan "git-diff-check" "$ROOT_DIR" git diff --check
 
-if [ -f "$ROOT_DIR/release-hub/pom.xml" ]; then
-  if [ -x "$ROOT_DIR/release-hub/mvnw" ]; then
+if [ -f "$ROOT_DIR/backend/pom.xml" ]; then
+  if [ -x "$ROOT_DIR/backend/mvnw" ]; then
     MVN_CMD="./mvnw"
   else
     MVN_CMD="mvn"
   fi
 
-  if grep -q "<id>quality</id>" "$ROOT_DIR/release-hub/pom.xml"; then
-    run_scan "backend-quality" "$ROOT_DIR/release-hub" "$MVN_CMD" -q -B -DskipTests verify -Pquality
+  if grep -q "<id>quality</id>" "$ROOT_DIR/backend/pom.xml"; then
+    run_scan "backend-quality" "$ROOT_DIR/backend" "$MVN_CMD" -q -B -DskipTests verify -Pquality
   else
-    run_scan "backend-spotbugs" "$ROOT_DIR/release-hub" "$MVN_CMD" -q -B -DskipTests com.github.spotbugs:spotbugs-maven-plugin:4.9.8.3:check
+    run_scan "backend-spotbugs" "$ROOT_DIR/backend" "$MVN_CMD" -q -B -DskipTests com.github.spotbugs:spotbugs-maven-plugin:4.9.8.3:check
   fi
 else
-  run_scan "backend-static-scan" "$ROOT_DIR/release-hub" true
+  run_scan "backend-static-scan" "$ROOT_DIR/backend" true
 fi
 
-if [ -f "$ROOT_DIR/release-hub-web/package.json" ]; then
-  run_scan "frontend-lint" "$ROOT_DIR/release-hub-web" pnpm -s lint
-  run_scan "frontend-typecheck" "$ROOT_DIR/release-hub-web" pnpm -s typecheck
+if [ -f "$ROOT_DIR/frontend/package.json" ]; then
+  run_scan "frontend-lint" "$ROOT_DIR/frontend" pnpm -s lint
+  run_scan "frontend-typecheck" "$ROOT_DIR/frontend" pnpm -s typecheck
 else
-  run_scan "frontend-static-scan" "$ROOT_DIR/release-hub-web" true
+  run_scan "frontend-static-scan" "$ROOT_DIR/frontend" true
 fi
 
 append ""

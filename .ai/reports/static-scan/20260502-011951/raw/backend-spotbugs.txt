@@ -1,0 +1,15 @@
+[ERROR] Medium: io.releasehub.common.paging.PageResult.items() may expose internal representation by returning PageResult.items [io.releasehub.common.paging.PageResult] At PageResult.java:[line 5] EI_EXPOSE_REP
+[ERROR] Medium: new io.releasehub.common.paging.PageResult(List, long) may expose internal representation by storing an externally mutable object into PageResult.items [io.releasehub.common.paging.PageResult] At PageResult.java:[line 5] EI_EXPOSE_REP2
+[ERROR] Medium: io.releasehub.common.response.ApiPageResponse.getPage() may expose internal representation by returning ApiPageResponse.page [io.releasehub.common.response.ApiPageResponse] At ApiPageResponse.java:[line 38] EI_EXPOSE_REP
+[ERROR] Medium: new io.releasehub.common.response.ApiPageResponse(boolean, String, String, Object, PageMeta) may expose internal representation by storing an externally mutable object into ApiPageResponse.page [io.releasehub.common.response.ApiPageResponse] At ApiPageResponse.java:[line 19] EI_EXPOSE_REP2
+[ERROR] Medium: io.releasehub.common.response.ApiPageResponse.setPage(PageMeta) may expose internal representation by storing an externally mutable object into ApiPageResponse.page [io.releasehub.common.response.ApiPageResponse] At ApiPageResponse.java:[line 39] EI_EXPOSE_REP2
+[ERROR] Failed to execute goal com.github.spotbugs:spotbugs-maven-plugin:4.9.8.3:check (default-cli) on project releasehub-common: failed with 5 bugs and 0 errors -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :releasehub-common

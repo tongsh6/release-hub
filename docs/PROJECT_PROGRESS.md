@@ -30,8 +30,9 @@
 | Phase 2 | Version Ops Dashboard 全栈对接 | ✅ | 5 files |
 | Phase 3 | 日历冲突可视化 | ✅ | 3 files |
 | Phase 4 | API 文档补齐 + 前端架构文档 | ✅ | 6 files |
-| Phase 5 | 部署与容器化文档 | 📋 待规划 | - |
-| Phase 6 | 发布准备/收尾全自动化触发 | 📋 待规划 | - |
+| Phase 5 | 部署与容器化文档 | ✅ | 2 files |
+| Phase 6 | 发布准备/收尾全自动化触发 | ✅ | 8 files |
+| Phase 7 | E2E 测试补齐（TestContainers PostgreSQL） | ✅ | 10 files |
 
 ## 已完成核心能力
 
@@ -77,15 +78,19 @@
 | v0.1.5 | 多模块 Maven + 分支推导 + 日历月视图 | 2026-03-04 |
 | v0.1.6 | 冲突检测全栈实现（7 种类型） | 2026-04-29 |
 | v0.1.7 | BranchRule 升级 + VersionOps + 日历冲突 + 文档 | 2026-05-01 |
+| v0.1.8 | 部署文档 + publish 自动编排 + Attach 错误可见性 + E2E 补齐 | 2026-05-02 |
 
 ## 质量基线
 
 | 指标 | 数值 |
 |------|------|
-| 后端测试 | 64/64 通过 |
+| 后端测试 | 134/134 通过（52 单元/集成 + 82 E2E） |
+| SpotBugs (新引入) | 0 bugs |
 | 前端 typecheck | ✅ |
 | 前端 lint | ✅ |
+| Git diff --check | ✅ |
 | Git 工作区 | clean |
+| 静态扫描报告 | `.ai/reports/static-scan/20260502-011951/summary.md` |
 
 ## 相关文档
 
