@@ -1,6 +1,12 @@
 # ReleaseHub 下一步任务清单
 
 > 最后更新：2026-02-27
+> ⚠️ 2026-05-01：本文档已由 `tasks/` 目录体系替代。请参见 `tasks/plans/` 获取当前推进计划，`tasks/records/` 获取执行记录。
+>
+> **迁移映射**：
+> - GitFlow 分支生命周期 → 已于 v0.1.4 完成（PROJECT_PROGRESS.md）
+> - 版本更新功能增强（冲突检测）→ 2026-04-29 完成（docs/docs/superpowers/plans/）
+> - 发布协调日历视图 → 2026-05-01 完成（Phase 3）
 
 ## 当前执行主线
 
