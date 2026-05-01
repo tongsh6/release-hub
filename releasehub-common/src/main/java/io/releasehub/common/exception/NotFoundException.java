@@ -53,10 +53,6 @@ public class NotFoundException extends BaseException {
         return of(ErrorCode.RUN_NOT_FOUND, id);
     }
 
-    public static NotFoundException runTask(Object id) {
-        return of(ErrorCode.RUN_TASK_NOT_FOUND, id);
-    }
-
     public static NotFoundException branchRule(Object id) {
         return of(ErrorCode.BRANCH_RULE_NOT_FOUND, id);
     }

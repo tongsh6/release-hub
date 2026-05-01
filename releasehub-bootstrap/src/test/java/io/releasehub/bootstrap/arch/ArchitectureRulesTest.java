@@ -75,23 +75,25 @@ public class ArchitectureRulesTest {
     @Test
     @DisplayName("规则 3：Port/Adapter 命名加约束（防止回退）")
     void enforceNamingConventions() {
-        // application 层对外抽象必须以 Port 或 Gateway 结尾
-        // Enforce for all interfaces in application layer.
+        // application 层对外抽象必须以 Port/Gateway/UseCase/Factory 结尾
         classes().that().resideInAPackage("..application..")
                 .and().areInterfaces()
                 .should().haveSimpleNameEndingWith("Port")
                 .orShould().haveSimpleNameEndingWith("Gateway")
-                .as("Application 层接口（Port）必须以 Port 或 Gateway 结尾")
+                .orShould().haveSimpleNameEndingWith("UseCase")
+                .orShould().haveSimpleNameEndingWith("Factory")
+                .as("Application 层接口必须以 Port/Gateway/UseCase/Factory 结尾")
                 .check(classes);
 
-        // infrastructure 实现必须以 Adapter 或 PersistenceAdapter 结尾
+        // infrastructure 实现必须以 Adapter/PersistenceAdapter/FactoryImpl 结尾
         classes().that().resideInAPackage("..infrastructure..")
                 .and().implement(
                         com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage("..application..")
                 )
                 .should().haveSimpleNameEndingWith("Adapter")
                 .orShould().haveSimpleNameEndingWith("PersistenceAdapter")
-                .as("Infrastructure 层实现 Application 接口的类必须以 Adapter 或 PersistenceAdapter 结尾")
+                .orShould().haveSimpleNameEndingWith("FactoryImpl")
+                .as("Infrastructure 层实现 Application 接口的类必须以 Adapter/PersistenceAdapter/FactoryImpl 结尾")
                 .check(classes);
     }
 

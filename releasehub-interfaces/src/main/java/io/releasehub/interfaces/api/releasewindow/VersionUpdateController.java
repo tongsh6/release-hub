@@ -6,6 +6,7 @@ import io.releasehub.application.version.VersionValidationAppService;
 import io.releasehub.application.version.VersionValidationResult;
 import io.releasehub.common.response.ApiResponse;
 import io.releasehub.domain.run.Run;
+import io.releasehub.interfaces.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -37,8 +38,7 @@ public class VersionUpdateController {
             @PathVariable("id") String windowId,
             @Valid @RequestBody VersionUpdateRequest request
     ) {
-        // 获取当前用户（暂时使用固定值，后续可以从 SecurityContext 获取）
-        String operator = "system"; // TODO: 从 SecurityContext 获取当前用户
+        String operator = SecurityUtils.getCurrentUsername();
 
         Run run = runAppService.executeVersionUpdate(
                 windowId,
@@ -64,8 +64,7 @@ public class VersionUpdateController {
             @PathVariable("id") String windowId,
             @Valid @RequestBody BatchVersionUpdateRequest request
     ) {
-        // 获取当前用户（暂时使用固定值，后续可以从 SecurityContext 获取）
-        String operator = "system"; // TODO: 从 SecurityContext 获取当前用户
+        String operator = SecurityUtils.getCurrentUsername();
 
         // 转换为应用层模型
         List<RepoVersionUpdateInfo> repoInfos = request.getRepositories().stream()

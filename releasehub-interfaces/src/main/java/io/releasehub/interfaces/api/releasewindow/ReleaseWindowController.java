@@ -7,6 +7,7 @@ import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
+import io.releasehub.interfaces.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -100,7 +101,7 @@ public class ReleaseWindowController {
     @PostMapping("/{id}/close")
     @Operation(summary = "Close release window")
     public ApiResponse<ReleaseWindowView> close(@PathVariable("id") String id) {
-        ReleaseWindowView view = appService.close(id);
+        ReleaseWindowView view = appService.close(id, SecurityUtils.getCurrentUsername());
         return ApiResponse.success(view);
     }
 

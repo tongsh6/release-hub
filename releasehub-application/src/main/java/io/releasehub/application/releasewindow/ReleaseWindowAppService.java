@@ -4,7 +4,7 @@ import io.releasehub.application.group.GroupPort;
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
-import io.releasehub.application.release.ReleaseRunUseCase;
+import io.releasehub.application.run.RunAppService;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
@@ -41,7 +41,7 @@ public class ReleaseWindowAppService {
     private static final DateTimeFormatter KEY_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private final ReleaseWindowPort releaseWindowPort;
     private final WindowIterationPort windowIterationPort;
-    private final ReleaseRunUseCase releaseRunUseCase;
+    private final RunAppService runAppService;
     private final GroupPort groupPort;
     private final IterationPort iterationPort;
     private final CodeRepositoryPort codeRepositoryPort;
@@ -139,19 +139,17 @@ public class ReleaseWindowAppService {
     }
 
     @Transactional
-    public ReleaseWindowView close(String id) {
+    public ReleaseWindowView close(String id, String operator) {
         ReleaseWindow rw = findById(id);
         rw.close(Instant.now(clock));
         releaseWindowPort.save(rw);
 
-        // 触发收尾编排任务（归档分支、关闭迭代等）
         try {
-            Run run = releaseRunUseCase.createReleaseRun(id, rw.getWindowKey(), "system"); // TODO: 获取当前用户
-            releaseRunUseCase.executeRunAsync(run.getId().value());
-            log.info("Created and started release run {} for closing window {}", run.getId().value(), id);
+            Run run = runAppService.executeCleanup(id, operator);
+            log.info("Cleanup run {} completed for closing window {}", run.getId().value(), id);
         } catch (Exception e) {
-            log.error("Failed to create release run for closing window {}: {}", id, e.getMessage());
-            // 关闭成功但运行任务创建失败时，不回滚关闭状态
+            log.error("Failed to execute cleanup for closing window {}: {}", id, e.getMessage());
+            // 关闭成功但收尾任务失败时，不回滚关闭状态
         }
 
         return ReleaseWindowView.from(rw);

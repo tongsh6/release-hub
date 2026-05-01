@@ -55,7 +55,7 @@ class ReleaseWorkflowWithMockProviderE2ETest extends AbstractE2ETest {
                 .andExpect(jsonPath("$.data.repos").isArray())
                 .andExpect(jsonPath("$.data.repos.length()").value(1))
                 .andExpect(jsonPath("$.data.repos[0].repoId").value(repoId))
-                .andExpect(jsonPath("$.data.repos[0].releaseBranch.mergeStatus").value("PENDING"));
+                .andExpect(jsonPath("$.data.repos[0].releaseBranch.mergeStatus").value("MERGED"));
     }
 
     private String createMockRepo(String token, String groupCode) throws Exception {

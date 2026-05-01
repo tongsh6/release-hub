@@ -64,4 +64,23 @@ public interface GitBranchPort {
      * @return MergeabilityResult, mergeable=true 表示无冲突可自动合并
      */
     MergeabilityResult checkMergeability(String repoCloneUrl, String token, String sourceBranch, String targetBranch);
+
+    /**
+     * 归档分支（重命名并标记为归档）
+     * @param repoCloneUrl 仓库克隆地址
+     * @param token Git 访问令牌
+     * @param branchName 要归档的分支名
+     * @param reason 归档原因
+     * @return true 表示归档成功
+     */
+    boolean archiveBranch(String repoCloneUrl, String token, String branchName, String reason);
+
+    /**
+     * 触发 CI 流水线
+     * @param repoCloneUrl 仓库克隆地址
+     * @param token Git 访问令牌
+     * @param ref 分支名或标签名
+     * @return 流水线 ID，失败返回 null
+     */
+    String triggerPipeline(String repoCloneUrl, String token, String ref);
 }

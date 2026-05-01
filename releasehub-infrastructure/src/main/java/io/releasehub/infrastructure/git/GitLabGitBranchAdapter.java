@@ -158,6 +158,45 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     }
 
     @Override
+    public boolean archiveBranch(String repoCloneUrl, String token, String branchName, String reason) {
+        try {
+            String archivedBranchName = "archive/" + reason + "/" + branchName.replace("/", "-");
+            boolean created = createBranch(repoCloneUrl, token, archivedBranchName, branchName);
+            if (!created) {
+                log.warn("Failed to create archive branch '{}', proceeding to delete original", archivedBranchName);
+            }
+            return deleteBranch(repoCloneUrl, token, branchName);
+        } catch (Exception e) {
+            log.warn("Error archiving branch '{}': {}", branchName, e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public String triggerPipeline(String repoCloneUrl, String token, String ref) {
+        try {
+            RepoRef repoRef = parseRepoRef(repoCloneUrl);
+            String endpoint = String.format("%s/api/v4/projects/%s/pipeline?ref=%s",
+                    repoRef.baseUrl, repoRef.encodedPath, urlEncode(ref));
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    endpoint, HttpMethod.POST,
+                    new HttpEntity<>(headers(token)),
+                    new ParameterizedTypeReference<>() {});
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object id = response.getBody().get("id");
+                return id != null ? String.valueOf(id) : null;
+            }
+            return null;
+        } catch (HttpClientErrorException e) {
+            log.warn("Failed to trigger pipeline for ref '{}': {}", ref, e.getResponseBodyAsString());
+            return null;
+        } catch (Exception e) {
+            log.error("Error triggering pipeline for ref '{}': {}", ref, e.getMessage(), e);
+            return null;
+        }
+    }
+
+    @Override
     public BranchStatus getBranchStatus(String repoCloneUrl, String token, String branchName) {
         try {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);

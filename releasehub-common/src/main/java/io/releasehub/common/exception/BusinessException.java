@@ -93,32 +93,6 @@ public class BusinessException extends BaseException {
         return of(ErrorCode.REPO_ATTACHED, repoId);
     }
 
-    // ========== Run Task ==========
-
-    public static BusinessException runTaskNotRetryable(Object status) {
-        return of(ErrorCode.RUN_TASK_NOT_RETRYABLE, status);
-    }
-
-    public static BusinessException runTaskTagCreateFailed(Object tagName) {
-        return of(ErrorCode.RUN_TASK_TAG_CREATE_FAILED, tagName);
-    }
-
-    public static BusinessException runTaskMergeConflict(Object details) {
-        return of(ErrorCode.RUN_TASK_MERGE_CONFLICT, details);
-    }
-
-    public static BusinessException runTaskMergeFailed(Object details) {
-        return of(ErrorCode.RUN_TASK_MERGE_FAILED, details);
-    }
-
-    public static BusinessException runTaskContextNotFound(Object taskId) {
-        return of(ErrorCode.RUN_TASK_CONTEXT_NOT_FOUND, taskId);
-    }
-
-    public static BusinessException runTaskCiTriggerFailed(Object details) {
-        return of(ErrorCode.RUN_TASK_CI_TRIGGER_FAILED, details);
-    }
-
     // ========== Conflict Detection ==========
 
     public static BusinessException conflictDetected(String detail) {

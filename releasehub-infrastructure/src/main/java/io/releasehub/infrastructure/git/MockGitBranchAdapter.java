@@ -67,6 +67,24 @@ public class MockGitBranchAdapter implements GitBranchPort {
     }
 
     @Override
+    public boolean archiveBranch(String repoCloneUrl, String token, String branchName, String reason) {
+        Set<String> branchSet = branches.get(repoCloneUrl);
+        if (branchSet == null) {
+            return false;
+        }
+        log.info("Archiving branch '{}' with reason: {}", branchName, reason);
+        String archivedName = "archive/" + reason + "/" + branchName;
+        branchSet.add(archivedName);
+        return branchSet.remove(branchName);
+    }
+
+    @Override
+    public String triggerPipeline(String repoCloneUrl, String token, String ref) {
+        log.info("Mock: triggering pipeline for ref '{}' in repo {}", ref, repoCloneUrl);
+        return "mock-pipeline-" + System.currentTimeMillis();
+    }
+
+    @Override
     public BranchStatus getBranchStatus(String repoCloneUrl, String token, String branchName) {
         Set<String> branchSet = branches.get(repoCloneUrl);
         boolean exists = branchSet != null && branchSet.contains(branchName);

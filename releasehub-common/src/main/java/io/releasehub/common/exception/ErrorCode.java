@@ -87,14 +87,6 @@ public enum ErrorCode {
     RUN_NOT_FOUND("RUN_001", "error.run.not_found", 404),
     RUN_ID_INVALID("RUN_002", "error.run.id_invalid", 400),
     RUN_ITEM_ID_INVALID("RUN_003", "error.run.item_id_invalid", 400),
-    RUN_TASK_NOT_FOUND("RUN_004", "error.run.task_not_found", 404),
-    RUN_TASK_NOT_RETRYABLE("RUN_005", "error.run.task_not_retryable", 400),
-    RUN_TASK_TAG_CREATE_FAILED("RUN_006", "error.run.task.tag_create_failed", 500),
-    RUN_TASK_MERGE_CONFLICT("RUN_007", "error.run.task.merge_conflict", 409),
-    RUN_TASK_MERGE_FAILED("RUN_008", "error.run.task.merge_failed", 500),
-    RUN_TASK_CONTEXT_NOT_FOUND("RUN_009", "error.run.task.context_not_found", 500),
-    RUN_TASK_CI_TRIGGER_FAILED("RUN_010", "error.run.task.ci_trigger_failed", 500),
-
     // ========== 窗口迭代关联 (WI) ==========
     WINDOW_ITERATION_ID_INVALID("WI_001", "error.wi.id_invalid", 400),
 

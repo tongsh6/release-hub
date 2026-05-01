@@ -4,7 +4,9 @@ import io.releasehub.domain.run.MergeStatus;
 
 /**
  * GitLab 分支操作端口
+ * @deprecated Use {@link GitBranchPort} via {@link GitBranchAdapterFactory} instead
  */
+@Deprecated
 public interface GitLabBranchPort {
     
     /**

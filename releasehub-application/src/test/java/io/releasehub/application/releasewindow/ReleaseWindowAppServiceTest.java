@@ -4,7 +4,7 @@ import io.releasehub.application.group.GroupPort;
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
-import io.releasehub.application.release.ReleaseRunUseCase;
+import io.releasehub.application.run.RunAppService;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
@@ -54,7 +54,7 @@ class ReleaseWindowAppServiceTest {
     @Mock
     private WindowIterationPort windowIterationPort;
     @Mock
-    private ReleaseRunUseCase releaseRunUseCase;
+    private RunAppService runAppService;
     @Mock
     private GroupPort groupPort;
     @Mock
@@ -69,7 +69,7 @@ class ReleaseWindowAppServiceTest {
     @BeforeEach
     void setUp() {
         releaseWindowAppService = new ReleaseWindowAppService(
-                releaseWindowPort, windowIterationPort, releaseRunUseCase, groupPort,
+                releaseWindowPort, windowIterationPort, runAppService, groupPort,
                 iterationPort, codeRepositoryPort, gitBranchAdapterFactory);
     }
 
@@ -147,9 +147,8 @@ class ReleaseWindowAppServiceTest {
             ReleaseWindowView view = releaseWindowAppService.publish("window-1");
 
             verify(releaseWindowPort).save(any(ReleaseWindow.class));
-            // publish 不再触发 releaseRunUseCase
-            verify(releaseRunUseCase, never()).createReleaseRun(any(), any(), any());
-            verify(releaseRunUseCase, never()).executeRunAsync(any());
+            // publish no longer triggers run creation (only close does)
+            verify(runAppService, never()).executeCleanup(any(), any());
             assertThat(view.getStatus()).isEqualTo("PUBLISHED");
             assertThat(view.getPublishedAt()).isNotNull();
         }
@@ -163,17 +162,15 @@ class ReleaseWindowAppServiceTest {
         void shouldCloseAndTriggerRun() {
             Instant now = Instant.now();
             ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
-            window.publish(now); // 先发布
+            window.publish(now);
             when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
-
             Run run = Run.start(RunType.VERSION_UPDATE, "system", now);
-            when(releaseRunUseCase.createReleaseRun(eq("window-1"), eq("RW-1"), eq("system"))).thenReturn(run);
+            when(runAppService.executeCleanup(eq("window-1"), eq("system"))).thenReturn(run);
 
-            ReleaseWindowView view = releaseWindowAppService.close("window-1");
+            ReleaseWindowView view = releaseWindowAppService.close("window-1", "system");
 
             verify(releaseWindowPort).save(any(ReleaseWindow.class));
-            verify(releaseRunUseCase).createReleaseRun(eq("window-1"), eq("RW-1"), eq("system"));
-            verify(releaseRunUseCase).executeRunAsync(run.getId().value());
+            verify(runAppService).executeCleanup(eq("window-1"), eq("system"));
             assertThat(view.getStatus()).isEqualTo("CLOSED");
         }
 
@@ -182,15 +179,14 @@ class ReleaseWindowAppServiceTest {
         void shouldNotRollbackCloseWhenRunCreationFails() {
             Instant now = Instant.now();
             ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
-            window.publish(now); // 先发布
+            window.publish(now);
             when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
-            when(releaseRunUseCase.createReleaseRun(eq("window-1"), eq("RW-1"), eq("system")))
+            when(runAppService.executeCleanup(eq("window-1"), eq("system")))
                     .thenThrow(new RuntimeException("boom"));
 
-            ReleaseWindowView view = releaseWindowAppService.close("window-1");
+            ReleaseWindowView view = releaseWindowAppService.close("window-1", "system");
 
             verify(releaseWindowPort).save(any(ReleaseWindow.class));
-            verify(releaseRunUseCase, never()).executeRunAsync(any());
             assertThat(view.getStatus()).isEqualTo("CLOSED");
         }
     }

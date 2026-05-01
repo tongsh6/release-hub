@@ -46,6 +46,9 @@ public class WindowIterationPersistenceAdapter implements WindowIterationPort {
                 ReleaseWindowId.of(entity.getWindowId()),
                 IterationKey.of(entity.getIterationKey()),
                 entity.getAttachAt(),
+                entity.getReleaseBranch(),
+                entity.getBranchCreated(),
+                entity.getLastMergeAt(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
         );
@@ -64,6 +67,9 @@ public class WindowIterationPersistenceAdapter implements WindowIterationPort {
                         ReleaseWindowId.of(e.getWindowId()),
                         IterationKey.of(e.getIterationKey()),
                         e.getAttachAt(),
+                        e.getReleaseBranch(),
+                        e.getBranchCreated(),
+                        e.getLastMergeAt(),
                         e.getCreatedAt(),
                         e.getUpdatedAt()
                 ))
@@ -81,6 +87,9 @@ public class WindowIterationPersistenceAdapter implements WindowIterationPort {
                         ReleaseWindowId.of(e.getWindowId()),
                         IterationKey.of(e.getIterationKey()),
                         e.getAttachAt(),
+                        e.getReleaseBranch(),
+                        e.getBranchCreated(),
+                        e.getLastMergeAt(),
                         e.getCreatedAt(),
                         e.getUpdatedAt()
                 ))
@@ -96,6 +105,9 @@ public class WindowIterationPersistenceAdapter implements WindowIterationPort {
                         ReleaseWindowId.of(e.getWindowId()),
                         IterationKey.of(e.getIterationKey()),
                         e.getAttachAt(),
+                        e.getReleaseBranch(),
+                        e.getBranchCreated(),
+                        e.getLastMergeAt(),
                         e.getCreatedAt(),
                         e.getUpdatedAt()
                 ));

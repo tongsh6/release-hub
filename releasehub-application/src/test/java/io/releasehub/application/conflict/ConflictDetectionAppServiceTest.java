@@ -196,7 +196,7 @@ class ConflictDetectionAppServiceTest {
         WindowIteration wi = WindowIteration.rehydrate(
                 WindowIterationId.generate(ReleaseWindowId.of(WINDOW_ID), IterationKey.of(ITERATION_KEY)),
                 ReleaseWindowId.of(WINDOW_ID), IterationKey.of(ITERATION_KEY),
-                null, Instant.now(), Instant.now());
+                null, null, false, null, Instant.now(), Instant.now());
         when(windowIterationPort.listByWindow(ReleaseWindowId.of(WINDOW_ID))).thenReturn(List.of(wi));
         when(iterationPort.findByKey(IterationKey.of(ITERATION_KEY))).thenReturn(Optional.of(it));
     }
@@ -216,7 +216,7 @@ class ConflictDetectionAppServiceTest {
         WindowIteration wi = WindowIteration.rehydrate(
                 WindowIterationId.generate(ReleaseWindowId.of(WINDOW_ID), IterationKey.of(ITERATION_KEY)),
                 ReleaseWindowId.of(WINDOW_ID), IterationKey.of(ITERATION_KEY),
-                null, Instant.now(), Instant.now());
+                null, null, false, null, Instant.now(), Instant.now());
         when(windowIterationPort.listByWindow(ReleaseWindowId.of(WINDOW_ID))).thenReturn(List.of(wi));
         when(iterationPort.findByKey(IterationKey.of(ITERATION_KEY))).thenReturn(Optional.of(it));
     }

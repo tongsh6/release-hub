@@ -59,8 +59,9 @@ class BranchStatusApiTest {
 
         assertThat(repoNode.get("repoId").asText()).isEqualTo(repoId);
         assertThat(repoNode.get("featureBranch").get("exists").asBoolean()).isFalse();
-        assertThat(repoNode.get("releaseBranch").get("exists").asBoolean()).isFalse();
-        assertThat(repoNode.get("releaseBranch").get("mergeStatus").asText()).isEqualTo("PENDING");
+        // release branch now created by attach via GitBranchAdapterFactory, so it exists in mock
+        assertThat(repoNode.get("releaseBranch").get("exists").asBoolean()).isTrue();
+        assertThat(repoNode.get("releaseBranch").get("mergeStatus").asText()).isEqualTo("MERGED");
     }
 
     private String loginAndGetToken() throws Exception {

@@ -49,11 +49,11 @@ public class AttachController {
     public ApiResponse<List<WindowIterationView>> list(@PathVariable("id") String windowId) {
         var list = attachAppService.list(windowId);
         return ApiResponse.success(list.stream().map(x -> new WindowIterationView(
-                x.getIterationKey().value(), 
+                x.getIterationKey().value(),
                 x.getAttachAt(),
-                null,  // releaseBranch - TODO: 从 WindowIterationPort 获取
-                null,  // branchCreated
-                null   // lastMergeAt
+                x.getReleaseBranch(),
+                x.getBranchCreated(),
+                x.getLastMergeAt()
         )).toList());
     }
 
@@ -67,9 +67,9 @@ public class AttachController {
                 .map(x -> new WindowIterationView(
                         x.getIterationKey().value(),
                         x.getAttachAt(),
-                        null,  // releaseBranch - TODO: 从 WindowIterationPort 获取
-                        null,  // branchCreated
-                        null   // lastMergeAt
+                        x.getReleaseBranch(),
+                        x.getBranchCreated(),
+                        x.getLastMergeAt()
                 ))
                 .toList();
         return ApiPageResponse.success(views, new PageMeta(page, size, result.total()));

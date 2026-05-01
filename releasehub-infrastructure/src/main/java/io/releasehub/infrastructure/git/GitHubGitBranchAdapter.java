@@ -161,6 +161,68 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     }
 
     @Override
+    public boolean archiveBranch(String repoCloneUrl, String token, String branchName, String reason) {
+        try {
+            RepoRef ref = parseRepoRef(repoCloneUrl);
+            String shaEndpoint = String.format("https://api.github.com/repos/%s/%s/git/refs/heads/%s",
+                    ref.owner, ref.repo, urlEncode(branchName));
+            ResponseEntity<Map<String, Object>> refResponse = restTemplate.exchange(
+                    shaEndpoint, HttpMethod.GET,
+                    new HttpEntity<>(headers(token)),
+                    new ParameterizedTypeReference<>() {});
+            if (!refResponse.getStatusCode().is2xxSuccessful() || refResponse.getBody() == null) {
+                return false;
+            }
+            Object objectObj = refResponse.getBody().get("object");
+            if (!(objectObj instanceof Map<?, ?> objMap) || objMap.get("sha") == null) {
+                return false;
+            }
+            String sha = String.valueOf(objMap.get("sha"));
+            String archivedName = "archive/" + reason + "/" + branchName.replace("/", "-");
+            String createRefEndpoint = String.format("https://api.github.com/repos/%s/%s/git/refs",
+                    ref.owner, ref.repo);
+            Map<String, String> body = Map.of("ref", "refs/heads/" + archivedName, "sha", sha);
+            restTemplate.exchange(createRefEndpoint, HttpMethod.POST,
+                    new HttpEntity<>(body, headers(token)),
+                    new ParameterizedTypeReference<>() {});
+            return deleteBranch(repoCloneUrl, token, branchName);
+        } catch (HttpClientErrorException e) {
+            log.warn("Error archiving branch '{}': {}", branchName, e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public String triggerPipeline(String repoCloneUrl, String token, String ref) {
+        try {
+            RepoRef rp = parseRepoRef(repoCloneUrl);
+            String endpoint = String.format("https://api.github.com/repos/%s/%s/dispatches",
+                    rp.owner, rp.repo);
+            Map<String, Object> body = new HashMap<>();
+            body.put("event_type", "releasehub-release");
+            Map<String, String> clientPayload = new HashMap<>();
+            clientPayload.put("ref", ref);
+            body.put("client_payload", clientPayload);
+
+            restTemplate.exchange(endpoint, HttpMethod.POST,
+                    new HttpEntity<>(body, headers(token)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {});
+
+            log.info("GitHub repository_dispatch triggered for ref '{}' on {}/{}", ref, rp.owner, rp.repo);
+            return "dispatch:" + rp.owner + "/" + rp.repo + ":" + ref;
+        } catch (HttpClientErrorException.NotFound e) {
+            log.info("GitHub pipeline trigger not configured: no repository_dispatch receiver found. Add a workflow with repository_dispatch[releasehub-release] trigger.");
+            return null;
+        } catch (HttpClientErrorException e) {
+            log.warn("Failed to trigger GitHub pipeline for ref '{}': {}", ref, e.getResponseBodyAsString());
+            return null;
+        } catch (Exception e) {
+            log.error("Error triggering GitHub pipeline for ref '{}': {}", ref, e.getMessage(), e);
+            return null;
+        }
+    }
+
+    @Override
     public BranchStatus getBranchStatus(String repoCloneUrl, String token, String branchName) {
         try {
             RepoRef ref = parseRepoRef(repoCloneUrl);
