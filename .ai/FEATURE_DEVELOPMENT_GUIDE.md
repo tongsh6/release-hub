@@ -19,6 +19,11 @@
 - **自动阶段路由**：Phase Router 自动推进任务流程
 - **关键决策点介入**：人只在需要决策时介入
 
+### 4. 完整蓝图先行
+- **先完整规划**：新功能、复杂修复、重构、架构调整必须先写完整目标蓝图
+- **再分阶段推进**：一次实现不完可以，但未完成 Slice 必须保留在 tasks、需求、OpenSpec 或上下文中
+- **可追踪交付**：每个 Slice 必须说明蓝图归属、依赖、后续项和验收方式
+
 ---
 
 ## 📋 开发流程
@@ -54,6 +59,7 @@ Phase Router（阶段路由）
    - 识别任务类型：新功能 / Bug 修复 / 重构
    - 提取关键词和领域概念
    - 判断复杂度
+   - 判断是否需要完整目标蓝图或完整修复/重构蓝图
 
 2. **上下文加载**（`skill-context-loader`）
    - 业务上下文：领域模型、用户故事
@@ -70,6 +76,7 @@ Phase Router（阶段路由）
 - 任务类型和阶段判断
 - 相关上下文文档列表
 - 历史经验摘要
+- 完整目标蓝图的创建位置或复用位置
 
 ---
 
@@ -104,13 +111,15 @@ Phase Router（阶段路由）
 
 **AI 自动执行**（`agent-proposal`）：
 1. 创建 OpenSpec change 目录结构
-2. 生成提案文档（`proposal.md`）
-3. 创建任务清单（`tasks.md`）
-4. 更新需求文档（`requirements/in-progress/`）
+2. 生成完整目标蓝图（可使用 `.ai/templates/complete-blueprint.md`）
+3. 生成提案文档（`proposal.md`）
+4. 创建带蓝图追踪的任务清单（`tasks.md`）
+5. 更新需求文档（`requirements/in-progress/`）
 
 **提案内容**：
 - Why：为什么需要这个功能
 - What Changes：具体变更内容
+- Complete Target Blueprint：最终目标、完整范围、最终架构、阶段计划、验收矩阵、风险回滚
 - Impact：影响范围
 - 反向引用需求文档
 

@@ -8,6 +8,7 @@ Instructions for AI coding assistants using OpenSpec for spec-driven development
 - Decide scope: new capability vs modify existing capability
 - Pick a unique `change-id`: kebab-case, verb-led (`add-`, `update-`, `remove-`, `refactor-`)
 - Create a requirement doc first: `requirements/in-progress/<name>.md` and register in `requirements/INDEX.md`
+- Draft the complete target blueprint before splitting tasks; use `.ai/templates/complete-blueprint.md` when available
 - Scaffold: `proposal.md`, `tasks.md`, `design.md` (only if needed), and delta specs per affected capability
 - Write deltas: use `## ADDED|MODIFIED|REMOVED|RENAMED Requirements`; include at least one `#### Scenario:` per requirement
 - Validate: `openspec validate [change-id] --strict` and fix issues
@@ -45,18 +46,20 @@ Skip proposal for:
 1. Review `openspec/project.md`, `openspec list`, and `openspec list --specs` to understand current context.
 1. Create/confirm a requirement doc in `requirements/in-progress/` and register it in `requirements/INDEX.md`.
 2. Choose a unique verb-led `change-id` and scaffold `proposal.md`, `tasks.md`, optional `design.md`, and spec deltas under `openspec/changes/<id>/`.
-3. Draft spec deltas using `## ADDED|MODIFIED|REMOVED Requirements` with at least one `#### Scenario:` per requirement.
-4. Run `openspec validate <id> --strict` and resolve any issues before sharing the proposal.
+3. Add a complete target blueprint to `proposal.md` or `design.md`: final behavior, full scope, non-goals, architecture shape, phased plan, acceptance matrix, risks, rollback, and tracking locations for unfinished slices.
+4. Draft spec deltas using `## ADDED|MODIFIED|REMOVED Requirements` with at least one `#### Scenario:` per requirement.
+5. Run `openspec validate <id> --strict` and resolve any issues before sharing the proposal.
 
 ### Stage 2: Implementing Changes
 Track these steps as TODOs and complete them one by one.
 1. **Read proposal.md** - Understand what's being built
 2. **Read design.md** (if exists) - Review technical decisions
 3. **Read tasks.md** - Get implementation checklist
-4. **Implement tasks sequentially** - Complete in order
-5. **Confirm completion** - Ensure every item in `tasks.md` is finished before updating statuses
-6. **Update checklist** - After all work is done, set every task to `- [x]` so the list reflects reality
-7. **Approval gate** - Do not start implementation until the proposal is reviewed and approved
+4. **Confirm blueprint trace** - Ensure current task maps back to the complete blueprint and unfinished slices remain tracked
+5. **Implement tasks sequentially** - Complete in order
+6. **Confirm completion** - Ensure completed items are really done before updating statuses; do not delete unfinished work
+7. **Update checklist** - Mark completed items only; leave unfinished items unchecked with next-step notes
+8. **Approval gate** - Do not start implementation until the proposal is reviewed and approved
 
 ### Stage 3: Archiving Changes
 After deployment, create separate PR to:
@@ -171,6 +174,41 @@ New request?
 - [Bullet list of changes]
 - [Mark breaking changes with **BREAKING**]
 
+## Complete Target Blueprint
+
+### Final Behavior
+[What the complete capability looks like when done]
+
+### Full Scope
+- Domain:
+- Application:
+- Infrastructure:
+- API / DTO:
+- Frontend:
+- Database / Migration:
+- Permission / Audit:
+- Tests:
+- Docs:
+
+### Non-Goals
+- [What is explicitly out of scope]
+
+### Final Architecture Shape
+- [Aggregates, ports, adapters, strategies, state machines, read models, UI entry points]
+
+### Phased Plan
+| Slice | Blueprint Area | Goal | Dependency | This Change? | Tracking Location |
+|---|---|---|---|---|---|
+| Slice 1 | | | None | Yes/No | |
+
+### Acceptance Matrix
+| Acceptance | Verification | Slice | Status |
+|---|---|---|---|
+| | | | Not started |
+
+### Risks / Rollback
+- [Risk] -> [Mitigation / rollback]
+
 ## Impact
 - Affected specs: [list capabilities]
 - Affected code: [key files/systems]
@@ -199,11 +237,36 @@ If multiple capabilities are affected, create multiple delta files under `change
 
 4. **Create tasks.md:**
 ```markdown
-## 1. Implementation
-- [ ] 1.1 Create database schema
-- [ ] 1.2 Implement API endpoint
-- [ ] 1.3 Add frontend component
-- [ ] 1.4 Write tests
+## Complete Blueprint References
+- Requirement:
+- Proposal:
+- Design:
+- Spec Delta:
+
+## Task DAG
+```text
+Slice 1 -> Slice 2 -> Slice 3
+```
+
+## Slice 1: [Observable result]
+- Blueprint area:
+- Goal:
+- Layers:
+- Dependencies: None
+- Non-goals:
+- Follow-up items:
+- Acceptance:
+  - [ ] Behavior:
+  - [ ] Automated tests:
+  - [ ] Docs/spec sync:
+  - [ ] Static scan TopN evidence:
+
+### Tasks
+- [ ] 1.1 RED: add/update tests
+- [ ] 1.2 GREEN: implement this slice while staying aligned with the complete blueprint
+- [ ] 1.3 REFACTOR: clean boundaries and duplication
+- [ ] 1.4 VERIFY: run relevant verification
+- [ ] 1.5 STATIC SCAN: run `scripts/dev/static-scan-topn.sh 10` and record TopN handling
 ```
 
 5. **Create design.md when needed:**
@@ -221,6 +284,14 @@ Minimal `design.md` skeleton:
 ## Goals / Non-Goals
 - Goals: [...]
 - Non-Goals: [...]
+
+## Complete Target Blueprint
+- Final behavior:
+- Full scope:
+- Final architecture shape:
+- Phased plan:
+- Acceptance matrix:
+- Unfinished item tracking:
 
 ## Decisions
 - Decision: [What and why]

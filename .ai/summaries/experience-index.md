@@ -132,6 +132,26 @@
 
 ---
 
+### 问题类别：实现后静态扫码与 TopN 留痕
+
+- **问题**：AI 完成代码实现后，如果只运行测试或口头说明“已扫描”，静态问题和处理过程无法追溯
+- **解决方案**：运行 `scripts/dev/static-scan-topn.sh 10`，保留 `.ai/reports/static-scan/<timestamp>/summary.md`，优先修复 TopN 并记录处理方式、处理结果和复扫证据
+- **相关文件**：`context/experience/lessons/static-scan-topn-workflow.md`
+- **标签**：`static-scan`, `TopN`, `SAST`, `lint`, `SpotBugs`, `质量门禁`
+- **相关度关键词**：静态扫描, 静态扫码, TopN, SAST, lint, SpotBugs, CodeQL, 复扫, 留痕, 质量门禁
+
+---
+
+### 问题类别：完整蓝图先行，而不是最小闭环先行
+
+- **问题**：AI 只按本次能完成的最小闭环推进，后续任务容易遗忘最终形态和未完成项
+- **解决方案**：先使用 `.ai/templates/complete-blueprint.md` 写完整目标蓝图，再用 `.ai/templates/tasks-with-blueprint-trace.md` 拆分 Slice；未完成项必须保留追踪位置
+- **相关文件**：`context/experience/lessons/complete-blueprint-before-slicing.md`
+- **标签**：`blueprint`, `planning`, `slice`, `DAG`, `OpenSpec`, `长期演进`
+- **相关度关键词**：完整蓝图, 完整目标, 分阶段推进, Slice, DAG, 未完成项, 追踪位置, OpenSpec, 长期演进, 规划
+
+---
+
 ### 问题类别：AppService fallback 导致推导结果固定
 
 - **问题**：`VersionValidationAppService.validateVersion()` 在 `currentVersion` 为空时 fallback 到 `"0.0.0"`，MINOR 策略推导出 `"0.1.0"`，所有缺少参数的请求都返回相同的错误值（`derivedVersion` 始终为 "0.1.0"）

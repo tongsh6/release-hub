@@ -26,6 +26,7 @@
 ├── agents/            # 🤖 Agent 定义（决策层）
 ├── commands/          # ⚡ 命令入口
 ├── skills/            # 🔧 Skill 定义（执行层）
+├── templates/         # 🧩 规划与任务模板
 ├── standards/         # 📐 AIEF 标准规范与可复用模式
 │   ├── skill-spec.md
 │   ├── command-spec.md
@@ -34,7 +35,8 @@
 ├── reports/           # 📊 分析报告
 │   ├── code-review/
 │   ├── architecture/
-│   └── performance/
+│   ├── performance/
+│   └── static-scan/
 ├── proposals/         # 💡 方案建议
 ├── summaries/         # 📝 会话摘要/上下文
 └── temp/              # 🗑️ 临时文档（已 gitignore）
@@ -57,6 +59,7 @@
 2. **Agent 扩展**：是否需要新增 Agent 处理类似场景？
 3. **经验记录**：经验是否应记录到 `context/experience/`？
 4. **上下文索引**：是否需要在 `summaries/` 建立索引？
+5. **静态扫码留痕**：是否已执行 `scripts/dev/static-scan-topn.sh 10`，并在 `.ai/reports/static-scan/` 记录 TopN 处理方式与复扫证据？
 
 **目标**：边际成本递减，知识持续复利。
 
@@ -134,6 +137,13 @@ Agent A    Agent B    Agent C
 - 判断当前任务处于哪个阶段
 - 决定下一步应该调用哪个 Agent
 - 管理任务状态和上下文传递
+
+### 完整蓝图模板
+
+复杂任务必须先使用模板补齐完整规划，再进入分阶段实现：
+
+- [`templates/complete-blueprint.md`](templates/complete-blueprint.md) — 最终目标、完整范围、架构形态、阶段计划、验收矩阵、风险回滚
+- [`templates/tasks-with-blueprint-trace.md`](templates/tasks-with-blueprint-trace.md) — 每个 Slice 回连完整蓝图，并保留未完成项追踪位置
 
 ---
 

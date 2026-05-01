@@ -32,6 +32,7 @@
    - Bug 修复 → 直接进入实现阶段
    - 重构 → 检查是否需要设计文档
 4. 判断当前阶段：
+   - 缺少完整目标蓝图 → 先调用 `agent-proposal` 或 `agent-design` 补齐蓝图
    - 提案阶段 → 调用 `agent-proposal`
    - 设计阶段 → 调用 `agent-design`
    - 实现阶段 → 调用 `agent-implement`
@@ -56,7 +57,7 @@
 **处理**：
 1. 分析：新功能 → 需要提案
 2. 检查：是否有 openspec 提案？→ 无
-3. 路由：调用 `agent-proposal` 创建提案
+3. 路由：调用 `agent-proposal` 创建提案并补齐完整目标蓝图
 4. 传递上下文：功能描述、相关领域模型、历史相似功能经验
 
 **输出**：

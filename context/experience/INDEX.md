@@ -137,6 +137,26 @@
 
 ---
 
+### 实现后静态扫码与 TopN 修复留痕
+
+- **类别**：工程纪律
+- **日期**：2026-05-01
+- **关键词**：`static scan`, `静态扫描`, `静态扫码`, `TopN`, `SAST`, `lint`, `SpotBugs`, `CodeQL`, `质量门禁`, `复扫`, `留痕`
+- **摘要**：任何 AI 工具完成代码实现后，必须运行统一静态扫描，优先修复 TopN，并保留扫描结果、处理方式、处理结果和复扫证据。
+- **文档**：[lessons/static-scan-topn-workflow.md](lessons/static-scan-topn-workflow.md)
+
+---
+
+### 完整蓝图先行，而不是最小闭环先行
+
+- **类别**：工程纪律
+- **日期**：2026-05-01
+- **关键词**：`完整蓝图`, `完整目标`, `分阶段推进`, `Slice`, `DAG`, `未完成项`, `追踪位置`, `OpenSpec`, `长期演进`, `规划`
+- **摘要**：复杂任务必须先写完整目标蓝图，再按 Slice 分阶段推进；一次做不完的内容必须保留追踪位置，避免后续遗忘最终目标。
+- **文档**：[lessons/complete-blueprint-before-slicing.md](lessons/complete-blueprint-before-slicing.md)
+
+---
+
 ### TestContainers 1.20.x macOS Docker Desktop 配置
 
 - **类别**：踩坑记录
@@ -213,6 +233,7 @@
 | 经验 | 关键词 | 摘要 |
 |------|--------|------|
 | [TestContainers macOS Docker 配置](lessons/testcontainers-docker-setup.md) | `Ryuk`, `Singleton`, `Surefire`, `api.version` | Ryuk 禁用只走环境变量，多类共享容器 |
+| [实现后静态扫码与 TopN 修复留痕](lessons/static-scan-topn-workflow.md) | `静态扫描`, `TopN`, `SAST`, `复扫` | 实现后扫描、TopN 修复与证据留痕 |
 
 ### 综合/跨领域
 
@@ -222,6 +243,7 @@
 | [修改常量需全局搜索](lessons/constant-change-global-search.md) | `error code`, `常量`, `全局搜索` | 改错误码忘更新测试 |
 | [E2E 测试自动化](lessons/e2e-testing-workflow.md) | `e2e`, `测试`, `自动化`, `前置检查` | 写测试前先读 Controller/AppService |
 | [临时产物即时归档](lessons/temp-artifacts-archiving.md) | `worktree`, `归档`, `未跟踪` | 完成即归档，关 worktree 前 git status |
+| [完整蓝图先行](lessons/complete-blueprint-before-slicing.md) | `完整蓝图`, `Slice`, `DAG`, `追踪位置` | 先完整规划，再分阶段推进 |
 
 ---
 
@@ -248,6 +270,8 @@
 - [E2E 测试自动化与前置检查](lessons/e2e-testing-workflow.md)
 - [临时产物即时归档](lessons/temp-artifacts-archiving.md)
 - [Git 工作流：所有变更必须走 PR](lessons/git-workflow.md)
+- [实现后静态扫码与 TopN 修复留痕](lessons/static-scan-topn-workflow.md)
+- [完整蓝图先行，而不是最小闭环先行](lessons/complete-blueprint-before-slicing.md)
 
 ### 实现模式
 

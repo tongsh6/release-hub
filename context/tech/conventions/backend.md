@@ -140,14 +140,14 @@ public class JpaReleaseWindowAdapter implements ReleaseWindowPort {
 
 ## 测试策略（TDD 优先）
 
-**必须遵循 TDD 流程**：先写测试 → 最小实现 → 重构
+**必须遵循 TDD 流程**：先写测试 → 刚好满足当前测试且符合完整规划的实现 → 重构
 
 详细 TDD 规则参见 `testing.mdc`
 
 ### 开发新功能流程
 ```
 1. 编写失败的测试（RED）
-2. 编写最小实现让测试通过（GREEN）
+2. 编写刚好让测试通过且不偏离完整蓝图的实现（GREEN）
 3. 重构优化（REFACTOR）
 4. 重复直到功能完成
 ```

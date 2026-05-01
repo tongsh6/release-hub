@@ -187,7 +187,7 @@ This project **enforces TDD (Test-Driven Development)** for all code implementat
 |------|--------|-------------|
 | 1 | **Write Test** | Before any business code, write a failing test |
 | 2 | **Run Test** | Confirm test fails (RED) |
-| 3 | **Implement** | Write just enough code to pass |
+| 3 | **Implement** | Write code that satisfies the current test while staying aligned with the complete plan |
 | 4 | **Confirm Pass** | Run test, confirm green (GREEN) |
 | 5 | **Refactor** | Optimize code, keep tests green |
 | 6 | **Repeat** | Continue with next test case |
@@ -201,6 +201,24 @@ This project **enforces TDD (Test-Driven Development)** for all code implementat
 4. Confirm test passes
 5. Ensure no other tests broken
 ```
+
+## Post-Implementation Static Scan (MANDATORY)
+
+After any AI tool finishes code implementation and before final delivery, it must run the unified static scan command or an equivalent static analysis command:
+
+```bash
+scripts/dev/static-scan-topn.sh 10
+```
+
+Required workflow:
+
+1. Generate `.ai/reports/static-scan/<timestamp>/summary.md` and preserve raw logs.
+2. Review the TopN findings in the report.
+3. Fix TopN findings first; if a finding is skipped, record the reason.
+4. Re-run the scan or a static analysis command that covers the relevant changed scope after fixes.
+5. Update the same report with handling method, result, re-scan evidence, and residual risks.
+
+Final responses must include the static scan report path and TopN handling result.
 
 ## Testing Strategies
 - Domain models: Pure unit tests (no Spring context)

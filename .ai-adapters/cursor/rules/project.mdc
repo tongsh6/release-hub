@@ -30,8 +30,14 @@ ReleaseHub 是基于 DDD 的多仓库发布协调平台，管理 Release Windows
 ### TDD 强制
 
 1. RED → 先写失败测试
-2. GREEN → 最小实现通过
+2. GREEN → 写刚好满足当前测试且不偏离完整规划的实现
 3. REFACTOR → 优化保持绿色
+
+### 实现后静态扫码
+
+- 任何代码实现完成后，最终回复前必须运行 `scripts/dev/static-scan-topn.sh 10` 或等价静态扫描命令
+- 必须优先修复 TopN 问题；不能修复或不应修复的项要记录原因
+- 必须保留 `.ai/reports/static-scan/<timestamp>/summary.md`，并补充处理方式、处理结果和复扫证据
 
 ### 前端（Vue 3 + TypeScript）
 

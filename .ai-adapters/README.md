@@ -7,6 +7,7 @@
 1. **保留原生位置**：各工具的配置文件留在其识别路径（`.github/copilot-instructions.md`、`.claude/` 等），不移动
 2. **适配器只做桥接**：指向 `AGENTS.md` 作为权威入口，不重复业务逻辑
 3. **权威入口唯一**：`AGENTS.md` → `context/` / `openspec/` / `.ai/` 是知识流向
+4. **实现后统一扫码**：任何 AI 工具完成代码实现后，必须执行 `scripts/dev/static-scan-topn.sh 10` 或等价静态扫描命令，并保留 `.ai/reports/static-scan/` 下的扫描结果与 TopN 处理记录
 
 ## 适配器清单
 
