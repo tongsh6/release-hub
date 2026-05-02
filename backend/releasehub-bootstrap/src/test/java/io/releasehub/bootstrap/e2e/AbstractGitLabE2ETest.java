@@ -7,11 +7,15 @@ import io.releasehub.domain.run.Run;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.client.RestTemplate;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -193,6 +197,55 @@ public abstract class AbstractGitLabE2ETest {
     /**
      * 验证 Run 包含指定数量的 RunItem，每个 RunItem 含预期 ActionType 序列。
      */
+    // ─── GitLab API 辅助（用于制造冲突场景） ───
+
+    private static final RestTemplate gitLabClient = new RestTemplate();
+
+    /**
+     * 在 GitLab 仓库中创建分支
+     */
+    protected boolean gitLabCreateBranch(String gitlabBaseUrl, String token, String projectId,
+                                          String branchName, String fromBranch) {
+        try {
+            String url = String.format("%s/api/v4/projects/%s/repository/branches",
+                    gitlabBaseUrl, URLEncoder.encode(projectId, StandardCharsets.UTF_8));
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("PRIVATE-TOKEN", token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            Map<String, String> body = Map.of("branch", branchName, "ref", fromBranch);
+            ResponseEntity<String> resp = gitLabClient.exchange(
+                    url, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
+            return resp.getStatusCode().is2xxSuccessful();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 修改 GitLab 仓库中的文件内容（用于制造版本冲突）
+     */
+    protected boolean gitLabUpdateFile(String gitlabBaseUrl, String token, String projectId,
+                                        String filePath, String newContent, String commitMessage) {
+        try {
+            String encodedPath = URLEncoder.encode(filePath, StandardCharsets.UTF_8);
+            String url = String.format("%s/api/v4/projects/%s/repository/files/%s",
+                    gitlabBaseUrl, URLEncoder.encode(projectId, StandardCharsets.UTF_8), encodedPath);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("PRIVATE-TOKEN", token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            String encodedContent = Base64.getEncoder().encodeToString(
+                    newContent.getBytes(StandardCharsets.UTF_8));
+            Map<String, String> body = Map.of(
+                    "branch", "main", "content", encodedContent,
+                    "commit_message", commitMessage, "encoding", "base64");
+            ResponseEntity<String> resp = gitLabClient.exchange(
+                    url, HttpMethod.PUT, new HttpEntity<>(body, headers), String.class);
+            return resp.getStatusCode().is2xxSuccessful();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     protected void verifyRunItems(String runId, int expectedItemCount, List<String> expectedActionTypes) {
         if (runPort == null || runId == null) return;
         Run run = runPort.findById(runId).orElse(null);
