@@ -43,7 +43,7 @@
 - BranchRule：TEMPLATE/REGEX 双模式 + scope + enable/disable + test API
 - VersionPolicy：MAJOR/MINOR/PATCH/DATE + 版本推导
 - VersionUpdater：Maven/Gradle 双构建工具 + Diff 生成
-- Run/RunTask：执行记录 + 8 种任务执行器 + 编排/重试/导出
+- Run/RunTask：执行记录 + 10 种任务执行器 + 编排/重试/导出
 - Group：层级树 + code 自动生成 + 叶子节点约束
 - 冲突检测：版本/分支/跨仓库/Git合并 四维预检（7 种冲突类型）
 - 认证：JWT + BCrypt

@@ -1,5 +1,5 @@
 ## Purpose
-代码仓库（CodeRepository）是 ReleaseHub 管理的核心资源，承载分支、MR、版本等元信息，支撑发布窗口与迭代的版本管理流程。
+代码仓库（CodeRepository）是 ReleaseHub 管理的核心资源，承载分支、MR、版本等元信息，支撑发布窗口与迭代的版本管理流程。仓库支持 GitLab/GitHub 双 Provider 接入，提供分支/MR 统计、健康检查（合规/不合规分支）、Git 配置管理、手动同步和 gate 概览。仓库 name 和 cloneUrl 在系统内全局唯一。
 
 ## Requirements
 

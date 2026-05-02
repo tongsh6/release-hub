@@ -1,7 +1,7 @@
 # iteration Specification
 
 ## Purpose
-TBD - created by archiving change add-release-automation. Update Purpose after archive.
+迭代（Iteration）是发布窗口与代码仓库之间的桥接聚合。迭代管理仓库关联、触发 feature 分支自动创建、跟踪版本号生命周期（基准版本 → 开发版本 → 目标版本），并支持版本号同步与冲突检测，是多仓库协同发布的核心协调单元。
 ## Requirements
 ### Requirement: 仓库关联迭代时创建 feature 分支
 

@@ -55,7 +55,7 @@ ReleaseHub 面向「多项目、多仓库」场景，统一管理发布窗口、
 | **BranchRule** | 分支规则与合规校验 |
 | **RunTask** | 运行任务与执行步骤 |
 
-> 详细领域模型参见 `docs/DOMAIN_MODEL.md`
+> 详细领域模型参见 `docs/context/business/domain-model.md`
 
 ---
 
@@ -68,12 +68,13 @@ ReleaseHub 面向「多项目、多仓库」场景，统一管理发布窗口、
 - BranchRule：规则 CRUD + 合规校验
 - VersionUpdater：Maven/Gradle 版本更新 + Diff 生成
 - Run：执行记录 + 导出/重试
-- RunTask：8 种任务执行器
+- RunTask：10 种任务执行器
 - 发布准备/收尾：合并与编排 API + Publish 自动编排（事件驱动）
 - 前端 UI：核心页面全部可用
 
 ### ⚠️ 待完善
-- 发布准备/收尾自动化对齐（Attach 错误可见性已完成，Run 追踪集成待做）
+- Attach 分支操作集成 Run 追踪（技术债务，较大架构调整，择期处理）
+- 预存 SpotBugs EI_EXPOSE_REP x5（`releasehub-common` 基础类，全局影响）
 
 ### ❌ 明确排除（当前版本不实现）
 - 项目管理（Project）
@@ -81,7 +82,7 @@ ReleaseHub 面向「多项目、多仓库」场景，统一管理发布窗口、
 - 通知（飞书/钉钉/邮件）
 - CI/CD 深度集成
 
-> 注：通知和 RBAC 在早期 Roadmap 中列为 Phase 3/4，但经评估不属于 MVP 范围，已从当前 Roadmap 移除。如后续需求变化可重新评估。
+> 注：通知和 RBAC 在早期 Roadmap 中列为 Phase 3/4，但经评估不属于 MVP 范围。当前 Roadmap 中 Phase 6 标记为"待规划"，上述能力将根据用户反馈决定优先级。
 
 ---
 
@@ -217,7 +218,7 @@ ReleaseWindow: DRAFT → PUBLISHED → CLOSED
 | **Phase 3** | 部署 & 发布自动化：部署文档、Attach 错误可见性、Publish 自动编排 | ✅ 已完成 |
 | **Phase 4** | E2E & 质量：TestContainers E2E 补齐、静态扫描脚本、文档一致性 | ✅ 已完成 |
 | **Phase 5** | 技术债务清理：预存 SpotBugs 修复、Attach Run 追踪集成 | 📋 择期 |
-| **Phase 6** | 待定（根据用户反馈决定通知/RBAC/性能优化方向） | 💡 讨论中 |
+| **Phase 6** | 待规划：通知/RBAC/性能优化/变更日志/异步执行 — 根据用户反馈决定优先级 | 📋 待规划 |
 
 ---
 
@@ -255,4 +256,4 @@ cd frontend && pnpm dev
 |------|------|
 | `FUNCTION_DEVELOPMENT_PLAN.md` | 功能开发规划 |
 | `NEXT_STEPS_TASKS.md` | 待办任务清单 |
-| `docs/DOMAIN_MODEL.md` | 详细领域模型 |
+| `docs/context/business/domain-model.md` | 详细领域模型 |

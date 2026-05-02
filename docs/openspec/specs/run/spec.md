@@ -1,7 +1,7 @@
 # run Specification
 
 ## Purpose
-TBD - created by archiving change add-release-automation. Update Purpose after archive.
+运行记录（Run）是发布编排的执行追踪聚合。每次发布窗口的编排操作（准备/收尾/版本更新）产生一个 Run，包含有序的 RunItem 和 RunStep。系统支持 10 种任务执行器（ENSURE_FEATURE、ENSURE_RELEASE、ENSURE_MR、TRY_MERGE、UPDATE_VERSION、CLOSE_ITERATION、ARCHIVE_BRANCH、MERGE_TO_MASTER、CREATE_TAG、TRIGGER_CI），支持手动重试和执行结果导出。
 ## Requirements
 ### Requirement: 运行任务管理
 

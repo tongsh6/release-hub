@@ -4,10 +4,10 @@
 
 ## 状态机流转
 
-`DRAFT` (草稿) -> `PUBLISHED` (已发布) -> `RELEASED` (已投产) -> `CLOSED` (已关闭)
+`DRAFT` (草稿) -> `PUBLISHED` (已发布) -> `CLOSED` (已关闭)
 
 其他状态：
-- `FROZEN` (冻结)：布尔标记，冻结后不可修改时间窗口。
+- `FROZEN` (冻结)：布尔标记（非独立状态），冻结后不可修改时间窗口。
 
 ## 接口列表
 
@@ -45,26 +45,20 @@
 
 ### 5. 解冻窗口 (Unfreeze)
 - **URL**: `POST /api/v1/release-windows/{id}/unfreeze`
-- **Request**: N/A (Path param only, or empty body depending on client)
+- **Request**: N/A
 - **Response**: `ReleaseWindowView` (frozen=false)
 
-### 6. 投产 (Release)
-- **URL**: `POST /api/v1/release-windows/{id}/release`
-- **Pre-condition**: Status MUST be PUBLISHED.
-- **Request**: N/A
-- **Response**: `ReleaseWindowView` (status=RELEASED)
-
-### 7. 关闭 (Close)
+### 6. 关闭 (Close)
 - **URL**: `POST /api/v1/release-windows/{id}/close`
-- **Pre-condition**: Status MUST be RELEASED.
+- **Pre-condition**: Status MUST be PUBLISHED.
 - **Request**: N/A
 - **Response**: `ReleaseWindowView` (status=CLOSED)
 
-### 8. 查询详情 (Get)
+### 7. 查询详情 (Get)
 - **URL**: `GET /api/v1/release-windows/{id}`
 - **Response**: `ReleaseWindowView`
 
-### 9. 列表查询 (List)
+### 8. 列表查询 (List)
 - **URL**: `GET /api/v1/release-windows`
 - **Response**: `List<ReleaseWindowView>`
 

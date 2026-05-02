@@ -1,50 +1,77 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# ReleaseHub Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. DRY — 消除业务规则重复
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+重复的业务判断、状态流转、错误码、分页查询、执行记录、Git 操作、版本解析、冲突检测必须收敛到单一模块。不为了少几行代码抽象；只有当重复代表同一业务规则或同一变化原因时才抽象。每次新增能力前，必须搜索现有实现，优先复用已有 Port、策略、值对象、组合式函数和通用组件。
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### II. 开闭原则 — 扩展不修改主流程
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+以下变化轴必须优先用策略、注册表或 Port/Adapter 扩展：新 Git Provider、新构建工具、新冲突检测类型、新 RunTask 执行器、新分支规则类型、新导出格式或通知渠道。主编排服务只负责组织流程，不直接写分支判断矩阵。
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### III. 正交性 — 变化轴不得互相污染
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+至少 7 个独立变化轴各自收敛：发布窗口生命周期、窗口范围与迭代挂载、Git 操作、版本语义、冲突检测、执行记录与任务、UI 展示。禁止在 Controller 或 UI 中硬编码状态流转，禁止 Application 层绑定具体 Git API，禁止前端推导后端业务真相。
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### IV. 切面化 — 横切能力统一管理
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+认证与权限、审计日志、幂等、事务边界、锁与并发控制、重试/超时/失败恢复、指标/耗时/Trace ID、国际化错误消息、API 响应格式必须作为切面或统一基础设施处理。同一横切逻辑出现在三个以上用例中，必须提取统一机制。
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### V. 深模块 — 窄接口承载复杂内部实现
+
+模块对外入口少而稳定，内部复杂性封装，调用方不需要知道内部步骤。典型目标：ConflictDetectionAppService 对外只暴露扫描/查询，内部由多个 ConflictDetector 策略组成；ReleaseOrchestrator 对外只暴露创建/执行计划，内部处理 DAG、依赖、重试和恢复。
+
+### VI. 复杂时序显式建模
+
+发布、合并、版本更新、归档、打标、CI、通知都属于复杂时序。禁止只靠方法调用顺序表达业务流程。必须至少显式建模：状态机（允许状态、流转、终态、幂等）、任务（类型、目标对象、状态、重试次数、错误）、依赖（前置任务）、运行记录（开始、结束、操作者、结果、日志）。
+
+### VII. 性能是一等约束
+
+涉及多仓库、多迭代、Git 远程调用、批量版本扫描时，必须考虑：同仓库任务串行、不同仓库任务可并行；远程调用避免重复；读模型/API 聚合避免前端 N+1 请求；长任务不得阻塞 HTTP 请求线程；执行进度必须可查询、可恢复。
+
+### VIII. 前沿业务建模
+
+复杂业务优先使用：DDD 聚合和值对象表达业务不变量、状态机表达生命周期、领域事件表达重要业务事实、Process Manager/Saga 表达跨聚合长流程、Policy/Strategy 表达可替换规则、CQRS 风格读模型表达复杂查询、DAG 表达可并行可恢复的执行任务。禁止贫血 CRUD 替代复杂建模。
+
+## Development Workflow
+
+### AI 接手任务的强制流程
+
+1. **Step 0 — 事实校准**：检查 `git status`，加载相关经验教训，对照真实源码
+2. **Step 1 — 任务分类**：新能力走 requirements + OpenSpec，Bug 走复现测试，重构走不改变外部行为
+3. **Step 2 — 完整目标蓝图**：包含最终行为、完整范围、非目标、架构形态、阶段计划、验收矩阵、风险与回滚
+4. **Step 3 — 垂直切片**：每切片至少贯穿 Domain/Application/API/Frontend/Test 中的必要层，有独立验收标准
+5. **Step 4 — 模块边界设计**：确定新规则所属领域概念、是否引入新变化点、是否跨聚合、是否横切、是否影响性能
+6. **Step 5 — TDD 实施**：RED → GREEN → REFACTOR → VERIFY
+7. **Step 5.1 — 静态扫描**：实现后主动执行静态代码扫描，优先修复 TopN 问题
+8. **Step 6 — 经验沉淀**：更新文档、归档经验、清理临时产物
+
+### 垂直切片事前约束
+
+每个切片必须满足：蓝图归属明确、用户可观察行为变化、端到端路径闭环、单一目标、可独立验证、可回滚、依赖明确、风险收敛。不允许只做横向技术铺垫而无用户可验证结果。
+
+### 垂直切片事后检查
+
+每个切片完成后检查：行为闭环、层级闭环、测试闭环、架构闭环、性能闭环、文档闭环、工作区闭环。
+
+## Quality Gates
+
+- TDD 强制执行，RED 先于 GREEN
+- ArchUnit 分层测试：domain 零框架依赖、application 不依赖 infrastructure
+- Maven Enforcer 插件：禁止未声明的依赖
+- SpotBugs：新引入 bugs 必须为 0
+- 前端 typecheck + lint 必须通过
+- E2E 测试覆盖关键业务路径
+- 静态扫描 TopN 修复后方可交付
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+- Constitution 高于所有其他工程实践和约定
+- 任何偏离本宪法的设计决策必须记录为 ADR（Architecture Decision Record），存入 `docs/adr/`
+- 宪法修订需要：提案 → 团队评审 → 文档更新 → 迁移计划
+- 所有 AI 辅助开发必须遵守本宪法中的强制流程
+- 宪法的详细实施细则见 `docs/context/tech/architecture/ai-engineering-governance.md`（包含 Step 3.1 事前约束表格、Step 3.2 事后检查清单、Step 5.1 静态扫描留痕要求、Step 6 产物归档清单）
+- 任务追踪使用 `tasks/` 体系（蓝图 → DAG → 切片 → 执行日志 → 经验沉淀）
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: v1.0 | **Ratified**: 2026-05-02 | **Last Amended**: 2026-05-02

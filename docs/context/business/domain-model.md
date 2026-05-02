@@ -1,6 +1,6 @@
 # ReleaseHub 领域模型文档
 
-> 最后更新：2026-01-28
+> 最后更新：2026-05-02（Phase 1-7 完成，BranchRule 升级为 TEMPLATE/REGEX 双模式，RunTask 扩展至 10 种执行器，新增冲突检测聚合）
 
 ## 一、领域概述
 
