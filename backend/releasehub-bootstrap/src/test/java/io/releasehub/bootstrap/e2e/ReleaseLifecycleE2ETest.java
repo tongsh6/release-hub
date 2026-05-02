@@ -24,17 +24,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class ReleaseLifecycleE2ETest extends AbstractE2ETest {
 
-    @Autowired(required = false)
-    private RecordingMockGitBranchAdapter recordingAdapter;
-
-    @BeforeEach
-    void resetRecordingAdapter() {
-        if (recordingAdapter != null) {
-            recordingAdapter.clearRecords();
-            recordingAdapter.resetForceOverrides();
-        }
-    }
-
     @Nested
     @DisplayName("完整发布生命周期")
     class FullReleaseLifecycle {
