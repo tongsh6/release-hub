@@ -41,3 +41,4 @@ frontend/e2e/screenshots/
 .amazonq/
 .cursor/
 .vercel/
+.worktrees
