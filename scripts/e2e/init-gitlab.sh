@@ -123,3 +123,11 @@ echo "Repo 3 (Gradle): http://$TEST_USER:$TEST_PASS@gitlab.local/$TEST_USER/seed
 export E2E_GITLAB_URL="$GITLAB_URL"
 export E2E_GITLAB_TOKEN="$E2E_TOKEN"
 export E2E_GITLAB_USER="$TEST_USER"
+
+# Persist to file so test processes can source these values
+cat > /tmp/e2e-gitlab.env << EOF
+E2E_GITLAB_URL=$GITLAB_URL
+E2E_GITLAB_TOKEN=$E2E_TOKEN
+E2E_GITLAB_USER=$TEST_USER
+EOF
+echo "Token persisted to /tmp/e2e-gitlab.env"

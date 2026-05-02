@@ -8,6 +8,10 @@ spring:
     password: 123456
   flyway:
     enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
 
 releasehub:
   seed:

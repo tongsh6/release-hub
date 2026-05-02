@@ -45,7 +45,7 @@ public abstract class AbstractGitLabE2ETest {
     @Autowired
     protected ObjectMapper objectMapper;
 
-    @Autowired(required = false)
+    @Autowired
     protected RunPort runPort;
 
     // ─── Delegated CRUD helpers ───
@@ -101,7 +101,7 @@ public abstract class AbstractGitLabE2ETest {
     }
 
     protected void verifyRunItems(String runId, int expectedItemCount, List<String> expectedActionTypes) {
-        if (runPort == null || runId == null) return;
+        assertThat(runId).withFailMessage("Run ID 不应为 null——发布或关闭操作应创建 Run 记录").isNotNull();
         Run run = runPort.findById(runId).orElse(null);
         assertThat(run).withFailMessage("Run 记录应存在: %s", runId).isNotNull();
         assertThat(run.getItems()).withFailMessage("RunItem 数量应为 %d", expectedItemCount)

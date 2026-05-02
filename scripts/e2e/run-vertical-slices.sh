@@ -13,6 +13,17 @@ BACKEND_URL="${BACKEND_URL:-http://localhost:8080}"
 echo "Profile: $PROFILE"
 echo "Backend: $BACKEND_URL"
 
+# Initialize GitLab (idempotent — skips if already done)
+if [ -f "$SCRIPT_DIR/init-gitlab.sh" ]; then
+  echo "=== Initializing GitLab seed data ==="
+  bash "$SCRIPT_DIR/init-gitlab.sh"
+  # Source the token file for downstream tests
+  if [ -f /tmp/e2e-gitlab.env ]; then
+    set -a; source /tmp/e2e-gitlab.env; set +a
+    echo "GitLab token loaded from /tmp/e2e-gitlab.env"
+  fi
+fi
+
 # Wait for backend to be ready
 echo "=== Waiting for backend ==="
 for i in $(seq 1 30); do
