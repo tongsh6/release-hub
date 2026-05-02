@@ -517,6 +517,17 @@ git commit -m "feat: add full-stack docker-compose for E2E environment"
 
 **Coverage:** RM-1, RM-2, RM-3, RM-4, RM-9, ADM-1, ADM-4, ADM-5, ADM-6, ADM-7, QA-1
 
+**横切关注点**：
+- **Group** — 本 Slice 的核心验证对象：三级树创建、非叶子节点拒绝窗口创建（GROUP_014）、叶子节点约束在窗口/仓库/迭代上的复用
+- **System Settings** — GitLab 连接配置 + 命名模板保存（后续 Slice 的 BranchRule 依赖此配置）
+
+```java
+// 关键横切验证点：
+// 1. 非叶子分组拒绝窗口创建 — GROUP_014
+// 2. 非叶子分组拒绝仓库创建 — GROUP_014（同一条约束，不同资源类型）
+// 3. 分组树查询验证层级完整性
+```
+
 - [ ] **Step 1: 写测试类骨架**
 
 ```java
@@ -639,43 +650,90 @@ git commit -m "test: add Slice 1 E2E — group hierarchy + window lifecycle"
 
 ---
 
-### Task 8-12: Slices 2-5 + Frontend E2E
+### Task 8: Slice 2 E2E 测试 — 仓库 + 迭代 + 分支规则
 
-Same pattern as Task 7 — each slice is a self-contained test class with complete setup/teardown. Due to plan length, the detailed step-by-step for each slice follows the same pattern:
+**Files:**
+- Create: `backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/e2e/Slice2_Repo_Iter_BranchRule_E2ETest.java`
 
-**Slice 2** (`Slice2_Repo_Iter_BranchRule_E2ETest.java`):
-- [Admin] 创建 BranchRule (TEMPLATE + REGEX)
-- [Developer] 导入 GitLab 仓库到 ReleaseHub, 验证版本提取
-- [Developer] 创建迭代 + 关联仓库, 验证 feature 分支创建
-- [Developer] 尝试创建不合规分支 → 被 BranchRule 拦截
-- [Tester] 验证版本号 (base/dev/target) 推导正确
+**Coverage:** DEV-1, DEV-2, DEV-3, QA-2, ADM-2, ADM-3
 
-**Slice 3** (`Slice3_Release_Orchestration_E2ETest.java`):
-- [Release Manager] 创建窗口 → 挂载迭代 → 冻结 → 发布
-- [Tester] 验证 branch-status 显示 MERGED
-- [Tester] 验证 Run 记录包含完整的 Step 序列
-- [Release Manager] 冻结后挂载被拒绝 (RW_006)
-- [Release Manager] 多迭代多仓库发布 + 笛卡尔积验证
+**横切关注点**：
+- **BranchRule** — 本 Slice 的核心验证对象：TEMPLATE/REGEX 配置、feature 分支创建时合规校验、不合规分支被拦截
+- **Group** — 仓库创建必须在叶子分组下（同 Slice 1 GROUP_014 约束，验证横切一致性）
+- 本 Slice 的 BranchRule 配置在 Slice 3 中继续生效——release 分支创建时同样受规则约束
 
-**Slice 4** (`Slice4_Post_Release_Cleanup_E2ETest.java`):
-- [Release Manager] 关闭 Slice 3 发布的窗口
-- [Tester] 验证 GitLab tag 存在、feature 已归档、release 已 merge to main
-- [Tester] 验证 CI pipeline 触发
-- [Tester] 验证 Run 包含完整收尾 6 步骤
-- [Release Manager] 关闭已关闭窗口 → 幂等
+```java
+// 关键横切验证点：
+// 1. 仓库创建在非叶子分组下被拒 — GROUP_014（验证与 Slice 1 同源约束）
+// 2. feature 分支名符合 TEMPLATE 规则 → 创建成功
+// 3. 分支名不符合任何规则 → 创建被拦截
+// 4. BranchRule 配置在 Admin 角色下完成，但约束对 Developer 生效（跨角色）
+```
 
-**Slice 5** (`Slice5_Conflict_Detection_E2ETest.java`):
-- [Developer] 手动修改 GitLab 中 pom.xml 版本 → [Tester] 检测 REPO_AHEAD
-- [Developer] 手动创建 release 分支 → [Tester] 检测 BRANCH_EXISTS
-- [Developer] 创建不合规分支 → [Tester] 检测 BRANCH_NONCOMPLIANT
-- [Developer] 制造合并冲突 → [Tester] 检测 MERGE_CONFLICT → [Developer] 解决 → [Release Manager] 重试
-- [Tester] 检测 CROSS_REPO_VERSION_MISMATCH → [Release Manager] 调整策略
+### Task 9: Slice 3 E2E 测试 — 发布执行编排
 
-**Slice Frontend** (`role-collaboration-e2e.test.ts`):
-- [Admin] UI 配置 GitLab + 创建分组
-- [Developer] UI 导入仓库 + 创建迭代
-- [Release Manager] UI 窗口创建/冻结/发布
-- [Tester] UI 查看 branch-status + Run 结果
+**Files:**
+- Create: `backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/e2e/Slice3_Release_Orchestration_E2ETest.java`
+
+**Coverage:** RM-5, RM-7, RM-8, QA-1, QA-5
+
+**横切关注点**：
+- **BranchRule** — Slice 2 配置的分支规则在本 Slice 的 release 分支创建时仍然生效，验证规则不是一次性的
+- **Group** — 挂载迭代时，窗口所在分组约束与迭代/仓库分组约束的交叉验证
+- **Release Window 生命周期** — 冻结状态对挂载操作的横切阻断（RW_006），验证 Slice 1 的状态机跨 Slice 一致
+
+```java
+// 关键横切验证点：
+// 1. release 分支命名是否符合 Admin 在 Slice 2 配置的命名模板（规则跨 Slice 生效）
+// 2. 冻结窗口拒绝挂载迭代 — RW_006（窗口状态对迭代操作的横切约束）
+// 3. 笛卡尔积：N 个迭代 × M 个仓库，每个组合独立执行完整步骤链
+```
+
+### Task 10: Slice 4 E2E 测试 — 发布收尾清理
+
+**Files:**
+- Create: `backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/e2e/Slice4_Post_Release_Cleanup_E2ETest.java`
+
+**Coverage:** RM-6, QA-1, QA-4, QA-5
+
+```java
+// 验证：关闭后的窗口状态变更不影响已有分组/分支规则配置
+// 验证：收尾步骤的 Run 记录与 Slice 3 发布步骤的 Run 记录可区分
+```
+
+### Task 11: Slice 5 E2E 测试 — 冲突检测 + 恢复
+
+**Files:**
+- Create: `backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/e2e/Slice5_Conflict_Detection_E2ETest.java`
+
+**Coverage:** DEV-4, DEV-5, DEV-6, QA-3, QA-6, RM-7
+
+**横切关注点**：
+- **BranchRule** — BRANCH_NONCOMPLIANT 冲突将分支规则从"创建时拦截"升级为"发布前全局扫描"，验证分支规则的全生命周期闭环
+- **Group** — 冲突扫描跨分组边界，验证不同分组下的仓库冲突能被统一检测
+- 跨角色协作：Developer 制造冲突 → Tester 发现报告 → Developer 解决 → Release Manager 重试，验证角色边界
+
+```java
+// 关键横切验证点：
+// 1. BRANCH_NONCOMPLIANT 冲突：Admin 规则 → Developer 违规分支 → Tester 扫描发现 → 闭环
+// 2. 冲突检测跨分组：两个不同 leaf-group 下的仓库在同一窗口中，冲突可被统一检测
+// 3. 5 个 Step 各自标注 [角色]，验证跨角色协作链完整
+```
+
+### Task 12: 前端跨角色协作 E2E 测试
+
+**Files:**
+- Create: `frontend/e2e/tests/role-collaboration-e2e.test.ts`
+
+**Coverage:** 跨 Slice 1-5 的端到端 UI 驱动验证
+
+```typescript
+// 验证：4 种角色在 UI 上看到的页面/按钮/数据不同
+// [Admin]    侧边栏有 "Settings" 菜单项
+// [Developer] 侧边栏无 "Settings"，有 "Repositories"
+// [Tester]    侧边栏有 "Runs"，按钮为只读
+// [Release Mgr] 侧边栏有完整的窗口操作按钮
+```
 
 ---
 
