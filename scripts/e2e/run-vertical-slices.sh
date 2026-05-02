@@ -6,6 +6,9 @@ echo "║  ReleaseHub Full-Link E2E Test Runner   ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROFILE="${SPRING_PROFILES_ACTIVE:-e2e}"
+
 PASSED=0
 FAILED=0
 RESULTS=""
@@ -19,6 +22,7 @@ run_slice() {
   cd "$SCRIPT_DIR/../../backend"
   if mvn test -pl releasehub-bootstrap \
        -Dtest="$test_class" \
+       -Dspring.profiles.active="$PROFILE" \
        -DfailIfNoTests=false -q 2>&1; then
     echo "=== [$name] ✅ PASSED ==="
     PASSED=$((PASSED + 1))
@@ -30,8 +34,6 @@ run_slice() {
   fi
   cd "$SCRIPT_DIR"
 }
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Run slices in dependency order
 run_slice "Slice 1: Group + Window Lifecycle" "Slice1_Group_Window_Lifecycle_E2ETest"

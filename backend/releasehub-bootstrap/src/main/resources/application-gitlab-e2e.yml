@@ -14,6 +14,7 @@ releasehub:
     enabled: false
   gitlab:
     real-adapter: true
+    base-url: http://gitlab:80
 
 security:
   jwt:

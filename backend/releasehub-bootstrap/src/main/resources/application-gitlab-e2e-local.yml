@@ -18,6 +18,7 @@ releasehub:
     enabled: true
   gitlab:
     real-adapter: true
+    base-url: http://localhost:9080
 
 security:
   jwt:
