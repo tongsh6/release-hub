@@ -234,10 +234,10 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             String path = ssh.group(2);
             return new RepoRef(baseUrl, urlEncode(path));
         }
-        Matcher https = Pattern.compile("^https?://([^/]+)/(.+?)(\\.git)?$").matcher(trimmed);
+        Matcher https = Pattern.compile("^(https?)://([^/]+)/(.+?)(\\.git)?$").matcher(trimmed);
         if (https.find()) {
-            String baseUrl = "https://" + https.group(1);
-            String path = https.group(2);
+            String baseUrl = https.group(1) + "://" + https.group(2);
+            String path = https.group(3);
             return new RepoRef(baseUrl, urlEncode(path));
         }
         throw ValidationException.invalidParameter("cloneUrl");
