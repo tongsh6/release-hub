@@ -1,0 +1,20 @@
+spring:
+  config:
+    activate:
+      on-profile: gitlab-e2e
+  datasource:
+    url: jdbc:postgresql://postgres:5432/releasehub
+    username: postgres
+    password: 123456
+  flyway:
+    enabled: true
+
+releasehub:
+  seed:
+    enabled: false
+  gitlab:
+    real-adapter: true
+
+security:
+  jwt:
+    secret: gitlab-e2e-test-secret-key-32chars-long

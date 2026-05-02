@@ -1,0 +1,36 @@
+version: '3.8'
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:17.11.3-ce.0
+    container_name: releasehub-gitlab
+    hostname: gitlab.local
+    ports:
+      - "9080:80"
+      - "9443:443"
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://gitlab.local'
+        nginx['listen_port'] = 80
+        nginx['listen_https'] = false
+        prometheus_monitoring['enable'] = false
+        grafana['enable'] = false
+        alertmanager['enable'] = false
+        puma['worker_processes'] = 2
+        sidekiq['max_concurrency'] = 10
+        gitlab_rails['initial_root_password'] = 'releasehub123'
+        gitlab_rails['display_initial_root_password'] = false
+    volumes:
+      - gitlab_data:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_opt:/var/opt/gitlab
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/-/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  gitlab_data:
+  gitlab_logs:
+  gitlab_opt:
