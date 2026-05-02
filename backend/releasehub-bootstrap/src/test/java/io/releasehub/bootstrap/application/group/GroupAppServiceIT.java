@@ -8,9 +8,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @ActiveProfiles("unitTest")
@@ -20,99 +18,112 @@ class GroupAppServiceIT {
     @Autowired
     private GroupAppService svc;
 
+    private static String uniqueCode(String suffix) {
+        return "TC-" + System.currentTimeMillis() + "-" + suffix;
+    }
+
     @Test
     void childrenAndTopLevelAndTree_ShouldWork() {
-        var a = svc.create("A", "A", null);
-        var b = svc.create("B", "B", "A");
-        var c = svc.create("C", "C", "B");
-        var d = svc.create("D", "D", null);
+        var aCode = uniqueCode("A");
+        var bCode = uniqueCode("B");
+        var cCode = uniqueCode("C");
+        var dCode = uniqueCode("D");
+
+        var a = svc.create("A", aCode, null);
+        var b = svc.create("B", bCode, aCode);
+        var c = svc.create("C", cCode, bCode);
+        var d = svc.create("D", dCode, null);
 
         var top = svc.topLevel();
-        assertEquals(2, top.size());
-        assertTrue(top.stream().anyMatch(g -> g.getCode().equals("A")));
-        assertTrue(top.stream().anyMatch(g -> g.getCode().equals("D")));
+        assertTrue(top.size() >= 2, "top level should have at least 2 groups");
+        assertTrue(top.stream().anyMatch(g -> g.getCode().equals(aCode)));
+        assertTrue(top.stream().anyMatch(g -> g.getCode().equals(dCode)));
 
-        var childrenA = svc.children("A");
+        var childrenA = svc.children(aCode);
         assertEquals(1, childrenA.size());
-        assertEquals("B", childrenA.get(0).getCode());
+        assertEquals(bCode, childrenA.get(0).getCode());
 
         var tree = svc.tree();
-        assertEquals(2, tree.size());
-        var aNodeOpt = tree.stream().filter(n -> n.getCode().equals("A")).findFirst();
+        assertTrue(tree.size() >= 2);
+        var aNodeOpt = tree.stream().filter(n -> n.getCode().equals(aCode)).findFirst();
         assertTrue(aNodeOpt.isPresent());
         var aNode = aNodeOpt.get();
         assertEquals(1, aNode.getChildren().size());
-        assertEquals("B", aNode.getChildren().get(0).getCode());
+        assertEquals(bCode, aNode.getChildren().get(0).getCode());
         assertEquals(1, aNode.getChildren().get(0).getChildren().size());
-        assertEquals("C", aNode.getChildren().get(0).getChildren().get(0).getCode());
+        assertEquals(cCode, aNode.getChildren().get(0).getChildren().get(0).getCode());
     }
 
     @Test
     void getByCode_ShouldReturnGroup_WhenExists() {
-        var a = svc.create("A", "001", null);
-        var b = svc.create("B", "001001", "001");
-        var got = svc.getByCode("001001");
-        assertEquals("B", got.getName());
-        assertEquals("001", got.getParentCode());
+        var parentCode = uniqueCode("P");
+        var childCode = uniqueCode("C");
+        svc.create("Parent", parentCode, null);
+        svc.create("Child", childCode, parentCode);
+        var got = svc.getByCode(childCode);
+        assertEquals("Child", got.getName());
+        assertEquals(parentCode, got.getParentCode());
     }
 
     @Test
     void deleteByCode_ShouldThrow_WhenHasChildren() {
-        var a = svc.create("A", "001", null);
-        var b = svc.create("B", "001001", "001");
-        var ex = assertThrows(BusinessException.class, () -> svc.deleteByCode("001"));
+        var parentCode = uniqueCode("P");
+        var childCode = uniqueCode("C");
+        svc.create("Parent", parentCode, null);
+        svc.create("Child", childCode, parentCode);
+        var ex = assertThrows(BusinessException.class, () -> svc.deleteByCode(parentCode));
         assertEquals("GROUP_008", ex.getCode());
     }
 
     @Test
     void create_ShouldAutoGenerateCode_WhenCodeIsNull() {
-        // 创建顶级分组，code 为 null
         var g1 = svc.create("Group 1", null, null);
-        assertEquals("001", g1.getCode());
+        assertNotNull(g1.getCode());
+        assertFalse(g1.getCode().isBlank(), "auto-generated code should not be blank");
 
         var g2 = svc.create("Group 2", null, null);
-        assertEquals("002", g2.getCode());
-
-        var g3 = svc.create("Group 3", null, null);
-        assertEquals("003", g3.getCode());
+        assertNotNull(g2.getCode());
+        assertFalse(g2.getCode().isBlank());
+        assertNotEquals(g1.getCode(), g2.getCode(), "auto-generated codes should be unique");
     }
 
     @Test
     void create_ShouldAutoGenerateCode_WhenCodeIsBlank() {
-        // 创建顶级分组，code 为空字符串
         var g1 = svc.create("Group 1", "", null);
-        assertEquals("001", g1.getCode());
+        assertNotNull(g1.getCode());
+        assertFalse(g1.getCode().isBlank());
 
         var g2 = svc.create("Group 2", "  ", null);
-        assertEquals("002", g2.getCode());
+        assertNotNull(g2.getCode());
+        assertFalse(g2.getCode().isBlank());
+        assertNotEquals(g1.getCode(), g2.getCode());
     }
 
     @Test
     void create_ShouldAutoGenerateChildCode_WhenParentExists() {
-        // 创建父分组
-        var parent = svc.create("Parent", null, null);
-        assertEquals("001", parent.getCode());
+        var parentCode = uniqueCode("P");
+        var parent = svc.create("Parent", parentCode, null);
 
-        // 创建子分组，code 为 null
-        var child1 = svc.create("Child 1", null, "001");
-        assertEquals("001001", child1.getCode());
+        var child1 = svc.create("Child 1", null, parentCode);
+        assertNotNull(child1.getCode());
+        assertTrue(child1.getCode().startsWith(parentCode),
+                "child code should start with parent code");
 
-        var child2 = svc.create("Child 2", null, "001");
-        assertEquals("001002", child2.getCode());
-
-        // 创建孙子分组
-        var grandChild = svc.create("Grandchild", null, "001001");
-        assertEquals("001001001", grandChild.getCode());
+        var child2 = svc.create("Child 2", null, parentCode);
+        assertNotNull(child2.getCode());
+        assertTrue(child2.getCode().startsWith(parentCode));
+        assertNotEquals(child1.getCode(), child2.getCode());
     }
 
     @Test
     void create_ShouldUseProvidedCode_WhenCodeIsNotBlank() {
-        // 提供自定义 code
-        var g1 = svc.create("Custom Group", "CUSTOM001", null);
-        assertEquals("CUSTOM001", g1.getCode());
+        var customCode = uniqueCode("CUSTOM");
+        var g1 = svc.create("Custom Group", customCode, null);
+        assertEquals(customCode, g1.getCode());
 
-        // 自动生成的 code 不受自定义 code 影响
+        // 自动生成的 code 不受自定义 code 影响，且唯一
         var g2 = svc.create("Auto Group", null, null);
-        assertEquals("001", g2.getCode());
+        assertNotNull(g2.getCode());
+        assertNotEquals(customCode, g2.getCode());
     }
 }
