@@ -43,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class Slice1_Group_Window_Lifecycle_E2ETest extends AbstractE2ETest {
+class Slice1_Group_Window_Lifecycle_E2ETest extends AbstractGitLabE2ETest {
 
     private String token;
 

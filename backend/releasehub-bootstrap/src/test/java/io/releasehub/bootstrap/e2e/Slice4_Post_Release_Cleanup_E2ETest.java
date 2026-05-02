@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class Slice4_Post_Release_Cleanup_E2ETest extends AbstractE2ETest {
+class Slice4_Post_Release_Cleanup_E2ETest extends AbstractGitLabE2ETest {
 
     @Autowired(required = false)
     private RecordingMockGitBranchAdapter recordingAdapter;
@@ -184,20 +184,4 @@ class Slice4_Post_Release_Cleanup_E2ETest extends AbstractE2ETest {
                 .isNotNull();
     }
 
-    // ─── 辅助方法 ───
-
-    private String createIterationWithRepo(String token, String groupCode, String repoId) throws Exception {
-        String name = "TC-Iter-" + System.currentTimeMillis();
-        String req = objectMapper.writeValueAsString(Map.of(
-                "name", name, "description", "E2E iter",
-                "groupCode", groupCode, "repoIds", List.of(repoId)));
-        MvcResult result = mockMvc.perform(post("/api/v1/iterations")
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(req))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.key").exists())
-                .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString()).get("data").get("key").asText();
-    }
 }

@@ -1,0 +1,167 @@
+package io.releasehub.bootstrap.e2e;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * 真实 GitLab E2E 测试基类 — 连接本机常驻 PostgreSQL + GitLab CE。
+ *
+ * <p>前置条件：</p>
+ * <ul>
+ *   <li>PostgreSQL 运行在 localhost:5433（docs/docker-compose.yml）</li>
+ *   <li>GitLab CE 运行在 localhost:9080（docker-compose.gitlab.yml）</li>
+ *   <li>已执行 scripts/e2e/init-gitlab.sh 创建种子数据</li>
+ * </ul>
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("gitlab-e2e-local")
+public abstract class AbstractGitLabE2ETest {
+
+    @Autowired
+    protected MockMvc mockMvc;
+
+    @Autowired
+    protected ObjectMapper objectMapper;
+
+    String loginAndGetToken() throws Exception {
+        String body = "{\"username\":\"admin\",\"password\":\"admin\"}";
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.token").exists())
+                .andReturn();
+        JsonNode node = objectMapper.readTree(result.getResponse().getContentAsString());
+        return node.get("data").get("token").asText();
+    }
+
+    String createGroup(String token) throws Exception {
+        String code = "TC-G-" + System.currentTimeMillis();
+        String req = String.format("{\"name\":\"E2E-Group\",\"code\":\"%s\",\"parentCode\":null}", code);
+        mockMvc.perform(post("/api/v1/groups")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").exists());
+        return code;
+    }
+
+    String createRepo(String token, String groupCode) throws Exception {
+        String name = "TC-Repo-" + System.currentTimeMillis();
+        String req = String.format(
+                "{\"name\":\"%s\",\"cloneUrl\":\"https://git.example.com/%s.git\",\"groupCode\":\"%s\",\"defaultBranch\":\"main\"}",
+                name, name, groupCode);
+        MvcResult result = mockMvc.perform(post("/api/v1/repositories")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").exists())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+    }
+
+    /**
+     * 创建连接真实 GitLab 的仓库（gitProvider=GITLAB, 真实 cloneUrl + token）
+     */
+    String createGitLabRepo(String token, String groupCode, String cloneUrl, String gitToken) throws Exception {
+        String name = "TC-Repo-" + System.currentTimeMillis();
+        String req = objectMapper.writeValueAsString(Map.of(
+                "name", name,
+                "cloneUrl", cloneUrl,
+                "groupCode", groupCode,
+                "defaultBranch", "main",
+                "gitProvider", "GITLAB",
+                "gitToken", gitToken
+        ));
+        MvcResult result = mockMvc.perform(post("/api/v1/repositories")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").exists())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+    }
+
+    String createIteration(String token, String groupCode) throws Exception {
+        String name = "TC-Iter-" + System.currentTimeMillis();
+        String req = String.format("{\"name\":\"%s\",\"description\":\"E2E iter\",\"groupCode\":\"%s\"}", name, groupCode);
+        MvcResult result = mockMvc.perform(post("/api/v1/iterations")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.key").exists())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("key").asText();
+    }
+
+    /**
+     * 创建迭代并关联仓库（用于触发 feature 分支创建）
+     */
+    String createIterationWithRepo(String token, String groupCode, String repoId) throws Exception {
+        String name = "TC-Iter-" + System.currentTimeMillis();
+        String req = objectMapper.writeValueAsString(Map.of(
+                "name", name, "description", "E2E iter",
+                "groupCode", groupCode, "repoIds", List.of(repoId)));
+        MvcResult result = mockMvc.perform(post("/api/v1/iterations")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.key").exists())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("key").asText();
+    }
+
+    String createReleaseWindow(String token, String groupCode) throws Exception {
+        String name = "TC-RW-" + System.currentTimeMillis();
+        String req = String.format("{\"name\":\"%s\",\"groupCode\":\"%s\"}", name, groupCode);
+        MvcResult result = mockMvc.perform(post("/api/v1/release-windows")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").exists())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+    }
+
+    /**
+     * 通过 GET detail 获取窗口的 key 字段
+     */
+    String getWindowKey(String token, String windowId) throws Exception {
+        var result = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/v1/release-windows/" + windowId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
+        if (data.has("key") && !data.get("key").isNull()) {
+            return data.get("key").asText();
+        }
+        return windowId;
+    }
+}

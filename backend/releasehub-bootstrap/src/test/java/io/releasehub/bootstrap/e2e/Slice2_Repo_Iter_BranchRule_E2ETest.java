@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class Slice2_Repo_Iter_BranchRule_E2ETest extends AbstractE2ETest {
+class Slice2_Repo_Iter_BranchRule_E2ETest extends AbstractGitLabE2ETest {
 
     private String token;
     private String groupCode;
