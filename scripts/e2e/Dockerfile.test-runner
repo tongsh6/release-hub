@@ -1,0 +1,7 @@
+FROM maven:3.9-eclipse-temurin-21-alpine
+
+WORKDIR /app
+COPY . .
+RUN chmod +x scripts/e2e/init-gitlab.sh scripts/e2e/run-vertical-slices.sh
+
+ENTRYPOINT ["bash", "scripts/e2e/run-vertical-slices.sh"]
