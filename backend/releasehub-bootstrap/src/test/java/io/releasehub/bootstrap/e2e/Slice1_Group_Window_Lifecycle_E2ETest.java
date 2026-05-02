@@ -269,4 +269,26 @@ class Slice1_Group_Window_Lifecycle_E2ETest extends AbstractGitLabE2ETest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").exists());
     }
+
+    // ─────────── 关闭 + 幂等 ───────────
+
+    @Test
+    @Order(12)
+    @DisplayName("[Release Manager] 关闭已发布的窗口")
+    void closePublishedWindow() throws Exception {
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("[Release Manager] 关闭已关闭窗口 — 幂等")
+    void closeAlreadyClosedWindowIsIdempotent() throws Exception {
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+    }
 }

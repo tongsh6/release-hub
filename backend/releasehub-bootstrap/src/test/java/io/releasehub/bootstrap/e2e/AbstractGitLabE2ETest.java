@@ -2,6 +2,8 @@ package io.releasehub.bootstrap.e2e;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.releasehub.application.run.RunPort;
+import io.releasehub.domain.run.Run;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,6 +15,8 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -37,6 +41,9 @@ public abstract class AbstractGitLabE2ETest {
 
     @Autowired
     protected ObjectMapper objectMapper;
+
+    @Autowired(required = false)
+    protected RunPort runPort;
 
     String loginAndGetToken() throws Exception {
         String body = "{\"username\":\"admin\",\"password\":\"admin\"}";
@@ -153,8 +160,7 @@ public abstract class AbstractGitLabE2ETest {
      * 通过 GET detail 获取窗口的 key 字段
      */
     String getWindowKey(String token, String windowId) throws Exception {
-        var result = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                        .get("/api/v1/release-windows/" + windowId)
+        var result = mockMvc.perform(get("/api/v1/release-windows/" + windowId)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -163,5 +169,45 @@ public abstract class AbstractGitLabE2ETest {
             return data.get("key").asText();
         }
         return windowId;
+    }
+
+    /**
+     * 通过 window name 查询 Run ID，然后通过 RunPort 获取完整 Run 对象进行深验证。
+     */
+    protected String findRunIdByWindowName(String token, String windowName) throws Exception {
+        var result = mockMvc.perform(get("/api/v1/runs/paged")
+                        .header("Authorization", "Bearer " + token)
+                        .param("windowKey", windowName)
+                        .param("page", "1")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andReturn();
+        JsonNode runs = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
+        if (runs.size() > 0) {
+            return runs.get(0).get("id").asText();
+        }
+        return null;
+    }
+
+    /**
+     * 验证 Run 包含指定数量的 RunItem，每个 RunItem 含预期 ActionType 序列。
+     */
+    protected void verifyRunItems(String runId, int expectedItemCount, List<String> expectedActionTypes) {
+        if (runPort == null || runId == null) return;
+        Run run = runPort.findById(runId).orElse(null);
+        assertThat(run).withFailMessage("Run 记录应存在: %s", runId).isNotNull();
+        assertThat(run.getItems()).withFailMessage("RunItem 数量应为 %d", expectedItemCount)
+                .hasSize(expectedItemCount);
+        if (!expectedActionTypes.isEmpty()) {
+            run.getItems().forEach(item -> {
+                List<String> stepTypes = item.getSteps().stream()
+                        .<String>map(s -> s.actionType().name())
+                        .toList();
+                assertThat(stepTypes)
+                        .withFailMessage("RunItem 的步骤应包含预期 ActionType 序列")
+                        .containsExactlyElementsOf(expectedActionTypes);
+            });
+        }
     }
 }

@@ -1,29 +1,21 @@
 package io.releasehub.bootstrap.e2e;
 
 import io.releasehub.infrastructure.git.MockGitBranchAdapter;
-import org.springframework.context.annotation.Primary;
-import org.springframework.core.Ordered;
-import org.springframework.core.annotation.Order;
-import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Extends MockGitBranchAdapter with operation recording for E2E test verification.
+ * Utility class extending MockGitBranchAdapter with operation recording.
  *
- * <p>Every write operation (createBranch, mergeBranch, createTag, archiveBranch,
- * triggerPipeline) is recorded with its parameters and result. Tests can query
- * recorded operations to verify that the correct Git actions were triggered
- * with the expected parameters during a release workflow.</p>
+ * <p>NOT registered as a Spring bean. Tests that need recording capabilities
+ * create instances directly. This ensures {@code RealGitLabBranchAdapter}
+ * activates when {@code releasehub.gitlab.real-adapter=true}.</p>
  *
- * <p>Force-failure injection enables testing merge conflict and error scenarios
- * without needing real Git repositories.</p>
+ * <p>Every write operation is recorded with parameters and result.
+ * Force-failure injection enables merge conflict scenario testing.</p>
  */
-@Component
-@Primary
-@Order(Ordered.HIGHEST_PRECEDENCE)
 public class RecordingMockGitBranchAdapter extends MockGitBranchAdapter {
 
     private final List<BranchCreatedRecord> branchCreatedRecords = new CopyOnWriteArrayList<>();

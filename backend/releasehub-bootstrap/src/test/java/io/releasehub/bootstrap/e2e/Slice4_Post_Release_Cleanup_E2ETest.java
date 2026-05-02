@@ -126,6 +126,11 @@ class Slice4_Post_Release_Cleanup_E2ETest extends AbstractGitLabE2ETest {
         assertThat(runs.size())
                 .withFailMessage("关闭后应至少存在 1 个 Run 记录")
                 .isGreaterThanOrEqualTo(1);
+
+        // 验证收尾 RunStep 序列
+        String runId = findRunIdByWindowName(token, windowName);
+        verifyRunItems(runId, 1, List.of("CLOSE_ITERATION", "UPDATE_VERSION", "ARCHIVE_BRANCH",
+                "MERGE_TO_MASTER", "CREATE_TAG", "TRIGGER_CI"));
     }
 
     // ─────────── Scenario 4: RM 关闭已关闭窗口幂等 ───────────

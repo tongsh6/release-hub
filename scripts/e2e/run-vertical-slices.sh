@@ -7,7 +7,7 @@ echo "╚═══════════════════════�
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROFILE="${SPRING_PROFILES_ACTIVE:-e2e}"
+PROFILE="${SPRING_PROFILES_ACTIVE:-gitlab-e2e-local}"
 
 PASSED=0
 FAILED=0

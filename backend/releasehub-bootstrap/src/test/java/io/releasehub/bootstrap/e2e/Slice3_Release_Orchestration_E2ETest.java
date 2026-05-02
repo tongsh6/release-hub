@@ -194,6 +194,13 @@ class Slice3_Release_Orchestration_E2ETest extends AbstractGitLabE2ETest {
         assertThat(runs.size())
                 .withFailMessage("关闭后应至少存在 1 个 Run 记录")
                 .isGreaterThanOrEqualTo(1);
+
+        // 验证 RunItem 和 RunStep 内容
+        String runId = findRunIdByWindowName(token, window1Name);
+        // 收尾流程应有 6 个 ActionType: CLOSE_ITERATION → UPDATE_VERSION → ARCHIVE_BRANCH
+        // → MERGE_TO_MASTER → CREATE_TAG → TRIGGER_CI
+        verifyRunItems(runId, 1, java.util.List.of("CLOSE_ITERATION", "UPDATE_VERSION", "ARCHIVE_BRANCH",
+                "MERGE_TO_MASTER", "CREATE_TAG", "TRIGGER_CI"));
     }
 
     // ─────────── Scenario 9: RM 多迭代多仓库 ───────────
