@@ -13,8 +13,6 @@ services:
         nginx['listen_port'] = 80
         nginx['listen_https'] = false
         prometheus_monitoring['enable'] = false
-        grafana['enable'] = false
-        alertmanager['enable'] = false
         puma['worker_processes'] = 2
         sidekiq['max_concurrency'] = 10
         gitlab_rails['initial_root_password'] = 'releasehub123'

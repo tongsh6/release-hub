@@ -38,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>Admin 保存 GitLab 配置</li>
  * </ol>
  *
- * <p>使用 TestContainers PostgreSQL（继承 AbstractE2ETest 的 Singleton 容器），
+ * <p>使用本机常驻 PostgreSQL + GitLab CE（继承 AbstractGitLabE2ETest），
  * 所有数据均以时间戳前缀自给自足，不依赖其他测试类。</p>
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
