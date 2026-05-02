@@ -8,6 +8,21 @@ echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROFILE="${SPRING_PROFILES_ACTIVE:-gitlab-e2e-local}"
+BACKEND_URL="${BACKEND_URL:-http://localhost:8080}"
+
+echo "Profile: $PROFILE"
+echo "Backend: $BACKEND_URL"
+
+# Wait for backend to be ready
+echo "=== Waiting for backend ==="
+for i in $(seq 1 30); do
+  if curl -s -o /dev/null "$BACKEND_URL/actuator/health" 2>/dev/null; then
+    echo "Backend is ready"
+    break
+  fi
+  echo "Waiting... ($i/30)"
+  sleep 3
+done
 
 PASSED=0
 FAILED=0

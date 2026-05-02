@@ -37,7 +37,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("gitlab-e2e-local")
 public abstract class AbstractGitLabE2ETest {
 
     @Autowired

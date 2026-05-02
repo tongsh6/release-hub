@@ -70,6 +70,7 @@ services:
     environment:
       GITLAB_URL: http://gitlab:80
       BACKEND_URL: http://backend:8080
+      SPRING_PROFILES_ACTIVE: gitlab-e2e
       FRONTEND_URL: http://frontend:80
     volumes:
       - ./reports:/app/reports

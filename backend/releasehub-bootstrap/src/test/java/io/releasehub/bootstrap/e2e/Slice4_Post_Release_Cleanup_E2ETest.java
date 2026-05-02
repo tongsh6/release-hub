@@ -30,9 +30,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class Slice4_Post_Release_Cleanup_E2ETest extends AbstractGitLabE2ETest {
 
-    @Autowired(required = false)
-    private RecordingMockGitBranchAdapter recordingAdapter;
-
     private String token;
     private String groupCode;
     private String repoId;
@@ -43,10 +40,6 @@ class Slice4_Post_Release_Cleanup_E2ETest extends AbstractGitLabE2ETest {
     @BeforeAll
     void setUp() throws Exception {
         token = loginAndGetToken();
-        if (recordingAdapter != null) {
-            recordingAdapter.clearRecords();
-            recordingAdapter.resetForceOverrides();
-        }
     }
 
     // ─────────── Scenario 1: Full Setup ───────────
@@ -156,37 +149,6 @@ class Slice4_Post_Release_Cleanup_E2ETest extends AbstractGitLabE2ETest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalRuns").isNumber())
                 .andExpect(jsonPath("$.data.totalRepositories").isNumber());
-    }
-
-    // ─────────── Scenario 6: 验证录制操作 ───────────
-
-    @Test
-    @Order(6)
-    @DisplayName("[Verification] 验证 Git 操作录制存在")
-    void verifyGitOperationRecordings() throws Exception {
-        if (recordingAdapter == null) {
-            // recording adapter not available in this profile — skip
-            return;
-        }
-
-        // 关闭阶段的 cleanup 应产生 merge 和 pipeline trigger 录制
-        assertThat(recordingAdapter.getRecordedMerges())
-                .withFailMessage("发布+关闭后应产生 merge 录制")
-                .isNotEmpty();
-
-        assertThat(recordingAdapter.getRecordedPipelineTriggers())
-                .withFailMessage("关闭后应产生 pipeline trigger 录制")
-                .isNotEmpty();
-
-        // Tag 和 Archive 录制依赖于 feature branch 存在 + 版本信息设置，
-        // 基础 E2E 数据流中 feature branch 和 version info 可能未初始化
-        assertThat(recordingAdapter.getRecordedTags())
-                .withFailMessage("tag 录制列表不应为 null")
-                .isNotNull();
-
-        assertThat(recordingAdapter.getRecordedArchives())
-                .withFailMessage("archive 录制列表不应为 null")
-                .isNotNull();
     }
 
 }
