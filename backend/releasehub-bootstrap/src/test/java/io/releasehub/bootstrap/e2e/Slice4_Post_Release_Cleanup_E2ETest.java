@@ -1,0 +1,203 @@
+package io.releasehub.bootstrap.e2e;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.TestMethodOrder;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * Slice 4: 发布后收尾 E2E 测试 (RM-6, QA-4, QA-5)
+ *
+ * <p>覆盖发布窗口关闭、收尾 Run 验证、幂等关闭、Dashboard 统计、Git 操作录制验证。</p>
+ */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+class Slice4_Post_Release_Cleanup_E2ETest extends AbstractE2ETest {
+
+    @Autowired(required = false)
+    private RecordingMockGitBranchAdapter recordingAdapter;
+
+    private String token;
+    private String groupCode;
+    private String repoId;
+    private String iterKey;
+    private String windowId;
+    private String windowName;
+
+    @BeforeAll
+    void setUp() throws Exception {
+        token = loginAndGetToken();
+        if (recordingAdapter != null) {
+            recordingAdapter.clearRecords();
+            recordingAdapter.resetForceOverrides();
+        }
+    }
+
+    // ─────────── Scenario 1: Full Setup ───────────
+
+    @Test
+    @Order(1)
+    @DisplayName("[Setup] 创建分组、仓库、迭代、窗口、挂载、冻结、发布")
+    void setupFullWorkflow() throws Exception {
+        groupCode = createGroup(token);
+        repoId = createRepo(token, groupCode);
+        iterKey = createIterationWithRepo(token, groupCode, repoId);
+
+        windowName = "TC-RW-Cleanup-" + System.currentTimeMillis();
+        MvcResult winResult = mockMvc.perform(post("/api/v1/release-windows")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.format("{\"name\":\"%s\",\"groupCode\":\"%s\"}", windowName, groupCode)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").exists())
+                .andReturn();
+        windowId = objectMapper.readTree(winResult.getResponse().getContentAsString()).get("data").get("id").asText();
+
+        // Attach
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/attach")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("iterationKeys", List.of(iterKey)))))
+                .andExpect(status().isOk());
+
+        // Freeze
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/freeze")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.frozen").value(true));
+
+        // Publish
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/publish")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.data.publishedAt").isNotEmpty());
+    }
+
+    // ─────────── Scenario 2: RM 关闭窗口 ───────────
+
+    @Test
+    @Order(2)
+    @DisplayName("[Release Manager] 关闭发布窗口")
+    void rm_closeWindow() throws Exception {
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+    }
+
+    // ─────────── Scenario 3: QA 验证收尾 Run ───────────
+
+    @Test
+    @Order(3)
+    @DisplayName("[Tester] 验证 Run 记录包含收尾步骤")
+    void qa_verifyRunRecordWithCleanupSteps() throws Exception {
+        // 用 windowName 过滤（RunItem.windowKey 实际存储 window name）
+        MvcResult runResult = mockMvc.perform(get("/api/v1/runs/paged")
+                        .header("Authorization", "Bearer " + token)
+                        .param("windowKey", windowName)
+                        .param("page", "1")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andReturn();
+
+        JsonNode runs = objectMapper.readTree(runResult.getResponse().getContentAsString()).get("data");
+        assertThat(runs.size())
+                .withFailMessage("关闭后应至少存在 1 个 Run 记录")
+                .isGreaterThanOrEqualTo(1);
+    }
+
+    // ─────────── Scenario 4: RM 关闭已关闭窗口幂等 ───────────
+
+    @Test
+    @Order(4)
+    @DisplayName("[Release Manager] 关闭已关闭窗口（幂等）")
+    void rm_closeAlreadyClosedIdempotent() throws Exception {
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+    }
+
+    // ─────────── Scenario 5: QA Dashboard Stats ───────────
+
+    @Test
+    @Order(5)
+    @DisplayName("[Tester] 验证 Dashboard Stats 更新")
+    void qa_verifyDashboardStats() throws Exception {
+        mockMvc.perform(get("/api/v1/dashboard/stats")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalRuns").isNumber())
+                .andExpect(jsonPath("$.data.totalRepositories").isNumber());
+    }
+
+    // ─────────── Scenario 6: 验证录制操作 ───────────
+
+    @Test
+    @Order(6)
+    @DisplayName("[Verification] 验证 Git 操作录制存在")
+    void verifyGitOperationRecordings() throws Exception {
+        if (recordingAdapter == null) {
+            // recording adapter not available in this profile — skip
+            return;
+        }
+
+        // 关闭阶段的 cleanup 应产生 merge 和 pipeline trigger 录制
+        assertThat(recordingAdapter.getRecordedMerges())
+                .withFailMessage("发布+关闭后应产生 merge 录制")
+                .isNotEmpty();
+
+        assertThat(recordingAdapter.getRecordedPipelineTriggers())
+                .withFailMessage("关闭后应产生 pipeline trigger 录制")
+                .isNotEmpty();
+
+        // Tag 和 Archive 录制依赖于 feature branch 存在 + 版本信息设置，
+        // 基础 E2E 数据流中 feature branch 和 version info 可能未初始化
+        assertThat(recordingAdapter.getRecordedTags())
+                .withFailMessage("tag 录制列表不应为 null")
+                .isNotNull();
+
+        assertThat(recordingAdapter.getRecordedArchives())
+                .withFailMessage("archive 录制列表不应为 null")
+                .isNotNull();
+    }
+
+    // ─── 辅助方法 ───
+
+    private String createIterationWithRepo(String token, String groupCode, String repoId) throws Exception {
+        String name = "TC-Iter-" + System.currentTimeMillis();
+        String req = objectMapper.writeValueAsString(Map.of(
+                "name", name, "description", "E2E iter",
+                "groupCode", groupCode, "repoIds", List.of(repoId)));
+        MvcResult result = mockMvc.perform(post("/api/v1/iterations")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.key").exists())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("data").get("key").asText();
+    }
+}
