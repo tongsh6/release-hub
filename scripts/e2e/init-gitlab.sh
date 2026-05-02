@@ -8,7 +8,7 @@ TEST_PASS="${TEST_PASS:-e2e-pass123}"
 
 echo "=== Waiting for GitLab to be ready ==="
 for i in $(seq 1 60); do
-  if curl -s -o /dev/null -w "%{http_code}" "$GITLAB_URL/-/health" | grep -q "200"; then
+  if curl -s -o /dev/null -w "%{http_code}" "$GITLAB_URL/users/sign_in" | grep -q "200"; then
     echo "GitLab is ready"
     break
   fi

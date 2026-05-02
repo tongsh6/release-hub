@@ -22,7 +22,7 @@ services:
       - gitlab_logs:/var/log/gitlab
       - gitlab_opt:/var/opt/gitlab
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/-/health"]
+      test: ["CMD", "curl", "-f", "http://localhost/users/sign_in"]
       interval: 30s
       timeout: 10s
       retries: 20
