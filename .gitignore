@@ -42,3 +42,4 @@ frontend/e2e/screenshots/
 .cursor/
 .vercel/
 .worktrees
+.claude/
