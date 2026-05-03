@@ -25,7 +25,12 @@ import java.util.regex.Pattern;
 @Component
 public class GitLabGitBranchAdapter implements GitBranchPort {
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private RestTemplate restTemplate = new RestTemplate();
+
+    /** Exposed for testability — allows WireMock-backed RestTemplate injection. */
+    void setRestTemplate(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
 
     @Override
     public boolean supports(GitProvider provider) {
