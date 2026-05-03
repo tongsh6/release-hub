@@ -1,41 +1,61 @@
 package io.releasehub.infrastructure.git;
 
+import com.github.tomakehurst.wiremock.WireMockServer;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.run.MergeStatus;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.put;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
+import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 
-/**
- * GitLab adapter unit tests using MockRestServiceServer (RestTemplate interceptor).
- *
- * WireMock (dependency ready) is the preferred approach for integration-level
- * HTTP stub tests; the adapter's package-visible {@code setRestTemplate()} hook
- * supports future WireMock migration.
- */
 class GitLabGitBranchAdapterTest {
 
-    private GitLabGitBranchAdapter adapter;
-    private MockRestServiceServer server;
+    private static WireMockServer wireMockServer;
+    private final GitLabGitBranchAdapter adapter = new GitLabGitBranchAdapter(
+            new org.springframework.boot.web.client.RestTemplateBuilder());
+
+    @BeforeAll
+    static void startWireMock() {
+        wireMockServer = new WireMockServer(options().dynamicPort());
+        wireMockServer.start();
+    }
+
+    @AfterAll
+    static void stopWireMock() {
+        wireMockServer.stop();
+    }
 
     @BeforeEach
-    void setUp() {
-        adapter = new GitLabGitBranchAdapter(new org.springframework.boot.web.client.RestTemplateBuilder());
-        RestTemplate restTemplate = new RestTemplate();
-        adapter.setRestTemplate(restTemplate);
-        server = MockRestServiceServer.createServer(restTemplate);
+    void injectRestTemplate() {
+        java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
+                .version(java.net.http.HttpClient.Version.HTTP_1_1).build();
+        adapter.setRestTemplate(new RestTemplate(
+                new org.springframework.http.client.JdkClientHttpRequestFactory(httpClient)));
+    }
+
+    private static String baseUrl() {
+        return "http://localhost:" + wireMockServer.port();
+    }
+
+    /**
+     * GitLab adapter URL-encodes the project path ({@code acme/releasehub})
+     * to {@code acme%2Freleasehub}. WireMock/Jetty may or may not decode
+     * {@code %2F} before path matching, so use regex wildcards to handle both.
+     */
+    private static String path(String suffix) {
+        return ".*/api/v4/projects/acme.*releasehub" + suffix;
     }
 
     @Test
@@ -46,105 +66,78 @@ class GitLabGitBranchAdapterTest {
 
     @Test
     void shouldCreateBranchSuccessfully() {
-        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/repository/branches"))
-                .andExpect(method(HttpMethod.POST))
-                .andRespond(withStatus(HttpStatus.CREATED)
-                        .contentType(MediaType.APPLICATION_JSON).body("{}"));
+        wireMockServer.stubFor(post(urlPathMatching(path("/repository/branches")))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
+                        .withBody("{}")));
 
-        assertTrue(adapter.createBranch(
-                "git@gitlab.example.com:acme/releasehub.git", "token", "release/RW-1", "main"));
-        server.verify();
+        assertTrue(adapter.createBranch(baseUrl() + "/acme/releasehub.git", "token", "release/RW-1", "main"));
     }
 
     @Test
     void shouldMergeSuccessfully() {
-        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/merge_requests"))
-                .andExpect(method(HttpMethod.POST))
-                .andRespond(withStatus(HttpStatus.CREATED)
-                        .contentType(MediaType.APPLICATION_JSON).body("{\"iid\":101}"));
-
-        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/merge_requests/101/merge"))
-                .andExpect(method(HttpMethod.PUT))
-                .andRespond(withStatus(HttpStatus.OK)
-                        .contentType(MediaType.APPLICATION_JSON).body("{}"));
+        wireMockServer.stubFor(post(urlPathMatching(path("/merge_requests")))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
+                        .withBody("{\"iid\":101}")));
+        wireMockServer.stubFor(put(urlPathMatching(path("/merge_requests/101/merge")))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{}")));
 
         GitBranchPort.MergeResult result = adapter.mergeBranch(
-                "https://gitlab.example.com/acme/releasehub.git", "token",
-                "feature/ITER-1", "release/RW-1", "merge");
+                baseUrl() + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
 
         assertEquals(MergeStatus.SUCCESS, result.status());
-        server.verify();
     }
 
     @Test
     void shouldReturnConflictWhenMergeFailed() {
-        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/merge_requests"))
-                .andExpect(method(HttpMethod.POST))
-                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body("{\"message\":\"cannot be merged due to conflict\"}"));
+        wireMockServer.stubFor(post(urlPathMatching(path("/merge_requests")))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(400)
+                        .withBody("{\"message\":\"cannot be merged due to conflict\"}")));
 
         GitBranchPort.MergeResult result = adapter.mergeBranch(
-                "https://gitlab.example.com/acme/releasehub.git", "token",
-                "feature/ITER-1", "release/RW-1", "merge");
+                baseUrl() + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
 
         assertEquals(MergeStatus.CONFLICT, result.status());
-        server.verify();
     }
 
     @Test
     void shouldGetBranchStatusSuccessfully() {
-        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/repository/branches/release%252FRW-1"))
-                .andExpect(method(HttpMethod.GET))
-                .andRespond(withStatus(HttpStatus.OK)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body("{\"commit\":{\"id\":\"abc123\"}}"));
+        wireMockServer.stubFor(get(urlPathMatching(path("/repository/branches/release.*RW-1")))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{\"commit\":{\"id\":\"abc123\"}}")));
 
         GitBranchPort.BranchStatus status = adapter.getBranchStatus(
-                "https://gitlab.example.com/acme/releasehub.git", "token", "release/RW-1");
+                baseUrl() + "/acme/releasehub.git", "token", "release/RW-1");
 
         assertTrue(status.exists());
         assertEquals("abc123", status.latestCommit());
-        server.verify();
     }
 
     @Test
     void shouldCheckMergeabilityAsMergeable() {
-        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/merge_requests"))
-                .andExpect(method(HttpMethod.POST))
-                .andRespond(withStatus(HttpStatus.CREATED)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body("{\"iid\":201,\"merge_status\":\"can_be_merged\"}"));
-
-        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/merge_requests/201"))
-                .andExpect(method(HttpMethod.PUT))
-                .andRespond(withStatus(HttpStatus.OK)
-                        .contentType(MediaType.APPLICATION_JSON).body("{}"));
+        wireMockServer.stubFor(post(urlPathMatching(path("/merge_requests")))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
+                        .withBody("{\"iid\":201,\"merge_status\":\"can_be_merged\"}")));
+        wireMockServer.stubFor(put(urlPathMatching(path("/merge_requests/201")))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{}")));
 
         assertTrue(adapter.checkMergeability(
-                "https://gitlab.example.com/acme/releasehub.git", "token",
-                "feature/ITER-1", "release/RW-1").canMerge());
-        server.verify();
+                baseUrl() + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1").canMerge());
     }
 
     @Test
     void shouldCheckMergeabilityAsConflict() {
-        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/merge_requests"))
-                .andExpect(method(HttpMethod.POST))
-                .andRespond(withStatus(HttpStatus.CREATED)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body("{\"iid\":202,\"merge_status\":\"cannot_be_merged\"}"));
-
-        server.expect(requestTo("https://gitlab.example.com/api/v4/projects/acme%252Freleasehub/merge_requests/202"))
-                .andExpect(method(HttpMethod.PUT))
-                .andRespond(withStatus(HttpStatus.OK)
-                        .contentType(MediaType.APPLICATION_JSON).body("{}"));
+        wireMockServer.stubFor(post(urlPathMatching(path("/merge_requests")))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
+                        .withBody("{\"iid\":202,\"merge_status\":\"cannot_be_merged\"}")));
+        wireMockServer.stubFor(put(urlPathMatching(path("/merge_requests/202")))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{}")));
 
         GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
-                "https://gitlab.example.com/acme/releasehub.git", "token",
-                "feature/ITER-1", "release/RW-1");
+                baseUrl() + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1");
 
         assertFalse(result.canMerge());
-        server.verify();
     }
 }

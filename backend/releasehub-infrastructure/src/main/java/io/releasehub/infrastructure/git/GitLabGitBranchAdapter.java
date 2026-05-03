@@ -32,7 +32,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
         this.restTemplate = builder.build();
     }
 
-    /** Exposed for testability — allows MockRestServiceServer/WireMock injection. */
+    /** Exposed for testability — allows WireMock-backed RestTemplate injection. */
     void setRestTemplate(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
     }
