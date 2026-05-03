@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GitHubGitBranchAdapterTest {
 
     private static WireMockServer wireMockServer;
-    private final GitHubGitBranchAdapter adapter = new GitHubGitBranchAdapter();
+    private final GitHubGitBranchAdapter adapter = new GitHubGitBranchAdapter(new org.springframework.boot.web.client.RestTemplateBuilder());
 
     @BeforeAll
     static void startWireMock() {

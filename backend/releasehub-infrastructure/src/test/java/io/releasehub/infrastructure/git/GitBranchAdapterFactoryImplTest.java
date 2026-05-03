@@ -4,6 +4,7 @@ import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.repo.GitProvider;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 
 import java.util.List;
 
@@ -12,11 +13,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class GitBranchAdapterFactoryImplTest {
 
+    private final RestTemplateBuilder builder = new RestTemplateBuilder();
+
     @Test
     void shouldReturnMatchedAdapter() {
         GitBranchPort mock = new MockGitBranchAdapter();
-        GitBranchPort github = new GitHubGitBranchAdapter();
-        GitBranchPort gitlab = new GitLabGitBranchAdapter();
+        GitBranchPort github = new GitHubGitBranchAdapter(builder);
+        GitBranchPort gitlab = new GitLabGitBranchAdapter(builder);
 
         GitBranchAdapterFactoryImpl factory = new GitBranchAdapterFactoryImpl(List.of(mock, github, gitlab));
 

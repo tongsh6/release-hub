@@ -9,6 +9,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
@@ -25,9 +26,13 @@ import java.util.regex.Pattern;
 @Component
 public class GitLabGitBranchAdapter implements GitBranchPort {
 
-    private RestTemplate restTemplate = new RestTemplate();
+    private RestTemplate restTemplate;
 
-    /** Exposed for testability — allows WireMock-backed RestTemplate injection. */
+    public GitLabGitBranchAdapter(RestTemplateBuilder builder) {
+        this.restTemplate = builder.build();
+    }
+
+    /** Exposed for testability — allows MockRestServiceServer/WireMock injection. */
     void setRestTemplate(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
     }

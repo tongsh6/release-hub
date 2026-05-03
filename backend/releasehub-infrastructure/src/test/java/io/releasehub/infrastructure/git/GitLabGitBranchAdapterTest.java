@@ -32,7 +32,7 @@ class GitLabGitBranchAdapterTest {
 
     @BeforeEach
     void setUp() {
-        adapter = new GitLabGitBranchAdapter();
+        adapter = new GitLabGitBranchAdapter(new org.springframework.boot.web.client.RestTemplateBuilder());
         RestTemplate restTemplate = new RestTemplate();
         adapter.setRestTemplate(restTemplate);
         server = MockRestServiceServer.createServer(restTemplate);
