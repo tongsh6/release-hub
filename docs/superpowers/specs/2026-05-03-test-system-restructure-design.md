@@ -1,139 +1,144 @@
-# ReleaseHub 测试体系重构设计
+# 测试体系重构
 
-**日期**: 2026-05-03 | **状态**: Proposed
+> 日期：2026-05-03
+> 状态：Proposed
 
-## 一、目标
+## 一、最终用户/系统行为
 
-梳理并重构 ReleaseHub 全栈测试体系，建立测试金字塔分层、统一测试 profile、规范 CI 流水线，消除当前测试体系的零散和重复。
+开发者能够获得分层清晰、反馈快速、可独立运行的测试体系：
 
-## 二、Profile 精简
+1. **`mvn test`** 在 30 秒内完成纯 Java 单测回归（不加载 Spring，不启动 DB）
+2. **`mvn verify`** 按需运行完整集成测试 + E2E
+3. **`pnpm test`** 在 10 秒内完成前端单测
+4. **`pnpm test:e2e`** 用 Playwright 运行前端 E2E
+5. **CI 三条流水线**分别在 PR 阶段提供秒级反馈（单测）和合并后全链路验证（E2E）
+6. **Profile 清晰**：`test`（H2+Mock）和 `e2e`（真实 PG+GitLab，两种运行模式）
 
-测试相关 profile 精简为两个：
+## 二、完整范围
 
-| Profile | 数据库 | GitLab | 场景 |
-|---------|--------|--------|------|
-| `test` | H2 内存 | Mock | 快速单测、API 集成测试 |
-| `e2e` | 真实 PG | 真实 GitLab | 全链路 E2E |
+- [x] 后端 Profile 精简（删除 `unitTest`、`gitlab-e2e-local`，`gitlab-e2e` 合并为 `e2e`）
+- [x] 后端 `@ActiveProfiles` 统一（4 个文件 `unitTest` → `test`，1 个基类加 `e2e`）
+- [x] 后端 `application-e2e.yml` 重写（env var 注入地址，覆盖 Mode A / Mode B）
+- [x] 后端 Maven surefire/failsafe 分离（父 POM pluginManagement，子模块继承）
+- [x] 后端 `docker-compose.full.yml` profile 引用更新（`gitlab-e2e` → `e2e`）
+- [x] 前端 Vitest 单测补齐（composables、stores、api 层）
+- [x] 前端 Puppeteer 自建框架 → Playwright 标准框架迁移（9 个 E2E 文件）
+- [x] 前端 `package.json` 测试脚本更新
+- [x] CI 新建 `backend-ci.yml`（`mvn test`）
+- [x] CI `e2e-full-link.yml` profile 适配（`gitlab-e2e` → `e2e` + env var）
+- [x] CI `frontend-ci.yml` 测试脚本对齐
+- [ ] 文档更新（`deployment.md` profile 表更新）
 
-`local`、`prd` 保持不动。
+## 三、非目标
 
-### 2.1 `e2e` Profile 的两种模式
-
-`e2e` 的 PG 和 GitLab 地址通过环境变量注入：
-
-```yaml
-# application-e2e.yml
-spring:
-  datasource:
-    url: ${E2E_DATASOURCE_URL:jdbc:postgresql://localhost:5433/release_hub}
-    username: ${E2E_DATASOURCE_USERNAME:postgres}
-    password: ${E2E_DATASOURCE_PASSWORD:123456}
-
-releasehub:
-  gitlab:
-    real-adapter: true
-    base-url: ${E2E_GITLAB_URL:http://localhost:9080}
-  seed:
-    enabled: true
-```
-
-| | Mode A（本机常驻） | Mode B（CI Docker Compose） |
-|------|------|------|
-| **PG 生命周期** | 提前 `docker compose up -d`，常驻 | `docker compose up`，跑完 `down -v` |
-| **GitLab 生命周期** | 同上，数据持久化 | 同上，销毁 |
-| **PG 地址** | localhost:5433（默认值） | postgres:5432（容器内服务名） |
-| **GitLab 地址** | localhost:9080（默认值） | http://gitlab:80（容器内服务名） |
-| **Backend** | 宿主机 `mvn spring-boot:run` 或 IDE | Dockerfile 构建镜像 |
-| **Frontend** | 宿主机 `pnpm dev` | Dockerfile 构建 + nginx |
-| **Host 端口** | PG:5433, GitLab:9080, Backend:8080, Frontend:5173 | PG:5432, GitLab:9081, Backend:8081, Frontend:8090 |
-
-两种模式可在同一台机器并行运行，端口互不冲突。
-
-### 2.2 文件变更
-
-| 操作 | 文件 |
-|------|------|
-| 删除 | `application-unitTest.yml`（与 test 完全重复） |
-| 删除 | `application-gitlab-e2e-local.yml`（合并进 e2e） |
-| 重写 | `application-gitlab-e2e.yml` → `application-e2e.yml`（env var 覆盖地址） |
-| 不改 | `application-test.yml`、`application-local.yml`、`application-prd.yml` |
-
-### 2.3 @ActiveProfiles 统一
-
-| 文件 | 变更 |
-|------|------|
-| `GroupApiTest.java` | `"unitTest"` → `"test"` |
-| `WindowIterationPageApiTest.java` | `"unitTest"` → `"test"` |
-| `ReleaseWindowPageApiTest.java` | `"unitTest"` → `"test"` |
-| `GroupAppServiceIT.java` | `"unitTest"` → `"test"` |
-| `AbstractGitLabE2ETest.java` | 新增 `@ActiveProfiles("e2e")` |
-
-## 三、Maven Phase 分离
-
-引入 `maven-failsafe-plugin`，将测试按是否需要 Spring 上下文分离：
-
-- **surefire（`mvn test`）**：Domain/Application/Infrastructure 单测 + ArchUnit，不加载 Spring，秒级
-- **failsafe（`mvn verify`）**：API 集成测试 + IT + E2E，加载 Spring 上下文，分钟级
-
-### 3.1 命名约定
-
-| 后缀 | 插件 | 说明 |
-|------|------|------|
-| `*Test.java` | surefire | 纯 JUnit，不加载 Spring |
-| `*ApiTest.java` | failsafe | Controller 集成测试 |
-| `*IT.java` | failsafe | 跨模块集成测试 |
-| `*E2eTest.java` | failsafe | 全链路 E2E |
-
-### 3.2 日常命令
-
-```bash
-mvn test              # 快速单测，< 30s
-mvn verify            # 单测 + 集成 + E2E，提交前/CI
-mvn verify -DskipITs  # 跳过集成测试
-```
-
-## 四、前端测试体系
-
-### 4.1 Vitest 单测
-
-为 composables、stores、api 层补齐 Vitest 单元测试，组件测试覆盖关键业务组件。
-
-### 4.2 Puppeteer → Playwright
-
-将自建 Puppeteer E2E 框架迁移到 Playwright：
-
-- 删除自建 `TestRunner`、`PageHelper`、`Assertions`（~600 行基础设施）
-- 利用 Playwright 内置断言自动等待、Trace Viewer、并行执行
-- 逐文件迁移 9 个 E2E 文件
-
-### 4.3 最终脚本
-
-```json
-{
-  "test": "vitest run",
-  "test:e2e": "playwright test",
-  "test:e2e:ui": "playwright test --ui"
-}
-```
-
-## 五、CI 测试流水线
-
-拆分为三条流水线：
-
-| 流水线 | 触发 | 内容 | 耗时 |
-|--------|------|------|------|
-| `backend-ci.yml` | PR / push main | `mvn test` (surefire) | < 2min |
-| `frontend-ci.yml` | PR / push main | typecheck + lint + vitest + build | < 2min |
-| `e2e-full-link.yml` | push main / 手动 | docker compose up Mode B 全链路 | ~15min |
-
-关键变更：
-- **新建 `backend-ci.yml`** — Java 单测回归目前 CI 缺失
-- **`e2e-full-link.yml` 适配合并后 profile** — `SPRING_PROFILES_ACTIVE: e2e`
-- **`frontend-ci.yml`** 已有，Vitest 补齐后自然覆盖
-
-## 六、不包含
-
-- 代码覆盖率工具（JaCoCo）— 后续单独引入
+- 代码覆盖率工具（JaCoCo / Vitest coverage）— 后续单独引入
+- 突变测试（Pitest）
+- 合约测试（Pact）
 - 性能/负载测试
-- 合约测试
-- 生产环境部署
+- WireMock 替代 MockRestServiceServer — 后续单独评估
+- 生产环境部署配置
+
+## 四、架构形态
+
+### 关键模块
+
+| 模块 | 层 | 职责 |
+|------|----|------|
+| profile 配置 | Bootstrap (src/main/resources) | `test` / `e2e` Profile YAML，环境变量注入 |
+| Maven 插件 | 父 POM | surefire（单测）/ failsafe（集成+E2E）配置 |
+| Vitest | 前端 | composable/store/api 单测，jsdom 环境 |
+| Playwright | 前端 | E2E 测试，多浏览器并行 |
+| CI workflows | .github/workflows | backend-ci + frontend-ci + e2e-full-link |
+
+### Profile 设计
+
+```
+test ───────────────────── e2e ─────────────────────
+H2 内存库                  真实 PG
+Mock GitLab              真实 GitLab
+秒级启动                   ┌── Mode A（常驻）：localhost，提前 docker compose up
+                          └── Mode B（CI）：Docker 服务名，docker compose up 全栈
+```
+
+### Maven 分界
+
+```
+surefire（mvn test）          failsafe（mvn verify）
+─────────────────────        ─────────────────────────
+*Test.java                    *ApiTest.java
+（不含 *ApiTest.java、        *IT.java
+ *IT.java、*E2eTest.java）    *E2eTest.java
+```
+
+### 前端分界
+
+```
+vitest run                    playwright test
+─────────────────────        ─────────────────────────
+*.spec.ts                     e2e/tests/*.e2e.ts
+（composable/store/api       （页面级业务流）
+ 组件单元测试）
+```
+
+## 五、阶段计划
+
+### 本次做（Phase 1）
+
+测试体系基础设施层重构：Profile 精简、Maven 分离、前端框架迁移、CI 流水线。
+
+### 后续做（Phase 2+）
+
+- JaCoCo / Vitest coverage 覆盖率工具引入
+- WireMock 替代 MockRestServiceServer
+- 前端组件测试补齐（EditableTable 等关键组件）
+- 测试数据工厂（替代 `E2ETestFixtures` 中的硬编码 JSON）
+
+后续追踪位置：`tasks/plans/` 下新建 Phase 文件。
+
+## 六、验收矩阵
+
+| # | 验收标准 | 验证方式 | 关联切片 |
+|---|---------|---------|---------|
+| 1 | `mvn test` 只跑 surefire 单测，< 30s，全通过 | 命令行 + `grep` surefire 输出不含 *ApiTest | Slice 1, 2 |
+| 2 | `mvn verify` runs failsafe 集成+E2E | 命令行 + failsafe 输出包含 *ApiTest/*IT/*E2eTest | Slice 2 |
+| 3 | `pnpm test` 返回非零测试数（不再是 1 个 HelloWorld） | `pnpm test --reporter=verbose` | Slice 3 |
+| 4 | `pnpm test:e2e` 用 Playwright 跑通 login + navigation | Playwright HTML report | Slice 4 |
+| 5 | `Application-unitTest.yml` 和 `application-gitlab-e2e-local.yml` 已删除，所有引用已更新 | `grep -r "unitTest\|gitlab-e2e-local"` 无结果 | Slice 1 |
+| 6 | CI backend-ci.yml 在 PR 时触发且 `mvn test` 通过 | GitHub Actions 日志 | Slice 5 |
+| 7 | CI e2e-full-link.yml profile 为 `e2e` 且全链路通过 | GitHub Actions 日志 | Slice 5 |
+| 8 | Mode A 和 Mode B 可在本机并行运行，端口不冲突 | `docker ps` 端口检查 | Slice 1 |
+
+## 七、风险与回滚
+
+| 风险 | 影响 | 缓解措施 | 回滚路径 |
+|------|------|---------|---------|
+| surefire 排除规则遗漏，`mvn test` 跑 0 个测试 | 本地开发无回归保护 | 上线前对比 `mvn test` before/after 测试数量 | revert pom.xml，git revert |
+| failsafe include 规则误匹配，`mvn verify` 跑错测试 | CI 失败或漏测 | 每个模块 verify 后手检 failsafe 报告 | 修正 include pattern |
+| Playwright 迁移中 E2E 行为退化 | CI E2E 失败 | 逐文件迁移，每迁移一个跑通后再下一个 | Puppeteer 代码保留到全部迁移完成才删除 |
+| `application-e2e.yml` 环境变量默认值与现网不一致 | Mode A 本地跑 E2E 失败 | Mode A 用默认值（localhost），Mode B 用 docker-compose env var 覆盖 | 调整默认值或 env var 名 |
+| AbstractGitLabE2ETest 加 `@ActiveProfiles("e2e")` 后其他测试配置冲突 | Slice 测试失败 | 检查 e2e profile 与 AbstractGitLabE2ETest 的 @DynamicPropertySource 是否冲突 | 移除 @ActiveProfiles，额外加一个 AbstractModeATest 基类 |
+
+## 八、切片拆分
+
+### DAG
+
+```
+确认设计
+  ├── Slice 1: Profile 精简 + @ActiveProfiles 统一（无依赖，纯配置）
+  │     └── Slice 2: Maven surefire/failsafe 分离（依赖 Slice 1 — failsafe 配置依赖 profile 清晰）
+  ├── Slice 3: 前端 Vitest 补齐（无依赖，独立前端）
+  │     └── Slice 4: Playwright 迁移（依赖 Slice 3 — playwright 依赖已安装，写法参考 Vitest 模式）
+  ├── Slice 5: CI 流水线重构（依赖 Slice 2 + Slice 4）
+  └── Slice 6: 文档更新 + 静态扫描（依赖 Slice 1-5）
+```
+
+### 切片概览
+
+| Slice | 名称 | 涉及文件 | 依赖 | 预估 |
+|-------|------|---------|------|------|
+| 1 | Profile 精简 | 6 YAML + 5 Java 注解 | 无 | 小 |
+| 2 | Maven Phase 分离 | 父 POM + bootstrap POM | Slice 1 | 中 |
+| 3 | 前端 Vitest 补齐 | composable/store/api 测试文件 | 无 | 中 |
+| 4 | Playwright 迁移 | 9 E2E 文件 + 工具函数 + playwright.config.ts | Slice 3 | 大 |
+| 5 | CI 流水线重构 | 3 个 GitHub Actions yml + docker-compose 引用 | Slice 2, 4 | 中 |
+| 6 | 文档更新 + 静态扫描 | deployment.md + 扫描报告 | Slice 1-5 | 小 |
