@@ -2,15 +2,14 @@
  * Pact Consumer Test — Auth API
  * Defines the contract that releasehub-frontend expects from releasehub-backend.
  */
-import { PactV3, MatchersV3 } from '@pact-foundation/pact/v3'
-import path from 'path'
+import { PactV3, MatchersV3 } from '@pact-foundation/pact'
 
 const { like, string } = MatchersV3
 
 const provider = new PactV3({
   consumer: 'releasehub-frontend',
   provider: 'releasehub-backend',
-  dir: path.resolve(process.cwd(), 'pacts'),
+  dir: '../frontend/pacts',
 })
 
 describe('Auth API', () => {

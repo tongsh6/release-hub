@@ -30,6 +30,11 @@ export default defineConfig(({ mode }) => {
       globals: true,
       include: ['src/**/*.{test,spec}.ts', 'src/**/__tests__/**/*.ts'],
       exclude: ['e2e/**'],
+      server: {
+        deps: {
+          external: [/@pact-foundation\/pact/]
+        }
+      },
       coverage: {
         provider: 'istanbul',
         reporter: ['text', 'html'],
