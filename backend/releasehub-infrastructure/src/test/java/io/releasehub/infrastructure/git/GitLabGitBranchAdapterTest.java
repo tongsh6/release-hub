@@ -11,10 +11,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestTemplate;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.put;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -25,6 +26,14 @@ class GitLabGitBranchAdapterTest {
     private static WireMockServer wireMockServer;
     private final GitLabGitBranchAdapter adapter = new GitLabGitBranchAdapter(
             new org.springframework.boot.web.client.RestTemplateBuilder());
+
+    /**
+     * Adapter encodes path → {@code %2F}.
+     * RestTemplate re-encodes {@code %} → {@code %25}.
+     * WireMock receives double-encoded path: {@code %252F}.
+     */
+    private static final String ENCODED_PATH = "/api/v4/projects/acme%252Freleasehub";
+    private static final String ENCODED_BRANCH = ENCODED_PATH + "/repository/branches/release%252FRW-1";
 
     @BeforeAll
     static void startWireMock() {
@@ -49,15 +58,6 @@ class GitLabGitBranchAdapterTest {
         return "http://localhost:" + wireMockServer.port();
     }
 
-    /**
-     * GitLab adapter URL-encodes the project path ({@code acme/releasehub})
-     * to {@code acme%2Freleasehub}. WireMock/Jetty may or may not decode
-     * {@code %2F} before path matching, so use regex wildcards to handle both.
-     */
-    private static String path(String suffix) {
-        return ".*/api/v4/projects/acme.*releasehub" + suffix;
-    }
-
     @Test
     void shouldSupportGitLabProvider() {
         assertTrue(adapter.supports(GitProvider.GITLAB));
@@ -66,7 +66,7 @@ class GitLabGitBranchAdapterTest {
 
     @Test
     void shouldCreateBranchSuccessfully() {
-        wireMockServer.stubFor(post(urlPathMatching(path("/repository/branches")))
+        wireMockServer.stubFor(post(urlPathEqualTo(ENCODED_PATH + "/repository/branches"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
                         .withBody("{}")));
 
@@ -75,10 +75,10 @@ class GitLabGitBranchAdapterTest {
 
     @Test
     void shouldMergeSuccessfully() {
-        wireMockServer.stubFor(post(urlPathMatching(path("/merge_requests")))
+        wireMockServer.stubFor(post(urlPathEqualTo(ENCODED_PATH + "/merge_requests"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
                         .withBody("{\"iid\":101}")));
-        wireMockServer.stubFor(put(urlPathMatching(path("/merge_requests/101/merge")))
+        wireMockServer.stubFor(put(urlPathEqualTo(ENCODED_PATH + "/merge_requests/101/merge"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
                         .withBody("{}")));
 
@@ -90,7 +90,7 @@ class GitLabGitBranchAdapterTest {
 
     @Test
     void shouldReturnConflictWhenMergeFailed() {
-        wireMockServer.stubFor(post(urlPathMatching(path("/merge_requests")))
+        wireMockServer.stubFor(post(urlPathEqualTo(ENCODED_PATH + "/merge_requests"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(400)
                         .withBody("{\"message\":\"cannot be merged due to conflict\"}")));
 
@@ -102,7 +102,7 @@ class GitLabGitBranchAdapterTest {
 
     @Test
     void shouldGetBranchStatusSuccessfully() {
-        wireMockServer.stubFor(get(urlPathMatching(path("/repository/branches/release.*RW-1")))
+        wireMockServer.stubFor(get(urlPathEqualTo(ENCODED_BRANCH))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
                         .withBody("{\"commit\":{\"id\":\"abc123\"}}")));
 
@@ -115,10 +115,10 @@ class GitLabGitBranchAdapterTest {
 
     @Test
     void shouldCheckMergeabilityAsMergeable() {
-        wireMockServer.stubFor(post(urlPathMatching(path("/merge_requests")))
+        wireMockServer.stubFor(post(urlPathEqualTo(ENCODED_PATH + "/merge_requests"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
                         .withBody("{\"iid\":201,\"merge_status\":\"can_be_merged\"}")));
-        wireMockServer.stubFor(put(urlPathMatching(path("/merge_requests/201")))
+        wireMockServer.stubFor(put(urlPathEqualTo(ENCODED_PATH + "/merge_requests/201"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
                         .withBody("{}")));
 
@@ -128,10 +128,10 @@ class GitLabGitBranchAdapterTest {
 
     @Test
     void shouldCheckMergeabilityAsConflict() {
-        wireMockServer.stubFor(post(urlPathMatching(path("/merge_requests")))
+        wireMockServer.stubFor(post(urlPathEqualTo(ENCODED_PATH + "/merge_requests"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
                         .withBody("{\"iid\":202,\"merge_status\":\"cannot_be_merged\"}")));
-        wireMockServer.stubFor(put(urlPathMatching(path("/merge_requests/202")))
+        wireMockServer.stubFor(put(urlPathEqualTo(ENCODED_PATH + "/merge_requests/202"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
                         .withBody("{}")));
 
