@@ -219,7 +219,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     public String triggerPipeline(String repoCloneUrl, String token, String ref) {
         try {
             RepoRef rp = parseRepoRef(repoCloneUrl);
-            String endpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/dispatches",
+            String endpoint = String.format(rp.apiBaseUrl + "/repos/%s/%s/dispatches",
                     rp.owner, rp.repo);
             Map<String, Object> body = new HashMap<>();
             body.put("event_type", "releasehub-release");
