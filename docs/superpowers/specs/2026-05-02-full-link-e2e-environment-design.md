@@ -183,12 +183,18 @@ docker compose -f docker-compose.full.yml down -v
 
 ### 4.3 两种模式的对应关系
 
+两种模式必须能在同一台开发机上**并行运行**（互不挤占 host 端口），便于对照调试与复跑模式 A 时无需重启资源。
+
 | | 模式 A：本机常驻 | 模式 B：CI 全量 |
 |---|---|---|
 | **Docker 运行时** | `desktop-linux` (Docker Desktop) | `colima` |
+| **Postgres host 端口** | **5433** | **5432** |
+| **GitLab host 端口** | **9080** | **9081** |
+| **Backend host 端口** | **8080** | **8081** |
+| **Frontend host 端口** | —（`pnpm dev` 5173） | **8090** |
 | **PostgreSQL** | 本机 docs/docker-compose.yml，常驻 | docker-compose.full.yml 内，随启随停 |
 | **GitLab** | 本机新 docker-compose.gitlab.yml，常驻 | docker-compose.full.yml 内，随启随停 |
-| **Backend** | `mvn spring-boot:run` 或 jar，profile=gitlab-e2e-local | Dockerfile 构建，profile=gitlab-e2e |
+| **Backend** | `java -jar` 或 `mvn spring-boot:run`，profile=gitlab-e2e-local | Dockerfile 构建，profile=gitlab-e2e |
 | **Frontend** | `pnpm dev` | Dockerfile 构建 + nginx |
 | **数据持久化** | ✓ 数据库和仓库数据保留，Dashboard 可查 | ✗ 销毁 |
 | **适用场景** | 本地开发调试、功能验证 | CI 自动化、PR 门禁 |
@@ -205,20 +211,21 @@ docker compose -f docker-compose.full.yml down -v
 
 ## 五、Docker Compose 编排（模式 B）
 
-| 服务 | 镜像 | 端口 | 说明 |
-|------|------|------|------|
-| `postgres` | `postgres:18.1` | 5432 | 已有 |
-| `gitlab` | `gitlab/gitlab-ce:17.11.3-ce.0` | 9080 (host) → 80 (container) | 新增 |
-| `backend` | `eclipse-temurin:21-jre-alpine`（自定义 Dockerfile） | 8080 | 新增 |
-| `frontend` | `node:24-alpine`（`pnpm dev`） | 5173 | 新增 |
-| `test-runner` | `node:24-alpine` | — | 新增，运行完退出 |
+| 服务 | 镜像 | host 端口 → 容器端口 | 说明 |
+|------|------|---------------------|------|
+| `postgres` | `postgres:18.1` | 5432 → 5432 | mount 路径需为 `/var/lib/postgresql`（pg18+ 强制约定，非 `/data` 子目录），否则容器 restart loop |
+| `gitlab` | `gitlab/gitlab-ce:17.11.3-ce.0` | **9081 → 80**（避开模式 A 9080） | 17.11 amd64 镜像，arm64 走 Rosetta 模拟 |
+| `backend` | `eclipse-temurin:21-jre-alpine`（自定义 Dockerfile） | **8081 → 8080**（避开模式 A 8080） | profile=gitlab-e2e |
+| `frontend` | `nginx:alpine`（多阶段 build） | **8090 → 80** | 静态 + `/api/` 反代到 `backend:8080` |
+| `test-runner` | `maven:3.9-eclipse-temurin-21-alpine` | — | 跑完退出 |
 
 ### 5.1 关键配置
 
-- **gitlab**：通过 `GITLAB_OMNIBUS_CONFIG` 禁用 Prometheus、Grafana、Alertmanager 以降低内存（目标 < 2GB）。预设 root 密码和 personal access token
-- **backend**：使用新 profile `gitlab-e2e`，连接 postgres + gitlab 容器
-- **frontend**：`VITE_API_BASE_URL=http://backend:8080`
-- **test-runner**：`depends_on` 所有服务 healthy 后启动，执行测试后退出
+- **gitlab**：`GITLAB_OMNIBUS_CONFIG` 关闭 `prometheus_monitoring`（17.11 不再支持单独控制 grafana / alertmanager）。**healthcheck 用 `/users/sign_in` 而非 `/-/health`**——后者在 17.x 起需要 token，前者无 auth 即可探测 nginx + rails 已就绪
+- **gitlab root 密码**：`gitlab_rails['initial_root_password']` 在 17.11 容器中**不稳定生效**，启动后实际密码不一定等于配置值；模式 B 必须在 GitLab healthy 后通过 `docker exec gitlab gitlab-rails runner "User.find(1).update!(password: 'releasehub123', password_confirmation: 'releasehub123')"` 显式重置一次（一次性步骤，幂等）
+- **backend**：profile=`gitlab-e2e`，连接 `postgres:5432` + `gitlab:80`（容器内服务名）
+- **frontend**：`pnpm build --mode gitlab-e2e` 加载 `frontend/.env.gitlab-e2e`（`VITE_API_BASE_URL=/api`），nginx 反代 `/api/` → `http://backend:8080`
+- **test-runner**：`depends_on` GitLab healthy + backend started 后启动；首步执行 `init-gitlab.sh` 完成 OAuth + 创建 e2e-user 与 PAT
 
 ### 5.2 新增文件
 
@@ -237,11 +244,16 @@ docker compose -f docker-compose.full.yml down -v
 ### 6.1 流程
 
 ```
-1. 等待 GitLab health check 通过
-2. 通过 root token 创建 test user（admin/admin）
-3. 创建 personal access token
-4. 创建 3 个种子仓库（含 pom.xml / gradle.properties）
-5. 配置 webhook / CI（可选，用于 triggerPipeline 验证）
+0. (host 端，模式 B 启动期一次性) docker exec gitlab 用 gitlab-rails runner
+   重置 root 密码到约定值——initial_root_password 在 17.11 不稳定生效
+1. (init-gitlab.sh) 等待 GitLab health check 通过
+2. (init-gitlab.sh) OAuth password grant 用 root + 约定密码换取 access_token
+   GitLab 17.11 已禁用 /api/v4 的 HTTP Basic Auth，必须走 OAuth Bearer
+3. (init-gitlab.sh) 用 root Bearer 创建 e2e-user（用户名查重，幂等）
+4. (init-gitlab.sh) 用 root Bearer 调 admin-only /users/{id}/impersonation_tokens
+   创建 PAT；GitLab 17 强制要求 expires_at 字段（默认 +365d）
+5. (init-gitlab.sh) 用 PAT 创建 3 个种子仓库（pom.xml / gradle.properties）
+6. (可选) 配置 webhook / CI，用于 triggerPipeline 验证
 ```
 
 ### 6.2 种子仓库结构

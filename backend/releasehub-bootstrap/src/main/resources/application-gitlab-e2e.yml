@@ -15,7 +15,7 @@ spring:
 
 releasehub:
   seed:
-    enabled: false
+    enabled: true
   gitlab:
     real-adapter: true
     base-url: http://gitlab:80

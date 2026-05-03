@@ -1,0 +1,10 @@
+target
+**/target
+.git
+.gitignore
+.idea
+.vscode
+*.log
+.flattened-pom.xml
+**/.flattened-pom.xml
+.mvn/wrapper/maven-wrapper.jar

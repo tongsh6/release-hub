@@ -16,39 +16,66 @@ for i in $(seq 1 60); do
   sleep 5
 done
 
-echo "=== Creating E2E test user ==="
-CREATE_USER_RESP=$(curl -s --request POST \
-  --header "Content-Type: application/json" \
-  --data "{\"name\":\"$TEST_USER\",\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\",\"email\":\"$TEST_USER@e2e.test\",\"skip_confirmation\":true}" \
-  "$GITLAB_URL/api/v4/users" \
-  --user "root:$ROOT_PASS")
+echo "=== Acquiring root OAuth token (GitLab 17 disabled basic auth on /api/v4) ==="
+ROOT_TOKEN=$(curl -s -X POST "$GITLAB_URL/oauth/token" \
+  -d "grant_type=password&username=root&password=$ROOT_PASS" \
+  | grep -o '"access_token":"[^"]*"' | head -1 | cut -d'"' -f4)
+if [ -z "$ROOT_TOKEN" ]; then
+  echo "ERROR: Failed to acquire root OAuth token. Check ROOT_PASS."
+  exit 1
+fi
+echo "ROOT_TOKEN acquired (${ROOT_TOKEN:0:8}...)"
 
-echo "User creation response: $CREATE_USER_RESP"
+echo "=== Creating E2E test user (idempotent) ==="
+EXISTING_USER=$(curl -s -H "Authorization: Bearer $ROOT_TOKEN" \
+  "$GITLAB_URL/api/v4/users?username=$TEST_USER" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+if [ -n "$EXISTING_USER" ]; then
+  echo "User $TEST_USER already exists (id=$EXISTING_USER)"
+  USER_ID=$EXISTING_USER
+else
+  CREATE_USER_RESP=$(curl -s --request POST \
+    --header "Authorization: Bearer $ROOT_TOKEN" \
+    --header "Content-Type: application/json" \
+    --data "{\"name\":\"$TEST_USER\",\"username\":\"$TEST_USER\",\"password\":\"$TEST_PASS\",\"email\":\"$TEST_USER@e2e.test\",\"skip_confirmation\":true}" \
+    "$GITLAB_URL/api/v4/users")
+  USER_ID=$(echo "$CREATE_USER_RESP" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+  if [ -z "$USER_ID" ]; then
+    echo "ERROR: Failed to create user. Response: $CREATE_USER_RESP"
+    exit 1
+  fi
+  echo "User created (id=$USER_ID)"
+fi
 
-echo "=== Creating personal access token for test user ==="
+echo "=== Creating impersonation token for $TEST_USER (admin-only API) ==="
+EXPIRES_AT=$(date -v+365d +%Y-%m-%d 2>/dev/null || date -d "+365 days" +%Y-%m-%d)
 TOKEN_RESPONSE=$(curl -s --request POST \
+  --header "Authorization: Bearer $ROOT_TOKEN" \
   --header "Content-Type: application/json" \
-  --data '{"name":"e2e-pat","scopes":["api","read_repository","write_repository"]}' \
-  "$GITLAB_URL/api/v4/personal_access_tokens" \
-  --user "$TEST_USER:$TEST_PASS")
+  --data "{\"name\":\"e2e-pat\",\"scopes\":[\"api\",\"read_repository\",\"write_repository\"],\"expires_at\":\"$EXPIRES_AT\"}" \
+  "$GITLAB_URL/api/v4/users/$USER_ID/impersonation_tokens")
 
 E2E_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"token":"[^"]*"' | head -1 | cut -d'"' -f4)
-echo "E2E_TOKEN=$E2E_TOKEN"
+echo "E2E_TOKEN=${E2E_TOKEN:0:8}..."
 
 if [ -z "$E2E_TOKEN" ]; then
-  echo "ERROR: Failed to create personal access token. Response: $TOKEN_RESPONSE"
+  echo "ERROR: Failed to create impersonation token. Response: $TOKEN_RESPONSE"
   exit 1
 fi
 
-echo "=== Creating seed repositories ==="
+echo "=== Creating seed repositories (via root OAuth) ==="
+# Use root token instead of impersonation — more reliable for project creation
 create_repo() {
   local name=$1
   local resp=$(curl -s --request POST \
     --header "Content-Type: application/json" \
-    --header "PRIVATE-TOKEN: $E2E_TOKEN" \
+    --header "Authorization: Bearer $ROOT_TOKEN" \
     --data "{\"name\":\"$name\",\"visibility\":\"private\",\"initialize_with_readme\":false}" \
     "$GITLAB_URL/api/v4/projects")
-  echo "$resp" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2
+  local pid=$(echo "$resp" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+  if [ -z "$pid" ]; then
+    echo "WARNING: Failed to create repo $name. Response: $(echo $resp | head -c 200)"
+  fi
+  echo "$pid"
 }
 
 REPO1_ID=$(create_repo "seed-repo-1-maven")

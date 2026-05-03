@@ -19,22 +19,32 @@ jobs:
       - name: Set up Docker
         uses: docker/setup-buildx-action@v3
 
-      - name: Start full stack
-        run: docker compose -f docker-compose.full.yml up -d --build
+      - name: Start core services (postgres + gitlab + backend + frontend)
+        run: docker compose -f docker-compose.full.yml up -d --build postgres gitlab backend frontend
 
-      - name: Wait for services
+      - name: Wait for backend
         run: |
-          echo "Waiting for services to be healthy..."
           for i in $(seq 1 60); do
-            if curl -s http://localhost:8080/actuator/health 2>/dev/null; then
-              echo "Backend is ready"
-              exit 0
+            if curl -s http://localhost:8081/actuator/health 2>/dev/null | grep -q UP; then
+              echo "Backend ready"; exit 0
             fi
-            echo "Waiting... ($i/60)"
-            sleep 10
+            echo "Waiting backend... ($i/60)"; sleep 10
           done
-          echo "Timeout waiting for backend"
-          exit 1
+          echo "Timeout waiting for backend"; exit 1
+
+      - name: Wait for GitLab healthy
+        run: |
+          for i in $(seq 1 60); do
+            status=$(docker compose -f docker-compose.full.yml ps gitlab --format json | python3 -c 'import sys,json; print(json.loads(sys.stdin.read())["Health"])' 2>/dev/null || echo "")
+            if [ "$status" = "healthy" ]; then echo "GitLab healthy"; exit 0; fi
+            echo "GitLab status: $status ($i/60)"; sleep 15
+          done
+          echo "Timeout waiting for GitLab"; exit 1
+
+      - name: Reset GitLab root password (initial_root_password unreliable on 17.11)
+        run: |
+          docker compose -f docker-compose.full.yml exec -T gitlab \
+            gitlab-rails runner "u=User.find(1); u.password='releasehub123'; u.password_confirmation='releasehub123'; u.password_automatically_set=false; u.save!; puts 'OK'"
 
       - name: Run vertical slice tests
         run: docker compose -f docker-compose.full.yml run --rm test-runner

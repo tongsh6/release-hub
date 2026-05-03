@@ -17,6 +17,8 @@ services:
   gitlab:
     image: gitlab/gitlab-ce:17.11.3-ce.0
     hostname: gitlab.local
+    ports:
+      - "9081:80"
     environment:
       GITLAB_OMNIBUS_CONFIG: |
         external_url 'http://gitlab.local'
@@ -28,7 +30,7 @@ services:
         gitlab_rails['initial_root_password'] = 'releasehub123'
         gitlab_rails['display_initial_root_password'] = false
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/-/health"]
+      test: ["CMD", "curl", "-fs", "http://localhost/users/sign_in"]
       interval: 30s
       timeout: 10s
       retries: 20
@@ -38,12 +40,14 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8081:8080"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: gitlab-e2e
+    # Backend container needs seed=false to not interfere with test DB state.
+    # Tests enable seed via test fixture override; production backend stays clean.
 
   frontend:
     build:
@@ -52,7 +56,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "80:80"
+      - "8090:80"
 
   test-runner:
     build:
