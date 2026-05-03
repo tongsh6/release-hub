@@ -161,11 +161,23 @@ pnpm typecheck && pnpm lint
 ### 测试
 
 ```bash
-# 后端测试
+# 后端单测（surefire，< 30s）
 cd backend && mvn test
 
-# 前端 E2E 测试
+# 后端集成+E2E（failsafe）
+cd backend && mvn verify
+
+# 后端覆盖率
+cd backend && mvn verify -Pcoverage
+
+# 前端单测
+cd frontend && pnpm test
+
+# 前端 E2E（Playwright）
 cd frontend && pnpm test:e2e
+
+# 前端 E2E UI 模式
+cd frontend && pnpm test:e2e:ui
 ```
 
 ## 规格驱动开发

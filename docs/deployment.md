@@ -68,9 +68,16 @@ ReleaseHub 使用 Spring Boot 多 Profile 机制：
 | Profile | 配置文件 | 用途 | Flyway | Seed 数据 |
 |---------|---------|------|--------|----------|
 | `local` | `application-local.yml` | 本地开发 | 关闭（JPA ddl-auto: update） | 开启 |
-| `test` | `application-test.yml` | 集成测试 | 开启 | 开启 |
-| `e2e` | `application-e2e.yml` | E2E 测试（TestContainers） | 开启 | 开启 |
+| `test` | `application-test.yml` | 集成测试（H2 内存库 + Mock GitLab） | 开启 | 开启 |
+| `e2e` | `application-e2e.yml` | 全链路 E2E（真实 PG + GitLab） | 开启 | 开启 |
 | `prd` | `application-prd.yml` | 生产环境 | 开启 | 关闭 |
+
+`e2e` profile 支持两种模式，通过环境变量切换：
+
+| 模式 | E2E_DATASOURCE_URL | E2E_GITLAB_URL | 说明 |
+|------|-------------------|----------------|------|
+| Mode A（本机常驻） | 默认 localhost:5433 | 默认 localhost:9080 | 提前 `docker compose up` |
+| Mode B（CI 全量） | docker-compose 注入 | docker-compose 注入 | `docker compose up` 全栈 |
 
 **切换方式**：修改 `application.yml` 中的 `spring.profiles.active` 或通过环境变量/启动参数覆盖。
 
