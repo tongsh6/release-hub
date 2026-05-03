@@ -29,7 +29,18 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       globals: true,
       include: ['src/**/*.{test,spec}.ts', 'src/**/__tests__/**/*.ts'],
-      exclude: ['e2e/**']
+      exclude: ['e2e/**'],
+      coverage: {
+        provider: 'istanbul',
+        reporter: ['text', 'html'],
+        thresholds: {
+          lines: 10,
+          branches: 5,
+          functions: 8,
+          statements: 10
+        },
+        include: ['src/composables/**/*.ts', 'src/stores/**/*.ts', 'src/api/**/*.ts']
+      }
     }
   }
 })
