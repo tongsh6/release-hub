@@ -15,16 +15,19 @@
 | 单一目标 | ✅ | 只做 Maven 插件配置和依赖声明 |
 | 可独立验证 | ✅ | `mvn test`/`mvn verify -Pcoverage`/`mvn verify -Ppitest` 均正常 |
 | 可回滚 | ✅ | git revert POM 文件 |
-| 依赖明确 | ✅ | 依赖 Slice 1（profile 清晰） |
+| 依赖明确 | ✅ | 无前置依赖 |
 | 风险收敛 | ✅ | POM 变更，不触及业务代码 |
 
 ## 涉及文件
 
 | 文件 | 操作 | 层 |
 |------|------|-----|
-| `backend/pom.xml` | 修改：`<pluginManagement>` 加 surefire/failsafe/JaCoCo/Pitest 配置 + WireMock BOM | Build |
-| `backend/releasehub-infrastructure/pom.xml` | 修改：加 WireMock test 依赖 | Build |
-| `backend/releasehub-bootstrap/pom.xml` | 修改：TESTCONTAINERS_RYUK 从 surefire 移到 failsafe | Build |
+| `backend/pom.xml` | 修改：`<pluginManagement>` 加 surefire/failsafe/JaCoCo/Pitest + WireMock BOM | Build |
+| `backend/releasehub-domain/pom.xml` | 修改：加 JaCoCo check (LINE 0.80) | Build |
+| `backend/releasehub-application/pom.xml` | 修改：加 JaCoCo check (LINE 0.70) | Build |
+| `backend/releasehub-infrastructure/pom.xml` | 修改：加 WireMock dep + JaCoCo check (LINE 0.50) | Build |
+| `backend/releasehub-common/pom.xml` | 修改：加 JaCoCo check (LINE 0.50) | Build |
+| `backend/releasehub-bootstrap/pom.xml` | 修改：TESTCONTAINERS_RYUK 移到 failsafe + JaCoCo check (LINE 0.30) | Build |
 
 ## 关键配置
 
@@ -65,7 +68,11 @@
 </plugin>
 ```
 
-### JaCoCo（父 POM profile `coverage`）
+### JaCoCo（父 POM profile `coverage`，按模块设阈值）
+
+父 POM pluginManagement 声明 prepare-agent + report（共用），check 规则在各模块 pom.xml 中定义。
+
+**父 POM：**
 ```xml
 <profile>
     <id>coverage</id>
@@ -77,25 +84,43 @@
                 <executions>
                     <execution><id>prepare-agent</id><goal>prepare-agent</goal></execution>
                     <execution><id>report</id><phase>verify</phase><goal>report</goal></execution>
-                    <execution><id>check</id><phase>verify</phase><goal>check</goal>
-                        <configuration>
-                            <rules>
-                                <rule><element>BUNDLE</element>
-                                    <limits>
-                                        <limit><counter>LINE</counter>
-                                            <value>COVEREDRATIO</value>
-                                            <minimum>0.50</minimum></limit>
-                                    </limits>
-                                </rule>
-                            </rules>
-                        </configuration>
-                    </execution>
                 </executions>
             </plugin>
         </plugins>
     </build>
 </profile>
 ```
+
+**各模块 check 阈值（模块 pom.xml 中 override）：**
+```xml
+<!-- releasehub-domain/pom.xml — 纯POJO，最高阈值 -->
+<plugin>
+    <groupId>org.jacoco</groupId>
+    <artifactId>jacoco-maven-plugin</artifactId>
+    <executions>
+        <execution><id>check</id><phase>verify</phase><goal>check</goal>
+            <configuration>
+                <rules>
+                    <rule><element>BUNDLE</element>
+                        <limits>
+                            <limit><counter>LINE</counter>
+                                <value>COVEREDRATIO</value><minimum>0.80</minimum></limit>
+                        </limits>
+                    </rule>
+                </rules>
+            </configuration>
+        </execution>
+    </executions>
+</plugin>
+```
+| 模块 | LINE 阈值 | 理由 |
+|------|----------|------|
+| `releasehub-domain` | 0.80 | 纯 POJO，无外部依赖 |
+| `releasehub-application` | 0.70 | Mock 端口，测用例编排 |
+| `releasehub-infrastructure` | 0.50 | 依赖 Git API/JPA |
+| `releasehub-bootstrap` | 0.30 | 配置/E2E 层，单测覆盖率天然低 |
+| `releasehub-common` | 0.50 | 异常/分页/DTO 封装 |
+| `releasehub-interfaces` | — | 无测试，不设阈值 |
 
 ### Pitest（父 POM profile `pitest`）
 ```xml
@@ -155,6 +180,12 @@
 - `mvn verify` 额外跑 failsafe
 - `mvn verify -Pcoverage` 生成 JaCoCo 报告
 - `mvn verify -Ppitest` 生成 Pitest 报告
+
+## 静态扫描
+
+```bash
+scripts/dev/static-scan-topn.sh 10
+```
 
 ## 事后检查
 

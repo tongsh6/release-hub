@@ -14,7 +14,7 @@
 6. **`pnpm test:e2e`** 用 Playwright 运行前端 E2E
 7. **`pnpm test:pact`** 验证前后端 API 合约
 8. **CI 三条流水线**：PR 秒级反馈、合并后全链路、覆盖率门禁
-9. **Profile 清晰**：`test`（H2+Mock+WireMock）和 `e2e`（真实 PG+GitLab，两种模式）
+9. **Profile 清晰**：`test`（H2 + Mock GitLab）和 `e2e`（真实 PG+GitLab，两种模式）
 
 ## 二、完整范围
 
@@ -48,7 +48,7 @@
 | 模块 | 层 | 职责 |
 |------|----|------|
 | Spring Profile YAML | Bootstrap config | `test` / `e2e` 配置，env var 注入 |
-| Maven 插件 | 父 POM | surefire/failsafe/JaCoCo/Pitest |
+| Maven 插件 | 父 POM + 子模块 POM | surefire/failsafe/JaCoCo（按模块阈值 80/70/50/30%）/Pitest |
 | WireMock | Infrastructure test | 独立端口 stub GitLab API |
 | Vitest + coverage | 前端 | composable/store/api 单测 |
 | Playwright | 前端 | E2E 页面级测试 |
@@ -108,11 +108,11 @@ consumer + provider
 | 4 | `mvn verify -Ppitest` 突变测试报告生成 | pitest report | Slice 2 |
 | 5 | infrastructure 测试使用 WireMock，不再用 MockRestServiceServer | 检查测试代码 | Slice 3 |
 | 6 | `pnpm test` 测试数 > 10 + 覆盖率 > 阈值 | vitest --reporter=verbose --coverage | Slice 4 |
-| 7 | `pnpm test:e2e` Playwright 全通过 | Playwright HTML report | Slice 4 |
-| 8 | `pnpm test:pact` 前后端合约一致 | Pact 报告 | Slice 5 |
+| 7 | `pnpm test:e2e` Playwright 全通过 | Playwright HTML report | Slice 5 |
+| 8 | `pnpm test:pact` 前后端合约一致 | Pact 报告 | Slice 6 |
 | 9 | 测试 profile 从 4 个减到 2 个（test/e2e），`unitTest`/`gitlab-e2e`/`gitlab-e2e-local` 已删除 | `ls resources/application-*.yml` 不含这些文件 | Slice 1 |
-| 10 | CI backend-ci.yml PR 触发且 `mvn test` + JaCoCo 通过 | Actions 日志 | Slice 6 |
-| 11 | CI e2e-full-link.yml profile 为 `e2e` | Actions 日志 | Slice 6 |
+| 10 | CI backend-ci.yml PR 触发且 `mvn verify -Pcoverage` 通过 | Actions 日志 | Slice 7 |
+| 11 | CI e2e-full-link.yml profile 为 `e2e` | Actions 日志 | Slice 7 |
 
 ## 七、风险与回滚
 
@@ -132,12 +132,13 @@ consumer + provider
 ```
 确认设计
   ├── Slice 1: Profile 精简 + @ActiveProfiles 统一（无依赖）
-  ├── Slice 2: Maven 构建基础设施（依赖 Slice 1）
-  │     ├── Slice 3: WireMock 实现（依赖 Slice 2）
-  ├── Slice 4: 前端测试基础设施（无依赖，与 1-2 并行）
-  ├── Slice 5: Pact 合约测试（依赖 Slice 2 + Slice 4）
-  ├── Slice 6: CI 流水线（依赖 Slice 2-5）
-  └── Slice 7: 文档 + 静态扫描（依赖 Slice 1-6）
+  ├── Slice 2: Maven 构建基础设施（无依赖，与 1 并行）
+  │     └── Slice 3: WireMock 实现（依赖 Slice 2）
+  ├── Slice 4: 前端 Vitest + Coverage（无依赖，与 1-2 并行）
+  │     └── Slice 5: Playwright 迁移（依赖 Slice 4）
+  ├── Slice 6: Pact 合约测试（依赖 Slice 2 + Slice 5）
+  ├── Slice 7: CI 流水线（依赖 Slice 2-6）
+  └── Slice 8: 文档 + 静态扫描（依赖 Slice 1-7）
 ```
 
 ### 切片概览
@@ -145,9 +146,10 @@ consumer + provider
 | Slice | 名称 | 涉及文件 | 依赖 | 状态 |
 |-------|------|---------|------|------|
 | 1 | Profile 精简 | 6 YAML + 5 Java + 1 docker-compose | 无 | ⬜ |
-| 2 | Maven 构建基础设施 | 父 POM + bootstrap POM | Slice 1 | ⬜ |
+| 2 | Maven 构建基础设施 | 父 POM + bootstrap POM + infra POM | 无 | ⬜ |
 | 3 | WireMock 实现 | infrastructure 测试文件（~6 个） | Slice 2 | ⬜ |
-| 4 | 前端测试基础设施 | 30+ 前端文件 | 无 | ⬜ |
-| 5 | Pact 合约测试 | 2 config + 5 contract 测试文件 | Slice 2, 4 | ⬜ |
-| 6 | CI 流水线 | 3 workflow + docker-compose | Slice 2-5 | ⬜ |
-| 7 | 文档 + 静态扫描 | deployment.md + README + 报告 | Slice 1-6 | ⬜ |
+| 4 | 前端 Vitest + Coverage | 10+ 前端文件 | 无 | ⬜ |
+| 5 | Playwright 迁移 | 9 E2E 文件 + config + 旧工具删除 | Slice 4 | ⬜ |
+| 6 | Pact 合约测试 | 12 文件（5 consumer + 5 provider + 2 config） | Slice 2, 5 | ⬜ |
+| 7 | CI 流水线 | 3 workflow + docker-compose | Slice 2-6 | ⬜ |
+| 8 | 文档 + 静态扫描 | deployment.md + README + 报告 | Slice 1-7 | ⬜ |

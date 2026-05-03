@@ -48,8 +48,17 @@
 
 ### Step 4: VERIFY
 - `grep -r "unitTest" --include="*.java" --include="*.yml"` 无结果
-- `grep -r "gitlab-e2e-local\|gitlab-e2e" --include="*.java" --include="*.yml" --include="*.yaml"` 无结果
+- `grep -r "application-gitlab-e2e\|gitlab-e2e-local" --include="*.java" --include="*.yml" --include="*.yaml"` 无结果
 - `mvn test` 全通过
+
+## 静态扫描
+
+```bash
+scripts/dev/static-scan-topn.sh 10
+```
+**报告路径**：
+**TopN 处理结论**：
+**未解决风险**：
 
 ## 事后检查
 

@@ -1,6 +1,6 @@
-# Slice 7: 文档更新 + 静态扫描
+# Slice 8: 文档更新 + 静态扫描
 
-- **蓝图归属**：`docs/superpowers/specs/2026-05-03-test-system-restructure-design.md` 第 7 部分
+- **蓝图归属**：`docs/superpowers/specs/2026-05-03-test-system-restructure-design.md` 第 8 部分
 - **日期**：2026-05-03
 - **执行者**：AI
 - **状态**：待启动
@@ -15,7 +15,7 @@
 | 单一目标 | ✅ | 只做文档和扫描 |
 | 可独立验证 | ✅ | `grep` 无 stale 引用，SpotBugs 0 bugs |
 | 可回滚 | ✅ | git revert |
-| 依赖明确 | ✅ | 依赖 Slice 1-6 |
+| 依赖明确 | ✅ | 依赖 Slice 1-7 |
 | 风险收敛 | ✅ | 纯文档，无代码变更 |
 
 ## 涉及文件
@@ -45,7 +45,7 @@ scripts/dev/static-scan-topn.sh 10
 - 保留报告到 `.ai/reports/static-scan/`
 
 ### Step 4: VERIFY
-- `grep -r "unitTest\|gitlab-e2e-local\|gitlab-e2e" docs/` 无残留
+- `grep -r "unitTest\|application-gitlab-e2e\|gitlab-e2e-local" docs/` 无残留
 - SpotBugs 0 bugs
 - 扫描报告已存档
 

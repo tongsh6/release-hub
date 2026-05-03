@@ -13,12 +13,13 @@
 ```
 确认设计
   ├── Slice 1: Profile 精简 + @ActiveProfiles 统一（无依赖）
-  ├── Slice 2: Maven 构建基础设施（依赖 Slice 1）
-  │     ├── Slice 3: WireMock 实现（依赖 Slice 2）
-  ├── Slice 4: 前端测试基础设施（无依赖，与 1-2 并行）
-  ├── Slice 5: Pact 合约测试（依赖 Slice 2 + Slice 4）
-  ├── Slice 6: CI 流水线（依赖 Slice 2-5）
-  └── Slice 7: 文档 + 静态扫描（依赖 Slice 1-6）
+  ├── Slice 2: Maven 构建基础设施（无依赖，与 1 并行）
+  │     └── Slice 3: WireMock 实现（依赖 Slice 2）
+  ├── Slice 4: 前端 Vitest + Coverage（无依赖，与 1-2 并行）
+  │     └── Slice 5: Playwright 迁移（依赖 Slice 4）
+  ├── Slice 6: Pact 合约测试（依赖 Slice 2 + Slice 5）
+  ├── Slice 7: CI 流水线（依赖 Slice 2-6）
+  └── Slice 8: 文档 + 静态扫描（依赖 Slice 1-7）
 ```
 
 ## 切片概览
@@ -26,12 +27,13 @@
 | Slice | 名称 | 涉及层 | 依赖 | 状态 |
 |-------|------|--------|------|------|
 | 1 | Profile 精简 + @ActiveProfiles 统一 | Bootstrap config | 无 | ⬜ 待启动 |
-| 2 | Maven 构建基础设施 | Build (POM) | Slice 1 | ⬜ 待启动 |
+| 2 | Maven 构建基础设施 | Build (POM) | 无 | ⬜ 待启动 |
 | 3 | WireMock 实现 | Infrastructure test | Slice 2 | ⬜ 待启动 |
-| 4 | 前端测试基础设施 | Frontend test | 无 | ⬜ 待启动 |
-| 5 | Pact 合约测试 | Backend + Frontend | Slice 2, 4 | ⬜ 待启动 |
-| 6 | CI 流水线 | CI (GitHub Actions) | Slice 2, 3, 4, 5 | ⬜ 待启动 |
-| 7 | 文档 + 静态扫描 | Docs | Slice 1-6 | ⬜ 待启动 |
+| 4 | 前端 Vitest + Coverage | Frontend test | 无 | ⬜ 待启动 |
+| 5 | Playwright 迁移 | Frontend e2e | Slice 4 | ⬜ 待启动 |
+| 6 | Pact 合约测试 | Backend + Frontend | Slice 2, 5 | ⬜ 待启动 |
+| 7 | CI 流水线 | CI (GitHub Actions) | Slice 2-6 | ⬜ 待启动 |
+| 8 | 文档 + 静态扫描 | Docs | Slice 1-7 | ⬜ 待启动 |
 
 ## 验收矩阵
 
@@ -43,10 +45,10 @@
 | 4 | `mvn verify -Ppitest` 报告生成 | pitest report | Slice 2 |
 | 5 | WireMock 替代 MockRestServiceServer | 检查 infrastructure 测试代码 | Slice 3 |
 | 6 | `pnpm test` 测试数 > 10 + 覆盖率 > 阈值 | vitest --coverage | Slice 4 |
-| 7 | `pnpm test:e2e` Playwright 全通过 | Playwright HTML report | Slice 4 |
-| 8 | `pnpm test:pact` 验证通过 | Pact 报告 | Slice 5 |
+| 7 | `pnpm test:e2e` Playwright 全通过 | Playwright HTML report | Slice 5 |
+| 8 | `pnpm test:pact` 验证通过 | Pact 报告 | Slice 6 |
 | 9 | 测试 profile 仅 test/e2e 两个 YAML | `ls resources/` | Slice 1 |
-| 10 | CI 三条流水线均通过 | GitHub Actions | Slice 6 |
+| 10 | CI 三条流水线均通过 | GitHub Actions | Slice 7 |
 
 ## 不纳入
 
@@ -63,3 +65,4 @@
 | 5 | — | — | — |
 | 6 | — | — | — |
 | 7 | — | — | — |
+| 8 | — | — | — |

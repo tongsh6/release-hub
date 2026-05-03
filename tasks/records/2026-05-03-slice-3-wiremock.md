@@ -57,6 +57,12 @@ class GitLabGitBranchAdapterTest {
 - `mvn test -pl releasehub-infrastructure` 全部通过
 - `grep "MockRestServiceServer"` 在 infra test 中 0 引用
 
+## 静态扫描
+
+```bash
+scripts/dev/static-scan-topn.sh 10
+```
+
 ## 事后检查
 
 | 检查项 | 状态 | 说明 |

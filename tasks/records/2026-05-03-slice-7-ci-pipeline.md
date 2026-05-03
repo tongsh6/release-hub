@@ -1,6 +1,6 @@
-# Slice 6: CI 流水线重构
+# Slice 7: CI 流水线重构
 
-- **蓝图归属**：`docs/superpowers/specs/2026-05-03-test-system-restructure-design.md` 第 6 部分
+- **蓝图归属**：`docs/superpowers/specs/2026-05-03-test-system-restructure-design.md` 第 7 部分
 - **日期**：2026-05-03
 - **执行者**：AI
 - **状态**：待启动
@@ -15,7 +15,7 @@
 | 单一目标 | ✅ | 拆分流水线，覆盖 Java 单测回归空白 |
 | 可独立验证 | ✅ | 每条 workflow 独立触发 |
 | 可回滚 | ✅ | git revert workflow |
-| 依赖明确 | ✅ | 依赖 Slice 2-5 |
+| 依赖明确 | ✅ | 依赖 Slice 2-6 |
 | 风险收敛 | ✅ | workflow 变更 |
 
 ## 涉及文件
@@ -42,7 +42,6 @@ jobs:
         with: { java-version: '21', distribution: 'temurin' }
       - uses: actions/cache@v4
         with: { path: ~/.m2, key: maven-${{ hashFiles('**/pom.xml') }} }
-      - run: cd backend && mvn test
       - run: cd backend && mvn verify -Pcoverage
       - run: cd backend && mvn spotbugs:check
 ```
@@ -64,6 +63,12 @@ jobs:
 ### Step 4: VERIFY
 - Push PR → backend-ci + frontend-ci 通过
 - Merge → e2e-full-link 通过
+
+## 静态扫描
+
+```bash
+scripts/dev/static-scan-topn.sh 10
+```
 
 ## 事后检查
 
