@@ -45,9 +45,9 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: gitlab-e2e
-    # Backend container needs seed=false to not interfere with test DB state.
-    # Tests enable seed via test fixture override; production backend stays clean.
+      SPRING_PROFILES_ACTIVE: e2e
+      E2E_DATASOURCE_URL: jdbc:postgresql://postgres:5432/releasehub
+      E2E_GITLAB_URL: http://gitlab:80
 
   frontend:
     build:
@@ -72,7 +72,9 @@ services:
     environment:
       GITLAB_URL: http://gitlab:80
       BACKEND_URL: http://backend:8080
-      SPRING_PROFILES_ACTIVE: gitlab-e2e
+      SPRING_PROFILES_ACTIVE: e2e
+      E2E_DATASOURCE_URL: jdbc:postgresql://postgres:5432/releasehub
+      E2E_GITLAB_URL: http://gitlab:80
       FRONTEND_URL: http://frontend:80
     volumes:
       - ./reports:/app/reports

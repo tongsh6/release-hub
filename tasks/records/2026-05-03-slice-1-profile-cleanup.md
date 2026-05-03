@@ -3,7 +3,7 @@
 - **蓝图归属**：`docs/superpowers/specs/2026-05-03-test-system-restructure-design.md` 第 1 部分
 - **日期**：2026-05-03
 - **执行者**：AI
-- **状态**：待启动
+- **状态**：进行中
 
 ## 事前约束检查
 

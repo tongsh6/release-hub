@@ -28,7 +28,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@Disabled("Replaced by unitTest-profile H2 IT in bootstrap")
+@Disabled("Replaced by test-profile H2 IT in bootstrap")
 class GroupGetByCodeTest {
 
     @Test

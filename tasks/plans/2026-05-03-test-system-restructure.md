@@ -1,7 +1,7 @@
 # 测试体系重构 推进计划
 
 > 日期：2026-05-03
-> 状态：待启动
+> 状态：执行中
 > 关联设计：`docs/superpowers/specs/2026-05-03-test-system-restructure-design.md`
 
 ## 目标

@@ -17,7 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("unitTest")
+@ActiveProfiles("test")
 class WindowIterationPageApiTest {
 
     @Autowired

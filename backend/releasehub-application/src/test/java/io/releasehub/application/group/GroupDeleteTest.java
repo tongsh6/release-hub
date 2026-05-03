@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@Disabled("Replaced by unitTest-profile H2 IT in bootstrap")
+@Disabled("Replaced by test-profile H2 IT in bootstrap")
 class GroupDeleteTest {
     @Test
     void deleteByCode_ShouldSucceed_ForLeaf() {
