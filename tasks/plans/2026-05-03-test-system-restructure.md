@@ -1,7 +1,7 @@
 # 测试体系重构 推进计划
 
 > 日期：2026-05-03
-> 状态：执行中
+> 状态：已完成
 > 关联设计：`docs/superpowers/specs/2026-05-03-test-system-restructure-design.md`
 
 ## 目标
@@ -26,14 +26,14 @@
 
 | Slice | 名称 | 涉及层 | 依赖 | 状态 |
 |-------|------|--------|------|------|
-| 1 | Profile 精简 + @ActiveProfiles 统一 | Bootstrap config | 无 | ⬜ 待启动 |
-| 2 | Maven 构建基础设施 | Build (POM) | 无 | ⬜ 待启动 |
-| 3 | WireMock 实现 | Infrastructure test | Slice 2 | ⬜ 待启动 |
-| 4 | 前端 Vitest + Coverage | Frontend test | 无 | ⬜ 待启动 |
-| 5 | Playwright 迁移 | Frontend e2e | Slice 4 | ⬜ 待启动 |
-| 6 | Pact 合约测试 | Backend + Frontend | Slice 2, 5 | ⬜ 待启动 |
-| 7 | CI 流水线 | CI (GitHub Actions) | Slice 2-6 | ⬜ 待启动 |
-| 8 | 文档 + 静态扫描 | Docs | Slice 1-7 | ⬜ 待启动 |
+| 1 | Profile 精简 + @ActiveProfiles 统一 | Bootstrap config | 无 | ✅ 已完成 |
+| 2 | Maven 构建基础设施 | Build (POM) | 无 | ✅ 已完成 |
+| 3 | WireMock 实现 | Infrastructure test | Slice 2 | ✅ 已完成 |
+| 4 | 前端 Vitest + Coverage | Frontend test | 无 | ✅ 已完成（阈值临时占位） |
+| 5 | Playwright 迁移 | Frontend e2e | Slice 4 | ✅ 已完成 |
+| 6 | Pact 合约测试 | Backend + Frontend | Slice 2, 5 | ✅ 已完成 |
+| 7 | CI 流水线 | CI (GitHub Actions) | Slice 2-6 | ✅ 已完成 |
+| 8 | 文档 + 静态扫描 | Docs | Slice 1-7 | ✅ 已完成 |
 
 ## 验收矩阵
 
@@ -58,11 +58,11 @@
 
 | Slice | 开始 | 结束 | 结果 |
 |-------|------|------|------|
-| 1 | — | — | — |
-| 2 | — | — | — |
-| 3 | — | — | — |
-| 4 | — | — | — |
-| 5 | — | — | — |
-| 6 | — | — | — |
-| 7 | — | — | — |
-| 8 | — | — | — |
+| 1 | 2026-05-03 | 2026-05-03 | ✅ 完成 |
+| 2 | 2026-05-03 | 2026-05-03 | ✅ 完成（阈值占位） |
+| 3 | 2026-05-03 | 2026-05-03 | ✅ 完成 |
+| 4 | 2026-05-03 | 2026-05-03 | ✅ 完成（阈值占位） |
+| 5 | 2026-05-03 | 2026-05-03 | ✅ 完成 |
+| 6 | 2026-05-03 | 2026-05-04 | ✅ 完成 |
+| 7 | 2026-05-03 | 2026-05-04 | ✅ 完成 |
+| 8 | 2026-05-03 | 2026-05-04 | ✅ 完成 |

@@ -222,6 +222,12 @@
     </build>
 
     <profiles>
+        <!--
+          覆盖率阈值策略：
+          当前各模块阈值为临时占位值（0.10–0.40），确保 CI 不阻断构建。
+          目标阈值按模块：domain 0.80 / application 0.70 / infrastructure 0.50 /
+          common 0.50 / bootstrap 0.30。随测试补齐逐步上调。
+        -->
         <profile>
             <id>coverage</id>
             <build>

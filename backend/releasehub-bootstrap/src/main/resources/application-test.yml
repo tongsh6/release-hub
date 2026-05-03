@@ -24,6 +24,7 @@ spring:
     fail-on-missing-locations: true
 
 security:
+  pact-verification: true
   jwt:
     secret: "TestSecretKeyForReleaseHubJwtTokenGenerationAndValidationWhichMustBeLongEnough"
     ttlMinutes: 120

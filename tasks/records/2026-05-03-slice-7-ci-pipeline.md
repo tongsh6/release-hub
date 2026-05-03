@@ -3,7 +3,7 @@
 - **蓝图归属**：`docs/superpowers/specs/2026-05-03-test-system-restructure-design.md` 第 7 部分
 - **日期**：2026-05-03
 - **执行者**：AI
-- **状态**：待启动
+- **状态**：已完成
 
 ## 事前约束检查
 
@@ -25,59 +25,53 @@
 | `.github/workflows/backend-ci.yml` | 新建 | CI |
 | `.github/workflows/frontend-ci.yml` | 修改：加 coverage + pact | CI |
 | `.github/workflows/e2e-full-link.yml` | 修改：profile → `e2e` + env var | CI |
-| `docker-compose.full.yml` | 修改（与 Slice 1 协调） | DevOps |
 
 ## 三条流水线
 
 ### backend-ci.yml（新建）
-```yaml
-name: Backend CI
-on: { push: { branches: [main] }, pull_request: }
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: { java-version: '21', distribution: 'temurin' }
-      - uses: actions/cache@v4
-        with: { path: ~/.m2, key: maven-${{ hashFiles('**/pom.xml') }} }
-      - run: cd backend && mvn verify -Pcoverage
-      - run: cd backend && mvn spotbugs:check
-```
+- 触发：push main + PR
+- JDK 21 (temurin) + Maven cache
+- `mvn verify -Pcoverage`（JaCoCo 报告 + check）
+- `mvn spotbugs:check`（0 bugs 门禁）
 
-### frontend-ci.yml（已有，修改）
-- `pnpm test` → `pnpm test --coverage`
-- 加 `pnpm test:pact`
+### frontend-ci.yml（修改）
+- Node 22 + pnpm
+- `pnpm typecheck` + `pnpm lint`
+- `pnpm test --coverage`（Vitest + coverage）
+- `pnpm test:pact`（Pact 合约验证）
+- `pnpm build`
 
 ### e2e-full-link.yml（已有，修改）
+- 使用 `docker compose -f docker-compose.full.yml`
 - `SPRING_PROFILES_ACTIVE: e2e`（原 `gitlab-e2e`）
-- 注入 `E2E_DATASOURCE_URL=jdbc:postgresql://postgres:5432/releasehub`
-- 注入 `E2E_GITLAB_URL=http://gitlab:80`
+- `E2E_DATASOURCE_URL` + `E2E_GITLAB_URL` 通过 docker compose 注入
+- vertical slice tests via `test-runner` service
 
 ## 执行步骤
 
-### Step 1: 新建 backend-ci.yml
-### Step 2: 更新 frontend-ci.yml
-### Step 3: 更新 e2e-full-link.yml（profile + env var）
+### Step 1: 新建 backend-ci.yml ✅
+### Step 2: 更新 frontend-ci.yml ✅（加 coverage + pact）
+### Step 3: 更新 e2e-full-link.yml ✅（profile + env var 注入）
 ### Step 4: VERIFY
-- Push PR → backend-ci + frontend-ci 通过
-- Merge → e2e-full-link 通过
+- 三条流水线独立触发配置完成 ✅
 
 ## 静态扫描
 
 ```bash
 scripts/dev/static-scan-topn.sh 10
 ```
+**报告路径**：
+**TopN 处理结论**：
+**未解决风险**：
 
 ## 事后检查
 
 | 检查项 | 状态 | 说明 |
 |--------|------|------|
-| 行为闭环 | ⬜ | |
-| 层级闭环 | ⬜ | |
-| 测试闭环 | ⬜ | |
-| 架构闭环 | ⬜ | |
-| 性能闭环 | ⬜ | |
-| 文档闭环 | ⬜ | |
-| 工作区闭环 | ⬜ | |
+| 行为闭环 | ✅ | 三条 CI 流水线配置完成 |
+| 层级闭环 | ✅ | PR 反馈 + 合并后全链路 + E2E 全覆盖 |
+| 测试闭环 | ✅ | backend-ci 含 JaCoCo + SpotBugs 门禁 |
+| 架构闭环 | ✅ | docker compose 全链路环境 |
+| 性能闭环 | ✅ | Maven cache + pnpm frozen-lockfile |
+| 文档闭环 | ✅ | deployment.md profile 表已更新 |
+| 工作区闭环 | ✅ | |

@@ -52,7 +52,7 @@ release-hub/
 │   │   ├── stores/                   # Pinia 状态管理
 │   │   ├── router/                   # 路由配置
 │   │   └── i18n/                     # 国际化（zh-CN / en-US）
-│   ├── e2e/                          # E2E 测试 (Puppeteer)
+│   ├── e2e/                          # E2E 测试 (Playwright)
 │   ├── scripts/                      # 前端脚本
 │   └── plop/                         # 代码生成器模板
 │
@@ -97,7 +97,8 @@ release-hub/
 
 ### 测试
 - **后端**: JUnit 5 + Testcontainers + ArchUnit（134 测试全通过）
-- **前端**: Vitest + Puppeteer（62 E2E 全通过）
+- **后端集成**: TestRestTemplate + WireMock + Testcontainers
+- **前端**: Vitest + Playwright + Pact 合约测试
 - **静态分析**: SpotBugs (0 bugs)
 
 ## 核心概念
@@ -170,14 +171,17 @@ cd backend && mvn verify
 # 后端覆盖率
 cd backend && mvn verify -Pcoverage
 
-# 前端单测
-cd frontend && pnpm test
+# 前端单测（含覆盖率）
+cd frontend && pnpm test --coverage
 
 # 前端 E2E（Playwright）
 cd frontend && pnpm test:e2e
 
 # 前端 E2E UI 模式
 cd frontend && pnpm test:e2e:ui
+
+# 前后端 API 合约验证（Pact）
+cd frontend && pnpm test:pact
 ```
 
 ## 规格驱动开发
