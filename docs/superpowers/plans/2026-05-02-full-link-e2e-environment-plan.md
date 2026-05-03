@@ -1,6 +1,8 @@
 # 全链路 E2E 测试环境 — 实现计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **历史备注**：本文中 `gitlab-e2e` profile 在后续测试体系重构中已合并为 `e2e`（见 `docs/superpowers/specs/2026-05-03-test-system-restructure-design.md`）。阅读本计划时请将 `gitlab-e2e`/`gitlab-e2e-local` 理解为当前的 `e2e` profile（Mode B/A）。
 
 **Goal:** 建立一个 `docker compose up` 一键启动的全栈环境 + 5 条垂直切片 E2E 测试，覆盖 4 种角色、20 个 Phase 1 用户故事。
 

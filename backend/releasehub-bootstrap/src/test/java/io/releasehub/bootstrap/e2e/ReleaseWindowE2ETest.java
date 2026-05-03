@@ -14,7 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class ReleaseWindowE2eTest extends AbstractE2ETest {
+class ReleaseWindowE2ETest extends AbstractE2ETest {
 
     private String token;
     private String groupCode;

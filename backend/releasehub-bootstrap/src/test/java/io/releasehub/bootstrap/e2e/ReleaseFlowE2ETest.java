@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class ReleaseFlowE2eTest extends AbstractE2ETest {
+class ReleaseFlowE2ETest extends AbstractE2ETest {
 
     private String token;
     private String groupCode;

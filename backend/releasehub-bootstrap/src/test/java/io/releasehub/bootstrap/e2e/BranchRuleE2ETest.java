@@ -13,7 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class BranchRuleE2eTest extends AbstractE2ETest {
+class BranchRuleE2ETest extends AbstractE2ETest {
 
     private String token;
     private String ruleId;

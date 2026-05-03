@@ -121,7 +121,7 @@
 
 #### 测试覆盖（2026-05-02 更新）
 - ✅ 后端测试：134/134 通过（52 单元/集成 + 82 E2E TestContainers）
-- ✅ 前端 E2E：62/62 通过（Puppeteer, 6 套件）
+- ✅ 前端 E2E：62/62 通过（Playwright, 6 套件）
 - ✅ ArchUnit 架构测试（11 个测试通过）
 - ✅ 前端 typecheck / lint 通过
 

@@ -21,7 +21,7 @@ V{版本号}__{描述}.sql
 | 环境 | 数据库 | Flyway | DDL Auto |
 |------|--------|--------|----------|
 | local（本地） | PostgreSQL | 禁用 | update |
-| test/unitTest（测试） | H2 (PostgreSQL 模式) | 启用 | - |
+| test（测试） | H2 (PostgreSQL 模式) | 启用 | - |
 | prd（生产） | PostgreSQL | validate | - |
 
 ## Schema 指南

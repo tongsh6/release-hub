@@ -31,7 +31,7 @@ jobs:
         run: cd frontend && pnpm lint
 
       - name: Unit tests
-        run: cd frontend && pnpm test --coverage
+        run: cd frontend && pnpm test
 
       - name: Pact contract tests
         run: cd frontend && pnpm test:pact

@@ -13,7 +13,7 @@
 - Vitest 配置：`include` 限定到 `src/**`，并 `exclude: ['e2e/**']`
 - 脚本约定：
   - `pnpm test`：只跑单测（Vitest）
-  - `pnpm test:e2e`：只跑 e2e（tsx/puppeteer 等）
+  - `pnpm test:e2e`：只跑 e2e（tsx/Playwright 等）
 
 ## 验证清单
 

@@ -17,7 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class IterationE2eTest extends AbstractE2ETest {
+class IterationE2ETest extends AbstractE2ETest {
 
     private static String token;
     private static String groupCode;

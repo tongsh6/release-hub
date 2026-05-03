@@ -12,7 +12,7 @@
 | 路由 | Vue Router 4.6 |
 | 国际化 | vue-i18n 9 |
 | HTTP | Axios |
-| 测试 | Vitest + Puppeteer (E2E) |
+| 测试 | Vitest + Playwright (E2E) |
 | 包管理 | pnpm |
 
 ## 目录结构

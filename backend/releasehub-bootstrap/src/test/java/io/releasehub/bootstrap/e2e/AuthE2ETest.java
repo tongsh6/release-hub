@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-class AuthE2eTest extends AbstractE2ETest {
+class AuthE2ETest extends AbstractE2ETest {
 
     @Test
     void loginSuccess() throws Exception {

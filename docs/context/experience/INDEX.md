@@ -71,7 +71,7 @@
 
 - **类别**：踩坑记录
 - **日期**：2026-01
-- **关键词**：`vitest`, `e2e`, `test`, `测试`, `单测`, `分层`, `puppeteer`, `前端`
+- **关键词**：`vitest`, `e2e`, `test`, `测试`, `单测`, `分层`, `Playwright`, `前端`
 - **摘要**：Vitest 只收集 src/ 下的单测用例，e2e 使用独立命令入口（pnpm test:e2e），避免互相污染。
 - **文档**：[lessons/frontend-vitest-e2e-separation.md](lessons/frontend-vitest-e2e-separation.md)
 

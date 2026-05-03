@@ -194,7 +194,7 @@ Phase Router（阶段路由）
 
 2. **前端测试**
    - 单元测试：Vitest
-   - E2E 测试：Puppeteer（可选）
+   - E2E 测试：Playwright（可选）
 
 **测试原则**：
 - 覆盖关键路径
