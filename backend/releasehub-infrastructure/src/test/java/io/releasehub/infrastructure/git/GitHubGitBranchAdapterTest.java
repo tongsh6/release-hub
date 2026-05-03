@@ -106,7 +106,7 @@ class GitHubGitBranchAdapterTest {
         GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
                 baseUrl() + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1");
 
-        assertEquals(true, result.canMerge(), "DEBUG detail=" + result.detail());
+        assertTrue(result.canMerge());
     }
 
     @Test
@@ -123,6 +123,6 @@ class GitHubGitBranchAdapterTest {
                 baseUrl() + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1");
 
         assertFalse(result.canMerge());
-        assertEquals(true, result.detail().contains("conflict"), "DEBUG detail=" + result.detail());
+        assertTrue(result.detail().contains("conflict"));
     }
 }
