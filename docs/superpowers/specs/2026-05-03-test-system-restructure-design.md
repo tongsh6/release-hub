@@ -29,7 +29,7 @@
 - [x] 前端 Vitest coverage（c8 或 istanbul provider，最低阈值）
 - [x] 前端 Puppeteer → Playwright 迁移（9 个 E2E 文件 + 工具函数）
 - [x] 前后端 Pact 合约测试（consumer 前端 + provider 后端）
-- [x] CI `backend-ci.yml` 新建（`mvn test` + JaCoCo）
+- [x] CI `backend-ci.yml` 新建（`mvn verify -Pcoverage` + SpotBugs）
 - [x] CI `e2e-full-link.yml` profile 适配（`gitlab-e2e` → `e2e`）
 - [x] CI `frontend-ci.yml` 测试/覆盖率脚本更新
 - [x] 文档更新（`deployment.md` profile 表 + README 测试命令）
