@@ -16,14 +16,6 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:login": "playwright test login.spec.ts",
-    "test:e2e:navigation": "npx tsx e2e/tests/navigation.test.ts",
-    "test:e2e:release-window": "npx tsx e2e/tests/release-window.test.ts",
-    "test:e2e:repository": "npx tsx e2e/tests/repository.test.ts",
-    "test:e2e:iteration": "npx tsx e2e/tests/iteration.test.ts",
-    "test:e2e:smoke": "npx tsx e2e/tests/smoke-business-flow.test.ts",
-    "test:e2e:smoke:headed": "E2E_HEADLESS=false npx tsx e2e/tests/smoke-business-flow.test.ts",
-    "test:e2e:i18n": "npx tsx e2e/tests/i18n.test.ts",
-    "test:e2e:i18n:headed": "E2E_HEADLESS=false npx tsx e2e/tests/i18n.test.ts",
     "test:e2e:headed": "playwright test --headed",
     "gen:api": "openapi-typescript http://localhost:8080/v3/api-docs -o src/api/schema.d.ts",
     "gen:crud": "plop --plopfile plop/plopfile.cjs crud",
@@ -31,7 +23,11 @@
     "gen:crud:force": "plop --plopfile plop/plopfile.cjs crud --force",
     "i18n:lint": "node scripts/i18n-check.js",
     "test:e2e:ui": "playwright test --ui",
-    "test:pact": "vitest run src/api/__tests__/pact/"
+    "test:pact": "vitest run src/api/__tests__/pact/",
+    "test:e2e:navigation": "playwright test navigation.spec.ts",
+    "test:e2e:release-window": "playwright test release-window.spec.ts",
+    "test:e2e:smoke": "playwright test smoke.spec.ts",
+    "test:e2e:i18n": "playwright test i18n.spec.ts"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
