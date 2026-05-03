@@ -82,18 +82,9 @@ vitest run                    playwright test
 
 ## 五、阶段计划
 
-### 本次做（Phase 1）
+一次性完整交付：Profile 精简、Maven 分离、Vitest 补齐、Playwright 迁移、CI 流水线、文档更新。
 
-测试体系基础设施层重构：Profile 精简、Maven 分离、前端框架迁移、CI 流水线。
-
-### 后续做（Phase 2+）
-
-- JaCoCo / Vitest coverage 覆盖率工具引入
-- WireMock 替代 MockRestServiceServer
-- 前端组件测试补齐（EditableTable 等关键组件）
-- 测试数据工厂（替代 `E2ETestFixtures` 中的硬编码 JSON）
-
-后续追踪位置：`tasks/plans/` 下新建 Phase 文件。
+明确不纳入：JaCoCo 覆盖率、WireMock、突变测试、合约测试、性能测试。
 
 ## 六、验收矩阵
 
