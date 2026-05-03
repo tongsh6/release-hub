@@ -24,7 +24,32 @@ import java.util.regex.Pattern;
 @Component
 public class GitHubGitBranchAdapter implements GitBranchPort {
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private RestTemplate restTemplate = createRestTemplate();
+
+    private static RestTemplate createRestTemplate() {
+        java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
+                .version(java.net.http.HttpClient.Version.HTTP_1_1)
+                .build();
+        return new RestTemplate(new org.springframework.http.client.JdkClientHttpRequestFactory(httpClient));
+    }
+
+    /** Exposed for testability — allows WireMock-backed RestTemplate injection. */
+    void setRestTemplate(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
+
+    /**
+     * Resolves the GitHub API base URL from the clone URL host.
+     *
+     * <p>Public GitHub ({@code github.com}) maps to {@code https://api.github.com}.
+     * GitHub Enterprise instances use {@code https://<host>/api/v3}.
+     */
+    private String resolveApiBaseUrl(String scheme, String host) {
+        if ("github.com".equals(host)) {
+            return "https://api.github.com";
+        }
+        return scheme + "://" + host;
+    }
 
     @Override
     public boolean supports(GitProvider provider) {
@@ -35,7 +60,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     public boolean createBranch(String repoCloneUrl, String token, String branchName, String fromBranch) {
         try {
             RepoRef ref = parseRepoRef(repoCloneUrl);
-            String branchEndpoint = String.format("https://api.github.com/repos/%s/%s/branches/%s", ref.owner, ref.repo, urlEncode(fromBranch));
+            String branchEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/branches/%s", ref.owner, ref.repo, urlEncode(fromBranch));
             ResponseEntity<Map<String, Object>> branchResponse = restTemplate.exchange(branchEndpoint, HttpMethod.GET, new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
             if (!branchResponse.getStatusCode().is2xxSuccessful() || branchResponse.getBody() == null) {
                 return false;
@@ -45,7 +70,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
                 return false;
             }
             String sha = String.valueOf(commitMap.get("sha"));
-            String createRefEndpoint = String.format("https://api.github.com/repos/%s/%s/git/refs", ref.owner, ref.repo);
+            String createRefEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/git/refs", ref.owner, ref.repo);
             Map<String, String> body = Map.of("ref", "refs/heads/" + branchName, "sha", sha);
             ResponseEntity<Map<String, Object>> created = restTemplate.exchange(createRefEndpoint, HttpMethod.POST, new HttpEntity<>(body, headers(token)), new ParameterizedTypeReference<>() {});
             return created.getStatusCode().is2xxSuccessful();
@@ -58,7 +83,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     public boolean deleteBranch(String repoCloneUrl, String token, String branchName) {
         try {
             RepoRef ref = parseRepoRef(repoCloneUrl);
-            String endpoint = String.format("https://api.github.com/repos/%s/%s/git/refs/heads/%s", ref.owner, ref.repo, urlEncode(branchName));
+            String endpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/git/refs/heads/%s", ref.owner, ref.repo, urlEncode(branchName));
             ResponseEntity<Void> response = restTemplate.exchange(endpoint, HttpMethod.DELETE, new HttpEntity<>(headers(token)), Void.class);
             return response.getStatusCode().is2xxSuccessful();
         } catch (HttpClientErrorException e) {
@@ -70,7 +95,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     public MergeResult mergeBranch(String repoCloneUrl, String token, String sourceBranch, String targetBranch, String commitMessage) {
         try {
             RepoRef ref = parseRepoRef(repoCloneUrl);
-            String endpoint = String.format("https://api.github.com/repos/%s/%s/merges", ref.owner, ref.repo);
+            String endpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/merges", ref.owner, ref.repo);
             Map<String, String> body = new HashMap<>();
             body.put("base", targetBranch);
             body.put("head", sourceBranch);
@@ -91,7 +116,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     public boolean createTag(String repoCloneUrl, String token, String tagName, String refName, String message) {
         try {
             RepoRef ref = parseRepoRef(repoCloneUrl);
-            String branchEndpoint = String.format("https://api.github.com/repos/%s/%s/branches/%s", ref.owner, ref.repo, urlEncode(refName));
+            String branchEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/branches/%s", ref.owner, ref.repo, urlEncode(refName));
             ResponseEntity<Map<String, Object>> branchResponse = restTemplate.exchange(branchEndpoint, HttpMethod.GET, new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
             if (!branchResponse.getStatusCode().is2xxSuccessful() || branchResponse.getBody() == null) {
                 return false;
@@ -101,7 +126,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
                 return false;
             }
             String sha = String.valueOf(commitMap.get("sha"));
-            String createRefEndpoint = String.format("https://api.github.com/repos/%s/%s/git/refs", ref.owner, ref.repo);
+            String createRefEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/git/refs", ref.owner, ref.repo);
             Map<String, String> body = Map.of("ref", "refs/tags/" + tagName, "sha", sha);
             ResponseEntity<Map<String, Object>> created = restTemplate.exchange(createRefEndpoint, HttpMethod.POST, new HttpEntity<>(body, headers(token)), new ParameterizedTypeReference<>() {});
             return created.getStatusCode().is2xxSuccessful();
@@ -116,7 +141,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
             RepoRef ref = parseRepoRef(repoCloneUrl);
 
             // Create a temporary PR to check mergeability
-            String prEndpoint = String.format("https://api.github.com/repos/%s/%s/pulls",
+            String prEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/pulls",
                     ref.owner, ref.repo);
             Map<String, String> prBody = new HashMap<>();
             prBody.put("title", "[ReleaseHub] merge check: " + sourceBranch + " → " + targetBranch);
@@ -136,7 +161,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
             int number = ((Number) pr.get("number")).intValue();
 
             // Close the temporary PR
-            String closeEndpoint = String.format("https://api.github.com/repos/%s/%s/pulls/%d",
+            String closeEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/pulls/%d",
                     ref.owner, ref.repo, number);
             Map<String, String> closeBody = Map.of("state", "closed");
             restTemplate.exchange(closeEndpoint, HttpMethod.PATCH,
@@ -164,7 +189,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     public boolean archiveBranch(String repoCloneUrl, String token, String branchName, String reason) {
         try {
             RepoRef ref = parseRepoRef(repoCloneUrl);
-            String shaEndpoint = String.format("https://api.github.com/repos/%s/%s/git/refs/heads/%s",
+            String shaEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/git/refs/heads/%s",
                     ref.owner, ref.repo, urlEncode(branchName));
             ResponseEntity<Map<String, Object>> refResponse = restTemplate.exchange(
                     shaEndpoint, HttpMethod.GET,
@@ -179,7 +204,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
             }
             String sha = String.valueOf(objMap.get("sha"));
             String archivedName = "archive/" + reason + "/" + branchName.replace("/", "-");
-            String createRefEndpoint = String.format("https://api.github.com/repos/%s/%s/git/refs",
+            String createRefEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/git/refs",
                     ref.owner, ref.repo);
             Map<String, String> body = Map.of("ref", "refs/heads/" + archivedName, "sha", sha);
             restTemplate.exchange(createRefEndpoint, HttpMethod.POST,
@@ -196,7 +221,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     public String triggerPipeline(String repoCloneUrl, String token, String ref) {
         try {
             RepoRef rp = parseRepoRef(repoCloneUrl);
-            String endpoint = String.format("https://api.github.com/repos/%s/%s/dispatches",
+            String endpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/dispatches",
                     rp.owner, rp.repo);
             Map<String, Object> body = new HashMap<>();
             body.put("event_type", "releasehub-release");
@@ -226,7 +251,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     public BranchStatus getBranchStatus(String repoCloneUrl, String token, String branchName) {
         try {
             RepoRef ref = parseRepoRef(repoCloneUrl);
-            String endpoint = String.format("https://api.github.com/repos/%s/%s/branches/%s", ref.owner, ref.repo, urlEncode(branchName));
+            String endpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/branches/%s", ref.owner, ref.repo, urlEncode(branchName));
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(endpoint, HttpMethod.GET, new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
                 return BranchStatus.missing();
@@ -254,13 +279,16 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
             throw ValidationException.invalidParameter("cloneUrl");
         }
         String trimmed = cloneUrl.trim();
-        Matcher ssh = Pattern.compile("^git@github.com:([^/]+)/(.+?)(\\.git)?$").matcher(trimmed);
+        Matcher ssh = Pattern.compile("^git@([^:]+):([^/]+)/(.+?)(\\.git)?$").matcher(trimmed);
         if (ssh.find()) {
-            return new RepoRef(ssh.group(1), ssh.group(2));
+            String host = ssh.group(1);
+            return new RepoRef(resolveApiBaseUrl("https", host), ssh.group(2), ssh.group(3));
         }
-        Matcher https = Pattern.compile("^https?://github.com/([^/]+)/(.+?)(\\.git)?$").matcher(trimmed);
+        Matcher https = Pattern.compile("^(https?)://([^/]+)/([^/]+)/(.+?)(\\.git)?$").matcher(trimmed);
         if (https.find()) {
-            return new RepoRef(https.group(1), https.group(2));
+            String scheme = https.group(1);
+            String host = https.group(2);
+            return new RepoRef(resolveApiBaseUrl(scheme, host), https.group(3), https.group(4));
         }
         throw ValidationException.invalidParameter("cloneUrl");
     }
@@ -269,6 +297,6 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    private record RepoRef(String owner, String repo) {
+    private record RepoRef(String apiBaseUrl, String owner, String repo) {
     }
 }
