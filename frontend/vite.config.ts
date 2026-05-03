@@ -29,12 +29,7 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       globals: true,
       include: ['src/**/*.{test,spec}.ts', 'src/**/__tests__/**/*.ts'],
-      exclude: ['e2e/**'],
-      server: {
-        deps: {
-          external: [/@pact-foundation\/pact/]
-        }
-      },
+      exclude: ['e2e/**', '**/*.pact.{test,spec}.ts', 'src/**/__tests__/pact/**'],
       coverage: {
         provider: 'istanbul',
         reporter: ['text', 'html'],
