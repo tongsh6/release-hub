@@ -2,6 +2,7 @@ package io.releasehub.infrastructure.gitlab;
 
 import io.releasehub.application.port.out.GitLabBranchPort;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
@@ -10,11 +11,14 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 模拟 GitLab 分支操作适配器
- * 用于开发和测试环境
+ * 模拟 GitLab 分支操作适配器，用于开发和测试环境。
+ *
+ * <p>当设置 {@code releasehub.gitlab.real-adapter=true} 时自动禁用，
+ * 由 {@link RealGitLabBranchAdapter} 接管。
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "releasehub.gitlab.real-adapter", havingValue = "false", matchIfMissing = true)
 public class MockGitLabBranchAdapter implements GitLabBranchPort {
     
     // 模拟分支存储: key = repoUrl, value = 分支集合

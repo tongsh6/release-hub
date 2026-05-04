@@ -21,12 +21,17 @@ release-hub/
 ## 快速开始
 
 ```bash
-# 启动后端
+# 启动后端（Mock Git 适配器，本地开发安全）
 cd backend && ./scripts/run.sh
+
+# 启动后端（真实 GitLab 适配器，需要先配置 GitLab 连接）
+cd backend && SPRING_PROFILES_ACTIVE=local,real ./scripts/run.sh
 
 # 启动前端
 cd frontend && pnpm install && pnpm dev
 ```
+
+> **适配器模式**：默认使用 Mock 适配器（不访问真实 Git 平台）。叠加 `real` profile 启用真实 GitLab API 调用。详见 [部署指南](docs/deployment.md#23-git-平台适配器模式重要)。
 
 ## 文档
 

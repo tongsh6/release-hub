@@ -2,6 +2,7 @@ package io.releasehub.infrastructure.gitlab;
 
 import io.releasehub.application.port.out.GitLabFilePort;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -9,11 +10,14 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 模拟 GitLab 文件读取适配器
- * 用于开发和测试环境
+ * 模拟 GitLab 文件读取适配器，用于开发和测试环境。
+ *
+ * <p>当设置 {@code releasehub.gitlab.real-file-adapter=true} 时自动禁用，
+ * 由 {@link RealGitLabFileAdapter} 接管。
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "releasehub.gitlab.real-file-adapter", havingValue = "false", matchIfMissing = true)
 public class MockGitLabFileAdapter implements GitLabFilePort {
     
     // 模拟文件存储: key = "repoUrl:branch:filePath", value = content

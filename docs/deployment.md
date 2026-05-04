@@ -65,12 +65,55 @@ docker exec -it postgres psql -U release_hub -d release_hub
 
 ReleaseHub 使用 Spring Boot 多 Profile 机制：
 
-| Profile | 配置文件 | 用途 | Flyway | Seed 数据 |
-|---------|---------|------|--------|----------|
-| `local` | `application-local.yml` | 本地开发 | 关闭（JPA ddl-auto: update） | 开启 |
-| `test` | `application-test.yml` | 集成测试（H2 内存库 + Mock GitLab） | 开启 | 开启 |
-| `e2e` | `application-e2e.yml` | 全链路 E2E（真实 PG + GitLab） | 开启 | 开启 |
-| `prd` | `application-prd.yml` | 生产环境 | 开启 | 关闭 |
+| Profile | 配置文件 | 用途 | Flyway | Seed 数据 | Git 适配器 |
+|---------|---------|------|--------|----------|-----------|
+| `local` | `application-local.yml` | 本地开发 | 关闭（JPA ddl-auto: update） | 开启 | Mock（默认） |
+| `local,real` | `application-real.yml` | 本地开发 + 真实 GitLab | 关闭 | 开启 | **真实 API 调用** |
+| `test` | `application-test.yml` | 集成测试（H2 内存库 + Mock GitLab） | 开启 | 开启 | Mock |
+| `e2e` | `application-e2e.yml` | 全链路 E2E（真实 PG + GitLab） | 开启 | 开启 | Mock/WireMock |
+| `prd` | `application-prd.yml` | 生产环境 | 开启 | 关闭 | Mock（默认） |
+| `prd,real` | `application-real.yml` | 生产环境 + 真实 GitLab | 开启 | 关闭 | **真实 API 调用** |
+
+### 2.3 Git 平台适配器模式（重要）
+
+ReleaseHub 有两类 Git 平台适配器：
+
+| 适配器 | 接口 | 默认模式 | 真实模式激活方式 | 用途 |
+|--------|------|---------|----------------|------|
+| `MockGitLabFileAdapter` / `RealGitLabFileAdapter` | `GitLabFilePort` | Mock | `releasehub.gitlab.real-file-adapter=true` | 从仓库读取 pom.xml / gradle.properties |
+| `MockGitLabBranchAdapter` / `RealGitLabBranchAdapter` | `GitLabBranchPort` | Mock | `releasehub.gitlab.real-adapter=true` | 分支创建/合并/归档/标签/Pipeline |
+| `GitLabAdapter` | `GitLabPort` | 真实（`ensureMrInfo` 除外） | 始终激活 | 项目解析、分支统计、MR 统计 |
+| `GitLabGitBranchAdapter` / `GitHubGitBranchAdapter` | `GitBranchPort` | 真实（使用仓库 token） | 始终激活 | 多仓分支操作、合并性检查 |
+
+**核心规则**：
+
+- **默认所有 GitLab 写入/读取操作使用 Mock 实现**，防止本地开发时误操作真实仓库
+- **切换到真实模式**：叠加 `real` profile 或在配置中设置对应属性为 `true`
+- `GitBranchPort` 系列适配器（`GitLabGitBranchAdapter`、`GitHubGitBranchAdapter`）始终发真实 API 请求，因使用各仓库独立的 `gitToken`
+
+**切换到真实 GitLab 模式**：
+
+```bash
+# 方式一：叠加 real profile（推荐）
+./mvnw spring-boot:run -pl releasehub-bootstrap -Dspring-boot.run.profiles=local,real
+
+# 方式二：单独设置属性
+./mvnw spring-boot:run -pl releasehub-bootstrap \
+    -Dspring-boot.run.profiles=local \
+    -Dreleasehub.gitlab.real-file-adapter=true \
+    -Dreleasehub.gitlab.real-adapter=true
+
+# 生产 Jar 包
+java -jar target/releasehub-bootstrap-0.1.0-SNAPSHOT.jar \
+    --spring.profiles.active=prd,real
+```
+
+**前置条件**（真实模式）：
+1. GitLab 实例已在 ReleaseHub 的 Settings 页面中配置（Base URL + Access Token）
+2. Token 需要 `read_repository` + `api` 权限
+3. 各仓库的 `gitToken` 已配置（支持不同仓库使用不同 token）
+
+### 2.4 Profile 详解
 
 `e2e` profile 支持两种模式，通过环境变量切换：
 
@@ -81,7 +124,7 @@ ReleaseHub 使用 Spring Boot 多 Profile 机制：
 
 **切换方式**：修改 `application.yml` 中的 `spring.profiles.active` 或通过环境变量/启动参数覆盖。
 
-### 2.3 启动步骤
+### 2.5 启动步骤
 
 ```bash
 # 1. 进入后端目录
@@ -101,7 +144,7 @@ cd releasehub-bootstrap
 java -jar target/releasehub-bootstrap-0.1.0-SNAPSHOT.jar --spring.profiles.active=prd
 ```
 
-### 2.4 关键配置项
+### 2.6 关键配置项
 
 #### 数据库连接
 
@@ -136,13 +179,13 @@ cors:
   allowedOrigins: "https://releasehub.your-company.com"
 ```
 
-### 2.5 API 文档
+### 2.7 API 文档
 
 启动后访问：
 - Swagger UI：`http://localhost:8080/swagger-ui.html`（local/test 默认开启，prd 默认关闭）
 - OpenAPI JSON：`http://localhost:8080/v3/api-docs`
 
-### 2.6 默认账号
+### 2.8 默认账号
 
 | 用户名 | 密码 | 说明 |
 |--------|------|------|

@@ -103,8 +103,48 @@ public class GitLabAdapter implements GitLabPort {
 
     @Override
     public Optional<MrInfo> ensureMrInfo(long projectId, String source, String target) {
-        // Implementation omitted for brevity
-        return Optional.of(new MrInfo(false, false, null, null));
+        var settings = settingsPort.getGitLab();
+        if (settings.isEmpty()) {
+            log.warn("GitLab settings not configured, cannot query MR info");
+            return Optional.of(new MrInfo(false, false, null, null));
+        }
+        String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
+        String token = settings.get().tokenMasked();
+        if (baseUrl.isEmpty() || token == null || token.isBlank()) {
+            log.warn("GitLab baseUrl or token is blank, cannot query MR info");
+            return Optional.of(new MrInfo(false, false, null, null));
+        }
+
+        try {
+            String encodedSource = URLEncoder.encode(source, StandardCharsets.UTF_8);
+            String encodedTarget = URLEncoder.encode(target, StandardCharsets.UTF_8);
+            String url = String.format("%s/api/v4/projects/%d/merge_requests?source_branch=%s&target_branch=%s&state=opened&per_page=1",
+                    baseUrl, projectId, encodedSource, encodedTarget);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("PRIVATE-TOKEN", token);
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
+                    url, HttpMethod.GET, entity,
+                    new ParameterizedTypeReference<>() {});
+
+            List<Map<String, Object>> mrs = response.getBody();
+            if (mrs != null && !mrs.isEmpty()) {
+                Map<String, Object> mr = mrs.get(0);
+                String state = mr.get("state") != null ? String.valueOf(mr.get("state")) : "";
+                boolean merged = "merged".equals(state);
+                Integer iid = mr.get("iid") instanceof Number n ? n.intValue() : null;
+                String webUrl = mr.get("web_url") != null ? String.valueOf(mr.get("web_url")) : null;
+                return Optional.of(new MrInfo(true, merged, iid, webUrl));
+            }
+            return Optional.of(new MrInfo(false, false, null, null));
+
+        } catch (Exception e) {
+            log.warn("Failed to query MR info for project {} source {} target {}: {}",
+                    projectId, source, target, e.getMessage());
+            return Optional.of(new MrInfo(false, false, null, null));
+        }
     }
 
     @Override
