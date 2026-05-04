@@ -90,11 +90,19 @@ push_file() {
   local file_path=$2
   local content=$3
   local encoded=$(echo -n "$content" | base64)
-  curl -s --request POST \
+  local resp
+  resp=$(curl -s -w "\n%{http_code}" --request POST \
     --header "PRIVATE-TOKEN: $E2E_TOKEN" \
     --header "Content-Type: application/json" \
     --data "{\"branch\":\"main\",\"content\":\"$encoded\",\"commit_message\":\"init: seed $file_path\",\"encoding\":\"base64\"}" \
-    "$GITLAB_URL/api/v4/projects/$repo_id/repository/files/$(echo -n "$file_path" | sed 's/\//%2F/g')"
+    "$GITLAB_URL/api/v4/projects/$repo_id/repository/files/$(echo -n "$file_path" | sed 's/\//%2F/g')")
+  local http_code=$(echo "$resp" | tail -1)
+  if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+    echo "WARNING: push $file_path to repo $repo_id returned HTTP $http_code"
+    echo "  Response: $(echo "$resp" | sed '$d' | head -c 200)"
+  else
+    echo "  OK: $file_path"
+  fi
 }
 
 # seed-repo-1: Maven 单模块 pom.xml (version=1.4.0)
@@ -137,24 +145,38 @@ push_file "$REPO2_ID" "lib/pom.xml" '<?xml version="1.0" encoding="UTF-8"?>
 # seed-repo-3: Gradle (version=3.0.0)
 push_file "$REPO3_ID" "gradle.properties" 'version=3.0.0'
 
+# Compute clone-friendly host:port from GITLAB_URL
+GITLAB_HOST_PORT=$(echo "$GITLAB_URL" | sed 's|^https\?://||')
+GITLAB_PROTO=$(echo "$GITLAB_URL" | grep -q "^https" && echo "https" || echo "http")
+
+CLONE_URL_REPO1="$GITLAB_PROTO://$GITLAB_HOST_PORT/$TEST_USER/seed-repo-1-maven.git"
+CLONE_URL_REPO2="$GITLAB_PROTO://$GITLAB_HOST_PORT/$TEST_USER/seed-repo-2-maven-multi.git"
+CLONE_URL_REPO3="$GITLAB_PROTO://$GITLAB_HOST_PORT/$TEST_USER/seed-repo-3-gradle.git"
+
 echo ""
 echo "=== GitLab initialization complete ==="
 echo "GitLab URL:      $GITLAB_URL"
 echo "Test User:       $TEST_USER"
 echo "Personal Token:  $E2E_TOKEN"
-echo "Repo 1 (Maven):  http://$TEST_USER:$TEST_PASS@gitlab.local/$TEST_USER/seed-repo-1-maven.git (version=1.4.0)"
-echo "Repo 2 (Multi):  http://$TEST_USER:$TEST_PASS@gitlab.local/$TEST_USER/seed-repo-2-maven-multi.git (version=2.1.0)"
-echo "Repo 3 (Gradle): http://$TEST_USER:$TEST_PASS@gitlab.local/$TEST_USER/seed-repo-3-gradle.git (version=3.0.0)"
+echo "Repo 1 (Maven):  $CLONE_URL_REPO1 (version=1.4.0)"
+echo "Repo 2 (Multi):  $CLONE_URL_REPO2 (version=2.1.0)"
+echo "Repo 3 (Gradle): $CLONE_URL_REPO3 (version=3.0.0)"
 
 # Export for downstream scripts
 export E2E_GITLAB_URL="$GITLAB_URL"
 export E2E_GITLAB_TOKEN="$E2E_TOKEN"
 export E2E_GITLAB_USER="$TEST_USER"
+export E2E_REPO1_CLONE_URL="$CLONE_URL_REPO1"
+export E2E_REPO2_CLONE_URL="$CLONE_URL_REPO2"
+export E2E_REPO3_CLONE_URL="$CLONE_URL_REPO3"
 
 # Persist to file so test processes can source these values
 cat > /tmp/e2e-gitlab.env << EOF
 E2E_GITLAB_URL=$GITLAB_URL
 E2E_GITLAB_TOKEN=$E2E_TOKEN
 E2E_GITLAB_USER=$TEST_USER
+E2E_REPO1_CLONE_URL=$CLONE_URL_REPO1
+E2E_REPO2_CLONE_URL=$CLONE_URL_REPO2
+E2E_REPO3_CLONE_URL=$CLONE_URL_REPO3
 EOF
-echo "Token persisted to /tmp/e2e-gitlab.env"
+echo "Env persisted to /tmp/e2e-gitlab.env"

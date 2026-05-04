@@ -24,10 +24,8 @@
     "i18n:lint": "node scripts/i18n-check.js",
     "test:e2e:ui": "playwright test --ui",
     "test:pact": "vitest run --config vitest.pact.config.ts",
-    "test:e2e:navigation": "playwright test navigation.spec.ts",
-    "test:e2e:release-window": "playwright test release-window.spec.ts",
-    "test:e2e:smoke": "playwright test smoke.spec.ts",
-    "test:e2e:i18n": "playwright test i18n.spec.ts"
+    "test:e2e:slice-1": "playwright test slice-1-group-window.spec.ts",
+    "test:e2e:slice-1:headed": "playwright test slice-1-group-window.spec.ts --headed"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

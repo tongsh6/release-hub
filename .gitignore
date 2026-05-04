@@ -38,6 +38,8 @@ lerna-debug.log*
 .ai/reports/
 .ai/temp/
 frontend/e2e/screenshots/
+frontend/test-results/
+.playwright-mcp/
 .amazonq/
 .cursor/
 .vercel/
