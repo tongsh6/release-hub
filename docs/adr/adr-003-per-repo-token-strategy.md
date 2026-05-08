@@ -2,6 +2,7 @@
 
 **日期**: 2026-03-02
 **状态**: Accepted
+**补充**: 2026-05-08 — Token 明文存储问题已通过 AES-256-GCM JPA AttributeConverter 修复（`GitTokenCrypto` + `GitTokenAttributeConverter`）
 
 ## 上下文
 

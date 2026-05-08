@@ -1,5 +1,6 @@
 package io.releasehub.interfaces.api.repo;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -27,6 +28,7 @@ public class UpdateRepoRequest {
     private String gitProvider;
 
     @Size(max = 500)
+    @JsonAlias("gitAccessToken")
     private String gitToken;
 
     private boolean monoRepo;

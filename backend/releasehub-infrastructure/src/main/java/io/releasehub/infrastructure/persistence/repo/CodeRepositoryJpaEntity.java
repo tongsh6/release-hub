@@ -1,6 +1,8 @@
 package io.releasehub.infrastructure.persistence.repo;
 
+import io.releasehub.infrastructure.crypto.GitTokenAttributeConverter;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -32,7 +34,8 @@ public class CodeRepositoryJpaEntity {
     private String repoType;
     @Column(name = "git_provider", length = 20, nullable = false)
     private String gitProvider;
-    @Column(name = "git_token", length = 500)
+    @Column(name = "git_token", length = 800)
+    @Convert(converter = GitTokenAttributeConverter.class)
     private String gitToken;
     @Column(name = "mono_repo", nullable = false)
     private boolean monoRepo;

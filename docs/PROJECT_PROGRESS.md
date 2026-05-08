@@ -1,6 +1,8 @@
 # ReleaseHub 项目进度分析
 
 > 分析时间：2026-05-02（全量更新，含 P0 治理收尾）
+> 对账时间：2026-05-08（测试数据对账 + 前端 E2E 数据修正）
+> 治理推进：2026-05-08（Token 加密 + 真实 GitLab 验收 + 台账修正）
 
 ## 总体概览
 
@@ -83,16 +85,49 @@
 
 ## 质量基线
 
-| 指标 | 数值 |
-|------|------|
-| 后端测试 | 134/134 通过（52 单元/集成 + 82 E2E） |
-| 前端 E2E（Playwright） | 62/62 通过（6 套件，0 失败） |
-| SpotBugs (新引入) | 0 bugs |
-| 前端 typecheck | ✅ |
-| 前端 lint | ✅ |
-| Git diff --check | ✅ |
-| Git 工作区 | clean |
-| 静态扫描报告 | `.ai/reports/static-scan/20260502-024219/summary.md` |
+> **对账时间**：2026-05-08（本次审计对账）。未运行时数据来自最近一次 `mvn verify` + `pnpm test:e2e` 执行记录。
+
+| 指标 | 数值 | 验证状态 |
+|------|------|---------|
+| 后端 Surefire（单元/组件测试） | 104 通过，0 失败（21 个测试套件） | ✅ 2026-05-08 静态对账（surefire-reports XML） |
+| 后端 Failsafe（API 集成 + E2E） | ~216 @Test 标注（17 API + 20 E2E + 2 IT 测试类），需 Docker/TestContainers | ⚠️ 2026-05-08 仅标注计数，未运行时验证 |
+| 前端 E2E（Playwright） | 16 test case（2 spec 文件：login 6 + slice-1-group-window 10） | ✅ 2026-05-08 文件系统对账 |
+| 前端 Pact 合约测试 | 5 个 pact spec 文件 | ⚠️ 未单独运行时验证 |
+| 前端 Vitest 单测 | 5 个 spec 文件 | ⚠️ 未单独运行时验证 |
+| SpotBugs (新引入) | 0 bugs | 需运行时确认 |
+| 前端 typecheck | ✅ | 需运行时确认 |
+| 前端 lint | ✅ | 需运行时确认 |
+| Git diff --check | ✅ | ✅ 2026-05-08 |
+| Git 工作区 | clean | ✅ 2026-05-08 |
+| 静态扫描报告 | `.ai/reports/static-scan/` 5 份历史报告 | ✅ 2026-05-01 |
+
+### 已知数据差异
+
+- ~~前端 E2E 62/62（6 套件）~~：经 2026-05-08 对账，当前 `frontend/e2e/tests/` 仅 2 个 spec 文件（16 test case）。旧数字可能来自历史 Playwright 全量套件（已合并/移除/迁移至 CI test-runner），待确认来源后补充说明。
+
+## 2026-05-08 治理推进
+
+### Token 加密（AES-256-GCM）✅
+- `GitTokenCrypto` + `GitTokenAttributeConverter`（JPA AttributeConverter）
+- 数据库 `git_token` 列加密存储，应用层透明加解密
+- 6 个单元测试覆盖（加解密往返/随机 IV/篡改检测/UTF-8 兼容）
+- ADR-003 已更新，标记明文存储问题为已修复
+- 密钥通过环境变量注入，各 Profile 独立配置
+
+### 真实 GitLab 全链路验收 ⚠️（有条件通过）
+- 验收报告：`docs/reports/acceptance-v0.1.9-real-gitlab.md`
+- 核心 API 链路通过：Group → Repo → Window → Iteration → Attach → Publish → Orchestrate → Runs
+- GitLab 种子数据：3 个仓库（Maven 单模块/多模块/Gradle）
+- Attach 分支创建成功（release branch 已在 GitLab 中验证）
+- Run 记录持久化正常（直接 orchestrate API 调用）
+- ⚠️ WindowLifecycleListener 自动编排未持久化 Run（事务边界问题，不影响手动 API）
+
+### 仍待处理
+- Attach 分支操作集成 Run 追踪（技术债务，择期处理）
+- 预存 SpotBugs EI_EXPOSE_REP x5（`releasehub-common`）
+- WindowLifecycleListener AFTER_COMMIT 事务边界修复
+- RealGitLabFileAdapter 激活策略统一（当前使用 MockGitLabFileAdapter）
+- RBAC/通知/CI 深度集成 → 按用户反馈决定优先级
 
 ## 相关文档
 

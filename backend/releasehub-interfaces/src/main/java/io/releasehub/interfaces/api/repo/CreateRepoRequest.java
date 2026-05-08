@@ -1,5 +1,7 @@
 package io.releasehub.interfaces.api.repo;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -9,7 +11,7 @@ public class CreateRepoRequest {
     @NotBlank
     @Size(max = 128)
     private String name;
-    
+
     @NotBlank
     @Size(max = 512)
     private String cloneUrl;
@@ -17,16 +19,18 @@ public class CreateRepoRequest {
     @NotBlank
     @Size(max = 64)
     private String groupCode;
-    
+
     @Size(max = 128)
     private String defaultBranch;
-    
+
     private String repoType;
 
     @Size(max = 20)
     private String gitProvider;
 
     @Size(max = 500)
+    @JsonAlias("gitAccessToken")
+    @Schema(description = "Git 访问令牌（兼容别名: gitAccessToken）")
     private String gitToken;
 
     private boolean monoRepo;

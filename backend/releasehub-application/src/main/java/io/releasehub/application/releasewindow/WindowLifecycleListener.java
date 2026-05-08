@@ -10,6 +10,8 @@ import io.releasehub.domain.window.WindowIteration;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -29,8 +31,9 @@ public class WindowLifecycleListener {
 
     /**
      * 发布提交后自动触发编排，确保所有关联迭代的分支操作已完成。
-     * 使用 AFTER_COMMIT 确保发布状态已落库，编排失败不会回滚发布。
+     * 使用 AFTER_COMMIT 确保发布状态已落库，REQUIRES_NEW 确保编排在独立事务中执行。
      */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onWindowPublished(WindowPublishedEvent event) {
         String windowId = event.getWindowId();

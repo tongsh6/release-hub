@@ -20,6 +20,8 @@ releasehub:
   gitlab:
     real-adapter: true
     base-url: ${E2E_GITLAB_URL:http://localhost:9080}
+  crypto:
+    secret-key: ${E2E_CRYPTO_KEY:cDFpla3K5OH0N7xqJAWKzDfR1mBvLgTcYuVX9wEsH8I=}
 
 security:
   jwt:

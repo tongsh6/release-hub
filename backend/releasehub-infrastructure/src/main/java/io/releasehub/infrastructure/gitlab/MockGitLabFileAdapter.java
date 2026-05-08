@@ -12,12 +12,12 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 模拟 GitLab 文件读取适配器，用于开发和测试环境。
  *
- * <p>当设置 {@code releasehub.gitlab.real-file-adapter=true} 时自动禁用，
+ * <p>当设置 {@code releasehub.gitlab.real-adapter=true} 时自动禁用，
  * 由 {@link RealGitLabFileAdapter} 接管。
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "releasehub.gitlab.real-file-adapter", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(name = "releasehub.gitlab.real-adapter", havingValue = "false", matchIfMissing = true)
 public class MockGitLabFileAdapter implements GitLabFilePort {
     
     // 模拟文件存储: key = "repoUrl:branch:filePath", value = content

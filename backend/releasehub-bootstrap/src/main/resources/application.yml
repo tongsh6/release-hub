@@ -9,3 +9,7 @@ management:
     web:
       exposure:
         include: health,info
+
+releasehub:
+  crypto:
+    secret-key: ${RELEASEHUB_CRYPTO_SECRET_KEY:}

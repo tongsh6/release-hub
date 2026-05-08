@@ -28,13 +28,13 @@ import java.util.regex.Pattern;
 /**
  * 真实 GitLab 文件读取适配器，通过 GitLab API v4 读取仓库文件内容。
  *
- * <p>激活条件：设置 {@code releasehub.gitlab.real-file-adapter=true}。
+ * <p>激活条件：设置 {@code releasehub.gitlab.real-adapter=true}。
  * 默认使用 {@link MockGitLabFileAdapter}。
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "releasehub.gitlab.real-file-adapter", havingValue = "true")
+@ConditionalOnProperty(name = "releasehub.gitlab.real-adapter", havingValue = "true")
 public class RealGitLabFileAdapter implements GitLabFilePort {
 
     private final SettingsPort settingsPort;

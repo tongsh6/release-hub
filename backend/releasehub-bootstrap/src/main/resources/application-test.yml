@@ -1,6 +1,8 @@
 releasehub:
   seed:
     enabled: true
+  crypto:
+    secret-key: "dGVzdC1rZXktMzJieXRlcy1sb25nLWVub3VnaC0="
 
 server:
   port: 8080
