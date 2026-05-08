@@ -1,7 +1,7 @@
 # ReleaseHub 项目进度分析
 
 > 分析时间：2026-05-02（全量更新，含 P0 治理收尾）
-> 对账时间：2026-05-08（测试数据对账 + 前端 E2E 数据修正）
+> 对账时间：2026-05-09（编排 0 items 问题修复 + 加密可选化 + 诊断日志）
 > 治理推进：2026-05-08（Token 加密 + 真实 GitLab 验收 + 台账修正）
 
 ## 总体概览
@@ -82,6 +82,7 @@
 | v0.1.7 | BranchRule 升级 + VersionOps + 日历冲突 + 文档 | 2026-05-01 |
 | v0.1.8 | 部署文档 + publish 自动编排 + Attach 错误可见性 + E2E 补齐 | 2026-05-02 |
 | v0.1.9 | P0 治理收尾：静态扫描脚本 + E2E 验证 + 文档清理 + 流程决策图 | 2026-05-02 |
+| v0.1.10 | 加密可选化启动自检 + 编排 0 items 快速失败 + 诊断日志 | 2026-05-09 |
 
 ## 质量基线
 
@@ -124,10 +125,28 @@
 
 ### 仍待处理
 - Attach 分支操作集成 Run 追踪（技术债务，择期处理）
-- 预存 SpotBugs EI_EXPOSE_REP x5（`releasehub-common`）
-- WindowLifecycleListener AFTER_COMMIT 事务边界修复
 - RealGitLabFileAdapter 激活策略统一（当前使用 MockGitLabFileAdapter）
 - RBAC/通知/CI 深度集成 → 按用户反馈决定优先级
+
+## 2026-05-09 治理推进
+
+### 编排 0 items 问题修复 ✅
+- **根因**：`application-local.yml` 缺少 `releasehub.crypto.secret-key`，导致 token 加解密异常
+- `RunAppService.startOrchestrate()` 5 个过滤点新增结构化诊断日志 `[Orchestrate]` 前缀
+- 编排有迭代绑定但 0 items 时抛出 `RUN_004` 错误（HTTP 400），区分"无事可做" vs "数据异常"
+- 新增 ErrorCode `RUN_NO_ITEMS_CREATED` + 中英文 i18n
+
+### 加密可选化 + 启动自检 ✅
+- `releasehub.crypto.enabled` 开关控制加密功能（默认 false），各 Profile 显式开启
+- `TokenCryptoConfig`：`@ConditionalOnProperty` 条件装配 + Bean 创建时 `verify()` round-trip 自检
+- `GitTokenCrypto.verify()`：密钥错误时启动即失败（fail-fast），避免静默运行
+- `GitTokenAttributeConverter`：`Optional<GitTokenCrypto>` 注入，无加密时透传
+- `application.yml` 移除空默认密钥，消除密钥缺失时静默降级的安全隐患
+
+### 已修复（上轮遗留）
+- SpotBugs EI_EXPOSE_REP ×6（`e1c5a31`）
+- `application-local.yml` crypto.secret-key 补齐（`e1c5a31`）
+- WindowLifecycleListener AFTER_COMMIT 事务边界修复（`e1c5a31`）
 
 ## 相关文档
 
