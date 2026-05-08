@@ -65,7 +65,7 @@ public abstract class AbstractGitLabE2ETest {
     }
 
     protected String createGitLabRepo(String token, String groupCode, String cloneUrl, String gitAccessToken) throws Exception {
-        return E2ETestFixtures.createGitLabRepo(mockMvc, objectMapper, token, groupCode, cloneUrl, gitToken);
+        return E2ETestFixtures.createGitLabRepo(mockMvc, objectMapper, token, groupCode, cloneUrl, gitAccessToken);
     }
 
     protected String createIteration(String token, String groupCode) throws Exception {

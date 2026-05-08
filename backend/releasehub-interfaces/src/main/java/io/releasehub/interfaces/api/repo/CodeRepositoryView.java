@@ -42,7 +42,7 @@ public class CodeRepositoryView {
         view.setGroupCode(domain.getGroupCode());
         view.setRepoType(domain.getRepoType().name());
         view.setGitProvider(domain.getGitProvider().name());
-        view.setGitTokenMasked(maskGitAccessToken(domain.getGitAccessToken()));
+        view.setGitAccessTokenMasked(maskGitAccessToken(domain.getGitAccessToken()));
         view.setMonoRepo(domain.isMonoRepo());
         view.setBranchCount(domain.getBranchCount());
         view.setActiveBranchCount(domain.getActiveBranchCount());
