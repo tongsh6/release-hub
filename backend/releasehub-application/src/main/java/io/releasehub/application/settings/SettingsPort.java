@@ -15,7 +15,7 @@ public interface SettingsPort {
     void saveBlocking(SettingsBlocking blocking);
     Optional<SettingsBlocking> getBlocking();
 
-    record SettingsGitLab(String baseUrl, String tokenMasked) {}
+    record SettingsGitLab(String baseUrl, String token) {}
     record SettingsNaming(String featureTemplate, String releaseTemplate) {}
     record SettingsRef() {}
     record SettingsBlocking(String defaultPolicy) {}

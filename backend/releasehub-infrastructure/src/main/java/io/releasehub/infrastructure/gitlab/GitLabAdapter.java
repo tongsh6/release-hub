@@ -38,7 +38,7 @@ public class GitLabAdapter implements GitLabPort {
             throw BusinessException.gitlabSettingsMissing();
         }
         String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
-        String token = settings.get().tokenMasked();
+        String token = settings.get().token();
 
         String projectPath = extractProjectPath(repoCloneUrl);
         String encoded = URLEncoder.encode(projectPath, StandardCharsets.UTF_8);
@@ -74,7 +74,7 @@ public class GitLabAdapter implements GitLabPort {
             return true;
         }
         String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
-        String token = settings.get().tokenMasked();
+        String token = settings.get().token();
         
         try {
             String encodedRef = URLEncoder.encode(ref, StandardCharsets.UTF_8);
@@ -109,7 +109,7 @@ public class GitLabAdapter implements GitLabPort {
             return Optional.of(new MrInfo(false, false, null, null));
         }
         String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
-        String token = settings.get().tokenMasked();
+        String token = settings.get().token();
         if (baseUrl.isEmpty() || token == null || token.isBlank()) {
             log.warn("GitLab baseUrl or token is blank, cannot query MR info");
             return Optional.of(new MrInfo(false, false, null, null));
@@ -154,7 +154,7 @@ public class GitLabAdapter implements GitLabPort {
             return new GateSummary(false, false, false, false);
         }
         String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
-        String token = settings.get().tokenMasked();
+        String token = settings.get().token();
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("PRIVATE-TOKEN", token);
@@ -220,7 +220,7 @@ public class GitLabAdapter implements GitLabPort {
             return new BranchStatistics(0, 0, 0);
         }
         String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
-        String token = settings.get().tokenMasked();
+        String token = settings.get().token();
 
         String url = String.format("%s/api/v4/projects/%d/repository/branches?per_page=100", baseUrl, projectId);
         HttpHeaders headers = new HttpHeaders();
@@ -267,7 +267,7 @@ public class GitLabAdapter implements GitLabPort {
             return new MrStatistics(0, 0, 0, 0);
         }
         String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
-        String token = settings.get().tokenMasked();
+        String token = settings.get().token();
 
         int open = getCount(baseUrl, projectId, token, "merge_requests", "opened");
         int merged = getCount(baseUrl, projectId, token, "merge_requests", "merged");

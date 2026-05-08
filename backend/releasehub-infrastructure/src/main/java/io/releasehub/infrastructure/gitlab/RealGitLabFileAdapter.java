@@ -129,7 +129,7 @@ public class RealGitLabFileAdapter implements GitLabFilePort {
         if (settings.isEmpty()) {
             throw BusinessException.gitlabSettingsMissing();
         }
-        return settings.get().tokenMasked();
+        return settings.get().token();
     }
 
     private RepoRef parseRepoRef(String cloneUrl) {

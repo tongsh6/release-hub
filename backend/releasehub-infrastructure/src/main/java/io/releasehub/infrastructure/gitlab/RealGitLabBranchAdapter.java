@@ -396,7 +396,7 @@ public class RealGitLabBranchAdapter implements GitLabBranchPort {
             throw BusinessException.gitlabSettingsMissing();
         }
         String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
-        String token = settings.get().tokenMasked();
+        String token = settings.get().token();
         return new GitLabConfig(baseUrl, token);
     }
     
