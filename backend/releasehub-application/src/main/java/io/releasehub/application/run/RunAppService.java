@@ -75,8 +75,13 @@ public class RunAppService {
         String releaseBranch = "release/" + rw.getWindowKey();
         List<WindowIteration> bindings = new java.util.ArrayList<>(
                 windowIterationPort.listByWindow(ReleaseWindowId.of(windowId)));
+        log.info("[Orchestrate] windowId={} windowIterationBindings={}", windowId, bindings.size());
         bindings.sort(Comparator.comparing(WindowIteration::getAttachAt));
         List<IterationKey> orderedIterations = bindings.stream().map(WindowIteration::getIterationKey).distinct().toList();
+        log.info("[Orchestrate] orderedIterations={} repoIds={} iterationKeys={}", orderedIterations, repoIds, iterationKeys);
+        if (orderedIterations.isEmpty()) {
+            log.warn("[Orchestrate] No iterations bound to window {}, orchestration will produce 0 items", windowId);
+        }
 
         int order = 0;
         boolean blocked = false;
@@ -85,7 +90,7 @@ public class RunAppService {
             RepoId repoId = RepoId.of(repoIdStr);
             CodeRepository repo = codeRepositoryPort.findById(repoId).orElse(null);
             if (repo == null) {
-                log.warn("Repository not found: {}, skipping", repoIdStr);
+                log.warn("[Orchestrate] FILTER_B: repo not found: {}", repoIdStr);
                 continue;
             }
             GitBranchPort gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
@@ -94,13 +99,20 @@ public class RunAppService {
 
             for (IterationKey ik : orderedIterations) {
                 if (!iterationKeys.isEmpty() && iterationKeys.stream().noneMatch(k -> k.equals(ik.value()))) {
+                    log.debug("[Orchestrate] FILTER_C: iterationKey mismatch, ik={} not in {}", ik.value(), iterationKeys);
                     continue;
                 }
                 Iteration it = iterationPort.findByKey(ik).orElse(null);
-                if (it == null || it.getRepos().stream().noneMatch(r -> r.equals(repoId))) {
+                if (it == null) {
+                    log.warn("[Orchestrate] FILTER_D: iteration not found for key={}", ik.value());
+                    continue;
+                }
+                if (it.getRepos().stream().noneMatch(r -> r.equals(repoId))) {
+                    log.warn("[Orchestrate] FILTER_D: repo {} not in iteration {} repos {}", repoIdStr, ik.value(), it.getRepos());
                     continue;
                 }
 
+                log.info("[Orchestrate] Creating RunItem: repo={} iteration={} order={}", repoIdStr, ik.value(), order + 1);
                 RunItem item = RunItem.create(rw.getName(), repoId, ik, ++order, now);
                 String iterationKey = ik.value();
 
@@ -184,6 +196,14 @@ public class RunAppService {
             if (blocked) break;
         }
 
+        log.info("[Orchestrate] Complete: totalItems={} windowId={}", run.getItems().size(), windowId);
+        if (run.getItems().isEmpty()) {
+            if (orderedIterations.isEmpty()) {
+                log.info("[Orchestrate] Window {} has no bound iterations — nothing to orchestrate", windowId);
+            } else {
+                throw BusinessException.runNoItemsCreated(orderedIterations.size(), windowId);
+            }
+        }
         run.finish(Instant.now(clock));
         runPort.save(run);
         return run;

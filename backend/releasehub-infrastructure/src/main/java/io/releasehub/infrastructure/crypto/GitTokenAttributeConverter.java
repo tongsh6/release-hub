@@ -4,28 +4,32 @@ import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+
 /**
  * JPA AttributeConverter — 透明的 gitToken 加解密。
  * <p>
+ * 当 {@code releasehub.crypto.enabled=true} 且有有效的 {@link GitTokenCrypto} Bean 时，
  * 数据库存储密文（Base64），Java 对象持有明文。
- * 业务代码无需感知加解密过程。
+ * 当加密未启用时，退化为透传——数据库存储明文。
+ * <p>
+ * 兼容旧数据：解密失败时原样返回，支持渐进式迁移。
  */
 @Component
-@Converter(autoApply = false) // 仅应用于明确标注的字段，避免全局影响
+@Converter(autoApply = false)
 public class GitTokenAttributeConverter implements AttributeConverter<String, String> {
 
     private final GitTokenCrypto crypto;
 
-    public GitTokenAttributeConverter(GitTokenCrypto crypto) {
-        this.crypto = crypto;
+    public GitTokenAttributeConverter(Optional<GitTokenCrypto> crypto) {
+        this.crypto = crypto.orElse(null);
     }
 
     @Override
     public String convertToDatabaseColumn(String plaintext) {
-        if (plaintext == null || plaintext.isEmpty()) {
+        if (plaintext == null || plaintext.isEmpty() || crypto == null) {
             return plaintext;
         }
-        // 已经是密文的（Base64 格式），直接透传不重复加密
         if (looksEncrypted(plaintext)) {
             return plaintext;
         }
@@ -34,13 +38,12 @@ public class GitTokenAttributeConverter implements AttributeConverter<String, St
 
     @Override
     public String convertToEntityAttribute(String dbData) {
-        if (dbData == null || dbData.isEmpty()) {
+        if (dbData == null || dbData.isEmpty() || crypto == null) {
             return dbData;
         }
         try {
             return crypto.decrypt(dbData);
         } catch (GitTokenCrypto.CryptoException e) {
-            // 解密失败 → 可能是旧明文数据，原样返回（允许渐进式迁移）
             return dbData;
         }
     }

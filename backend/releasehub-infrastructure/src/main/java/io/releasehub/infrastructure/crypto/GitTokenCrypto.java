@@ -87,6 +87,20 @@ public final class GitTokenCrypto {
         }
     }
 
+    /**
+     * Round-trip 自检：加密后立即解密，验证结果与原文一致。
+     * 用于启动时检测密钥是否正确配置，失败则阻止应用启动。
+     */
+    public void verify() {
+        String test = "health-check-" + System.currentTimeMillis();
+        String encrypted = encrypt(test);
+        String decrypted = decrypt(encrypted);
+        if (!test.equals(decrypted)) {
+            throw new CryptoException(
+                    "Crypto round-trip verification failed — check releasehub.crypto.secret-key");
+        }
+    }
+
     public static class CryptoException extends RuntimeException {
         public CryptoException(String message) {
             super(message);

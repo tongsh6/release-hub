@@ -2,6 +2,7 @@ releasehub:
   seed:
     enabled: true
   crypto:
+    enabled: true
     secret-key: "dGVzdC1rZXktMzJieXRlcy1sb25nLWVub3VnaC0="
 
 server:

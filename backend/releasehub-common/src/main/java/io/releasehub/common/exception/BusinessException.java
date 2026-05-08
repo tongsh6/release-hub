@@ -93,6 +93,12 @@ public class BusinessException extends BaseException {
         return of(ErrorCode.REPO_ATTACHED, repoId);
     }
 
+    // ========== Run ==========
+
+    public static BusinessException runNoItemsCreated(int iterationCount, Object windowId) {
+        return of(ErrorCode.RUN_NO_ITEMS_CREATED, iterationCount, windowId);
+    }
+
     // ========== Conflict Detection ==========
 
     public static BusinessException conflictDetected(String detail) {

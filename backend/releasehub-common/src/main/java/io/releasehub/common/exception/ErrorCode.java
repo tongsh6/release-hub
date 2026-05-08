@@ -87,6 +87,7 @@ public enum ErrorCode {
     RUN_NOT_FOUND("RUN_001", "error.run.not_found", 404),
     RUN_ID_INVALID("RUN_002", "error.run.id_invalid", 400),
     RUN_ITEM_ID_INVALID("RUN_003", "error.run.item_id_invalid", 400),
+    RUN_NO_ITEMS_CREATED("RUN_004", "error.run.no_items_created", 400),
     // ========== 窗口迭代关联 (WI) ==========
     WINDOW_ITERATION_ID_INVALID("WI_001", "error.wi.id_invalid", 400),
 
