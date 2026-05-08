@@ -95,14 +95,14 @@ class AttachAppServiceTest {
         ));
         when(branchRuleUseCase.isCompliant("release/RW-1")).thenReturn(true);
         when(gitBranchAdapterFactory.getAdapter(GitProvider.GITLAB)).thenReturn(gitBranchPort);
-        when(gitBranchPort.createBranch(repo.getCloneUrl(), repo.getGitToken(), "release/RW-1", "master")).thenReturn(true);
-        when(gitBranchPort.mergeBranch(eq(repo.getCloneUrl()), eq(repo.getGitToken()), eq("feature/ITER-1"), eq("release/RW-1"), any()))
+        when(gitBranchPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "release/RW-1", "master")).thenReturn(true);
+        when(gitBranchPort.mergeBranch(eq(repo.getCloneUrl()), eq(repo.getGitAccessToken()), eq("feature/ITER-1"), eq("release/RW-1"), any()))
                 .thenReturn(GitBranchPort.MergeResult.success());
 
         attachAppService.attach("window-1", List.of("ITER-1"));
 
-        verify(gitBranchPort).createBranch(repo.getCloneUrl(), repo.getGitToken(), "release/RW-1", "master");
-        verify(gitBranchPort).mergeBranch(eq(repo.getCloneUrl()), eq(repo.getGitToken()), eq("feature/ITER-1"), eq("release/RW-1"), any());
+        verify(gitBranchPort).createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "release/RW-1", "master");
+        verify(gitBranchPort).mergeBranch(eq(repo.getCloneUrl()), eq(repo.getGitAccessToken()), eq("feature/ITER-1"), eq("release/RW-1"), any());
         verify(windowIterationPort).updateReleaseBranch(eq("window-1"), eq("ITER-1"), eq("release/RW-1"), any());
         verify(windowIterationPort).updateLastMergeAt(eq("window-1"), eq("ITER-1"), any());
     }
@@ -134,8 +134,8 @@ class AttachAppServiceTest {
 
         attachAppService.detach("window-1", "ITER-1");
 
-        verify(gitBranchPort).archiveBranch(repo1.getCloneUrl(), repo1.getGitToken(), "release/RW-1", "unpublished");
-        verify(gitBranchPort).archiveBranch(repo2.getCloneUrl(), repo2.getGitToken(), "release/RW-1", "unpublished");
+        verify(gitBranchPort).archiveBranch(repo1.getCloneUrl(), repo1.getGitAccessToken(), "release/RW-1", "unpublished");
+        verify(gitBranchPort).archiveBranch(repo2.getCloneUrl(), repo2.getGitAccessToken(), "release/RW-1", "unpublished");
         verify(windowIterationPort).detach(ReleaseWindowId.of("window-1"), IterationKey.of("ITER-1"));
     }
 

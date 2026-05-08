@@ -36,7 +36,7 @@ public class CodeRepositoryJpaEntity {
     private String gitProvider;
     @Column(name = "git_token", length = 800)
     @Convert(converter = GitTokenAttributeConverter.class)
-    private String gitToken;
+    private String gitAccessToken;
     @Column(name = "mono_repo", nullable = false)
     private boolean monoRepo;
     @Column(name = "branch_count")

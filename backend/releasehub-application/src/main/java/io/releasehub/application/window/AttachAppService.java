@@ -84,7 +84,7 @@ public class AttachAppService {
         CodeRepository repo = codeRepositoryPort.findById(repoId)
                 .orElseThrow(() -> NotFoundException.repository(repoId.value()));
         GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-        String gitToken = repo.getGitToken();
+        String gitToken = repo.getGitAccessToken();
         String repoUrl = repo.getCloneUrl();
 
         String releaseBranch = "release/" + releaseWindow.getWindowKey();
@@ -136,7 +136,7 @@ public class AttachAppService {
             codeRepositoryPort.findById(repoId).ifPresent(repo -> {
                 GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
                 boolean archived = gitBranchPort.archiveBranch(
-                        repo.getCloneUrl(), repo.getGitToken(), releaseBranch, "unpublished");
+                        repo.getCloneUrl(), repo.getGitAccessToken(), releaseBranch, "unpublished");
                 if (!archived) {
                     log.warn("Failed to archive release branch {} for repo {}", releaseBranch, repoId.value());
                 }
@@ -173,7 +173,7 @@ public class AttachAppService {
                         .orElseThrow(() -> NotFoundException.repository(repoId.value()));
                 GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
                 boolean created = gitBranchPort.createBranch(
-                        repo.getCloneUrl(), repo.getGitToken(), releaseBranch, repo.getDefaultBranch());
+                        repo.getCloneUrl(), repo.getGitAccessToken(), releaseBranch, repo.getDefaultBranch());
                 if (created) {
                     log.info("Created release branch {} for repo {}", releaseBranch, repoId.value());
                 }
@@ -202,7 +202,7 @@ public class AttachAppService {
                 CodeRepository repo = codeRepositoryPort.findById(repoId)
                         .orElseThrow(() -> NotFoundException.repository(repoId.value()));
                 GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-                String gitToken = repo.getGitToken();
+                String gitToken = repo.getGitAccessToken();
                 String repoUrl = repo.getCloneUrl();
 
                 String featureBranch = iterationRepoPort.getVersionInfo(iterationKey.value(), repoId.value())

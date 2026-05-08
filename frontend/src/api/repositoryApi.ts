@@ -12,7 +12,7 @@ export interface Repository {
   repoType: string
   monoRepo: boolean
   gitProvider?: GitProvider
-  gitToken?: string
+  gitAccessTokenMasked?: string
   branchCount: number
   activeBranchCount: number
   nonCompliantBranchCount: number
@@ -55,7 +55,7 @@ export interface CreateRepoReq {
   initialVersion?: string
   groupCode: string
   gitProvider?: GitProvider
-  gitToken?: string
+  gitAccessToken?: string
 }
 
 export interface UpdateRepoReq {
@@ -67,7 +67,7 @@ export interface UpdateRepoReq {
   initialVersion?: string
   groupCode: string
   gitProvider?: GitProvider
-  gitToken?: string
+  gitAccessToken?: string
 }
 
 export interface ApiPageResponse<T> {

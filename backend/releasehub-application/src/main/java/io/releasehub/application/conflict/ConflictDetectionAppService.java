@@ -123,7 +123,7 @@ public class ConflictDetectionAppService {
         String repoId = repo.getId().value();
         String repoName = repo.getName();
         GitBranchPort gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-        String token = repo.getGitToken();
+        String token = repo.getGitAccessToken();
 
         if (gitPort.getBranchStatus(repo.getCloneUrl(), token, featureBranch).exists()) {
             results.add(ConflictItem.branchExists(repoId, repoName, iterationKey, featureBranch));
@@ -149,7 +149,7 @@ public class ConflictDetectionAppService {
         String repoId = repo.getId().value();
         String repoName = repo.getName();
         GitBranchPort gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-        String token = repo.getGitToken();
+        String token = repo.getGitAccessToken();
         String cloneUrl = repo.getCloneUrl();
 
         if (gitPort.getBranchStatus(cloneUrl, token, featureBranch).exists()

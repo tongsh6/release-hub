@@ -67,7 +67,7 @@ public final class E2ETestFixtures {
      * 创建连接真实 GitLab 的仓库（gitProvider=GITLAB, 真实 cloneUrl + token）。
      */
     public static String createGitLabRepo(MockMvc mockMvc, ObjectMapper objectMapper, String token,
-                                           String groupCode, String cloneUrl, String gitToken) throws Exception {
+                                           String groupCode, String cloneUrl, String gitAccessToken) throws Exception {
         String name = "TC-Repo-" + System.currentTimeMillis();
         String req = objectMapper.writeValueAsString(Map.of(
                 "name", name,
@@ -75,7 +75,7 @@ public final class E2ETestFixtures {
                 "groupCode", groupCode,
                 "defaultBranch", "main",
                 "gitProvider", "GITLAB",
-                "gitToken", gitToken
+                "gitAccessToken", gitAccessToken
         ));
         MvcResult result = mockMvc.perform(post("/api/v1/repositories")
                         .header("Authorization", "Bearer " + token)

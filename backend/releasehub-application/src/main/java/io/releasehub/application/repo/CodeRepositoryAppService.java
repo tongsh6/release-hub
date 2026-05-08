@@ -41,10 +41,10 @@ public class CodeRepositoryAppService {
     }
 
     @Transactional
-    public CodeRepository create(String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode, GitProvider gitProvider, String gitToken) {
+    public CodeRepository create(String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode, GitProvider gitProvider, String gitAccessToken) {
         String normalizedBranch = normalizeBranch(cloneUrl, defaultBranch);
         ensureLeafGroup(groupCode);
-        CodeRepository repo = CodeRepository.create(name, cloneUrl, normalizedBranch, groupCode, repoType, gitProvider, gitToken, monoRepo, Instant.now(clock));
+        CodeRepository repo = CodeRepository.create(name, cloneUrl, normalizedBranch, groupCode, repoType, gitProvider, gitAccessToken, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
 
         if (initialVersion != null && !initialVersion.isBlank()) {
@@ -98,12 +98,12 @@ public class CodeRepositoryAppService {
     }
 
     @Transactional
-    public CodeRepository update(String repoId, String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode, GitProvider gitProvider, String gitToken) {
+    public CodeRepository update(String repoId, String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode, GitProvider gitProvider, String gitAccessToken) {
         CodeRepository repo = get(repoId);
         String normalizedBranch = normalizeBranch(cloneUrl, defaultBranch);
         ensureLeafGroup(groupCode);
         GitProvider effectiveProvider = gitProvider != null ? gitProvider : repo.getGitProvider();
-        String effectiveToken = (gitToken != null && !gitToken.isBlank()) ? gitToken.trim() : repo.getGitToken();
+        String effectiveToken = (gitAccessToken != null && !gitAccessToken.isBlank()) ? gitAccessToken.trim() : repo.getGitAccessToken();
         repo.update(name, cloneUrl, normalizedBranch, groupCode, repoType, effectiveProvider, effectiveToken, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
         if (initialVersion != null && !initialVersion.isBlank()) {

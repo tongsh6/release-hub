@@ -1,6 +1,5 @@
 package io.releasehub.interfaces.api.repo;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -29,9 +28,8 @@ public class CreateRepoRequest {
     private String gitProvider;
 
     @Size(max = 500)
-    @JsonAlias("gitAccessToken")
-    @Schema(description = "Git 访问令牌（兼容别名: gitAccessToken）")
-    private String gitToken;
+    @Schema(description = "Git 平台访问令牌")
+    private String gitAccessToken;
 
     private boolean monoRepo;
 

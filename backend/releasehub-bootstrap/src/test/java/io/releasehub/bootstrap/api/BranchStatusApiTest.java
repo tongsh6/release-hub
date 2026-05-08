@@ -98,7 +98,7 @@ class BranchStatusApiTest {
                 "\"groupCode\":\"" + groupCode + "\"," +
                 "\"defaultBranch\":\"main\"," +
                 "\"gitProvider\":\"MOCK\"," +
-                "\"gitToken\":\"mock-token\"" +
+                "\"gitAccessToken\":\"mock-token\"" +
                 "}";
 
         MvcResult result = mockMvc.perform(post("/api/v1/repositories")

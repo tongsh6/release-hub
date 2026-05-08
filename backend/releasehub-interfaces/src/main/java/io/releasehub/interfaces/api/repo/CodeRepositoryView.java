@@ -17,7 +17,7 @@ public class CodeRepositoryView {
     private String groupCode;
     private String repoType;
     private String gitProvider;
-    private String gitTokenMasked;
+    private String gitAccessTokenMasked;
     private boolean monoRepo;
     private int branchCount;
     private int activeBranchCount;
@@ -42,7 +42,7 @@ public class CodeRepositoryView {
         view.setGroupCode(domain.getGroupCode());
         view.setRepoType(domain.getRepoType().name());
         view.setGitProvider(domain.getGitProvider().name());
-        view.setGitTokenMasked(maskGitToken(domain.getGitToken()));
+        view.setGitTokenMasked(maskGitAccessToken(domain.getGitAccessToken()));
         view.setMonoRepo(domain.isMonoRepo());
         view.setBranchCount(domain.getBranchCount());
         view.setActiveBranchCount(domain.getActiveBranchCount());
@@ -57,7 +57,7 @@ public class CodeRepositoryView {
         return view;
     }
 
-    private static String maskGitToken(String token) {
+    private static String maskGitAccessToken(String token) {
         if (token == null || token.isBlank()) {
             return null;
         }

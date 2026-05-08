@@ -187,7 +187,7 @@ public class ReleaseWindowAppService {
 
                 GitBranchPort adapter = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
                 String repoUrl = repo.getCloneUrl();
-                String token = repo.getGitToken();
+                String token = repo.getGitAccessToken();
 
                 // 查询 feature 分支状态
                 GitBranchPort.BranchStatus featureStatus;

@@ -79,7 +79,7 @@ public class CodeMergeService {
             CodeRepository repo = repoOpt.get();
             String repoUrl = repo.getCloneUrl();
             GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-            String gitToken = repo.getGitToken();
+            String gitToken = repo.getGitAccessToken();
             
             // 获取仓库的 feature 分支信息
             Optional<IterationRepoVersionInfo> versionInfo = iterationRepoPort.getVersionInfo(iterationKey, repoId.value());

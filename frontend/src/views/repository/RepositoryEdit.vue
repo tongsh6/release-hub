@@ -50,9 +50,9 @@
           <el-option label="GitLab" value="GITLAB" />
         </el-select>
       </el-form-item>
-      <el-form-item label="Git Token" prop="gitToken">
+      <el-form-item label="Git Token" prop="gitAccessToken">
         <el-input
-          v-model="form.gitToken"
+          v-model="form.gitAccessToken"
           type="password"
           show-password
           placeholder="Personal Access Token"
@@ -84,7 +84,7 @@ import { handleError } from '@/utils/error'
 
 interface RepoForm extends CreateRepoReq {
   gitProvider: GitProvider
-  gitToken: string
+  gitAccessToken: string
 }
 
 const emit = defineEmits(['success'])
@@ -106,7 +106,7 @@ const form = reactive<RepoForm>({
   initialVersion: '',
   groupCode: '',
   gitProvider: 'MOCK',
-  gitToken: ''
+  gitAccessToken: ''
 })
 
 const maskedToken = computed(() => {
@@ -145,8 +145,8 @@ const open = (repo?: any) => {
   form.initialVersion = ''
   form.groupCode = repo?.groupCode || ''
   form.gitProvider = repo?.gitProvider || 'MOCK'
-  form.gitToken = ''
-  originalToken.value = repo?.gitToken || null
+  form.gitAccessToken = ''
+  originalToken.value = repo?.gitAccessTokenMasked || null
   mode.value = repo ? 'edit' : 'create'
   currentId.value = repo?.id || null
   if (repo?.id) {
@@ -175,7 +175,7 @@ const submit = async () => {
           initialVersion: form.initialVersion || undefined,
           groupCode: form.groupCode,
           gitProvider: form.gitProvider,
-          gitToken: form.gitToken || undefined
+          gitAccessToken: form.gitAccessToken || undefined
         }
         if (mode.value === 'edit' && currentId.value) {
           await repositoryApi.update(currentId.value, payload)

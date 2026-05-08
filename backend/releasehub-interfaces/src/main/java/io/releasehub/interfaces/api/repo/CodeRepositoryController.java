@@ -42,7 +42,7 @@ public class CodeRepositoryController {
                 request.getInitialVersion(),
                 request.getGroupCode(),
                 parseGitProvider(request.getGitProvider()),
-                request.getGitToken()
+                request.getGitAccessToken()
         );
         return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
     }
@@ -60,7 +60,7 @@ public class CodeRepositoryController {
                 request.getInitialVersion(),
                 request.getGroupCode(),
                 parseGitProvider(request.getGitProvider()),
-                request.getGitToken()
+                request.getGitAccessToken()
         );
         return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
     }

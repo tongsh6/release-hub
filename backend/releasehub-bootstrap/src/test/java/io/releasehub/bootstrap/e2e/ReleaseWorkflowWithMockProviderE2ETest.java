@@ -66,7 +66,7 @@ class ReleaseWorkflowWithMockProviderE2ETest extends AbstractE2ETest {
                 "\"groupCode\":\"" + groupCode + "\"," +
                 "\"defaultBranch\":\"main\"," +
                 "\"gitProvider\":\"MOCK\"," +
-                "\"gitToken\":\"mock-token\"" +
+                "\"gitAccessToken\":\"mock-token\"" +
                 "}";
 
         MvcResult result = mockMvc.perform(post("/api/v1/repositories")

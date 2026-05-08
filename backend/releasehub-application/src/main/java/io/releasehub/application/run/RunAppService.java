@@ -89,7 +89,7 @@ public class RunAppService {
                 continue;
             }
             GitBranchPort gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-            String token = repo.getGitToken();
+            String token = repo.getGitAccessToken();
             String cloneUrl = repo.getCloneUrl();
 
             for (IterationKey ik : orderedIterations) {
@@ -210,7 +210,7 @@ public class RunAppService {
             if (repo == null) continue;
 
             GitBranchPort gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-            String token = repo.getGitToken();
+            String token = repo.getGitAccessToken();
             String cloneUrl = repo.getCloneUrl();
 
             RunItem item = RunItem.create(prevItem.getWindowKey(), repoId, iterationKey, prevItem.getPlannedOrder(), now);
@@ -319,7 +319,7 @@ public class RunAppService {
                 CodeRepository repo = codeRepositoryPort.findById(repoId).orElse(null);
                 if (repo == null) continue;
                 GitBranchPort gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-                String token = repo.getGitToken();
+                String token = repo.getGitAccessToken();
                 String cloneUrl = repo.getCloneUrl();
 
                 // Get per-repo version info

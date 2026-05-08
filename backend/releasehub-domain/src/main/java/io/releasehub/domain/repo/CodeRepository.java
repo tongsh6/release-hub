@@ -18,7 +18,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
     private String groupCode;
     private RepoType repoType;
     private GitProvider gitProvider;
-    private String gitToken;
+    private String gitAccessToken;
     private int branchCount;
     private int activeBranchCount;
     private int nonCompliantBranchCount;
@@ -28,7 +28,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
     private int closedMrCount;
     private Instant lastSyncAt;
 
-    private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, GitProvider gitProvider, String gitToken, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
+    private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, GitProvider gitProvider, String gitAccessToken, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
         super(id, createdAt, updatedAt, version);
         this.name = name;
         this.cloneUrl = cloneUrl;
@@ -36,7 +36,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.groupCode = groupCode;
         this.repoType = repoType != null ? repoType : RepoType.SERVICE;
         this.gitProvider = gitProvider != null ? gitProvider : GitProvider.MOCK;
-        this.gitToken = normalizeGitToken(gitToken);
+        this.gitAccessToken = normalizeGitAccessToken(gitAccessToken);
         this.monoRepo = monoRepo;
         this.branchCount = branchCount;
         this.activeBranchCount = activeBranchCount;
@@ -52,11 +52,11 @@ public class CodeRepository extends BaseEntity<RepoId> {
         return rehydrate(id, name, cloneUrl, defaultBranch, groupCode, repoType, GitProvider.MOCK, null, monoRepo, branchCount, activeBranchCount, nonCompliantBranchCount, mrCount, openMrCount, mergedMrCount, closedMrCount, lastSyncAt, createdAt, updatedAt, version);
     }
 
-    public static CodeRepository rehydrate(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, GitProvider gitProvider, String gitToken, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
-        return new CodeRepository(id, name, cloneUrl, defaultBranch, groupCode, repoType, gitProvider, gitToken, monoRepo, branchCount, activeBranchCount, nonCompliantBranchCount, mrCount, openMrCount, mergedMrCount, closedMrCount, lastSyncAt, createdAt, updatedAt, version);
+    public static CodeRepository rehydrate(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, GitProvider gitProvider, String gitAccessToken, boolean monoRepo, int branchCount, int activeBranchCount, int nonCompliantBranchCount, int mrCount, int openMrCount, int mergedMrCount, int closedMrCount, Instant lastSyncAt, Instant createdAt, Instant updatedAt, long version) {
+        return new CodeRepository(id, name, cloneUrl, defaultBranch, groupCode, repoType, gitProvider, gitAccessToken, monoRepo, branchCount, activeBranchCount, nonCompliantBranchCount, mrCount, openMrCount, mergedMrCount, closedMrCount, lastSyncAt, createdAt, updatedAt, version);
     }
 
-    private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, GitProvider gitProvider, String gitToken, boolean monoRepo, Instant now) {
+    private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, GitProvider gitProvider, String gitAccessToken, boolean monoRepo, Instant now) {
         super(id, now);
         validateName(name);
         validateUrl(cloneUrl);
@@ -69,7 +69,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.groupCode = groupCode;
         this.repoType = repoType != null ? repoType : RepoType.SERVICE;
         this.gitProvider = gitProvider != null ? gitProvider : GitProvider.MOCK;
-        this.gitToken = normalizeGitToken(gitToken);
+        this.gitAccessToken = normalizeGitAccessToken(gitAccessToken);
         this.monoRepo = monoRepo;
         this.branchCount = 0;
         this.activeBranchCount = 0;
@@ -81,11 +81,11 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.lastSyncAt = null;
     }
 
-    private String normalizeGitToken(String gitToken) {
-        if (gitToken == null) {
+    private String normalizeGitAccessToken(String gitAccessToken) {
+        if (gitAccessToken == null) {
             return null;
         }
-        String trimmed = gitToken.trim();
+        String trimmed = gitAccessToken.trim();
         return trimmed.isBlank() ? null : trimmed;
     }
 
@@ -129,8 +129,8 @@ public class CodeRepository extends BaseEntity<RepoId> {
         return create(name, cloneUrl, defaultBranch, groupCode, repoType, GitProvider.MOCK, null, monoRepo, now);
     }
 
-    public static CodeRepository create(String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, GitProvider gitProvider, String gitToken, boolean monoRepo, Instant now) {
-        return new CodeRepository(RepoId.newId(), name, cloneUrl, defaultBranch, groupCode, repoType, gitProvider, gitToken, monoRepo, now);
+    public static CodeRepository create(String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, GitProvider gitProvider, String gitAccessToken, boolean monoRepo, Instant now) {
+        return new CodeRepository(RepoId.newId(), name, cloneUrl, defaultBranch, groupCode, repoType, gitProvider, gitAccessToken, monoRepo, now);
     }
 
     public void changeDefaultBranch(String branch, Instant now) {
@@ -152,10 +152,10 @@ public class CodeRepository extends BaseEntity<RepoId> {
     }
 
     public void update(String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, boolean monoRepo, Instant now) {
-        update(name, cloneUrl, defaultBranch, groupCode, repoType, this.gitProvider, this.gitToken, monoRepo, now);
+        update(name, cloneUrl, defaultBranch, groupCode, repoType, this.gitProvider, this.gitAccessToken, monoRepo, now);
     }
 
-    public void update(String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, GitProvider gitProvider, String gitToken, boolean monoRepo, Instant now) {
+    public void update(String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, GitProvider gitProvider, String gitAccessToken, boolean monoRepo, Instant now) {
         validateName(name);
         validateUrl(cloneUrl);
         validateBranch(defaultBranch);
@@ -166,7 +166,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.groupCode = groupCode;
         this.repoType = repoType != null ? repoType : RepoType.SERVICE;
         this.gitProvider = gitProvider != null ? gitProvider : GitProvider.MOCK;
-        this.gitToken = normalizeGitToken(gitToken);
+        this.gitAccessToken = normalizeGitAccessToken(gitAccessToken);
         this.monoRepo = monoRepo;
         touch(now);
     }
@@ -175,7 +175,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
         return gitProvider;
     }
 
-    public String getGitToken() {
-        return gitToken;
+    public String getGitAccessToken() {
+        return gitAccessToken;
     }
 }
