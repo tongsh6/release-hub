@@ -2,6 +2,8 @@ releasehub:
   seed:
     # 避免生产数据污染，默认关闭种子数据
     enabled: true
+  crypto:
+    secret-key: "cDFpla3K5OH0N7xqJAWKzDfR1mBvLgTcYuVX9wEsH8I="
 
 server:
   port: 8080

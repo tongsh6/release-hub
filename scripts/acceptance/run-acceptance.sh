@@ -214,6 +214,31 @@ ITER_KEY=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-T
     | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])")
 ok "创建迭代: $ITER_KEY"
 
+# 3.6 为每个种子仓库创建与迭代 key 匹配的 feature 分支
+source /tmp/e2e-gitlab.env 2>/dev/null || true
+FEATURE_BRANCH="feature/${ITER_KEY}"
+if [ -n "$E2E_GITLAB_TOKEN" ]; then
+    h2 "3.6 创建 feature 分支: $FEATURE_BRANCH"
+    for repo_path in e2e-user/seed-repo-1-maven e2e-user/seed-repo-2-maven-multi e2e-user/seed-repo-3-gradle; do
+        CLONE_URL="http://oauth2:${E2E_GITLAB_TOKEN}@localhost:9080/${repo_path}.git"
+        TMP_CLONE="/tmp/e2e-feature-$(echo $repo_path | tr '/' '-')"
+        rm -rf "$TMP_CLONE"
+        git clone --depth 1 "$CLONE_URL" "$TMP_CLONE" 2>&1 | tail -1
+        cd "$TMP_CLONE"
+        if git branch -r 2>/dev/null | grep -q "origin/$FEATURE_BRANCH"; then
+            info "$FEATURE_BRANCH 已存在，复用"
+        else
+            git checkout -b "$FEATURE_BRANCH" 2>&1 | tail -1
+            echo "# Feature branch for $ITER_KEY" > FEATURE.md
+            git add FEATURE.md && git commit -m "feat: $ITER_KEY - acceptance feature branch" 2>&1 | tail -1
+            git push origin "$FEATURE_BRANCH" 2>&1 | tail -1
+        fi
+        cd "$PROJECT_ROOT"
+        rm -rf "$TMP_CLONE"
+    done
+    ok "Feature 分支已就绪"
+fi
+
 # ---- 4. 场景: Attach + 分支创建 ----
 h2 "4. 场景: Attach 迭代 & GitLab 分支创建"
 ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \

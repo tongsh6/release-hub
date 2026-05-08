@@ -1,7 +1,6 @@
 package io.releasehub.domain.run;
 
 import io.releasehub.domain.base.BaseEntity;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -21,8 +20,6 @@ public class Run extends BaseEntity<RunId> {
     private Instant finishedAt;
     private List<RunItem> items = new ArrayList<>();
 
-    // For Lombok Builder or manual construction
-    @Builder
     private Run(RunId id, RunType runType, String operator, Instant startedAt, Instant finishedAt, List<RunItem> items, Instant createdAt, Instant updatedAt, long version) {
         super(id, createdAt != null ? createdAt : startedAt, updatedAt != null ? updatedAt : startedAt, version);
         this.runType = runType;
@@ -38,20 +35,9 @@ public class Run extends BaseEntity<RunId> {
         return new Run(id, runType, operator, startedAt, finishedAt, items, createdAt, updatedAt, version);
     }
 
-    public static RunBuilder builder() {
-        return new RunBuilder();
-    }
-
     public static Run start(RunType runType, String operator, Instant now) {
         RunId id = RunId.generate(runType, now);
-        return Run.builder()
-                  .id(id)
-                  .runType(runType)
-                  .operator(operator)
-                  .startedAt(now)
-                  .createdAt(now)
-                  .updatedAt(now)
-                  .build();
+        return new Run(id, runType, operator, now, null, null, now, now, 0);
     }
 
     public void finish(Instant now) {

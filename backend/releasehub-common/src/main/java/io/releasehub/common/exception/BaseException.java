@@ -15,9 +15,6 @@ public class BaseException extends RuntimeException {
      */
     private final ErrorCode errorCode;
 
-    /**
-     * 消息参数（用于 {0}, {1} 等占位符替换）
-     */
     private final Object[] args;
 
     public BaseException(ErrorCode errorCode, Object... args) {
@@ -51,5 +48,10 @@ public class BaseException extends RuntimeException {
      */
     public int getHttpStatus() {
         return errorCode.getHttpStatus();
+    }
+
+    /** 防御性复制，避免暴露内部数组引用 */
+    public Object[] getArgs() {
+        return args != null ? args.clone() : null;
     }
 }
