@@ -96,10 +96,10 @@ release-hub/
 - **国际化**: vue-i18n 9
 
 ### 测试
-- **后端**: JUnit 5 + Testcontainers + ArchUnit（134 测试全通过）
+- **后端**: JUnit 5 + Testcontainers + ArchUnit（Surefire 106 通过 + Failsafe 集成测试需容器环境）
 - **后端集成**: TestRestTemplate + WireMock + Testcontainers
-- **前端**: Vitest + Playwright + Pact 合约测试
-- **静态分析**: SpotBugs (0 bugs)
+- **前端**: Vitest（18 通过）+ Playwright E2E + Pact 合约测试
+- **静态分析**: SpotBugs (0 bugs，`e1c5a31` EI_EXPOSE_REP ×6 已修复)
 
 ## 核心概念
 

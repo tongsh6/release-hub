@@ -49,7 +49,7 @@
   - RunStep（执行步骤）
   - 运行记录查询、导出、重试
 
-#### 版本管理核心功能（MVP 已完成）
+#### 版本管理核心功能（✅ 已完成）
 > 说明：以下能力已实现，但当前业务主线以发布准备/收尾为主，不强制依赖。
 - ✅ **VersionUpdater（版本更新器）**
   - VersionUpdater Port 接口（application 层）
@@ -119,9 +119,9 @@
 - ✅ 版本更新对话框（VersionUpdateDialog）
 - ✅ Diff 查看组件（DiffViewer）
 
-#### 测试覆盖（2026-05-02 更新）
-- ✅ 后端测试：134/134 通过（52 单元/集成 + 82 E2E TestContainers）
-- ✅ 前端 E2E：62/62 通过（Playwright, 6 套件）
+#### 测试覆盖（2026-05-02 快照，实际基线以 `docs/PROJECT_PROGRESS.md` 为准）
+- ✅ 后端测试：Surefire 106 通过（单元/组件）+ Failsafe 集成测试（需容器环境）
+- ✅ 前端 Vitest：18 通过 + Playwright E2E（2 spec / 16 test case）
 - ✅ ArchUnit 架构测试（11 个测试通过）
 - ✅ 前端 typecheck / lint 通过
 
@@ -324,7 +324,7 @@
 
 ## 五、验收标准
 
-### 5.1 核心 MVP 功能验收（✅ 已完成）
+### 5.1 核心功能验收（✅ 已完成）
 - ✅ 可以从 UI 创建 Release Window
 - ✅ 可以绑定仓库/迭代
 - ✅ 提测合并与收尾编排可用

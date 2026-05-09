@@ -1,12 +1,14 @@
 package io.releasehub.interfaces.api.iteration;
 
 import io.releasehub.application.iteration.IterationAppService;
+import io.releasehub.application.iteration.IterationAppService.RepoBranchConfig;
 import io.releasehub.application.iteration.IterationRepoVersionInfo;
 import io.releasehub.application.iteration.IterationView;
 import io.releasehub.application.iteration.VersionConflict;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
+import io.releasehub.domain.iteration.BranchCreationMode;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.version.ConflictResolution;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -42,7 +45,8 @@ public class IterationController {
     @PostMapping
     @Operation(summary = "Create iteration")
     public ApiResponse<IterationView> create(@RequestBody CreateIterationRequest request) {
-        var it = iterationAppService.create(request.getName(), request.getDescription(), request.getExpectedReleaseAt(), request.getGroupCode(), request.getRepoIds());
+        List<RepoBranchConfig> configs = toRepoBranchConfigs(request.getRepoConfigs());
+        var it = iterationAppService.create(request.getName(), request.getDescription(), request.getExpectedReleaseAt(), request.getGroupCode(), request.getRepoIds(), configs);
         return ApiResponse.success(IterationView.fromDomain(it));
     }
 
@@ -73,15 +77,30 @@ public class IterationController {
     @PutMapping("/{key}")
     @Operation(summary = "Update iteration")
     public ApiResponse<IterationView> update(@PathVariable("key") String key, @RequestBody UpdateIterationRequest request) {
-        var it = iterationAppService.update(key, request.getName(), request.getDescription(), request.getExpectedReleaseAt(), request.getGroupCode(), request.getRepoIds());
+        List<RepoBranchConfig> configs = toRepoBranchConfigs(request.getRepoConfigs());
+        var it = iterationAppService.update(key, request.getName(), request.getDescription(), request.getExpectedReleaseAt(), request.getGroupCode(), request.getRepoIds(), configs);
         return ApiResponse.success(IterationView.fromDomain(it));
     }
 
     @PostMapping("/{key}/repos/add")
     @Operation(summary = "Add repos to iteration")
     public ApiResponse<IterationView> addRepos(@PathVariable("key") String key, @RequestBody RepoChangeRequest request) {
-        var it = iterationAppService.addRepos(key, request.getRepoIds());
+        BranchCreationMode mode = request.getBranchCreationMode() != null ? request.getBranchCreationMode() : BranchCreationMode.AUTO;
+        var it = iterationAppService.addRepos(key, request.getRepoIds(), mode, request.getCustomBranchName());
         return ApiResponse.success(IterationView.fromDomain(it));
+    }
+
+    private List<RepoBranchConfig> toRepoBranchConfigs(List<CreateIterationRequest.RepoBranchConfigDto> dtos) {
+        if (dtos == null || dtos.isEmpty()) return null;
+        List<RepoBranchConfig> result = new ArrayList<>();
+        for (var dto : dtos) {
+            result.add(new RepoBranchConfig(
+                dto.getRepoId(),
+                dto.getBranchCreationMode() != null ? dto.getBranchCreationMode() : BranchCreationMode.AUTO,
+                dto.getCustomBranchName()
+            ));
+        }
+        return result;
     }
 
     @PostMapping("/{key}/repos/remove")
@@ -156,6 +175,14 @@ public class IterationController {
         @NotBlank
         private String groupCode;
         private Set<String> repoIds;
+        private List<RepoBranchConfigDto> repoConfigs;  // 新增：分支创建模式配置
+
+        @Data
+        public static class RepoBranchConfigDto {
+            private String repoId;
+            private BranchCreationMode branchCreationMode;
+            private String customBranchName;
+        }
     }
 
     @Data
@@ -166,11 +193,14 @@ public class IterationController {
         @NotBlank
         private String groupCode;
         private Set<String> repoIds;
+        private List<CreateIterationRequest.RepoBranchConfigDto> repoConfigs;  // 新增
     }
 
     @Data
     public static class RepoChangeRequest {
         private Set<String> repoIds;
+        private BranchCreationMode branchCreationMode;  // 新增，默认 AUTO
+        private String customBranchName;                // 新增，NAMED/EXISTING 时必填
     }
 
     @Data

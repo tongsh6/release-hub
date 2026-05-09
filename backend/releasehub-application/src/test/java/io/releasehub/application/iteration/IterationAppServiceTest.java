@@ -2,17 +2,20 @@ package io.releasehub.application.iteration;
 
 import io.releasehub.application.branchrule.BranchRuleUseCase;
 import io.releasehub.application.group.GroupPort;
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
+import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.port.out.GitLabBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
-import io.releasehub.application.version.VersionDeriver;
 import io.releasehub.application.version.VersionDeriverUseCase;
 import io.releasehub.application.version.VersionExtractorUseCase;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
+import io.releasehub.domain.iteration.BranchCreationMode;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.iteration.IterationStatus;
@@ -39,8 +42,11 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -68,6 +74,10 @@ class IterationAppServiceTest {
     private BranchRuleUseCase branchRuleUseCase;
     @Mock
     private GroupPort groupPort;
+    @Mock
+    private GitBranchAdapterFactory gitBranchAdapterFactory;
+    @Mock
+    private GitBranchPort gitBranchPort;
 
     private IterationAppService iterationAppService;
 
@@ -76,7 +86,8 @@ class IterationAppServiceTest {
         iterationAppService = new IterationAppService(
                 iterationPort, releaseWindowPort, windowIterationPort,
                 codeRepositoryPort, iterationRepoPort, gitLabBranchPort,
-                branchRuleUseCase, versionDeriverUseCase, versionExtractorUseCase, groupPort
+                gitBranchAdapterFactory, branchRuleUseCase, versionDeriverUseCase,
+                versionExtractorUseCase, groupPort
         );
     }
 
@@ -88,7 +99,7 @@ class IterationAppServiceTest {
         when(groupPort.findByCode("G001")).thenReturn(Optional.of(group));
         when(groupPort.countChildren("G001")).thenReturn(0L);
 
-        Iteration created = iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", null);
+        Iteration created = iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", null, null);
 
         verify(iterationPort).save(captor.capture());
         Iteration saved = captor.getValue();
@@ -104,7 +115,7 @@ class IterationAppServiceTest {
         when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, now, now, 0L)));
         when(groupPort.countChildren("G001")).thenReturn(1L);
 
-        assertThatThrownBy(() -> iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", null))
+        assertThatThrownBy(() -> iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", null, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("GROUP_014"));
     }
@@ -114,7 +125,7 @@ class IterationAppServiceTest {
     void shouldFailCreateWhenGroupNotFound() {
         when(groupPort.findByCode("G404")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> iterationAppService.create("Iter", "Desc", LocalDate.now(), "G404", null))
+        assertThatThrownBy(() -> iterationAppService.create("Iter", "Desc", LocalDate.now(), "G404", null, null))
                 .isInstanceOf(NotFoundException.class)
                 .satisfies(ex -> assertThat(((NotFoundException) ex).getCode()).isEqualTo("GROUP_002"));
     }
@@ -137,7 +148,7 @@ class IterationAppServiceTest {
         when(branchRuleUseCase.isCompliant("feature/ITER-1")).thenReturn(true);
         when(gitLabBranchPort.createBranch(repo.getCloneUrl(), "feature/ITER-1", "master")).thenReturn(true);
 
-        iterationAppService.addRepos("ITER-1", Set.of("repo-1"));
+        iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.AUTO, null);
 
         verify(gitLabBranchPort).createBranch(repo.getCloneUrl(), "feature/ITER-1", "master");
         verify(iterationRepoPort).saveWithVersion(
@@ -218,5 +229,166 @@ class IterationAppServiceTest {
         iterationAppService.delete("ITER-1");
 
         verify(iterationPort).deleteByKey(IterationKey.of("ITER-1"));
+    }
+
+    // ==== 分支创建模式测试 ====
+
+    @Test
+    @DisplayName("NAMED 模式 — 分支名不在 feature/ 路径下时仓库仍被添加但版本信息不保存")
+    void shouldStillAddRepoButSkipVersionWhenNamedBranchInvalid() {
+        Instant now = Instant.now();
+        Iteration existing = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(), IterationStatus.ACTIVE, now, now);
+        CodeRepository repo = createRepo("repo-1", "git@gitlab.com:test/repo.git");
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+
+        // addRepos swallows setup exceptions — repo is still added
+        iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.NAMED, "hotfix/critical");
+
+        verify(iterationPort).save(any(Iteration.class));
+        verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("NAMED 模式 — 分支名符合规则时创建成功")
+    void shouldCreateNamedBranchWhenValid() {
+        Instant now = Instant.now();
+        Iteration existing = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(), IterationStatus.ACTIVE, now, now);
+        CodeRepository repo = createRepo("repo-1", "git@gitlab.com:test/repo.git");
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+        when(codeRepositoryPort.getInitialVersion("repo-1")).thenReturn(Optional.of("1.0.0"));
+        when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
+        when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
+        when(branchRuleUseCase.isCompliant("feature/upgrade-guava")).thenReturn(true);
+        when(gitLabBranchPort.createBranch(repo.getCloneUrl(), "feature/upgrade-guava", "master")).thenReturn(true);
+
+        iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.NAMED, "feature/upgrade-guava");
+
+        verify(gitLabBranchPort).createBranch(repo.getCloneUrl(), "feature/upgrade-guava", "master");
+        verify(iterationRepoPort).saveWithVersion(
+                eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
+                eq("feature/upgrade-guava"), eq("SYSTEM"), any(Instant.class));
+    }
+
+    @Test
+    @DisplayName("EXISTING 模式 — 不创建分支，只建立映射")
+    void shouldNotCreateBranchWhenExistingMode() {
+        Instant now = Instant.now();
+        Iteration existing = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(), IterationStatus.ACTIVE, now, now);
+        CodeRepository repo = createRepo("repo-1", "git@gitlab.com:test/repo.git");
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+        when(codeRepositoryPort.getInitialVersion("repo-1")).thenReturn(Optional.of("1.0.0"));
+        when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
+        when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
+        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
+        when(gitBranchPort.getBranchStatus(repo.getCloneUrl(), null, "feature/JIRA-4521"))
+                .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
+
+        iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.EXISTING, "feature/JIRA-4521");
+
+        verify(gitLabBranchPort, never()).createBranch(anyString(), anyString(), anyString());
+        verify(iterationRepoPort).saveWithVersion(
+                eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
+                eq("feature/JIRA-4521"), eq("SYSTEM"), any(Instant.class));
+    }
+
+    @Test
+    @DisplayName("EXISTING 模式 — 分支不存在时仓库仍添加但跳过版本信息")
+    void shouldStillAddRepoButSkipVersionWhenExistingBranchNotFound() {
+        Instant now = Instant.now();
+        Iteration existing = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(), IterationStatus.ACTIVE, now, now);
+        CodeRepository repo = createRepo("repo-1", "git@gitlab.com:test/repo.git");
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
+        when(gitBranchPort.getBranchStatus(repo.getCloneUrl(), null, "feature/nonexistent"))
+                .thenReturn(GitBranchPort.BranchStatus.missing());
+
+        // addRepos swallows setup exceptions — repo is still added
+        iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.EXISTING, "feature/nonexistent");
+
+        verify(iterationPort).save(any(Iteration.class));
+        verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("create 带 repoConfigs 时为每个仓库调用 setupRepoForIteration")
+    void shouldCallSetupForEachRepoWhenCreateWithRepoConfigs() {
+        CodeRepository repo1 = createRepo("repo-1", "git@gitlab.com:test/repo1.git");
+        CodeRepository repo2 = createRepo("repo-2", "git@gitlab.com:test/repo2.git");
+        Group group = Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L);
+        when(groupPort.findByCode("G001")).thenReturn(Optional.of(group));
+        when(groupPort.countChildren("G001")).thenReturn(0L);
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo1));
+        when(codeRepositoryPort.findById(RepoId.of("repo-2"))).thenReturn(Optional.of(repo2));
+        when(codeRepositoryPort.getInitialVersion(anyString())).thenReturn(Optional.of("1.0.0"));
+        when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
+        when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
+        when(branchRuleUseCase.isCompliant(anyString())).thenReturn(true);
+        when(gitLabBranchPort.createBranch(anyString(), anyString(), anyString())).thenReturn(true);
+
+        List<IterationAppService.RepoBranchConfig> configs = List.of(
+                new IterationAppService.RepoBranchConfig("repo-1", BranchCreationMode.AUTO, null),
+                new IterationAppService.RepoBranchConfig("repo-2", BranchCreationMode.NAMED, "feature/custom-fix")
+        );
+        iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", Set.of("repo-1", "repo-2"), configs);
+
+        verify(iterationRepoPort, times(2)).saveWithVersion(anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString(), any(Instant.class));
+    }
+
+    @Test
+    @DisplayName("create 无 repoConfigs 时默认 AUTO 模式")
+    void shouldDefaultToAutoWhenNoRepoConfigs() {
+        CodeRepository repo = createRepo("repo-1", "git@gitlab.com:test/repo.git");
+        Group group = Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L);
+        when(groupPort.findByCode("G001")).thenReturn(Optional.of(group));
+        when(groupPort.countChildren("G001")).thenReturn(0L);
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+        when(codeRepositoryPort.getInitialVersion("repo-1")).thenReturn(Optional.of("1.0.0"));
+        when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
+        when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
+        when(branchRuleUseCase.isCompliant(anyString())).thenReturn(true);
+        when(gitLabBranchPort.createBranch(eq(repo.getCloneUrl()), anyString(), eq("master"))).thenReturn(true);
+
+        iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", Set.of("repo-1"), null);
+
+        ArgumentCaptor<String> branchCaptor = ArgumentCaptor.forClass(String.class);
+        verify(gitLabBranchPort).createBranch(eq(repo.getCloneUrl()), branchCaptor.capture(), eq("master"));
+        assertThat(branchCaptor.getValue()).startsWith("feature/ITER-");
+    }
+
+    @Test
+    @DisplayName("NAMED 模式 — 自定义名不符合 BranchRule 时仓库仍添加但版本信息不保存")
+    void shouldStillAddRepoButSkipVersionWhenNamedBranchFailsBranchRule() {
+        Instant now = Instant.now();
+        Iteration existing = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(), IterationStatus.ACTIVE, now, now);
+        CodeRepository repo = createRepo("repo-1", "git@gitlab.com:test/repo.git");
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+        when(branchRuleUseCase.isCompliant("feature/bad/name")).thenReturn(false);
+
+        iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.NAMED, "feature/bad/name");
+
+        verify(iterationPort).save(any(Iteration.class));
+        verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString(), any());
+    }
+
+    // ==== 辅助方法 ====
+
+    private CodeRepository createRepo(String id, String cloneUrl) {
+        return CodeRepository.rehydrate(
+                RepoId.of(id), "Repo-" + id, cloneUrl, "master", "G001", RepoType.SERVICE,
+                false, 0, 0, 0, 0, 0, 0, 0, null, Instant.now(), Instant.now(), 0L);
     }
 }

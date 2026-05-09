@@ -17,6 +17,7 @@ import org.springframework.web.client.RestTemplate;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -289,6 +290,28 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
             return new RepoRef(resolveApiBaseUrl(scheme, host), https.group(3), https.group(4));
         }
         throw ValidationException.invalidParameter("cloneUrl");
+    }
+
+    @Override
+    public List<String> listBranches(String repoCloneUrl, String token, String prefix) {
+        try {
+            RepoRef rp = parseRepoRef(repoCloneUrl);
+            String endpoint = String.format(rp.apiBaseUrl + "/repos/%s/%s/branches?per_page=100",
+                    rp.owner, rp.repo);
+            ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
+                    endpoint, HttpMethod.GET, new HttpEntity<>(headers(token)),
+                    new ParameterizedTypeReference<>() {});
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                return List.of();
+            }
+            return response.getBody().stream()
+                    .map(b -> String.valueOf(b.get("name")))
+                    .filter(name -> name.startsWith(prefix))
+                    .toList();
+        } catch (Exception e) {
+            log.warn("Failed to list branches for {}: {}", repoCloneUrl, e.getMessage());
+            return List.of();
+        }
     }
 
     private String urlEncode(String value) {

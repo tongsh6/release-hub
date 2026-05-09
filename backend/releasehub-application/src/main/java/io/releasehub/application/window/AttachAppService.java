@@ -3,6 +3,7 @@ package io.releasehub.application.window;
 import io.releasehub.application.branchrule.BranchRuleUseCase;
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.iteration.IterationRepoPort;
+import io.releasehub.application.iteration.IterationRepoVersionInfo;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
@@ -114,8 +115,8 @@ public class AttachAppService {
         }
 
         String featureBranch = iterationRepoPort.getVersionInfo(iterationKey.value(), repoId.value())
-                .map(info -> info.getFeatureBranch())
-                .orElse("feature/" + iterationKey.value());
+                .map(IterationRepoVersionInfo::getFeatureBranch)
+                .orElse(null);
 
         Instant s1 = Instant.now(clock);
         boolean branchCreated = gitBranchPort.createBranch(repoUrl, gitToken, releaseBranch, repo.getDefaultBranch());
@@ -123,32 +124,40 @@ public class AttachAppService {
         item.addStep(new RunStep(ActionType.ENSURE_RELEASE, branchResult, s1, s1,
                 branchCreated ? "Created release branch: " + releaseBranch : "Release branch exists: " + releaseBranch));
 
-        Instant s2 = Instant.now(clock);
-        GitBranchPort.MergeResult mergeResult = gitBranchPort.mergeBranch(
-                repoUrl, gitToken, featureBranch, releaseBranch,
-                "Merge " + featureBranch + " to " + releaseBranch + " for iteration " + iteration.getName());
+        if (featureBranch == null) {
+            Instant s2 = Instant.now(clock);
+            item.addStep(new RunStep(ActionType.TRY_MERGE, RunItemResult.SKIPPED, s2, s2,
+                    "featureBranch 未配置，跳过合并"));
+            item.setExecutedOrder(item.getPlannedOrder());
+            item.finishWith(RunItemResult.SKIPPED, Instant.now(clock));
+        } else {
+            Instant s2 = Instant.now(clock);
+            GitBranchPort.MergeResult mergeResult = gitBranchPort.mergeBranch(
+                    repoUrl, gitToken, featureBranch, releaseBranch,
+                    "Merge " + featureBranch + " to " + releaseBranch + " for iteration " + iteration.getName());
 
-        RunItemResult mergeOutcome;
-        String mergeMessage;
-        switch (mergeResult.status()) {
-            case SUCCESS -> {
-                mergeOutcome = RunItemResult.MERGED;
-                mergeMessage = "Merged " + featureBranch + " → " + releaseBranch;
-                windowIterationPort.updateLastMergeAt(
-                        releaseWindow.getId().value(), iterationKey.value(), Instant.now(clock));
+            RunItemResult mergeOutcome;
+            String mergeMessage;
+            switch (mergeResult.status()) {
+                case SUCCESS -> {
+                    mergeOutcome = RunItemResult.MERGED;
+                    mergeMessage = "Merged " + featureBranch + " → " + releaseBranch;
+                    windowIterationPort.updateLastMergeAt(
+                            releaseWindow.getId().value(), iterationKey.value(), Instant.now(clock));
+                }
+                case CONFLICT -> {
+                    mergeOutcome = RunItemResult.MERGE_BLOCKED;
+                    mergeMessage = "Merge conflict: " + mergeResult.detail();
+                }
+                default -> {
+                    mergeOutcome = RunItemResult.FAILED;
+                    mergeMessage = "Merge failed: " + mergeResult.detail();
+                }
             }
-            case CONFLICT -> {
-                mergeOutcome = RunItemResult.MERGE_BLOCKED;
-                mergeMessage = "Merge conflict: " + mergeResult.detail();
-            }
-            default -> {
-                mergeOutcome = RunItemResult.FAILED;
-                mergeMessage = "Merge failed: " + mergeResult.detail();
-            }
+            item.addStep(new RunStep(ActionType.TRY_MERGE, mergeOutcome, s2, s2, mergeMessage));
+            item.setExecutedOrder(item.getPlannedOrder());
+            item.finishWith(mergeOutcome, Instant.now(clock));
         }
-        item.addStep(new RunStep(ActionType.TRY_MERGE, mergeOutcome, s2, s2, mergeMessage));
-        item.setExecutedOrder(item.getPlannedOrder());
-        item.finishWith(mergeOutcome, Instant.now(clock));
 
         windowIterationPort.updateReleaseBranch(
                 releaseWindow.getId().value(), iterationKey.value(), releaseBranch, now);
@@ -237,7 +246,7 @@ public class AttachAppService {
 
                 String featureBranch = iterationRepoPort.getVersionInfo(iterationKey.value(), repoId.value())
                         .map(info -> info.getFeatureBranch())
-                        .orElse("feature/" + iterationKey.value());
+                        .orElse(null);
 
                 GitBranchPort.MergeResult mergeResult = gitBranchPort.mergeBranch(
                         repoUrl, gitToken, featureBranch, releaseBranch,

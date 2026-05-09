@@ -207,6 +207,28 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     }
 
     @Override
+    public List<String> listBranches(String repoCloneUrl, String token, String prefix) {
+        try {
+            RepoRef repoRef = parseRepoRef(repoCloneUrl);
+            String endpoint = String.format("%s/api/v4/projects/%s/repository/branches?search=%s&per_page=100",
+                    repoRef.baseUrl, repoRef.encodedPath, urlEncode(prefix));
+            ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
+                    endpoint, HttpMethod.GET, new HttpEntity<>(headers(token)),
+                    new ParameterizedTypeReference<>() {});
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                return List.of();
+            }
+            return response.getBody().stream()
+                    .map(b -> String.valueOf(b.get("name")))
+                    .filter(name -> name.startsWith(prefix))
+                    .toList();
+        } catch (Exception e) {
+            log.warn("Failed to list branches for {} with prefix {}: {}", repoCloneUrl, prefix, e.getMessage());
+            return List.of();
+        }
+    }
+
+    @Override
     public BranchStatus getBranchStatus(String repoCloneUrl, String token, String branchName) {
         try {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);

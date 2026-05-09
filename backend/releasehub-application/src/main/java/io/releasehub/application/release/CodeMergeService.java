@@ -83,11 +83,16 @@ public class CodeMergeService {
             
             // 获取仓库的 feature 分支信息
             Optional<IterationRepoVersionInfo> versionInfo = iterationRepoPort.getVersionInfo(iterationKey, repoId.value());
-            String featureBranch = versionInfo.map(IterationRepoVersionInfo::getFeatureBranch)
-                                              .orElse("feature/" + iterationKey);
-            
+            String featureBranch = versionInfo.map(IterationRepoVersionInfo::getFeatureBranch).orElse(null);
+
             try {
                 // 检查 feature 分支是否存在
+                if (featureBranch == null) {
+                    log.info("featureBranch not configured for repo {} in iteration {}, skipping merge", repo.getName(), iterationKey);
+                    results.add(CodeMergeResult.skipped(repoId.value(), repo.getName(), null, releaseBranch,
+                            "featureBranch 未配置"));
+                    continue;
+                }
                 if (!gitBranchPort.getBranchStatus(repoUrl, gitToken, featureBranch).exists()) {
                     log.info("Feature branch {} does not exist for repo {}", featureBranch, repo.getName());
                     results.add(CodeMergeResult.skipped(repoId.value(), repo.getName(), featureBranch, releaseBranch, 

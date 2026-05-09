@@ -3,6 +3,7 @@
 > 分析时间：2026-05-02（全量更新，含 P0 治理收尾）
 > 对账时间：2026-05-09（编排 0 items 问题修复 + 加密可选化 + 诊断日志）
 > 治理推进：2026-05-08（Token 加密 + 真实 GitLab 验收 + 台账修正）
+> 验收推进：2026-05-09（真实 GitLab 全链路验收 20/20 通过，v0.1.10 修复项全部验证）
 
 ## 总体概览
 
@@ -165,6 +166,29 @@
 - SpotBugs EI_EXPOSE_REP ×6（`e1c5a31`）
 - `application-local.yml` crypto.secret-key 补齐（`e1c5a31`）
 - WindowLifecycleListener AFTER_COMMIT 事务边界修复（`e1c5a31`）
+
+## 2026-05-09 验收推进
+
+### 真实 GitLab 全链路验收 ✅（20/20 通过）
+- 验收报告：`docs/reports/acceptance-v0.1.10-real-gitlab.md`
+- 验收脚本：`scripts/acceptance/run-acceptance.sh`（20 PASS, 0 FAIL, 0 SKIP）
+- GitLab 种子数据：3 个仓库（Maven 单模块/多模块/Gradle），含 pom.xml + feature 分支
+- v0.1.9 "有条件通过" 升级为 "通过"
+
+### v0.1.10 修复项全量验证
+
+| 修复项 | 验证结果 | 证据 |
+|--------|:----:|------|
+| WindowLifecycleListener AFTER_COMMIT 事务边界 | ✅ | Publish 后 operator=system 的 Run 已持久化 |
+| Attach Run 追踪 | ✅ | AttachResult + RunItem UNSURE_RELEASE/TRY_MERGE Step |
+| RealGitLabFileAdapter 激活策略 | ✅ | 冲突检测读取 pom.xml 正常 |
+| Token AES-256-GCM 加密 | ✅ | 6/6 仓库全部加密，0 明文 |
+| 加密可选化启动自检 | ✅ | 启动无异常，token 透传正常 |
+| SpotBugs EI_EXPOSE_REP ×6 | ✅ | 无相关运行时异常 |
+
+### ⚠️ 已知限制
+- 编排 0 items：feature 分支命名与 version-info 配置需对齐（非代码 bug，数据配置问题）
+- 版本更新链路：VERSION_UPDATE Run 需进一步排查配置
 
 ## 相关文档
 

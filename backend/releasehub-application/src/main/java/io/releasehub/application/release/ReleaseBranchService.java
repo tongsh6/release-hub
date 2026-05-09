@@ -66,8 +66,7 @@ public class ReleaseBranchService {
 
             // 获取仓库的 feature 分支信息
             Optional<IterationRepoVersionInfo> versionInfo = iterationRepoPort.getVersionInfo(iterationKey, repoId.value());
-            String featureBranch = versionInfo.map(IterationRepoVersionInfo::getFeatureBranch)
-                                              .orElse("feature/" + iterationKey);
+            String featureBranch = versionInfo.map(IterationRepoVersionInfo::getFeatureBranch).orElse(null);
 
             try {
                 // 1. 检查 release 分支是否存在，不存在则创建
@@ -82,6 +81,11 @@ public class ReleaseBranchService {
                 }
 
                 // 2. 合并 feature 分支到 release 分支
+                if (featureBranch == null) {
+                    log.info("featureBranch not configured for repo {} in iteration {}, skipping merge", repo.getName(), iterationKey);
+                    results.add(BranchOperationResult.success(repoId.value(), repo.getName()));
+                    continue;
+                }
                 if (gitBranchPort.getBranchStatus(repoUrl, gitToken, featureBranch).exists()) {
                     GitBranchPort.MergeResult mergeResult = gitBranchPort.mergeBranch(
                             repoUrl, gitToken, featureBranch, releaseBranch,

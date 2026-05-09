@@ -1,269 +1,561 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-
-    <groupId>io.releasehub</groupId>
-    <artifactId>releasehub</artifactId>
-    <version>${revision}${changelist}</version>
-    <packaging>pom</packaging>
-
-    <modules>
-        <module>releasehub-common</module>
-        <module>releasehub-domain</module>
-        <module>releasehub-application</module>
-        <module>releasehub-infrastructure</module>
-        <module>releasehub-interfaces</module>
-        <module>releasehub-bootstrap</module>
-    </modules>
-
-    <properties>
-        <revision>0.1.0</revision>
-        <changelist>-SNAPSHOT</changelist>
-        <java.version>21</java.version>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-        <spring-boot.version>3.4.1</spring-boot.version>
-        <lombok.version>1.18.38</lombok.version>
-        <springdoc.version>2.6.0</springdoc.version>
-        <jjwt.version>0.11.5</jjwt.version>
-        <flyway.version>10.20.0</flyway.version>
-        <postgresql.version>42.7.7</postgresql.version>
-        <wiremock.version>3.9.1</wiremock.version>
-        <pitest.version>1.15.8</pitest.version>
-        <jacoco.version>0.8.12</jacoco.version>
-        <testcontainers.version>1.20.4</testcontainers.version>
-    </properties>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-starter-security</artifactId>
-                <version>${spring-boot.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework.security</groupId>
-                <artifactId>spring-security-test</artifactId>
-                <version>6.4.2</version>
-                <scope>test</scope>
-            </dependency>
-            <dependency>
-                <groupId>io.jsonwebtoken</groupId>
-                <artifactId>jjwt-api</artifactId>
-                <version>${jjwt.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.jsonwebtoken</groupId>
-                <artifactId>jjwt-impl</artifactId>
-                <version>${jjwt.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.jsonwebtoken</groupId>
-                <artifactId>jjwt-jackson</artifactId>
-                <version>${jjwt.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springdoc</groupId>
-                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-                <version>${springdoc.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.projectlombok</groupId>
-                <artifactId>lombok</artifactId>
-                <version>${lombok.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-dependencies</artifactId>
-                <version>${spring-boot.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.postgresql</groupId>
-                <artifactId>postgresql</artifactId>
-                <version>${postgresql.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.testcontainers</groupId>
-                <artifactId>testcontainers-bom</artifactId>
-                <version>${testcontainers.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.wiremock</groupId>
-                <artifactId>wiremock-standalone</artifactId>
-                <version>${wiremock.version}</version>
-                <scope>test</scope>
-            </dependency>
-            <!-- Internal Modules -->
-            <dependency>
-                <groupId>io.releasehub</groupId>
-                <artifactId>releasehub-common</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.releasehub</groupId>
-                <artifactId>releasehub-domain</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.releasehub</groupId>
-                <artifactId>releasehub-application</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.releasehub</groupId>
-                <artifactId>releasehub-infrastructure</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.releasehub</groupId>
-                <artifactId>releasehub-interfaces</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
-    <build>
-        <pluginManagement>
-            <plugins>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-enforcer-plugin</artifactId>
-                    <version>3.5.0</version>
-                    <executions>
-                        <execution>
-                            <id>enforce-rules</id>
-                            <goals><goal>enforce</goal></goals>
-                            <configuration>
-                                <rules>
-                                    <requireJavaVersion><version>${java.version}</version></requireJavaVersion>
-                                    <requireMavenVersion><version>[3.9.0,)</version></requireMavenVersion>
-                                </rules>
-                            </configuration>
-                        </execution>
-                    </executions>
-                </plugin>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-failsafe-plugin</artifactId>
-                    <configuration>
-                        <classesDirectory>${project.build.outputDirectory}</classesDirectory>
-                        <includes>
-                            <include>**/*ApiTest.java</include>
-                            <include>**/*IT.java</include>
-                            <include>**/*E2ETest.java</include>
-                        </includes>
-                        <environmentVariables>
-                            <TESTCONTAINERS_RYUK_DISABLED>true</TESTCONTAINERS_RYUK_DISABLED>
-                        </environmentVariables>
-                    </configuration>
-                    <executions>
-                        <execution>
-                            <goals><goal>integration-test</goal><goal>verify</goal></goals>
-                        </execution>
-                    </executions>
-                </plugin>
-            </plugins>
-        </pluginManagement>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <includes><include>**/*Test.java</include></includes>
-                    <excludes>
-                        <exclude>**/*ApiTest.java</exclude>
-                        <exclude>**/*IT.java</exclude>
-                        <exclude>**/*E2ETest.java</exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <parameters>true</parameters>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                            <version>${lombok.version}</version>
-                        </path>
-                    </annotationProcessorPaths>
-                    <compilerArgs>
-                        <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED</arg>
-                        <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</arg>
-                        <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED</arg>
-                        <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED</arg>
-                        <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED</arg>
-                        <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED</arg>
-                    </compilerArgs>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>flatten-maven-plugin</artifactId>
-                <version>1.6.0</version>
-                <configuration>
-                    <updatePomFile>true</updatePomFile>
-                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
-                </configuration>
-                <executions>
-                    <execution><id>flatten</id><phase>process-resources</phase><goals><goal>flatten</goal></goals></execution>
-                    <execution><id>flatten.clean</id><phase>clean</phase><goals><goal>clean</goal></goals></execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
-
-    <profiles>
-        <!--
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+      
+  <modelVersion>4.0.0</modelVersion>
+      
+  <groupId>io.releasehub</groupId>
+      
+  <artifactId>releasehub</artifactId>
+      
+  <version>${revision}${changelist}</version>
+      
+  <packaging>pom</packaging>
+      
+  <modules>
+            
+    <module>releasehub-common</module>
+            
+    <module>releasehub-domain</module>
+            
+    <module>releasehub-application</module>
+            
+    <module>releasehub-infrastructure</module>
+            
+    <module>releasehub-interfaces</module>
+            
+    <module>releasehub-bootstrap</module>
+        
+  </modules>
+      
+  <properties>
+            
+    <revision>0.1.0</revision>
+            
+    <changelist>-SNAPSHOT</changelist>
+            
+    <java.version>21</java.version>
+            
+    <maven.compiler.source>21</maven.compiler.source>
+            
+    <maven.compiler.target>21</maven.compiler.target>
+            
+    <spring-boot.version>3.4.1</spring-boot.version>
+            
+    <lombok.version>1.18.38</lombok.version>
+            
+    <springdoc.version>2.6.0</springdoc.version>
+            
+    <jjwt.version>0.11.5</jjwt.version>
+            
+    <flyway.version>10.20.0</flyway.version>
+            
+    <postgresql.version>42.7.7</postgresql.version>
+            
+    <wiremock.version>3.9.1</wiremock.version>
+            
+    <pitest.version>1.15.8</pitest.version>
+            
+    <jacoco.version>0.8.12</jacoco.version>
+            
+    <testcontainers.version>1.20.4</testcontainers.version>
+        
+  </properties>
+      
+  <dependencyManagement>
+            
+    <dependencies>
+                  
+      <dependency>
+                        
+        <groupId>org.springframework.boot</groupId>
+                        
+        <artifactId>spring-boot-starter-security</artifactId>
+                        
+        <version>${spring-boot.version}</version>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>org.springframework.security</groupId>
+                        
+        <artifactId>spring-security-test</artifactId>
+                        
+        <version>6.4.2</version>
+                        
+        <scope>test</scope>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>io.jsonwebtoken</groupId>
+                        
+        <artifactId>jjwt-api</artifactId>
+                        
+        <version>${jjwt.version}</version>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>io.jsonwebtoken</groupId>
+                        
+        <artifactId>jjwt-impl</artifactId>
+                        
+        <version>${jjwt.version}</version>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>io.jsonwebtoken</groupId>
+                        
+        <artifactId>jjwt-jackson</artifactId>
+                        
+        <version>${jjwt.version}</version>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>org.springdoc</groupId>
+                        
+        <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                        
+        <version>${springdoc.version}</version>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>org.projectlombok</groupId>
+                        
+        <artifactId>lombok</artifactId>
+                        
+        <version>${lombok.version}</version>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>org.springframework.boot</groupId>
+                        
+        <artifactId>spring-boot-dependencies</artifactId>
+                        
+        <version>${spring-boot.version}</version>
+                        
+        <type>pom</type>
+                        
+        <scope>import</scope>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>org.postgresql</groupId>
+                        
+        <artifactId>postgresql</artifactId>
+                        
+        <version>${postgresql.version}</version>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>org.testcontainers</groupId>
+                        
+        <artifactId>testcontainers-bom</artifactId>
+                        
+        <version>${testcontainers.version}</version>
+                        
+        <type>pom</type>
+                        
+        <scope>import</scope>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>org.wiremock</groupId>
+                        
+        <artifactId>wiremock-standalone</artifactId>
+                        
+        <version>${wiremock.version}</version>
+                        
+        <scope>test</scope>
+                    
+      </dependency>
+                  
+      <!-- Internal Modules -->
+                  
+      <dependency>
+                        
+        <groupId>io.releasehub</groupId>
+                        
+        <artifactId>releasehub-common</artifactId>
+                        
+        <version>${project.version}</version>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>io.releasehub</groupId>
+                        
+        <artifactId>releasehub-domain</artifactId>
+                        
+        <version>${project.version}</version>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>io.releasehub</groupId>
+                        
+        <artifactId>releasehub-application</artifactId>
+                        
+        <version>${project.version}</version>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>io.releasehub</groupId>
+                        
+        <artifactId>releasehub-infrastructure</artifactId>
+                        
+        <version>${project.version}</version>
+                    
+      </dependency>
+                  
+      <dependency>
+                        
+        <groupId>io.releasehub</groupId>
+                        
+        <artifactId>releasehub-interfaces</artifactId>
+                        
+        <version>${project.version}</version>
+                    
+      </dependency>
+              
+    </dependencies>
+        
+  </dependencyManagement>
+      
+  <build>
+            
+    <pluginManagement>
+                  
+      <plugins>
+                        
+        <plugin>
+                              
+          <groupId>org.apache.maven.plugins</groupId>
+                              
+          <artifactId>maven-enforcer-plugin</artifactId>
+                              
+          <version>3.5.0</version>
+                              
+          <executions>
+                                    
+            <execution>
+                                          
+              <id>enforce-rules</id>
+                                          
+              <goals>
+                <goal>enforce</goal>
+              </goals>
+                                          
+              <configuration>
+                                                
+                <rules>
+                                                      
+                  <requireJavaVersion>
+                    <version>${java.version}</version>
+                  </requireJavaVersion>
+                                                      
+                  <requireMavenVersion>
+                    <version>[3.9.0,)</version>
+                  </requireMavenVersion>
+                                                  
+                </rules>
+                                            
+              </configuration>
+                                      
+            </execution>
+                                
+          </executions>
+                          
+        </plugin>
+                        
+        <plugin>
+                              
+          <groupId>org.apache.maven.plugins</groupId>
+                              
+          <artifactId>maven-failsafe-plugin</artifactId>
+                              
+          <configuration>
+                                    
+            <classesDirectory>${project.build.outputDirectory}</classesDirectory>
+                                    
+            <includes>
+                                          
+              <include>**/*ApiTest.java</include>
+                                          
+              <include>**/*IT.java</include>
+                                          
+              <include>**/*E2ETest.java</include>
+                                      
+            </includes>
+                                    
+            <environmentVariables>
+                                          
+              <TESTCONTAINERS_RYUK_DISABLED>true</TESTCONTAINERS_RYUK_DISABLED>
+                                      
+            </environmentVariables>
+                                
+          </configuration>
+                              
+          <executions>
+                                    
+            <execution>
+                                          
+              <goals>
+                <goal>integration-test</goal>
+                <goal>verify</goal>
+              </goals>
+                                      
+            </execution>
+                                
+          </executions>
+                          
+        </plugin>
+                    
+      </plugins>
+              
+    </pluginManagement>
+            
+    <plugins>
+                  
+      <plugin>
+                        
+        <groupId>org.apache.maven.plugins</groupId>
+                        
+        <artifactId>maven-surefire-plugin</artifactId>
+                        
+        <configuration>
+                              
+          <includes>
+            <include>**/*Test.java</include>
+          </includes>
+                              
+          <excludes>
+                                    
+            <exclude>**/*ApiTest.java</exclude>
+                                    
+            <exclude>**/*IT.java</exclude>
+                                    
+            <exclude>**/*E2ETest.java</exclude>
+                                
+          </excludes>
+                          
+        </configuration>
+                    
+      </plugin>
+                  
+      <plugin>
+                        
+        <groupId>org.apache.maven.plugins</groupId>
+                        
+        <artifactId>maven-compiler-plugin</artifactId>
+                        
+        <version>3.13.0</version>
+                        
+        <configuration>
+                              
+          <parameters>true</parameters>
+                              
+          <annotationProcessorPaths>
+                                    
+            <path>
+                                          
+              <groupId>org.projectlombok</groupId>
+                                          
+              <artifactId>lombok</artifactId>
+                                          
+              <version>${lombok.version}</version>
+                                      
+            </path>
+                                
+          </annotationProcessorPaths>
+                              
+          <compilerArgs>
+                                    
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED</arg>
+                                    
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</arg>
+                                    
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED</arg>
+                                    
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED</arg>
+                                    
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED</arg>
+                                    
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED</arg>
+                                
+          </compilerArgs>
+                          
+        </configuration>
+                    
+      </plugin>
+                  
+      <plugin>
+                        
+        <groupId>org.codehaus.mojo</groupId>
+                        
+        <artifactId>flatten-maven-plugin</artifactId>
+                        
+        <version>1.6.0</version>
+                        
+        <configuration>
+                              
+          <updatePomFile>true</updatePomFile>
+                              
+          <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                          
+        </configuration>
+                        
+        <executions>
+                              
+          <execution>
+            <id>flatten</id>
+            <phase>process-resources</phase>
+            <goals>
+              <goal>flatten</goal>
+            </goals>
+          </execution>
+                              
+          <execution>
+            <id>flatten.clean</id>
+            <phase>clean</phase>
+            <goals>
+              <goal>clean</goal>
+            </goals>
+          </execution>
+                          
+        </executions>
+                    
+      </plugin>
+              
+    </plugins>
+        
+  </build>
+      
+  <profiles>
+            
+    <!--
           覆盖率阈值策略：
           当前各模块阈值为临时占位值（0.10–0.40），确保 CI 不阻断构建。
           目标阈值按模块：domain 0.80 / application 0.70 / infrastructure 0.50 /
           common 0.50 / bootstrap 0.30。随测试补齐逐步上调。
         -->
-        <profile>
-            <id>coverage</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.jacoco</groupId>
-                        <artifactId>jacoco-maven-plugin</artifactId>
-                        <version>${jacoco.version}</version>
-                        <executions>
-                            <execution><id>prepare-agent</id><goals><goal>prepare-agent</goal></goals></execution>
-                            <execution><id>report</id><phase>verify</phase><goals><goal>report</goal></goals></execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-        <profile>
-            <id>pitest</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.pitest</groupId>
-                        <artifactId>pitest-maven</artifactId>
-                        <version>${pitest.version}</version>
-                        <configuration>
-                            <targetClasses><param>io.releasehub.*</param></targetClasses>
-                            <targetTests><param>io.releasehub.*</param></targetTests>
-                            <mutators>STRONGER</mutators>
-                            <outputFormats><format>HTML</format></outputFormats>
-                        </configuration>
-                        <executions>
-                            <execution><goals><goal>mutationCoverage</goal></goals></execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
+            
+    <profile>
+                  
+      <id>coverage</id>
+                  
+      <build>
+                        
+        <plugins>
+                              
+          <plugin>
+                                    
+            <groupId>org.jacoco</groupId>
+                                    
+            <artifactId>jacoco-maven-plugin</artifactId>
+                                    
+            <version>${jacoco.version}</version>
+                                    
+            <executions>
+                                          
+              <execution>
+                <id>prepare-agent</id>
+                <goals>
+                  <goal>prepare-agent</goal>
+                </goals>
+              </execution>
+                                          
+              <execution>
+                <id>report</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>report</goal>
+                </goals>
+              </execution>
+                                      
+            </executions>
+                                
+          </plugin>
+                          
+        </plugins>
+                    
+      </build>
+              
+    </profile>
+            
+    <profile>
+                  
+      <id>pitest</id>
+                  
+      <build>
+                        
+        <plugins>
+                              
+          <plugin>
+                                    
+            <groupId>org.pitest</groupId>
+                                    
+            <artifactId>pitest-maven</artifactId>
+                                    
+            <version>${pitest.version}</version>
+                                    
+            <configuration>
+                                          
+              <targetClasses>
+                <param>io.releasehub.*</param>
+              </targetClasses>
+                                          
+              <targetTests>
+                <param>io.releasehub.*</param>
+              </targetTests>
+                                          
+              <mutators>STRONGER</mutators>
+                                          
+              <outputFormats>
+                <format>HTML</format>
+              </outputFormats>
+                                      
+            </configuration>
+                                    
+            <executions>
+                                          
+              <execution>
+                <goals>
+                  <goal>mutationCoverage</goal>
+                </goals>
+              </execution>
+                                      
+            </executions>
+                                
+          </plugin>
+                          
+        </plugins>
+                    
+      </build>
+              
+    </profile>
+        
+  </profiles>
+  
 </project>

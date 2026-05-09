@@ -293,6 +293,20 @@ export default {
       selectedCount: '已选择 {count} 个新仓库',
       noNewRepos: '请至少选择一个新仓库'
     },
+    branchCreationMode: {
+      label: 'Feature 分支创建方式',
+      AUTO: '自动创建',
+      AUTO_desc: '系统自动创建 feature/{迭代标识}',
+      NAMED: '自定义命名',
+      NAMED_desc: '输入分支名，必须在 feature/ 路径下',
+      EXISTING: '关联已有',
+      EXISTING_desc: '选择 GitLab 上已存在的 feature 分支',
+      preview: '预览分支名',
+      customName: '自定义分支名',
+      selectExisting: '选择已有分支',
+      loadBranches: '加载分支列表',
+      featurePrefix: '分支名必须以 feature/ 开头'
+    },
     version: {
       baseVersion: '基准版本',
       devVersion: '开发版本',

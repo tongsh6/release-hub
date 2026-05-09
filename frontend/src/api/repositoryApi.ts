@@ -133,5 +133,10 @@ export const repositoryApi = {
   async sync(id: Id): Promise<Repository> {
     const res = await http.post<ApiResponse<Repository>>(`/v1/repositories/${id}/sync`)
     return res.data.data
+  },
+
+  async listBranches(id: Id, prefix: string = 'feature/'): Promise<string[]> {
+    const res = await http.get<ApiResponse<string[]>>(`/v1/repositories/${id}/branches`, { params: { prefix } })
+    return res.data.data ?? []
   }
 }

@@ -39,11 +39,18 @@ export interface Iteration {
   updatedAt: string
 }
 
+export interface RepoBranchConfig {
+  repoId: string
+  branchCreationMode?: 'AUTO' | 'NAMED' | 'EXISTING'
+  customBranchName?: string
+}
+
 export interface CreateIterationRequest {
   name: string
   description?: string
   expectedReleaseAt?: string | null
   repoIds?: string[]
+  repoConfigs?: RepoBranchConfig[]
   groupCode: string
 }
 
@@ -52,6 +59,7 @@ export interface UpdateIterationRequest {
   description?: string
   expectedReleaseAt?: string | null
   repoIds?: string[]
+  repoConfigs?: RepoBranchConfig[]
   groupCode?: string
 }
 
@@ -105,8 +113,12 @@ export const iterationApi = {
     await apiDel(`/v1/iterations/${encodeURIComponent(key)}`)
   },
 
-  async addRepos(key: string, repoIds: string[]): Promise<Iteration> {
-    const resp = await apiPost<IterationRaw>(`/v1/iterations/${encodeURIComponent(key)}/repos/add`, { repoIds })
+  async addRepos(key: string, repoIds: string[], branchCreationMode?: string, customBranchName?: string): Promise<Iteration> {
+    const resp = await apiPost<IterationRaw>(`/v1/iterations/${encodeURIComponent(key)}/repos/add`, {
+      repoIds,
+      branchCreationMode: branchCreationMode || 'AUTO',
+      customBranchName: customBranchName || undefined
+    })
     return transformIteration(resp)
   },
 

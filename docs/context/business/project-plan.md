@@ -1,8 +1,8 @@
 # ReleaseHub 项目总体规划书
 
-> 版本：v3.1
-> 最后更新：2026-05-02（Phase 1-7 + P0 治理收尾完成）
-> 状态：MVP 核心功能已完成，v0.1.9 质量基线清零
+> 版本：v3.2
+> 最后更新：2026-05-09（v0.1.10 发布 + 文档同步）
+> 状态：核心功能已完成（v0.1.10），质量基线运行时验证通过，10 个版本迭代，进入真实验收与治理收尾阶段
 
 ---
 
@@ -61,7 +61,7 @@ ReleaseHub 面向「多项目、多仓库」场景，统一管理发布窗口、
 
 ## 4. 范围边界
 
-### ✅ MVP 已完成
+### ✅ 核心功能已完成
 - ReleaseWindow：CRUD + 状态流转 + 冻结机制
 - Iteration：迭代管理 + 仓库关联 + 窗口关联
 - CodeRepository：仓库 CRUD + GitLab 集成
@@ -195,17 +195,20 @@ ReleaseWindow: DRAFT → PUBLISHED → CLOSED
 
 ### 测试覆盖
 
-- ✅ 后端测试：134/134 通过（52 单元/集成 + 82 E2E TestContainers）
-- ✅ 前端 E2E：62/62 通过（Playwright, 6 套件）
+> **注意**：以下为 2026-05-02 快照数据。测试体系重构（Slice 1-8）后 surefire/failsafe 已拆分，实际基线以 `docs/PROJECT_PROGRESS.md` 为准。
+
+- ✅ 后端测试：Surefire 106 通过（单元/组件，2026-05-09 运行时验证）+ Failsafe 集成测试（需容器环境）
+- ✅ 前端 Vitest：18 通过（2026-05-09 运行时验证）
+- ✅ 前端 E2E：Playwright（2 spec / 16 test case，历史全量套件已迁移至 CI test-runner，详见台账）
 - ✅ 架构测试：ArchUnit（11 个测试通过）
 - ✅ 前端 typecheck / lint 通过
 
-### 待完成任务
+### 已解决的技术债务（2026-05-09 更新）
 
-> 2026-05-02 更新：Phase 1-7 已全部完成（v0.1.8）。P0 治理收尾已完成（v0.1.9）。当前无阻塞性待办项。
+> 2026-05-09：以下两项已在 v0.1.10 中修复。当前无阻塞性待办项。
 
-- Attach 分支操作集成 Run 追踪（技术债务，较大架构调整，择期处理）
-- 预存 SpotBugs EI_EXPOSE_REP 修复（`releasehub-common` 基础类，全局影响）
+- ~~Attach 分支操作集成 Run 追踪~~ → ✅ v0.1.10（commit `502e9ab`，`AttachAppService.attach()` 新增 Run 记录创建）
+- ~~预存 SpotBugs EI_EXPOSE_REP~~ → ✅ v0.1.10（commit `e1c5a31`，EI_EXPOSE_REP ×6 已修复）
 
 ---
 

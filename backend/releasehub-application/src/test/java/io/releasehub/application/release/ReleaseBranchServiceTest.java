@@ -219,7 +219,6 @@ class ReleaseBranchServiceTest {
             when(iterationRepoPort.getVersionInfo(ITERATION_KEY, REPO_ID)).thenReturn(Optional.empty());
 
             when(gitBranchPort.getBranchStatus(REPO_URL, null, "release/v1.0.0")).thenReturn(GitBranchPort.BranchStatus.present("sha-r"));
-            when(gitBranchPort.getBranchStatus(REPO_URL, null, "feature/iter-001")).thenReturn(GitBranchPort.BranchStatus.missing());
 
             List<BranchOperationResult> results = releaseBranchService.createReleaseBranchAndMerge(
                     WINDOW_ID, WINDOW_KEY, ITERATION_KEY
@@ -248,7 +247,6 @@ class ReleaseBranchServiceTest {
             when(iterationRepoPort.getVersionInfo(eq(ITERATION_KEY), anyString())).thenReturn(Optional.empty());
 
             when(gitBranchPort.getBranchStatus(anyString(), isNull(), eq("release/v1.0.0"))).thenReturn(GitBranchPort.BranchStatus.present("sha-r"));
-            when(gitBranchPort.getBranchStatus(anyString(), isNull(), startsWith("feature/"))).thenReturn(GitBranchPort.BranchStatus.missing());
 
             List<BranchOperationResult> results = releaseBranchService.createReleaseBranchAndMerge(
                     WINDOW_ID, WINDOW_KEY, ITERATION_KEY

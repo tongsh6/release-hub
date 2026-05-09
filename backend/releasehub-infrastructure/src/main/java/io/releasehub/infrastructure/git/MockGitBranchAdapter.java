@@ -5,6 +5,7 @@ import io.releasehub.domain.repo.GitProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -82,6 +83,12 @@ public class MockGitBranchAdapter implements GitBranchPort {
     public String triggerPipeline(String repoCloneUrl, String token, String ref) {
         log.info("Mock: triggering pipeline for ref '{}' in repo {}", ref, repoCloneUrl);
         return "mock-pipeline-" + System.currentTimeMillis();
+    }
+
+    @Override
+    public List<String> listBranches(String repoCloneUrl, String token, String prefix) {
+        Set<String> branchSet = branches.getOrDefault(repoCloneUrl, Set.of());
+        return branchSet.stream().filter(b -> b.startsWith(prefix)).toList();
     }
 
     @Override

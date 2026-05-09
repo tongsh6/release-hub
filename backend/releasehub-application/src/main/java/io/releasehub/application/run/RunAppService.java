@@ -117,11 +117,17 @@ public class RunAppService {
                 String iterationKey = ik.value();
 
                 Optional<IterationRepoVersionInfo> versionInfoOpt = iterationRepoPort.getVersionInfo(iterationKey, repoIdStr);
-                String featureBranch = versionInfoOpt.map(IterationRepoVersionInfo::getFeatureBranch)
-                        .orElse("feature/" + iterationKey);
+                String featureBranch = versionInfoOpt.map(IterationRepoVersionInfo::getFeatureBranch).orElse(null);
 
                 // Step 1: ENSURE_FEATURE — check feature branch exists
                 Instant s1 = Instant.now(clock);
+                if (featureBranch == null) {
+                    item.addStep(new RunStep(ActionType.ENSURE_FEATURE, RunItemResult.SKIPPED, s1, s1, "featureBranch 未配置"));
+                    item.setExecutedOrder(order);
+                    item.finishWith(RunItemResult.SKIPPED, Instant.now(clock));
+                    run.addItem(item);
+                    continue;
+                }
                 boolean featureExists = gitPort.getBranchStatus(cloneUrl, token, featureBranch).exists();
                 if (!featureExists) {
                     item.addStep(new RunStep(ActionType.ENSURE_FEATURE, RunItemResult.SKIPPED, s1, s1, "Feature branch not found: " + featureBranch));
@@ -236,8 +242,7 @@ public class RunAppService {
             RunItem item = RunItem.create(prevItem.getWindowKey(), repoId, iterationKey, prevItem.getPlannedOrder(), now);
 
             Optional<IterationRepoVersionInfo> versionInfoOpt = iterationRepoPort.getVersionInfo(iterationKey.value(), repoId.value());
-            String featureBranch = versionInfoOpt.map(IterationRepoVersionInfo::getFeatureBranch)
-                    .orElse("feature/" + iterationKey.value());
+            String featureBranch = versionInfoOpt.map(IterationRepoVersionInfo::getFeatureBranch).orElse(null);
             String releaseBranch = windowIterationPort.getReleaseBranch(prevItem.getWindowKey(), iterationKey.value());
             if (releaseBranch == null) {
                 releaseBranch = "release/" + prevItem.getWindowKey();
@@ -245,6 +250,13 @@ public class RunAppService {
 
             // Step 1: ENSURE_FEATURE
             Instant s1 = Instant.now(clock);
+            if (featureBranch == null) {
+                item.addStep(new RunStep(ActionType.ENSURE_FEATURE, RunItemResult.SKIPPED, s1, s1, "featureBranch 未配置"));
+                item.setExecutedOrder(prevItem.getPlannedOrder());
+                item.finishWith(RunItemResult.SKIPPED, Instant.now(clock));
+                run.addItem(item);
+                continue;
+            }
             if (!gitPort.getBranchStatus(cloneUrl, token, featureBranch).exists()) {
                 item.addStep(new RunStep(ActionType.ENSURE_FEATURE, RunItemResult.SKIPPED, s1, s1, "Feature branch not found: " + featureBranch));
                 item.setExecutedOrder(prevItem.getPlannedOrder());
@@ -344,8 +356,7 @@ public class RunAppService {
 
                 // Get per-repo version info
                 Optional<IterationRepoVersionInfo> repoVersionInfo = iterationRepoPort.getVersionInfo(iterationKey, repoId.value());
-                String featureBranch = repoVersionInfo.map(IterationRepoVersionInfo::getFeatureBranch)
-                        .orElse("feature/" + iterationKey);
+                String featureBranch = repoVersionInfo.map(IterationRepoVersionInfo::getFeatureBranch).orElse(null);
                 String devVersion = repoVersionInfo.map(IterationRepoVersionInfo::getDevVersion).orElse(null);
                 String releaseVersion = devVersion != null ? versionDeriverUseCase.deriveTargetVersion(devVersion) : null;
 
@@ -364,7 +375,10 @@ public class RunAppService {
 
                 // Step 2: ARCHIVE_BRANCH
                 Instant sa = Instant.now(clock);
-                if (gitPort.getBranchStatus(cloneUrl, token, featureBranch).exists()) {
+                if (featureBranch == null) {
+                    item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.SKIPPED, sa, sa,
+                            "featureBranch 未配置，跳过归档"));
+                } else if (gitPort.getBranchStatus(cloneUrl, token, featureBranch).exists()) {
                     boolean archived = gitPort.archiveBranch(cloneUrl, token, featureBranch, "released");
                     if (archived) {
                         item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.SUCCESS, sa, sa,

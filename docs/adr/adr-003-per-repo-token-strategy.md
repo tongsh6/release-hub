@@ -32,7 +32,7 @@ Branch createBranch(String repoCloneUrl, String token, String branchName, String
 
 ### 负面影响
 - Token 在方法参数链中透传，增加参数数量
-- 数据库中存储 accessToken 需要加密保护（当前为明文，存在安全改进空间）。缓解计划：后续迭代中引入数据库列级加密（如 Jasypt/Spring Vault），追踪见 Phase 6 规划
+- ~~数据库中存储 accessToken 需要加密保护（当前为明文）~~。**已于 v0.1.10 修复**：通过 AES-256-GCM `GitTokenCrypto` + JPA `GitTokenAttributeConverter` 实现数据库列级透明加解密，密钥通过环境变量注入。加密可通过 `releasehub.crypto.enabled` 开关控制
 - 无法使用全局 Token 缓存优化多仓库共享同一 Token 的场景
 
 ## 备选方案

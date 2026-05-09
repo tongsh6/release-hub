@@ -3,6 +3,8 @@ package io.releasehub.application.port.out;
 import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.run.MergeStatus;
 
+import java.util.List;
+
 public interface GitBranchPort {
 
     boolean supports(GitProvider provider);
@@ -83,4 +85,13 @@ public interface GitBranchPort {
      * @return 流水线 ID，失败返回 null
      */
     String triggerPipeline(String repoCloneUrl, String token, String ref);
+
+    /**
+     * 列出仓库中匹配前缀的分支名。
+     * @param repoCloneUrl 仓库克隆地址
+     * @param token Git 访问令牌
+     * @param prefix 分支名前缀（如 "feature/"）
+     * @return 匹配的分支名列表
+     */
+    List<String> listBranches(String repoCloneUrl, String token, String prefix);
 }

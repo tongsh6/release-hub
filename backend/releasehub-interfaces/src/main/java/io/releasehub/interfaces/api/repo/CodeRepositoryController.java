@@ -1,10 +1,13 @@
 package io.releasehub.interfaces.api.repo;
 
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.repo.CodeRepositoryAppService;
+import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
 import io.releasehub.domain.repo.GitProvider;
+import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.repo.RepoType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,6 +32,8 @@ import java.util.stream.Collectors;
 @Tag(name = "代码仓库 - 仓库管理")
 public class CodeRepositoryController {
     private final CodeRepositoryAppService appService;
+    private final CodeRepositoryPort codeRepositoryPort;
+    private final GitBranchAdapterFactory gitBranchAdapterFactory;
 
     @PostMapping
     @Operation(summary = "Create repository")
@@ -148,6 +153,19 @@ public class CodeRepositoryController {
     public ApiResponse<CodeRepositoryView> sync(@PathVariable("id") String id) {
         var repo = appService.sync(id);
         return ApiResponse.success(CodeRepositoryView.fromDomain(repo));
+    }
+
+    @GetMapping("/{id}/branches")
+    @Operation(summary = "List branches with prefix filter (for feature branch selection)")
+    public ApiResponse<List<String>> listBranches(@PathVariable("id") String id,
+                                                   @RequestParam(name = "prefix", defaultValue = "feature/") String prefix) {
+        var repo = codeRepositoryPort.findById(RepoId.of(id)).orElse(null);
+        if (repo == null) {
+            return ApiResponse.success(List.of());
+        }
+        var gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
+        var branches = gitPort.listBranches(repo.getCloneUrl(), repo.getGitAccessToken(), prefix);
+        return ApiResponse.success(branches);
     }
 
     private RepoType parseRepoType(String repoType) {

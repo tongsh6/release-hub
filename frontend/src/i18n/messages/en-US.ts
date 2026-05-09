@@ -292,6 +292,34 @@ export default {
       alreadyAdded: 'Already Added',
       selectedCount: '{count} new repositories selected',
       noNewRepos: 'Please select at least one new repository'
+    },
+    branchCreationMode: {
+      label: 'Feature Branch Creation Mode',
+      AUTO: 'Auto Create',
+      AUTO_desc: 'System auto-creates feature/{iteration key}',
+      NAMED: 'Custom Name',
+      NAMED_desc: 'Enter branch name, must be under feature/',
+      EXISTING: 'Use Existing',
+      EXISTING_desc: 'Select an existing feature branch from GitLab',
+      preview: 'Preview branch name',
+      customName: 'Custom branch name',
+      selectExisting: 'Select existing branch',
+      loadBranches: 'Load branches',
+      featurePrefix: 'Branch name must start with feature/'
+    },
+    version: {
+      baseVersion: 'Base Version',
+      devVersion: 'Dev Version',
+      targetVersion: 'Target Version',
+      featureBranch: 'Feature Branch',
+      sync: 'Sync',
+      syncSuccess: 'Version synced successfully',
+      conflictDetected: 'Version conflict detected',
+      resolveConflict: 'Resolve Conflict',
+      useSystem: 'Use System Version',
+      useRepo: 'Use Repo Version',
+      systemVersion: 'System Version',
+      repoVersion: 'Repo Version'
     }
   },
   repository: {
