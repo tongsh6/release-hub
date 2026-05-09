@@ -7,6 +7,7 @@ import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.run.RunPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.common.exception.ValidationException;
@@ -17,7 +18,13 @@ import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.run.ActionType;
 import io.releasehub.domain.run.MergeStatus;
+import io.releasehub.domain.run.Run;
+import io.releasehub.domain.run.RunItem;
+import io.releasehub.domain.run.RunItemResult;
+import io.releasehub.domain.run.RunStep;
+import io.releasehub.domain.run.RunType;
 import io.releasehub.domain.window.WindowIteration;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +47,7 @@ public class AttachAppService {
     private final GitBranchAdapterFactory gitBranchAdapterFactory;
     private final CodeRepositoryPort codeRepositoryPort;
     private final BranchRuleUseCase branchRuleUseCase;
+    private final RunPort runPort;
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
@@ -49,8 +57,10 @@ public class AttachAppService {
             throw BusinessException.rwAlreadyFrozen();
         }
         Instant now = Instant.now(clock);
+        Run run = Run.start(RunType.ATTACH_ITERATION, "system", now);
+        int[] order = {0};
 
-        return iterationKeys.stream()
+        List<AttachResult> results = iterationKeys.stream()
                 .map(IterationKey::of)
                 .map(iterationKey -> {
                     Iteration iteration = iterationPort.findByKey(iterationKey).orElseThrow();
@@ -59,8 +69,10 @@ public class AttachAppService {
 
                     List<AttachResult.RepoError> errors = new ArrayList<>();
                     for (RepoId repoId : iteration.getRepos()) {
+                        RunItem item = RunItem.create(releaseWindow.getName(), repoId, iterationKey, ++order[0], now);
                         try {
-                            setupReleaseBranchForRepo(releaseWindow, iteration, iterationKey, repoId, now);
+                            setupReleaseBranchForRepo(releaseWindow, iteration, iterationKey, repoId, now, item);
+                            run.addItem(item);
                         } catch (Exception e) {
                             String repoName = codeRepositoryPort.findById(repoId)
                                     .map(CodeRepository::getName)
@@ -68,6 +80,10 @@ public class AttachAppService {
                             String message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                             log.error("Failed to setup release branch for repo {} ({}) in window {}: {}",
                                     repoName, repoId.value(), windowId, message);
+                            item.addStep(new RunStep(ActionType.ENSURE_RELEASE, RunItemResult.FAILED, now, now, message));
+                            item.setExecutedOrder(order[0]);
+                            item.finishWith(RunItemResult.FAILED, now);
+                            run.addItem(item);
                             errors.add(AttachResult.RepoError.of(repoId.value(), repoName, message));
                         }
                     }
@@ -77,10 +93,15 @@ public class AttachAppService {
                             : AttachResult.partial(wi, errors);
                 })
                 .toList();
+
+        run.finish(Instant.now(clock));
+        runPort.save(run);
+        log.info("[Attach] Run {} tracked: {} items", run.getId().value(), run.getItems().size());
+        return results;
     }
 
     private void setupReleaseBranchForRepo(ReleaseWindow releaseWindow, Iteration iteration,
-            IterationKey iterationKey, RepoId repoId, Instant now) {
+            IterationKey iterationKey, RepoId repoId, Instant now, RunItem item) {
         CodeRepository repo = codeRepositoryPort.findById(repoId)
                 .orElseThrow(() -> NotFoundException.repository(repoId.value()));
         GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
@@ -96,32 +117,41 @@ public class AttachAppService {
                 .map(info -> info.getFeatureBranch())
                 .orElse("feature/" + iterationKey.value());
 
+        Instant s1 = Instant.now(clock);
         boolean branchCreated = gitBranchPort.createBranch(repoUrl, gitToken, releaseBranch, repo.getDefaultBranch());
-        if (branchCreated) {
-            log.info("Created release branch {} for repo {}", releaseBranch, repoId.value());
-        }
+        RunItemResult branchResult = branchCreated ? RunItemResult.BRANCH_CREATED : RunItemResult.BRANCH_EXISTS;
+        item.addStep(new RunStep(ActionType.ENSURE_RELEASE, branchResult, s1, s1,
+                branchCreated ? "Created release branch: " + releaseBranch : "Release branch exists: " + releaseBranch));
 
+        Instant s2 = Instant.now(clock);
         GitBranchPort.MergeResult mergeResult = gitBranchPort.mergeBranch(
                 repoUrl, gitToken, featureBranch, releaseBranch,
                 "Merge " + featureBranch + " to " + releaseBranch + " for iteration " + iteration.getName());
 
-        if (mergeResult.status() == MergeStatus.SUCCESS) {
-            log.info("Merged feature branch {} to release branch {} for repo {}",
-                    featureBranch, releaseBranch, repoId.value());
-            windowIterationPort.updateLastMergeAt(
-                    releaseWindow.getId().value(),
-                    iterationKey.value(),
-                    now);
-        } else {
-            log.warn("Failed to merge feature branch {} to release branch {} for repo {}: {}",
-                    featureBranch, releaseBranch, repoId.value(), mergeResult.detail());
+        RunItemResult mergeOutcome;
+        String mergeMessage;
+        switch (mergeResult.status()) {
+            case SUCCESS -> {
+                mergeOutcome = RunItemResult.MERGED;
+                mergeMessage = "Merged " + featureBranch + " → " + releaseBranch;
+                windowIterationPort.updateLastMergeAt(
+                        releaseWindow.getId().value(), iterationKey.value(), Instant.now(clock));
+            }
+            case CONFLICT -> {
+                mergeOutcome = RunItemResult.MERGE_BLOCKED;
+                mergeMessage = "Merge conflict: " + mergeResult.detail();
+            }
+            default -> {
+                mergeOutcome = RunItemResult.FAILED;
+                mergeMessage = "Merge failed: " + mergeResult.detail();
+            }
         }
+        item.addStep(new RunStep(ActionType.TRY_MERGE, mergeOutcome, s2, s2, mergeMessage));
+        item.setExecutedOrder(item.getPlannedOrder());
+        item.finishWith(mergeOutcome, Instant.now(clock));
 
         windowIterationPort.updateReleaseBranch(
-                releaseWindow.getId().value(),
-                iterationKey.value(),
-                releaseBranch,
-                now);
+                releaseWindow.getId().value(), iterationKey.value(), releaseBranch, now);
     }
 
     @Transactional

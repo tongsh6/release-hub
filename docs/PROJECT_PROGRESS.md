@@ -86,20 +86,21 @@
 
 ## 质量基线
 
-> **对账时间**：2026-05-08（本次审计对账）。未运行时数据来自最近一次 `mvn verify` + `pnpm test:e2e` 执行记录。
+> **对账时间**：2026-05-09（运行时验证：`mvn test` + `npx vitest run` + `npx tsc --noEmit`）
+> 上次对账：2026-05-08（静态对账 + 文件系统对账）
 
 | 指标 | 数值 | 验证状态 |
 |------|------|---------|
-| 后端 Surefire（单元/组件测试） | 104 通过，0 失败（21 个测试套件） | ✅ 2026-05-08 静态对账（surefire-reports XML） |
-| 后端 Failsafe（API 集成 + E2E） | ~216 @Test 标注（17 API + 20 E2E + 2 IT 测试类），需 Docker/TestContainers | ⚠️ 2026-05-08 仅标注计数，未运行时验证 |
-| 前端 E2E（Playwright） | 16 test case（2 spec 文件：login 6 + slice-1-group-window 10） | ✅ 2026-05-08 文件系统对账 |
-| 前端 Pact 合约测试 | 5 个 pact spec 文件 | ⚠️ 未单独运行时验证 |
-| 前端 Vitest 单测 | 5 个 spec 文件 | ⚠️ 未单独运行时验证 |
-| SpotBugs (新引入) | 0 bugs | 需运行时确认 |
-| 前端 typecheck | ✅ | 需运行时确认 |
-| 前端 lint | ✅ | 需运行时确认 |
+| 后端 Surefire（单元/组件测试） | 106 通过，0 失败，5 跳过（2026-05-09 运行时 `mvn test`） | ✅ 2026-05-09 |
+| 后端 Failsafe（API 集成 + E2E） | 需 Docker/TestContainers，集成测试在 CI 环境运行 | ⚠️ 需容器环境 |
+| 前端 E2E（Playwright） | 16 test case（2 spec 文件），需浏览器环境 | ⚠️ 需浏览器环境 |
+| 前端 Pact 合约测试 | 5 个 pact spec 文件，需独立 Vitest 配置 | ⚠️ 需独立环境 |
+| 前端 Vitest 单测 | 18 通过，0 失败（5 个 spec 文件，2026-05-09 运行时 `npx vitest run`） | ✅ 2026-05-09 |
+| SpotBugs | 需运行时确认 | ⚠️ 未验证 |
+| 前端 typecheck | 0 错误（2026-05-09 运行时 `npx tsc --noEmit`） | ✅ 2026-05-09 |
+| 前端 lint | 需运行时确认 | ⚠️ 未验证 |
 | Git diff --check | ✅ | ✅ 2026-05-08 |
-| Git 工作区 | clean | ✅ 2026-05-08 |
+| Git 工作区 | clean | ✅ 2026-05-09 |
 | 静态扫描报告 | `.ai/reports/static-scan/` 5 份历史报告 | ✅ 2026-05-01 |
 
 ### 已知数据差异
@@ -124,8 +125,6 @@
 - ⚠️ WindowLifecycleListener 自动编排未持久化 Run（事务边界问题，不影响手动 API）
 
 ### 仍待处理
-- Attach 分支操作集成 Run 追踪（技术债务，择期处理）
-- RealGitLabFileAdapter 激活策略统一（当前使用 MockGitLabFileAdapter）
 - RBAC/通知/CI 深度集成 → 按用户反馈决定优先级
 
 ## 2026-05-09 治理推进
@@ -142,6 +141,25 @@
 - `GitTokenCrypto.verify()`：密钥错误时启动即失败（fail-fast），避免静默运行
 - `GitTokenAttributeConverter`：`Optional<GitTokenCrypto>` 注入，无加密时透传
 - `application.yml` 移除空默认密钥，消除密钥缺失时静默降级的安全隐患
+
+### Attach 分支操作集成 Run 追踪 ✅
+- `AttachAppService.attach()` 新增 `Run` 记录创建（`RunType.ATTACH_ITERATION`，领域层已预留）
+- 每个 repo 的分支操作生成一个 `RunItem`（含 ENSURE_RELEASE + TRY_MERGE 两个 Step）
+- 失败时 RunItem 记录失败原因，不影响 AttachResult 错误收集
+- `AttachAppServiceTest` 新增 `verify(runPort).save(any())` 断言
+
+### RealGitLabFileAdapter 激活策略统一 ✅
+- `RealGitLabFileAdapter` 补充 `matchIfMissing = false`，与 `RealGitLabBranchAdapter` 一致
+- Mock/Real 切换逻辑：`MockGitLabFileAdapter` 的 `matchIfMissing = true` → 默认激活 Mock
+
+### i18n 消息补齐 ✅
+- 补齐 8 个缺失的 i18n key：`rw.no_iterations`、`br.*` (6个)、`conflict.detected`
+- 中英文双份 `messages.properties` / `messages_zh_CN.properties` 均已补齐
+
+### 质量基线运行时验证 ✅
+- 后端 Surefire：**106 通过，0 失败，5 跳过**（`mvn test` 全量通过）
+- 前端 Vitest：**18 通过，0 失败**（5 个 spec 文件）
+- 前端 TypeScript typecheck：**0 错误**（`tsc --noEmit`）
 
 ### 已修复（上轮遗留）
 - SpotBugs EI_EXPOSE_REP ×6（`e1c5a31`）

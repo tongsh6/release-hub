@@ -34,7 +34,7 @@ import java.util.regex.Pattern;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "releasehub.gitlab.real-adapter", havingValue = "true")
+@ConditionalOnProperty(name = "releasehub.gitlab.real-adapter", havingValue = "true", matchIfMissing = false)
 public class RealGitLabFileAdapter implements GitLabFilePort {
 
     private final SettingsPort settingsPort;

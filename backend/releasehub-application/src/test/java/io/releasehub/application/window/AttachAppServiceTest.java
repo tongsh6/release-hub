@@ -8,6 +8,7 @@ import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.run.RunPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
@@ -59,6 +60,8 @@ class AttachAppServiceTest {
     private BranchRuleUseCase branchRuleUseCase;
     @Mock
     private GitBranchPort gitBranchPort;
+    @Mock
+    private RunPort runPort;
 
     private AttachAppService attachAppService;
 
@@ -66,7 +69,7 @@ class AttachAppServiceTest {
     void setUp() {
         attachAppService = new AttachAppService(
                 releaseWindowPort, iterationPort, windowIterationPort,
-                iterationRepoPort, gitBranchAdapterFactory, codeRepositoryPort, branchRuleUseCase
+                iterationRepoPort, gitBranchAdapterFactory, codeRepositoryPort, branchRuleUseCase, runPort
         );
     }
 
@@ -105,6 +108,7 @@ class AttachAppServiceTest {
         verify(gitBranchPort).mergeBranch(eq(repo.getCloneUrl()), eq(repo.getGitAccessToken()), eq("feature/ITER-1"), eq("release/RW-1"), any());
         verify(windowIterationPort).updateReleaseBranch(eq("window-1"), eq("ITER-1"), eq("release/RW-1"), any());
         verify(windowIterationPort).updateLastMergeAt(eq("window-1"), eq("ITER-1"), any());
+        verify(runPort).save(any());
     }
 
     @Test
