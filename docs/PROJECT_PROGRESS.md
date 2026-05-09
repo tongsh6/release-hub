@@ -1,9 +1,10 @@
 # ReleaseHub 项目进度分析
 
 > 分析时间：2026-05-02（全量更新，含 P0 治理收尾）
-> 对账时间：2026-05-09（编排 0 items 问题修复 + 加密可选化 + 诊断日志）
+> 对账时间：2026-05-09（全量对账 + 三层关联功能实现 + 验收脚本固化 + 索引补全）
 > 治理推进：2026-05-08（Token 加密 + 真实 GitLab 验收 + 台账修正）
-> 验收推进：2026-05-09（真实 GitLab 全链路验收 20/20 通过，v0.1.10 修复项全部验证）
+> 验收推进：2026-05-09（真实 GitLab 全链路验收 20/20 → 25 PASS，v0.1.10 修复项全部验证）
+> 功能推进：2026-05-09（迭代-仓库-分支三层关联 + BranchCreationMode 实现 + 验收脚本 v3）
 
 ## 总体概览
 
@@ -193,6 +194,38 @@
 ### ⚠️ 已知限制
 - 编排 0 items：feature 分支命名与 version-info 配置需对齐（非代码 bug，数据配置问题）
 - 版本更新链路：VERSION_UPDATE Run 需进一步排查配置
+
+## 2026-05-09 功能推进（v0.1.11）
+
+### 迭代-仓库-分支三层关联 ✅
+- 新增 `BranchCreationMode` 枚举（AUTO / NAMED / EXISTING）
+- `setupRepoForIteration()` 重构为 switch 三种模式
+- `create()` / `addRepos()` / `update()` 三个入口统一调用
+- 前端 `AddReposDialog` 新增分支创建模式选择器 + i18n 补齐
+- 新增 `GET /api/v1/repositories/{id}/branches` 端点 + `GitBranchPort.listBranches()` Port/Adapter
+- `feature/` 路径系统级兜底校验 + 保护分支黑名单
+- 移除 6 处 `"feature/{iterationKey}"` fallback，全部替换为 null-safety SKIP
+
+### 设计文档完善
+- 需求文档：`docs/requirements/in-progress/迭代仓库分支三层关联.md`
+- OpenSpec 提案：`docs/openspec/changes/add-branch-creation-mode/`（proposal + design + tasks + spec delta）
+
+### 文档治理收尾
+- README / project-plan / ADR-003 / openspec 测试数字和阶段描述与台账对齐
+- 退役项目文档中的 "MVP" 措辞
+- 澄清前端 E2E 覆盖状态（3 spec / 24 test case，历史 62 个 Puppeteer→Playwright 迁移）
+- `scripts/README.md` 新建脚本索引
+- `docs/AGENTS.md` 导航表补全 5 个缺失入口 + "验收前强制检查"规则
+
+### 验收脚本固化（v3）
+- `init-gitlab.sh`：git clone → GitLab API 替代，消除 Docker 502；幂等检查；stdout 污染修复
+- `run-acceptance.sh`：v2 → v3，新增场景 10（AUTO/NAMED/NAMED非法/EXISTING/Branches 端点验证），25 PASS
+- 脚本头部增加防 AI 绕过说明（5 个已知坑 + 必须先运行的警告）
+
+### 工程修复
+- 父 POM 从硬编码 `1.5.0` 改为 `${revision}${changelist}`（CI-friendly）
+- 子 POM parent 版本引用统一修正
+- `.mvn/maven.config` 新建（CI-friendly 版本属性）
 
 ## 相关文档
 
