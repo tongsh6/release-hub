@@ -94,7 +94,7 @@
 |------|------|---------|
 | 后端 Surefire（单元/组件测试） | 106 通过，0 失败，5 跳过（2026-05-09 运行时 `mvn test`） | ✅ 2026-05-09 |
 | 后端 Failsafe（API 集成 + E2E） | 需 Docker/TestContainers，集成测试在 CI 环境运行 | ⚠️ 需容器环境 |
-| 前端 E2E（Playwright） | 16 test case（2 spec 文件），需浏览器环境 | ⚠️ 需浏览器环境 |
+| 前端 E2E（Playwright） | 24 test case（3 spec 文件，2026-05-09 对账），需浏览器环境 | ⚠️ 需浏览器环境 |
 | 前端 Pact 合约测试 | 5 个 pact spec 文件，需独立 Vitest 配置 | ⚠️ 需独立环境 |
 | 前端 Vitest 单测 | 18 通过，0 失败（5 个 spec 文件，2026-05-09 运行时 `npx vitest run`） | ✅ 2026-05-09 |
 | SpotBugs | 需运行时确认 | ⚠️ 未验证 |
@@ -106,7 +106,11 @@
 
 ### 已知数据差异
 
-- ~~前端 E2E 62/62（6 套件）~~：经 2026-05-08 对账，当前 `frontend/e2e/tests/` 仅 2 个 spec 文件（16 test case）。旧数字可能来自历史 Playwright 全量套件（已合并/移除/迁移至 CI test-runner），待确认来源后补充说明。
+- ~~前端 E2E 62/62（6 套件）~~：经 2026-05-09 最终对账确认：
+  - 历史 62 个测试来自 Puppeteer 套件，于 `62e4484`（清理旧 Puppeteer 文件）中删除
+  - `4e7ee5c`（Slice 5 Playwright 迁移）将 9 个文件迁移至 Playwright，后合并为当前 3 个 spec 文件
+  - **当前实际**：3 spec / 24 test case（login 6 + slice-1-group-window 10 + slice-2-full-flow 8），覆盖登录、分组层级、窗口生命周期、全链路流程
+  - 结论：测试未丢失，系 Puppeteer→Playwright 迁移后的合并精简
 
 ## 2026-05-08 治理推进
 
