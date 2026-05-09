@@ -1,6 +1,36 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 全链路验收脚本 v2
+# ReleaseHub 全链路验收脚本 v3
+#
+# ╔═══════════════════════════════════════════════════════════╗
+# ║  ⚠️  重要提示：请先用本脚本，不要手工逐 API 调试验收  ⚠️  ║
+# ╚═══════════════════════════════════════════════════════════╝
+#
+# 为什么必须先用本脚本？
+#   - 它知道所有前置条件（GitLab 种子数据初始化、GitLab Settings 配置、
+#     Group/Repo/Window/Iteration 的依赖关系、feature 分支的创建时机）
+#   - 手工逐 API 调试容易踩的坑：
+#     1. GitLab 种子仓库为空 → 编排 produce 0 items（需先运行 init-gitlab.sh）
+#     2. GitLab Settings 未配置 → 部分 API 返回 500（需 POST /settings/gitlab）
+#     3. 仓库 cloneUrl 与 GitLab 实际项目路径不匹配 → 分支操作 404
+#     4. repo ID 来自过期数据库 → codeRepositoryPort.findById 返回空
+#     5. 冲突检测/编排 API 依赖前置数据（versionInfo、featureBranch）→ 500
+#   - 本脚本按正确顺序完成全部步骤，遇到失败会显式报告而非静默降级
+#   - 绕过本脚本的手工验证已经在 v0.1.10 验收中浪费了大量排查时间
+#
+# 能力清单（11 个场景，25+ 验收项）:
+#   0. 环境检查 + 脏数据检测
+#   1. 存量数据审计（Groups/Repos/Windows/Iterations/Runs/Token 加密）
+#   2. GitLab 种子数据初始化（幂等）
+#   3. 新增发布窗口全链路（Group → Repo → Window → Iteration）
+#   4. Attach 迭代 & GitLab 分支创建 & 错误可见性
+#   5. 冲突检测
+#   6. Publish & 自动编排 & WindowLifecycleListener 验证
+#   7. Run 执行详情
+#   8. 版本更新 & 校验
+#   9. 存量数据冒烟
+#  10. 分支创建模式验证（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
+#  11. 汇总报告
 #
 # 原则:
 #   1. 永不 DROP DATABASE / DELETE 数据（本地持久化模式）
@@ -382,8 +412,110 @@ info "历史窗口: $PREV_WINDOWS"
 # 验证旧的 Run 仍可查询
 [ "$RUN_TOTAL" -gt 1 ] && ok "历史 Run 可查询: total=$RUN_TOTAL" || info "Run 累积: $RUN_TOTAL"
 
-# ---- 10. 汇总 ----
-h2 "10. 验收汇总"
+# ---- 10. 场景: 分支创建模式（三层关联验证） ----
+h2 "10. 场景: 分支创建模式验证"
+
+# 10.1 AUTO 模式：创建迭代带仓库，无 repoConfigs → 默认 AUTO
+info "10.1 AUTO 模式（向后兼容）"
+AUTO_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"name\":\"验收-AUTO-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[\"$R1\"]}")
+AUTO_ITER_KEY=$(echo "$AUTO_ITER" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])" 2>/dev/null)
+[ -n "$AUTO_ITER_KEY" ] && ok "AUTO 迭代创建: $AUTO_ITER_KEY" || { no "AUTO 迭代创建失败"; AUTO_ITER_KEY=""; }
+
+if [ -n "$AUTO_ITER_KEY" ]; then
+    sleep 1
+    AUTO_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$AUTO_ITER_KEY/repos/$R1/version-info" -H "$AUTH")
+    AUTO_FB=$(echo "$AUTO_VINFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('featureBranch','NONE'))" 2>/dev/null)
+    if echo "$AUTO_FB" | grep -q "^feature/ITER-"; then
+        ok "AUTO featureBranch: $AUTO_FB"
+    else
+        no "AUTO featureBranch 异常: $AUTO_FB"
+    fi
+fi
+
+# 10.2 NAMED 模式：addRepos 时指定自定义分支名
+info "10.2 NAMED 模式（自定义分支名）"
+NAMED_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"name\":\"验收-NAMED-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
+NAMED_ITER_KEY=$(echo "$NAMED_ITER" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])" 2>/dev/null)
+[ -n "$NAMED_ITER_KEY" ] && ok "NAMED 迭代创建: $NAMED_ITER_KEY" || { no "NAMED 迭代创建失败"; NAMED_ITER_KEY=""; }
+
+if [ -n "$NAMED_ITER_KEY" ]; then
+    NAMED_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$NAMED_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"repoIds\":[\"$R2\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"feature/acceptance-named-$TS\"}")
+    NAMED_SUCCESS=$(echo "$NAMED_ADD" | python3 -c "import sys,json; print(json.load(sys.stdin)['success'])" 2>/dev/null)
+    [ "$NAMED_SUCCESS" = "True" ] && ok "NAMED addRepos 成功" || no "NAMED addRepos 失败"
+
+    sleep 1
+    NAMED_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$NAMED_ITER_KEY/repos/$R2/version-info" -H "$AUTH")
+    NAMED_FB=$(echo "$NAMED_VINFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('featureBranch','NONE'))" 2>/dev/null)
+    if echo "$NAMED_FB" | grep -q "acceptance-named"; then
+        ok "NAMED featureBranch: $NAMED_FB"
+    else
+        no "NAMED featureBranch 异常: $NAMED_FB"
+    fi
+fi
+
+# 10.3 NAMED 非法分支名：不在 feature/ 路径下 → 版本信息不保存
+info "10.3 NAMED 非法分支名校验"
+NAMED_ITER2=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"name\":\"验收-NAMED-BAD-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
+NAMED_ITER2_KEY=$(echo "$NAMED_ITER2" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])" 2>/dev/null)
+
+if [ -n "$NAMED_ITER2_KEY" ]; then
+    # 尝试用非法分支名（addRepos 吞异常，不抛出，但 versionInfo 不保存）
+    curl -s -X POST "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"repoIds\":[\"$R3\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"hotfix/bad-name\"}" > /dev/null
+
+    sleep 1
+    BAD_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos/$R3/version-info" -H "$AUTH")
+    BAD_CODE=$(echo "$BAD_VINFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code','?'))" 2>/dev/null)
+    if [ "$BAD_CODE" = "ITER_004" ]; then
+        ok "NAMED 非法分支名被拒绝（versionInfo 未保存）"
+    else
+        no "NAMED 非法分支名未被拦截: code=$BAD_CODE"
+    fi
+fi
+
+# 10.4 EXISTING 模式：关联已有分支（使用 AUTO 创建的分支）
+info "10.4 EXISTING 模式（关联已有分支）"
+if [ -n "$AUTO_FB" ] && [ -n "$R1" ]; then
+    EXISTING_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-EXISTING-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
+    EXISTING_ITER_KEY=$(echo "$EXISTING_ITER" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])" 2>/dev/null)
+
+    if [ -n "$EXISTING_ITER_KEY" ]; then
+        EXISTING_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"repoIds\":[\"$R1\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"$AUTO_FB\"}")
+        EXISTING_SUCCESS=$(echo "$EXISTING_ADD" | python3 -c "import sys,json; print(json.load(sys.stdin)['success'])" 2>/dev/null)
+        [ "$EXISTING_SUCCESS" = "True" ] && ok "EXISTING addRepos 成功" || no "EXISTING addRepos 失败"
+
+        sleep 1
+        EXISTING_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/$R1/version-info" -H "$AUTH")
+        EXISTING_FB=$(echo "$EXISTING_VINFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('featureBranch','NONE'))" 2>/dev/null)
+        if [ "$EXISTING_FB" = "$AUTO_FB" ]; then
+            ok "EXISTING featureBranch 正确映射: $EXISTING_FB"
+        else
+            no "EXISTING featureBranch 不匹配: expected=$AUTO_FB got=$EXISTING_FB"
+        fi
+    fi
+else
+    skip "EXISTING 跳过（AUTO 分支未就绪）"
+fi
+
+# 10.5 Branches 端点验证
+info "10.5 分支列表端点"
+BRANCHES=$(curl -s "$BACKEND/api/v1/repositories/$R1/branches?prefix=feature/" -H "$AUTH")
+BRANCHES_SUCCESS=$(echo "$BRANCHES" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success',False))" 2>/dev/null)
+if [ "$BRANCHES_SUCCESS" = "True" ]; then
+    BCOUNT=$(echo "$BRANCHES" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null)
+    ok "GET /branches 端点可用 (返回 $BCOUNT 个分支)"
+else
+    no "GET /branches 端点失败"
+fi
+
+# ---- 11. 汇总 ----
+h2 "11. 验收汇总"
 echo ""
 echo "  数据资产: $GROUP_COUNT groups | $REPO_COUNT repos | $WINDOW_COUNT windows | $ITER_COUNT iterations | $RUN_TOTAL runs"
 echo "  Token 安全: 加密=$ENCRYPTED_COUNT | 明文=$PLAINTEXT_COUNT | Flyway=$FLYWAY_V"

@@ -94,7 +94,7 @@ for p in json.load(sys.stdin or '[]'):
 " 2>/dev/null)
 
   if [ -n "$existing" ]; then
-    echo "  Repo $name already exists (id=$existing), reusing"
+    echo "  Repo $name already exists (id=$existing), reusing" >&2
     echo "$existing"
     return
   fi
@@ -107,7 +107,7 @@ for p in json.load(sys.stdin or '[]'):
     "$GITLAB_URL/api/v4/projects")
   local pid
   pid=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-  echo "  Created repo $name (id=$pid)"
+  echo "  Created repo $name (id=$pid)" >&2
   echo "$pid"
 }
 
@@ -125,268 +125,112 @@ for rid in $REPO1_ID $REPO2_ID $REPO3_ID; do
 done
 
 # ============================================================
-# Clone, seed files, create feature branches, push via git
+# Seed repository files and feature branches via API
 # ============================================================
 echo ""
-echo "=== Cloning repos and seeding via git ==="
+echo "=== Seeding repo files and feature branches via API ==="
 
 GITLAB_HOST_PORT=$(echo "$GITLAB_URL" | sed 's|^https\?://||')
-CLONE_BASE="http://oauth2:${E2E_TOKEN}@${GITLAB_HOST_PORT}/${TEST_USER}"
-SEED_DIR="/tmp/e2e-seed-repos"
-rm -rf "$SEED_DIR"
-mkdir -p "$SEED_DIR"
-
 CLONE_URL_REPO1="http://$GITLAB_HOST_PORT/$TEST_USER/seed-repo-1-maven.git"
 CLONE_URL_REPO2="http://$GITLAB_HOST_PORT/$TEST_USER/seed-repo-2-maven-multi.git"
 CLONE_URL_REPO3="http://$GITLAB_HOST_PORT/$TEST_USER/seed-repo-3-gradle.git"
 
+# Helper: create a file in a repo via GitLab API (base64 encoding to avoid JSON escaping issues)
+api_create_file() {
+  local pid=$1 branch=$2 path=$3 content=$4 msg=$5
+  local encoded_path=$(echo -n "$path" | python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read()))")
+  local b64_content=$(echo -n "$content" | base64)
+  curl -s -o /dev/null -w "%{http_code}" --request POST \
+    -H "PRIVATE-TOKEN: $E2E_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"branch\":\"$branch\",\"encoding\":\"base64\",\"content\":\"$b64_content\",\"commit_message\":\"$msg\"}" \
+    "$GITLAB_URL/api/v4/projects/$pid/repository/files/$encoded_path"
+}
+
+# Helper: create a branch via API
+api_create_branch() {
+  local pid=$1 branch=$2 ref=$3
+  curl -s -o /dev/null -w "%{http_code}" --request POST \
+    -H "PRIVATE-TOKEN: $E2E_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"branch\":\"$branch\",\"ref\":\"$ref\"}" \
+    "$GITLAB_URL/api/v4/projects/$pid/repository/branches"
+}
+
+# Check if repo already has content (non-empty tree) — idempotent guard
+repo_has_content() {
+  local pid=$1
+  local count=$(curl -s -H "PRIVATE-TOKEN: $E2E_TOKEN" \
+    "$GITLAB_URL/api/v4/projects/$pid/repository/tree?ref=main&per_page=1" | \
+    python3 -c "import sys,json; data=json.load(sys.stdin); print(len(data) if isinstance(data, list) else 0)" 2>/dev/null)
+  [ -n "$count" ] && [ "$count" -gt 0 ]
+}
+
 # ---- Repo 1: Maven single module ----
 echo "--- Repo 1: Maven single module ---"
-git clone "$CLONE_BASE/seed-repo-1-maven.git" "$SEED_DIR/repo1" 2>&1 | tail -1
-cd "$SEED_DIR/repo1"
+if repo_has_content "$REPO1_ID"; then
+  echo "  Repo 1 already has content, skipping seed"
+else
+  # Main branch: pom.xml v1.4.0
+  api_create_file "$REPO1_ID" "main" "pom.xml" \
+    '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-1</artifactId><version>1.4.0</version></project>' \
+    "seed: add pom.xml v1.4.0" > /dev/null
 
-mkdir -p src/main/java/com/e2e
-cat > pom.xml << 'XMLEOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <groupId>com.e2e</groupId>
-    <artifactId>seed-repo-1</artifactId>
-    <version>1.4.0</version>
-    <dependencies>
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <version>31.1-jre</version>
-        </dependency>
-    </dependencies>
-</project>
-XMLEOF
+  # feature/upgrade-guava: pom.xml v1.5.0
+  api_create_branch "$REPO1_ID" "feature/upgrade-guava" "main" > /dev/null
+  api_create_file "$REPO1_ID" "feature/upgrade-guava" "pom.xml" \
+    '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-1</artifactId><version>1.5.0</version></project>' \
+    "feat: bump to 1.5.0" > /dev/null
 
-cat > src/main/java/com/e2e/App.java << 'JAVAEOF'
-package com.e2e;
+  # feature/add-logging: pom.xml v1.4.1
+  api_create_branch "$REPO1_ID" "feature/add-logging" "main" > /dev/null
+  api_create_file "$REPO1_ID" "feature/add-logging" "pom.xml" \
+    '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-1</artifactId><version>1.4.1</version></project>' \
+    "feat: bump to 1.4.1" > /dev/null
 
-public class App {
-    public static void main(String[] args) {
-        System.out.println("Seed App v1.4.0");
-    }
-}
-JAVAEOF
-
-git add -A && git commit -m "seed: main branch baseline (v1.4.0)" --allow-empty 2>&1 | tail -1
-git push origin main 2>&1 | tail -1
-
-# feature/upgrade-guava
-git checkout -b feature/upgrade-guava main
-cat > pom.xml << 'XMLEOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <groupId>com.e2e</groupId>
-    <artifactId>seed-repo-1</artifactId>
-    <version>1.5.0</version>
-    <dependencies>
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <version>33.0.0-jre</version>
-        </dependency>
-    </dependencies>
-</project>
-XMLEOF
-
-git add pom.xml && git commit -m "feat: upgrade guava to 33.0.0, bump version to 1.5.0" 2>&1 | tail -1
-git push origin feature/upgrade-guava 2>&1 | tail -1
-
-# feature/add-logging
-git checkout -b feature/add-logging main
-cat > pom.xml << 'XMLEOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <groupId>com.e2e</groupId>
-    <artifactId>seed-repo-1</artifactId>
-    <version>1.4.1</version>
-    <dependencies>
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <version>31.1-jre</version>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>2.0.9</version>
-        </dependency>
-    </dependencies>
-</project>
-XMLEOF
-
-cat > src/main/java/com/e2e/Logger.java << 'JAVAEOF'
-package com.e2e;
-
-public class AppLogger {
-    public static void info(String msg) {
-        System.out.println("[INFO] " + msg);
-    }
-}
-JAVAEOF
-
-git add -A && git commit -m "feat: add slf4j logging, bump version to 1.4.1" 2>&1 | tail -1
-git push origin feature/add-logging 2>&1 | tail -1
-
-echo "  Repo 1 done"
+  echo "  Repo 1 seeded (3 branches)"
+fi
 
 # ---- Repo 2: Maven multi-module ----
 echo "--- Repo 2: Maven multi-module ---"
-git clone "$CLONE_BASE/seed-repo-2-maven-multi.git" "$SEED_DIR/repo2" 2>&1 | tail -1
-cd "$SEED_DIR/repo2"
+if repo_has_content "$REPO2_ID"; then
+  echo "  Repo 2 already has content, skipping seed"
+else
+  api_create_file "$REPO2_ID" "main" "pom.xml" \
+    '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-2-parent</artifactId><version>2.1.0</version><packaging>pom</packaging></project>' \
+    "seed: add parent pom v2.1.0" > /dev/null
 
-mkdir -p lib/src/main/java/com/e2e/lib
-cat > lib/src/main/java/com/e2e/lib/LibUtil.java << 'JAVAEOF'
-package com.e2e.lib;
+  api_create_branch "$REPO2_ID" "feature/update-lib" "main" > /dev/null
+  api_create_file "$REPO2_ID" "feature/update-lib" "pom.xml" \
+    '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-2-parent</artifactId><version>2.2.0</version><packaging>pom</packaging></project>' \
+    "feat: bump to 2.2.0" > /dev/null
 
-public class LibUtil {
-    public static String greet(String name) {
-        return "Hello, " + name + "!";
-    }
-}
-JAVAEOF
-
-git add -A && git commit -m "seed: add LibUtil.java" --allow-empty 2>&1 | tail -1
-git push origin main 2>&1 | tail -1
-
-# feature/update-lib
-git checkout -b feature/update-lib main
-cat > pom.xml << 'XMLEOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <groupId>com.e2e</groupId>
-    <artifactId>seed-repo-2-parent</artifactId>
-    <version>2.2.0</version>
-    <packaging>pom</packaging>
-    <modules><module>lib</module></modules>
-</project>
-XMLEOF
-
-cat > lib/pom.xml << 'XMLEOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>com.e2e</groupId>
-        <artifactId>seed-repo-2-parent</artifactId>
-        <version>2.2.0</version>
-    </parent>
-    <artifactId>seed-repo-2-lib</artifactId>
-</project>
-XMLEOF
-
-cat > lib/src/main/java/com/e2e/lib/LibUtil.java << 'JAVAEOF'
-package com.e2e.lib;
-
-public class LibUtil {
-    public static String greet(String name) {
-        return "Hello, " + name + "! (v2.2.0)";
-    }
-
-    public static int add(int a, int b) {
-        return a + b;
-    }
-}
-JAVAEOF
-
-git add -A && git commit -m "feat: bump version to 2.2.0, add LibUtil.add()" 2>&1 | tail -1
-git push origin feature/update-lib 2>&1 | tail -1
-
-echo "  Repo 2 done"
+  echo "  Repo 2 seeded (2 branches)"
+fi
 
 # ---- Repo 3: Gradle ----
 echo "--- Repo 3: Gradle ---"
-git clone "$CLONE_BASE/seed-repo-3-gradle.git" "$SEED_DIR/repo3" 2>&1 | tail -1
-cd "$SEED_DIR/repo3"
-
-mkdir -p src/main/java/com/e2e/gradle
-cat > build.gradle << 'GRADLEOF'
-plugins {
-    id("java")
-}
-
+if repo_has_content "$REPO3_ID"; then
+  echo "  Repo 3 already has content, skipping seed"
+else
+  api_create_file "$REPO3_ID" "main" "build.gradle" \
+    'plugins { id("java") }
 group = "com.e2e"
-version = "3.0.0"
+version = "3.0.0"' \
+    "seed: add build.gradle v3.0.0" > /dev/null
 
-repositories {
-    mavenCentral()
-}
-
-dependencies {
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
-}
-GRADLEOF
-
-cat > src/main/java/com/e2e/gradle/GradleApp.java << 'JAVAEOF'
-package com.e2e.gradle;
-
-public class GradleApp {
-    public static void main(String[] args) {
-        System.out.println("Gradle App v3.0.0");
-    }
-}
-JAVAEOF
-
-git add -A && git commit -m "seed: add build.gradle and GradleApp.java" --allow-empty 2>&1 | tail -1
-git push origin main 2>&1 | tail -1
-
-# feature/kotlin-support
-git checkout -b feature/kotlin-support main
-cat > gradle.properties << 'PROPEOF'
-version=3.1.0
-PROPEOF
-
-cat > build.gradle << 'GRADLEOF'
-plugins {
-    id("java")
-    id("org.jetbrains.kotlin.jvm") version "1.9.20"
-}
-
+  api_create_branch "$REPO3_ID" "feature/kotlin-support" "main" > /dev/null
+  api_create_file "$REPO3_ID" "feature/kotlin-support" "gradle.properties" \
+    "version=3.1.0" \
+    "feat: add gradle.properties v3.1.0" > /dev/null
+  api_create_file "$REPO3_ID" "feature/kotlin-support" "build.gradle" \
+    'plugins { id("java") }
 group = "com.e2e"
-version = "3.1.0"
+version = "3.1.0"' \
+    "feat: bump build.gradle to 3.1.0" > /dev/null
 
-repositories {
-    mavenCentral()
-}
-
-dependencies {
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.20")
-}
-GRADLEOF
-
-cat > src/main/java/com/e2e/gradle/GradleApp.java << 'JAVAEOF'
-package com.e2e.gradle;
-
-public class GradleApp {
-    public static void main(String[] args) {
-        System.out.println("Gradle App v3.1.0 (+Kotlin support)");
-    }
-}
-JAVAEOF
-
-git add -A && git commit -m "feat: add Kotlin plugin, bump version to 3.1.0" 2>&1 | tail -1
-git push origin feature/kotlin-support 2>&1 | tail -1
-
-echo "  Repo 3 done"
+  echo "  Repo 3 seeded (2 branches)"
+fi
 
 # ============================================================
 # Summary & export
