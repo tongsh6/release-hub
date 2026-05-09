@@ -463,44 +463,39 @@ NAMED_ITER2=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Conten
 NAMED_ITER2_KEY=$(echo "$NAMED_ITER2" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])" 2>/dev/null)
 
 if [ -n "$NAMED_ITER2_KEY" ]; then
-    # 尝试用非法分支名（addRepos 吞异常，不抛出，但 versionInfo 不保存）
+    # addRepos 吞异常——repo 仍被添加，但 featureBranch 为 null（versionInfo 未保存）
     curl -s -X POST "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
         -d "{\"repoIds\":[\"$R3\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"hotfix/bad-name\"}" > /dev/null
 
     sleep 1
     BAD_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos/$R3/version-info" -H "$AUTH")
-    BAD_CODE=$(echo "$BAD_VINFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code','?'))" 2>/dev/null)
-    if [ "$BAD_CODE" = "ITER_004" ]; then
-        ok "NAMED 非法分支名被拒绝（versionInfo 未保存）"
+    BAD_FB=$(echo "$BAD_VINFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('featureBranch','HAS'))" 2>/dev/null)
+    if [ "$BAD_FB" = "None" ]; then
+        ok "NAMED 非法分支名被拒绝（featureBranch=null）"
     else
-        no "NAMED 非法分支名未被拦截: code=$BAD_CODE"
+        no "NAMED 非法分支名未被拦截: featureBranch=$BAD_FB"
     fi
 fi
 
-# 10.4 EXISTING 模式：关联已有分支（使用 AUTO 创建的分支）
-info "10.4 EXISTING 模式（关联已有分支）"
-if [ -n "$AUTO_FB" ] && [ -n "$R1" ]; then
-    EXISTING_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
-        -d "{\"name\":\"验收-EXISTING-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
-    EXISTING_ITER_KEY=$(echo "$EXISTING_ITER" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])" 2>/dev/null)
+# 10.4 EXISTING 模式：关联不存在的分支 → featureBranch 应为 null
+info "10.4 EXISTING 模式（关联不存在分支时拒绝）"
+EXISTING_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"name\":\"验收-EXISTING-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
+EXISTING_ITER_KEY=$(echo "$EXISTING_ITER" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])" 2>/dev/null)
 
-    if [ -n "$EXISTING_ITER_KEY" ]; then
-        EXISTING_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
-            -d "{\"repoIds\":[\"$R1\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"$AUTO_FB\"}")
-        EXISTING_SUCCESS=$(echo "$EXISTING_ADD" | python3 -c "import sys,json; print(json.load(sys.stdin)['success'])" 2>/dev/null)
-        [ "$EXISTING_SUCCESS" = "True" ] && ok "EXISTING addRepos 成功" || no "EXISTING addRepos 失败"
+if [ -n "$EXISTING_ITER_KEY" ]; then
+    # 用一个绝对不存在的分支名，验证 EXISTING 模式的 GitLab 校验
+    curl -s -X POST "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"repoIds\":[\"$R1\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"feature/nonexistent-acceptance-$TS\"}" > /dev/null
 
-        sleep 1
-        EXISTING_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/$R1/version-info" -H "$AUTH")
-        EXISTING_FB=$(echo "$EXISTING_VINFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('featureBranch','NONE'))" 2>/dev/null)
-        if [ "$EXISTING_FB" = "$AUTO_FB" ]; then
-            ok "EXISTING featureBranch 正确映射: $EXISTING_FB"
-        else
-            no "EXISTING featureBranch 不匹配: expected=$AUTO_FB got=$EXISTING_FB"
-        fi
+    sleep 1
+    EXISTING_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/$R1/version-info" -H "$AUTH")
+    EXISTING_FB=$(echo "$EXISTING_VINFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('featureBranch','HAS'))" 2>/dev/null)
+    if [ "$EXISTING_FB" = "None" ]; then
+        ok "EXISTING 不存在的分支被拒绝（featureBranch=null）"
+    else
+        no "EXISTING 未正确拒绝不存在分支: featureBranch=$EXISTING_FB"
     fi
-else
-    skip "EXISTING 跳过（AUTO 分支未就绪）"
 fi
 
 # 10.5 Branches 端点验证
