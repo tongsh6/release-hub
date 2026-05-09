@@ -18,12 +18,17 @@
 
 | 目录 | 用途 | 何时加载 |
 |------|------|----------|
+| [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) | 项目事实台账（权威基线） | **每次会话首次加载**，判断项目阶段和已完成事项 |
 | [context/](context/INDEX.md) | 项目知识库（长期记忆） | 理解业务/技术背景 |
 | [context/experience/](context/experience/INDEX.md) | 经验索引（可检索） | 实现类任务前必读 |
 | [requirements/](requirements/INDEX.md) | 需求管理 | 日常需求跟踪 |
 | [openspec/](openspec/AGENTS.md) | 规范驱动开发 | 规划/提案/规范变更 |
 | [context/tech/REPO_SNAPSHOT.md](context/tech/REPO_SNAPSHOT.md) | 仓库快照（快速理解） | 首次会话/快速定位 |
 | [workflow/](workflow/INDEX.md) | 工作流阶段定义 | 理解流程/阶段路由 |
+| [adr/](adr/README.md) | 架构决策记录（3 个 ADR） | 理解架构选型背景 |
+| [reports/](reports/) | 验收报告（v0.1.9 / v0.1.10） | 了解验收状态 |
+| [../scripts/](../scripts/README.md) | 脚本索引（验收/环境/扫描） | **验收前必读，不要手工逐 API 调试** |
+| [../tasks/](../tasks/README.md) | 任务追踪（蓝图/切片/执行日志） | 理解当前推进计划 |
 | [context/tech/architecture/ai-engineering-governance.md](context/tech/architecture/ai-engineering-governance.md) | AI 工程治理准则（长期演进原则） | **任何实现类任务前必读** |
 | [.ai/standards/](.ai/standards/AIEF_EXTENSION_PROPOSAL.md) | AIEF 标准规范与可复用模式 | 扩展 AI 工程化框架 |
 | [.ai-adapters/](.ai-adapters/README.md) | 多工具适配层 | 配置/对齐 AI 工具 |
@@ -211,6 +216,27 @@ context/experience/lessons/release-window-lifecycle.md
 "使用领域事件 + 状态机模式，冻结作为横切关注点"
 ↓ 执行任务（避免踩坑）
 ```
+
+### 验收前强制检查（P0）
+
+当 AI 需要验证项目功能是否正常工作时，**禁止手工逐 API 调试验收**。必须先检查并使用现成的验收脚本：
+
+```bash
+# 第一步：运行全链路验收（11 场景 / 25+ 验收项）
+bash scripts/acceptance/run-acceptance.sh
+
+# 第二步：查看验收报告
+ls docs/reports/acceptance-*.md
+```
+
+手工逐 API 调试已知会踩的坑：
+1. GitLab 种子仓库为空 → 编排 produce 0 items（需先运行 init-gitlab.sh）
+2. GitLab Settings 未配置 → 部分 API 返回 500（需 POST /settings/gitlab）
+3. 仓库 cloneUrl 与 GitLab 项目路径不匹配 → 分支操作 404
+4. repo ID 来自过期数据库 → codeRepositoryPort.findById 返回空
+5. 冲突检测/编排 API 依赖前置数据（versionInfo、featureBranch）→ 500
+
+这些前置条件在 `run-acceptance.sh` 中已全部处理。绕过它的手工验证在 v0.1.10 验收中已浪费大量时间。详见 [scripts/README.md](../scripts/README.md)。
 
 ### 经验沉淀（任务完成后）
 
