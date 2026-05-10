@@ -72,6 +72,65 @@ h2()   { echo ""; echo -e "${CYAN}=== $* ===${NC}"; }
 
 die() { echo -e "${RED}FATAL: $*${NC}"; exit 1; }
 
+# 等待异步任务完成并校验结果
+# Usage: wait_for_run <run_id> <timeout_sec>
+wait_for_run() {
+    local run_id=$1
+    local timeout=${2:-30}
+    local start_time=$(date +%s)
+    local status="RUNNING"
+    
+    while [ "$status" = "RUNNING" ]; do
+        local now=$(date +%s)
+        if [ $((now - start_time)) -gt $timeout ]; then
+            echo "TIMEOUT"
+            return 1
+        fi
+        
+        local resp=$(curl -s "$BACKEND/api/v1/runs/$run_id" -H "$AUTH")
+        status=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data', {}).get('status', 'FAILED'))")
+        
+        if [ "$status" = "RUNNING" ]; then
+            sleep 1
+        fi
+    done
+    
+    echo "$status"
+}
+
+# 验证 GitLab 侧是否产生了预期的 Commit
+# Usage: verify_gitlab_commit <repo_clone_url> <branch> <message_keyword>
+verify_gitlab_commit() {
+    local clone_url=$1
+    local branch=$2
+    local keyword=$3
+    
+    # 从 clone_url 提取 project_path (e.g. http://.../group/project.git -> group/project)
+    local project_path=$(echo "$clone_url" | sed -E 's|https?://[^/]+/||; s|\.git$||')
+    local encoded_path=$(echo "$project_path" | python3 -c "import sys, urllib.parse; print(python3 urllib.parse.quote(sys.stdin.read().strip(), safe=''))" 2>/dev/null || echo "$project_path" | sed 's|/|%2F|g')
+    
+    # 获取 GitLab Token (假设系统设置中已配置，脚本直接通过 API 读取)
+    local gl_token=$(curl -s "$BACKEND/api/v1/settings/gitlab" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('token',''))")
+    
+    if [ -z "$gl_token" ] || [ "$gl_token" = "null" ]; then
+        echo "MISSING_TOKEN"
+        return 1
+    fi
+
+    # 查询最近的 Commit
+    local endpoint="$GITLAB/api/v4/projects/$encoded_path/repository/commits?ref_name=$branch&per_page=5"
+    local commits=$(curl -s -H "PRIVATE-TOKEN: $gl_token" "$endpoint")
+    
+    echo "$commits" | python3 -c "
+import sys,json
+keyword = '$keyword'
+commits = json.load(sys.stdin)
+if not isinstance(commits, list): sys.exit(1)
+found = any(keyword.lower() in c.get('title','').lower() for c in commits)
+print('FOUND' if found else 'NOT_FOUND')
+"
+}
+
 auth() {
     local resp=$(curl -s -X POST "$BACKEND/api/v1/auth/login" \
         -H "Content-Type: application/json" -d '{"username":"admin","password":"admin"}')
@@ -345,7 +404,20 @@ sleep 2
 ORCH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"repoIds\":[\"$R1\",\"$R2\",\"$R3\"],\"iterationKeys\":[\"$ITER_KEY\"],\"failFast\":false,\"operator\":\"acceptance-$TS\"}")
 ORCH_SUCCESS=$(echo "$ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin)['success'])" 2>/dev/null)
-[ "$ORCH_SUCCESS" = "True" ] && ok "Orchestrate 成功" || no "Orchestrate 失败"
+
+if [ "$ORCH_SUCCESS" = "True" ]; then
+    ORCH_RUN_ID=$(echo "$ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'])" 2>/dev/null)
+    info "Orchestrate 已启动 (run=$ORCH_RUN_ID)，正在等待执行结果..."
+    
+    FINAL_ORCH_STATUS=$(wait_for_run "$ORCH_RUN_ID" 60)
+    if [ "$FINAL_ORCH_STATUS" = "SUCCESS" ]; then
+        ok "Orchestrate 执行成功 (Run status: $FINAL_ORCH_STATUS)"
+    else
+        no "Orchestrate 执行失败 (Run status: $FINAL_ORCH_STATUS)"
+    fi
+else
+    no "Orchestrate 启动失败"
+fi
 
 # ---- 7. 场景: Run 详情 ----
 h2 "7. 场景: Run 执行详情"
@@ -391,7 +463,29 @@ VERSION_UPDATE=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/exe
 VU_SUCCESS=$(echo "$VERSION_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success','?'))" 2>/dev/null)
 if [ "$VU_SUCCESS" = "True" ]; then
     VU_RUN_ID=$(echo "$VERSION_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['runId'])" 2>/dev/null)
-    ok "版本更新已执行 (run=$VU_RUN_ID)"
+    info "版本更新已启动 (run=$VU_RUN_ID)，正在等待执行结果..."
+    
+    FINAL_STATUS=$(wait_for_run "$VU_RUN_ID" 45)
+    if [ "$FINAL_STATUS" = "SUCCESS" ]; then
+        ok "版本更新执行成功 (Run status: $FINAL_STATUS)"
+        
+        # 增加 Git 远程校验
+        REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))")
+        WINDOW_KEY=$(curl -s "$BACKEND/api/v1/release-windows/$WINDOW_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))")
+        
+        # 预期的分支名（与后端逻辑一致）
+        TARGET_BRANCH="release/$WINDOW_KEY"
+        
+        GIT_COMMIT=$(verify_gitlab_commit "$REPO_URL" "$TARGET_BRANCH" "ReleaseHub: Update")
+        if [ "$GIT_COMMIT" = "FOUND" ]; then
+            ok "Git 远程校验成功: 已发现版本更新 Commit"
+        else
+            warn "Git 远程校验未确认: 可能是分支名或 Commit Message 匹配问题 ($GIT_COMMIT)"
+        fi
+    else
+        no "版本更新执行失败 (Run status: $FINAL_STATUS)"
+        info "错误详情: $(curl -s "$BACKEND/api/v1/runs/$VU_RUN_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('items',[{}])[0].get('message','?'))")"
+    fi
 else
     ERR=$(echo "$VERSION_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('message','?'))" 2>/dev/null || echo "?")
     skip "版本更新未执行: $ERR"
