@@ -124,6 +124,37 @@ public class RealGitLabFileAdapter implements GitLabFilePort {
         }
     }
 
+    @Override
+    public boolean updateFile(String repoCloneUrl, String branch, String filePath, String content, String commitMessage) {
+        final RepoRef ref = parseRepoRef(repoCloneUrl);
+        final String token = getToken();
+
+        String encodedFilePath = urlEncode(filePath);
+        URI uri = URI.create(String.format("%s/api/v4/projects/%s/repository/files/%s",
+                ref.baseUrl, ref.encodedPath, encodedFilePath));
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("PRIVATE-TOKEN", token);
+            headers.set("Content-Type", "application/json");
+
+            Map<String, String> body = Map.of(
+                    "branch", branch,
+                    "content", content,
+                    "commit_message", commitMessage
+            );
+
+            restTemplate.exchange(uri, HttpMethod.PUT, new HttpEntity<>(body, headers), Void.class);
+            log.info("Successfully updated file {} in repo {} branch {}", filePath, repoCloneUrl, branch);
+            return true;
+
+        } catch (Exception e) {
+            log.error("Error updating file {} in repo {} branch {}: {}",
+                    filePath, repoCloneUrl, branch, e.getMessage(), e);
+            return false;
+        }
+    }
+
     private String getToken() {
         var settings = settingsPort.getGitLab();
         if (settings.isEmpty()) {

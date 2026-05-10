@@ -8,6 +8,7 @@ import io.releasehub.domain.version.BuildTool;
  */
 public record VersionUpdateRequest(
         RepoId repoId,
+        String branchName,
         String repoPath,
         BuildTool buildTool,
         String targetVersion,
@@ -17,14 +18,15 @@ public record VersionUpdateRequest(
     /**
      * 创建 Maven 版本更新请求
      */
-    public static VersionUpdateRequest forMaven(RepoId repoId, String repoPath, String targetVersion, String pomPath) {
-        return new VersionUpdateRequest(repoId, repoPath, BuildTool.MAVEN, targetVersion, pomPath, null);
+    public static VersionUpdateRequest forMaven(RepoId repoId, String branchName, String repoPath, String targetVersion, String pomPath) {
+        return new VersionUpdateRequest(repoId, branchName, repoPath, BuildTool.MAVEN, targetVersion, pomPath, null);
     }
 
     /**
      * 创建 Gradle 版本更新请求
      */
-    public static VersionUpdateRequest forGradle(RepoId repoId, String repoPath, String targetVersion, String gradlePropertiesPath) {
-        return new VersionUpdateRequest(repoId, repoPath, BuildTool.GRADLE, targetVersion, null, gradlePropertiesPath);
+    public static VersionUpdateRequest forGradle(RepoId repoId, String branchName, String repoPath, String targetVersion, String gradlePropertiesPath) {
+        return new VersionUpdateRequest(repoId, branchName, repoPath, BuildTool.GRADLE, targetVersion, null, gradlePropertiesPath);
     }
 }
+

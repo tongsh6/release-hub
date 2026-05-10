@@ -1,5 +1,7 @@
 package io.releasehub.infrastructure.version;
 
+import io.releasehub.application.port.out.GitLabFilePort;
+import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
 import io.releasehub.domain.repo.RepoId;
@@ -7,6 +9,8 @@ import io.releasehub.domain.version.BuildTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,11 +28,19 @@ class GradleVersionUpdaterTest {
 
     @TempDir
     Path tempDir;
+    
+    @Mock
+    private GitLabFilePort gitLabFilePort;
+    
+    @Mock
+    private CodeRepositoryPort codeRepositoryPort;
+    
     private GradleVersionUpdaterAdapter updater;
 
     @BeforeEach
     void setUp() {
-        updater = new GradleVersionUpdaterAdapter();
+        MockitoAnnotations.openMocks(this);
+        updater = new GradleVersionUpdaterAdapter(gitLabFilePort, codeRepositoryPort);
     }
 
     @Test
@@ -50,6 +62,7 @@ class GradleVersionUpdaterTest {
 
         VersionUpdateRequest request = VersionUpdateRequest.forGradle(
                 RepoId.newId(),
+                null,
                 tempDir.toString(),
                 "1.2.3",
                 propertiesFile.toString()
@@ -74,6 +87,7 @@ class GradleVersionUpdaterTest {
     void should_fail_when_properties_not_found() {
         VersionUpdateRequest request = VersionUpdateRequest.forGradle(
                 RepoId.newId(),
+                null,
                 tempDir.toString(),
                 "1.2.3",
                 tempDir.resolve("nonexistent.properties").toString()
@@ -97,6 +111,7 @@ class GradleVersionUpdaterTest {
 
         VersionUpdateRequest request = VersionUpdateRequest.forGradle(
                 RepoId.newId(),
+                null,
                 tempDir.toString(),
                 "1.2.3",
                 propertiesFile.toString()
@@ -123,6 +138,7 @@ class GradleVersionUpdaterTest {
         // 不创建 gradle.properties
         VersionUpdateRequest request = VersionUpdateRequest.forGradle(
                 RepoId.newId(),
+                null,
                 tempDir.toString(),
                 "1.2.3",
                 null
@@ -149,6 +165,7 @@ class GradleVersionUpdaterTest {
 
         VersionUpdateRequest request = VersionUpdateRequest.forGradle(
                 RepoId.newId(),
+                null,
                 tempDir.toString(),
                 "2.0.0",
                 propertiesFile.toString()

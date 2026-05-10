@@ -1,14 +1,20 @@
 package io.releasehub.infrastructure.version;
 
+import io.releasehub.application.port.out.GitLabFilePort;
+import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
 import io.releasehub.application.version.VersionUpdaterPort;
 import io.releasehub.common.exception.BaseException;
+import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.version.BuildTool;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -23,33 +29,41 @@ import java.util.Properties;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class GradleVersionUpdaterAdapter implements VersionUpdaterPort {
+
+    private final GitLabFilePort gitLabFilePort;
+    private final CodeRepositoryPort codeRepositoryPort;
 
     @Override
     public VersionUpdateResult update(VersionUpdateRequest request) {
         try {
+            FileOperator operator = getOperator(request);
+            
             // 优先使用 gradle.properties
             String gradlePropertiesPath = request.gradlePropertiesPath() != null
                     ? request.gradlePropertiesPath()
-                    : Paths.get(request.repoPath(), "gradle.properties").toString();
-            
-            Path gradlePropertiesFile = Paths.get(gradlePropertiesPath);
+                    : (request.repoPath() != null && !request.repoPath().equals(".") 
+                        ? Paths.get(request.repoPath(), "gradle.properties").toString()
+                        : "gradle.properties");
             
             // 检查 gradle.properties 是否存在
-            if (Files.exists(gradlePropertiesFile)) {
-                return updateGradleProperties(gradlePropertiesFile, request.targetVersion());
+            if (operator.exists(gradlePropertiesPath)) {
+                return updateGradleProperties(operator, gradlePropertiesPath, request.targetVersion());
             }
             
             // 如果 gradle.properties 不存在，检查 build.gradle
-            Path buildGradleFile = Paths.get(request.repoPath(), "build.gradle");
-            if (Files.exists(buildGradleFile)) {
+            String buildGradlePath = (request.repoPath() != null && !request.repoPath().equals(".")
+                    ? Paths.get(request.repoPath(), "build.gradle").toString()
+                    : "build.gradle");
+            if (operator.exists(buildGradlePath)) {
                 // 检查 build.gradle 中是否有版本定义
-                String buildGradleContent = Files.readString(buildGradleFile);
+                String buildGradleContent = operator.read(buildGradlePath);
                 if (containsVersionDefinition(buildGradleContent)) {
                     return VersionUpdateResult.failure(
                             "检测到版本定义在 build.gradle 中，当前版本不支持此场景。\n" +
                             "建议：将版本定义迁移到 gradle.properties 文件中（格式：version=1.0.0），或手动更新版本。",
-                            buildGradleFile.toString()
+                            buildGradlePath
                     );
                 }
             }
@@ -75,6 +89,63 @@ public class GradleVersionUpdaterAdapter implements VersionUpdaterPort {
         }
     }
 
+    private FileOperator getOperator(VersionUpdateRequest request) {
+        if (request.branchName() != null) {
+            CodeRepository repo = codeRepositoryPort.findById(request.repoId()).orElse(null);
+            if (repo != null && repo.getCloneUrl() != null) {
+                return new RemoteFileOperator(gitLabFilePort, repo.getCloneUrl(), request.branchName());
+            }
+        }
+        return new LocalFileOperator();
+    }
+
+    private interface FileOperator {
+        String read(String path) throws Exception;
+        void write(String path, String content) throws Exception;
+        boolean exists(String path);
+    }
+
+    @RequiredArgsConstructor
+    private static class RemoteFileOperator implements FileOperator {
+        private final GitLabFilePort gitLabFilePort;
+        private final String repoCloneUrl;
+        private final String branch;
+
+        @Override
+        public String read(String path) {
+            return gitLabFilePort.readFile(repoCloneUrl, branch, path)
+                    .orElseThrow(() -> new RuntimeException("File not found on GitLab: " + path));
+        }
+
+        @Override
+        public void write(String path, String content) {
+            boolean ok = gitLabFilePort.updateFile(repoCloneUrl, branch, path, content, "ReleaseHub: Update version");
+            if (!ok) throw new RuntimeException("Failed to update file on GitLab: " + path);
+        }
+
+        @Override
+        public boolean exists(String path) {
+            return gitLabFilePort.fileExists(repoCloneUrl, branch, path);
+        }
+    }
+
+    private static class LocalFileOperator implements FileOperator {
+        @Override
+        public String read(String path) throws Exception {
+            return Files.readString(Paths.get(path));
+        }
+
+        @Override
+        public void write(String path, String content) throws Exception {
+            Files.writeString(Paths.get(path), content);
+        }
+
+        @Override
+        public boolean exists(String path) {
+            return Files.exists(Paths.get(path));
+        }
+    }
+
     @Override
     public boolean supports(BuildTool buildTool) {
         return buildTool == BuildTool.GRADLE;
@@ -83,28 +154,25 @@ public class GradleVersionUpdaterAdapter implements VersionUpdaterPort {
     /**
      * 更新 gradle.properties 文件中的版本
      */
-    private VersionUpdateResult updateGradleProperties(Path gradlePropertiesFile, String newVersion) throws IOException {
+    private VersionUpdateResult updateGradleProperties(FileOperator operator, String gradlePropertiesPath, String newVersion) throws Exception {
         // 读取原始内容
-        String originalContent = Files.readString(gradlePropertiesFile);
+        String originalContent = operator.read(gradlePropertiesPath);
         
         // 解析 Properties
         Properties properties = new Properties();
-        properties.load(Files.newInputStream(gradlePropertiesFile));
+        properties.load(new ByteArrayInputStream(originalContent.getBytes(StandardCharsets.UTF_8)));
         
         String oldVersion = properties.getProperty("version");
-            if (oldVersion == null) {
-                return VersionUpdateResult.failure(
-                        "gradle.properties 文件中未找到 version 属性。请确保文件包含 'version=...' 配置。",
-                        gradlePropertiesFile.toString()
-                );
-            }
-        
-        // 更新版本
-        properties.setProperty("version", newVersion);
+        if (oldVersion == null) {
+            return VersionUpdateResult.failure(
+                    "gradle.properties 文件中未找到 version 属性。请确保文件包含 'version=...' 配置。",
+                    gradlePropertiesPath
+            );
+        }
         
         // 生成更新后的内容
         StringBuilder updatedContent = new StringBuilder();
-        List<String> originalLines = Files.readAllLines(gradlePropertiesFile);
+        String[] originalLines = originalContent.split("\\r?\\n");
         
         for (String line : originalLines) {
             String trimmed = line.trim();
@@ -124,11 +192,11 @@ public class GradleVersionUpdaterAdapter implements VersionUpdaterPort {
         String diff = generateDiff(originalContent, updatedContent.toString());
         
         // 写回文件
-        Files.writeString(gradlePropertiesFile, updatedContent.toString());
+        operator.write(gradlePropertiesPath, updatedContent.toString());
         
-        log.info("Updated Gradle version from {} to {} in {}", oldVersion, newVersion, gradlePropertiesFile);
+        log.info("Updated Gradle version from {} to {} in {}", oldVersion, newVersion, gradlePropertiesPath);
         
-        return VersionUpdateResult.success(oldVersion, newVersion, diff, gradlePropertiesFile.toString());
+        return VersionUpdateResult.success(oldVersion, newVersion, diff, gradlePropertiesPath);
     }
 
     /**

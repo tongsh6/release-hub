@@ -24,4 +24,15 @@ public interface GitLabFilePort {
      * @return 是否存在
      */
     boolean fileExists(String repoCloneUrl, String branch, String filePath);
+
+    /**
+     * 更新 GitLab 仓库中的文件内容
+     * @param repoCloneUrl 仓库克隆地址
+     * @param branch 分支名
+     * @param filePath 文件路径
+     * @param content 新内容
+     * @param commitMessage 提交信息
+     * @return 是否成功
+     */
+    boolean updateFile(String repoCloneUrl, String branch, String filePath, String content, String commitMessage);
 }

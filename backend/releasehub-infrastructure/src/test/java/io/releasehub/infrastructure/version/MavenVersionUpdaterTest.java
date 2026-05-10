@@ -1,5 +1,7 @@
 package io.releasehub.infrastructure.version;
 
+import io.releasehub.application.port.out.GitLabFilePort;
+import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
 import io.releasehub.domain.repo.RepoId;
@@ -7,6 +9,8 @@ import io.releasehub.domain.version.BuildTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,11 +28,19 @@ class MavenVersionUpdaterTest {
 
     @TempDir
     Path tempDir;
+    
+    @Mock
+    private GitLabFilePort gitLabFilePort;
+    
+    @Mock
+    private CodeRepositoryPort codeRepositoryPort;
+    
     private MavenVersionUpdaterAdapter updater;
 
     @BeforeEach
     void setUp() {
-        updater = new MavenVersionUpdaterAdapter();
+        MockitoAnnotations.openMocks(this);
+        updater = new MavenVersionUpdaterAdapter(gitLabFilePort, codeRepositoryPort);
     }
 
     @Test
@@ -58,6 +70,7 @@ class MavenVersionUpdaterTest {
 
         VersionUpdateRequest request = VersionUpdateRequest.forMaven(
                 RepoId.newId(),
+                null,
                 tempDir.toString(),
                 "1.2.3",
                 pomFile.toString()
@@ -82,6 +95,7 @@ class MavenVersionUpdaterTest {
     void should_fail_when_pom_not_found() {
         VersionUpdateRequest request = VersionUpdateRequest.forMaven(
                 RepoId.newId(),
+                null,
                 tempDir.toString(),
                 "1.2.3",
                 tempDir.resolve("nonexistent.xml").toString()
@@ -111,6 +125,7 @@ class MavenVersionUpdaterTest {
 
         VersionUpdateRequest request = VersionUpdateRequest.forMaven(
                 RepoId.newId(),
+                null,
                 tempDir.toString(),
                 "1.2.3",
                 pomFile.toString()
@@ -181,6 +196,7 @@ class MavenVersionUpdaterTest {
 
         VersionUpdateRequest request = VersionUpdateRequest.forMaven(
                 RepoId.newId(),
+                null,
                 tempDir.toString(),
                 "2.0.0",
                 parentPom.toString()

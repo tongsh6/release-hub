@@ -73,6 +73,14 @@ public class MockGitLabFileAdapter implements GitLabFilePort {
         // 默认 pom.xml 存在
         return "pom.xml".equals(filePath);
     }
+
+    @Override
+    public boolean updateFile(String repoCloneUrl, String branch, String filePath, String content, String commitMessage) {
+        String key = buildKey(repoCloneUrl, branch, filePath);
+        mockFiles.put(key, content);
+        log.info("Mock update file: {} - success, commitMessage: {}", key, commitMessage);
+        return true;
+    }
     
     /**
      * 设置模拟文件内容（用于测试）
