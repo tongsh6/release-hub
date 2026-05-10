@@ -25,7 +25,9 @@ public class SettingsController {
     @GetMapping("/gitlab")
     @Operation(summary = "Get GitLab settings")
     public ApiResponse<Object> getGitLab() {
-        return ApiResponse.success(settingsPort.getGitLab().orElse(null));
+        return ApiResponse.success(settingsPort.getGitLab()
+                .map(s -> new GitLabRequest(s.baseUrl(), mask(s.token())))
+                .orElse(null));
     }
 
     @PostMapping("/gitlab")

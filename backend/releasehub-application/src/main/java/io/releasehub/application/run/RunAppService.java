@@ -31,6 +31,7 @@ import io.releasehub.domain.run.RunItemResult;
 import io.releasehub.domain.run.RunStep;
 import io.releasehub.domain.run.RunType;
 import io.releasehub.domain.window.WindowIteration;
+import io.releasehub.application.settings.SettingsPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -56,7 +57,20 @@ public class RunAppService {
     private final VersionUpdateAppService versionUpdateAppService;
     private final ConflictDetectionAppService conflictDetectionAppService;
     private final VersionDeriverUseCase versionDeriverUseCase;
-    private final Clock clock = Clock.systemUTC();
+    private final SettingsPort settingsPort;
+    private final Clock clock;
+
+    private String deriveReleaseBranch(String windowKey) {
+        return settingsPort.getNaming()
+                .map(n -> {
+                    String template = n.releaseTemplate();
+                    if (template == null || template.isBlank()) {
+                        return "release/" + windowKey;
+                    }
+                    return template.replace("{key}", windowKey);
+                })
+                .orElse("release/" + windowKey);
+    }
 
     @Transactional
     public Run startOrchestrate(String windowId, List<String> repoIds, List<String> iterationKeys, boolean failFast, String operator) {
@@ -72,7 +86,7 @@ public class RunAppService {
                     "发布窗口存在 " + conflictReport.totalCount() + " 个冲突，请先解决所有冲突");
         }
 
-        String releaseBranch = "release/" + rw.getWindowKey();
+        String releaseBranch = deriveReleaseBranch(rw.getWindowKey());
         List<WindowIteration> bindings = new java.util.ArrayList<>(
                 windowIterationPort.listByWindow(ReleaseWindowId.of(windowId)));
         log.info("[Orchestrate] windowId={} windowIterationBindings={}", windowId, bindings.size());
@@ -326,7 +340,7 @@ public class RunAppService {
         log.info("Starting cleanup run for closed window {}", windowId);
 
         Run run = Run.start(RunType.WINDOW_ORCHESTRATION, operator, now);
-        String releaseBranch = "release/" + rw.getWindowKey();
+        String releaseBranch = deriveReleaseBranch(rw.getWindowKey());
         List<WindowIteration> bindings = new java.util.ArrayList<>(
                 windowIterationPort.listByWindow(ReleaseWindowId.of(windowId)));
         bindings.sort(Comparator.comparing(WindowIteration::getAttachAt));
@@ -498,9 +512,10 @@ public class RunAppService {
                     "发布窗口存在 " + conflictReport.totalCount() + " 个冲突，请先解决所有冲突");
         }
 
+        String branchName = deriveReleaseBranch(rw.getWindowKey());
         VersionUpdateRequest request = buildTool == BuildTool.MAVEN
-                ? VersionUpdateRequest.forMaven(RepoId.of(repoId), repoPath, targetVersion, pomPath)
-                : VersionUpdateRequest.forGradle(RepoId.of(repoId), repoPath, targetVersion, gradlePropertiesPath);
+                ? VersionUpdateRequest.forMaven(RepoId.of(repoId), branchName, repoPath, targetVersion, pomPath)
+                : VersionUpdateRequest.forGradle(RepoId.of(repoId), branchName, repoPath, targetVersion, gradlePropertiesPath);
 
         Instant stepStart = Instant.now(clock);
         VersionUpdateResult result = versionUpdateAppService.updateVersion(request);
@@ -558,14 +573,15 @@ public class RunAppService {
                     "发布窗口存在 " + conflictReport.totalCount() + " 个冲突，请先解决所有冲突");
         }
 
+        String branchName = deriveReleaseBranch(rw.getWindowKey());
         int order = 1;
         for (RepoVersionUpdateInfo repoInfo : repositories) {
             codeRepositoryPort.findById(RepoId.of(repoInfo.repoId()))
                     .orElseThrow(() -> NotFoundException.repository(repoInfo.repoId()));
 
             VersionUpdateRequest request = repoInfo.buildTool() == BuildTool.MAVEN
-                    ? VersionUpdateRequest.forMaven(RepoId.of(repoInfo.repoId()), repoInfo.repoPath(), targetVersion, repoInfo.pomPath())
-                    : VersionUpdateRequest.forGradle(RepoId.of(repoInfo.repoId()), repoInfo.repoPath(), targetVersion, repoInfo.gradlePropertiesPath());
+                    ? VersionUpdateRequest.forMaven(RepoId.of(repoInfo.repoId()), branchName, repoInfo.repoPath(), targetVersion, repoInfo.pomPath())
+                    : VersionUpdateRequest.forGradle(RepoId.of(repoInfo.repoId()), branchName, repoInfo.repoPath(), targetVersion, repoInfo.gradlePropertiesPath());
 
             Instant stepStart = Instant.now(clock);
             VersionUpdateResult result = versionUpdateAppService.updateVersion(request);
