@@ -1,55 +1,78 @@
 package io.releasehub.infrastructure.settings;
 
 import io.releasehub.application.settings.SettingsPort;
+import io.releasehub.infrastructure.persistence.settings.SystemSettingsJpaEntity;
+import io.releasehub.infrastructure.persistence.settings.SystemSettingsJpaRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
 
 @Component
+@RequiredArgsConstructor
 public class SettingsAdapter implements SettingsPort {
-    private final AtomicReference<SettingsGitLab> gitlab = new AtomicReference<>();
-    private final AtomicReference<SettingsNaming> naming = new AtomicReference<>();
-    private final AtomicReference<SettingsRef> ref = new AtomicReference<>();
-    private final AtomicReference<SettingsBlocking> blocking = new AtomicReference<>();
+    private final SystemSettingsJpaRepository repository;
 
     @Override
+    @Transactional
     public void saveGitLab(SettingsGitLab v) {
-        gitlab.set(v);
+        SystemSettingsJpaEntity entity = getOrCreate();
+        entity.setGitlabBaseUrl(v.baseUrl());
+        entity.setGitlabToken(v.token());
+        repository.save(entity);
     }
 
     @Override
     public Optional<SettingsGitLab> getGitLab() {
-        return Optional.ofNullable(gitlab.get());
+        return repository.findById("GLOBAL")
+                .map(e -> new SettingsGitLab(e.getGitlabBaseUrl(), e.getGitlabToken()));
     }
 
     @Override
+    @Transactional
     public void saveNaming(SettingsNaming v) {
-        naming.set(v);
+        SystemSettingsJpaEntity entity = getOrCreate();
+        entity.setFeatureTemplate(v.featureTemplate());
+        entity.setReleaseTemplate(v.releaseTemplate());
+        repository.save(entity);
     }
 
     @Override
     public Optional<SettingsNaming> getNaming() {
-        return Optional.ofNullable(naming.get());
+        return repository.findById("GLOBAL")
+                .map(e -> new SettingsNaming(e.getFeatureTemplate(), e.getReleaseTemplate()));
     }
 
     @Override
     public void saveRef(SettingsRef v) {
-        ref.set(v);
+        // SettingsRef currently has no fields
     }
 
     @Override
     public Optional<SettingsRef> getRef() {
-        return Optional.ofNullable(ref.get());
+        return Optional.of(new SettingsRef());
     }
 
     @Override
+    @Transactional
     public void saveBlocking(SettingsBlocking v) {
-        blocking.set(v);
+        SystemSettingsJpaEntity entity = getOrCreate();
+        entity.setDefaultBlockingPolicy(v.defaultPolicy());
+        repository.save(entity);
     }
 
     @Override
     public Optional<SettingsBlocking> getBlocking() {
-        return Optional.ofNullable(blocking.get());
+        return repository.findById("GLOBAL")
+                .map(e -> new SettingsBlocking(e.getDefaultBlockingPolicy()));
+    }
+
+    private SystemSettingsJpaEntity getOrCreate() {
+        return repository.findById("GLOBAL").orElseGet(() -> {
+            SystemSettingsJpaEntity entity = new SystemSettingsJpaEntity();
+            entity.setId("GLOBAL");
+            return entity;
+        });
     }
 }
