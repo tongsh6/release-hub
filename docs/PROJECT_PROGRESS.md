@@ -85,8 +85,18 @@
 | v0.1.8 | 部署文档 + publish 自动编排 + Attach 错误可见性 + E2E 补齐 | 2026-05-02 |
 | v0.1.9 | P0 治理收尾：静态扫描脚本 + E2E 验证 + 文档清理 + 流程决策图 | 2026-05-02 |
 | v0.1.10 | 加密可选化启动自检 + 编排 0 items 快速失败 + 诊断日志 | 2026-05-09 |
+| v0.1.11 | 远程版本更新实现 + 设置持久化改造 + 安全脱离 MVP | 2026-05-11 |
 
-## 质量基线
+## 1. 核心对账（2026-05-11）
+
+| 模块 | 状态 | 证据路径 | 备注 |
+| :--- | :--- | :--- | :--- |
+| **Version Update** | ✅ 已验证 | `MavenVersionUpdaterAdapter` | 已支持远程 Git API 更新，脱离本地 IO 依赖 |
+| **Settings** | ✅ 已持久化 | `SystemSettingsJpaEntity` | 废弃内存存储，实现 JPA 持久化 + Token 加密 |
+| **Branch Naming** | ✅ 动态化 | `RunAppService.deriveReleaseBranch` | 遵循 `SettingsNaming` 模板，消除硬编码 |
+| **Security** | ✅ 已加固 | `SettingsController` | 实现 Token 遮罩展示，防止配置页面信息泄露 |
+
+## 2. 需求列表
 
 > **对账时间**：2026-05-09（运行时验证：`mvn test` + `npx vitest run` + `npx tsc --noEmit`）
 > 上次对账：2026-05-08（静态对账 + 文件系统对账）
