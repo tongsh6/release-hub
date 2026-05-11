@@ -4,7 +4,9 @@ import io.releasehub.application.settings.SettingsPort;
 import io.releasehub.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -89,6 +91,8 @@ public class SettingsController {
     }
 
     @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
     public static class GitLabRequest {
         private String baseUrl;
         private String token;
