@@ -9,6 +9,8 @@
 
 核心能力：发布窗口管理、迭代与仓库关联、GitFlow 分支自动化、版本策略管理、冲突预检、编排执行。
 
+> 📋 **新会话/新成员请先读：[`docs/project-ledger.md`](docs/project-ledger.md)** — 项目事实台账（当前阶段目标 / 已验证 / Top Priority / 关键证据索引）。
+
 ## 项目结构
 
 ```

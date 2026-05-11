@@ -35,16 +35,14 @@ requirements/
 
 ## 当前进行中需求
 
-| 需求 | 负责人 | 状态 | 关联提案 |
-|------|--------|------|---------|
-| [迭代仓库分支三层关联](in-progress/迭代仓库分支三层关联.md) | - | 设计中 | `openspec/changes/add-branch-creation-mode/proposal.md` |
-
-> 2026-05-09：新建。背景：迭代与仓库关联无法表达 feature 分支创建模式（自动/自定义/已有），`create()` 和 `addRepos()` 行为不对称。
+> 暂无（2026-05-11 起）。三层关联功能已完成，并通过真实 GitLab 验收 22/24 PASS，
+> 见 `docs/reports/acceptance-v0.1.11-real-gitlab.md`。
 
 ## 已完成需求
 
 | 需求 | 负责人 | 完成时间 |
 |------|--------|----------|
+| [迭代仓库分支三层关联](completed/迭代仓库分支三层关联.md) | - | 2026-05-11 |
 | [发布协调日历视图](completed/发布协调日历视图.md) | - | 2026-03-04 |
 | [代码仓库类型区分](completed/代码仓库类型区分.md) | - | 2026-02-10 |
 | [GitFlow分支生命周期管理](completed/GitFlow分支生命周期管理.md) | - | 2026-03-02 |
