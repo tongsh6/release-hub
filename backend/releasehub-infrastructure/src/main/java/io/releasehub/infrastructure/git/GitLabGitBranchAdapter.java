@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -49,7 +50,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);
             String endpoint = String.format("%s/api/v4/projects/%s/repository/branches", repoRef.baseUrl, repoRef.encodedPath);
             HttpEntity<Map<String, String>> entity = new HttpEntity<>(Map.of("branch", branchName, "ref", fromBranch), headers(token));
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(endpoint, HttpMethod.POST, entity, new ParameterizedTypeReference<>() {});
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(uri(endpoint), HttpMethod.POST, entity, new ParameterizedTypeReference<>() {});
             return response.getStatusCode().is2xxSuccessful();
         } catch (HttpClientErrorException e) {
             return false;
@@ -61,7 +62,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
         try {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);
             String endpoint = String.format("%s/api/v4/projects/%s/repository/branches/%s", repoRef.baseUrl, repoRef.encodedPath, urlEncode(branchName));
-            ResponseEntity<Void> response = restTemplate.exchange(endpoint, HttpMethod.DELETE, new HttpEntity<>(headers(token)), Void.class);
+            ResponseEntity<Void> response = restTemplate.exchange(uri(endpoint), HttpMethod.DELETE, new HttpEntity<>(headers(token)), Void.class);
             return response.getStatusCode().is2xxSuccessful();
         } catch (HttpClientErrorException e) {
             return false;
@@ -78,13 +79,13 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             mrBody.put("target_branch", targetBranch);
             mrBody.put("title", commitMessage);
             mrBody.put("remove_source_branch", false);
-            ResponseEntity<Map<String, Object>> created = restTemplate.exchange(createMrEndpoint, HttpMethod.POST, new HttpEntity<>(mrBody, headers(token)), new ParameterizedTypeReference<>() {});
+            ResponseEntity<Map<String, Object>> created = restTemplate.exchange(uri(createMrEndpoint), HttpMethod.POST, new HttpEntity<>(mrBody, headers(token)), new ParameterizedTypeReference<>() {});
             if (!created.getStatusCode().is2xxSuccessful() || created.getBody() == null || created.getBody().get("iid") == null) {
                 return MergeResult.failed("failed to create merge request");
             }
             int iid = toInt(created.getBody().get("iid"));
             String mergeEndpoint = String.format("%s/api/v4/projects/%s/merge_requests/%d/merge", repoRef.baseUrl, repoRef.encodedPath, iid);
-            ResponseEntity<Map<String, Object>> merged = restTemplate.exchange(mergeEndpoint, HttpMethod.PUT, new HttpEntity<>(Map.of("merge_commit_message", commitMessage), headers(token)), new ParameterizedTypeReference<>() {});
+            ResponseEntity<Map<String, Object>> merged = restTemplate.exchange(uri(mergeEndpoint), HttpMethod.PUT, new HttpEntity<>(Map.of("merge_commit_message", commitMessage), headers(token)), new ParameterizedTypeReference<>() {});
             if (merged.getStatusCode().is2xxSuccessful()) {
                 return MergeResult.success();
             }
@@ -109,7 +110,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             body.put("tag_name", tagName);
             body.put("ref", ref);
             body.put("message", message == null ? "" : message);
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(endpoint, HttpMethod.POST, new HttpEntity<>(body, headers(token)), new ParameterizedTypeReference<>() {});
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(uri(endpoint), HttpMethod.POST, new HttpEntity<>(body, headers(token)), new ParameterizedTypeReference<>() {});
             return response.getStatusCode().is2xxSuccessful();
         } catch (HttpClientErrorException e) {
             return false;
@@ -130,7 +131,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             mrBody.put("remove_source_branch", false);
 
             ResponseEntity<Map<String, Object>> mrResponse = restTemplate.exchange(
-                    mrEndpoint, HttpMethod.POST,
+                    uri(mrEndpoint), HttpMethod.POST,
                     new HttpEntity<>(mrBody, headers(token)),
                     new ParameterizedTypeReference<>() {});
 
@@ -146,7 +147,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             String closeEndpoint = String.format("%s/api/v4/projects/%s/merge_requests/%d",
                     repoRef.baseUrl, repoRef.encodedPath, iid);
             Map<String, String> closeBody = Map.of("state_event", "close");
-            restTemplate.exchange(closeEndpoint, HttpMethod.PUT,
+            restTemplate.exchange(uri(closeEndpoint), HttpMethod.PUT,
                     new HttpEntity<>(closeBody, headers(token)),
                     new ParameterizedTypeReference<>() {});
 
@@ -190,7 +191,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             String endpoint = String.format("%s/api/v4/projects/%s/pipeline?ref=%s",
                     repoRef.baseUrl, repoRef.encodedPath, urlEncode(ref));
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                    endpoint, HttpMethod.POST,
+                    uri(endpoint), HttpMethod.POST,
                     new HttpEntity<>(headers(token)),
                     new ParameterizedTypeReference<>() {});
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
@@ -214,7 +215,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             String endpoint = String.format("%s/api/v4/projects/%s/repository/branches?search=%s&per_page=100",
                     repoRef.baseUrl, repoRef.encodedPath, urlEncode(prefix));
             ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
-                    endpoint, HttpMethod.GET, new HttpEntity<>(headers(token)),
+                    uri(endpoint), HttpMethod.GET, new HttpEntity<>(headers(token)),
                     new ParameterizedTypeReference<>() {});
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
                 return List.of();
@@ -234,7 +235,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
         try {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);
             String endpoint = String.format("%s/api/v4/projects/%s/repository/branches/%s", repoRef.baseUrl, repoRef.encodedPath, urlEncode(branchName));
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(endpoint, HttpMethod.GET, new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(uri(endpoint), HttpMethod.GET, new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
                 return BranchStatus.missing();
             }
@@ -278,6 +279,18 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
 
     private String urlEncode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 把 endpoint 字符串包装成 URI，避免 RestTemplate 对已编码字符串再次 encode。
+     *
+     * <p>背景：RestTemplate.exchange(String url, ...) 会用 UriTemplate 解析 url，把 {@code %2F}
+     * 当成字面 % + 2 + F → 再次编码为 {@code %252F}，导致 GitLab API 收到的 path 是
+     * {@code e2e-user%252Fseed-repo} 而非期望的 {@code e2e-user%2Fseed-repo}，
+     * 返回 401/404。传入 URI 实例可绕过 UriTemplate 二次编码。
+     */
+    private URI uri(String endpoint) {
+        return URI.create(endpoint);
     }
 
     private int toInt(Object value) {

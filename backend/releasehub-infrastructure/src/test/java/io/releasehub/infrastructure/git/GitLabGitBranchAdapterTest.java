@@ -26,11 +26,10 @@ class GitLabGitBranchAdapterTest {
             new org.springframework.boot.web.client.RestTemplateBuilder());
 
     /**
-     * Adapter {@code urlEncode} → {@code %2F}.
-     * RestTemplate re-encodes {@code %} → {@code %25}.
-     * WireMock receives double-encoded path: {@code %252F}.
+     * Adapter 通过 {@code uri(...)} 把 endpoint 包装为 URI，避免 RestTemplate 二次编码。
+     * 单次 encode：{@code /} → {@code %2F}。WireMock 收到正确的单编码路径。
      */
-    private static final String ENC = "/api/v4/projects/acme%252Freleasehub";
+    private static final String ENC = "/api/v4/projects/acme%2Freleasehub";
 
     @BeforeEach
     void injectRestTemplate() {
@@ -88,7 +87,7 @@ class GitLabGitBranchAdapterTest {
 
     @Test
     void shouldGetBranchStatusSuccessfully(WireMockRuntimeInfo wm) {
-        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%252FRW-1"))
+        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%2FRW-1"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
                         .withBody("{\"commit\":{\"id\":\"abc123\"}}")));
 
