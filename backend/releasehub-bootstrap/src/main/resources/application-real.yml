@@ -22,6 +22,7 @@ releasehub:
     # 启用真实 GitLab 文件读取适配器（替代 MockGitLabFileAdapter）
     # 版本提取（VersionExtractor）依赖此适配器从仓库读取 pom.xml / gradle.properties
     real-file-adapter: true
-    # 启用真实 GitLab 分支操作适配器（替代 MockGitLabBranchAdapter）
+    # 启用真实 GitLab 分支操作适配器（GitLabGitBranchAdapter）
+    # 不开启时该 Bean 不加载，工厂仅持有 MOCK / GITHUB 适配器
     # 分支创建/合并/归档/标签/Pipeline 触发依赖此适配器
     real-adapter: true

@@ -2,7 +2,6 @@ package io.releasehub.application.iteration;
 
 import io.releasehub.application.branchrule.BranchRuleUseCase;
 import io.releasehub.application.group.GroupPort;
-import io.releasehub.application.port.out.GitLabBranchPort;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
@@ -48,13 +47,12 @@ public class IterationAppService {
     private final WindowIterationPort windowIterationPort;
     private final CodeRepositoryPort codeRepositoryPort;
     private final IterationRepoPort iterationRepoPort;
-    private final GitLabBranchPort gitLabBranchPort;
     private final GitBranchAdapterFactory gitBranchAdapterFactory;
     private final BranchRuleUseCase branchRuleUseCase;
     private final VersionDeriverUseCase versionDeriverUseCase;
     private final VersionExtractorUseCase versionExtractorUseCase;
     private final GroupPort groupPort;
-    private final Clock clock = Clock.systemUTC();
+    private final Clock clock;
 
     private static final Set<String> BLOCKED_SEGMENTS = Set.of("release/", "hotfix/");
 
@@ -208,7 +206,8 @@ public class IterationAppService {
 
         // 2. 非 EXISTING 模式：创建分支
         if (mode != BranchCreationMode.EXISTING) {
-            boolean branchCreated = gitLabBranchPort.createBranch(repo.getCloneUrl(), featureBranch, repo.getDefaultBranch());
+            var gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
+            boolean branchCreated = gitPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), featureBranch, repo.getDefaultBranch());
             if (!branchCreated) {
                 log.warn("Feature branch {} already exists or failed to create for repo {}", featureBranch, repoId.value());
             }
@@ -285,7 +284,8 @@ public class IterationAppService {
                 .map(IterationRepoVersionInfo::getFeatureBranch)
                 .orElse("feature/" + iterationKey.value());
         codeRepositoryPort.findById(repoId).ifPresent(repo -> {
-            boolean archived = gitLabBranchPort.archiveBranch(repo.getCloneUrl(), featureBranch, "unpublished");
+            var gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
+            boolean archived = gitPort.archiveBranch(repo.getCloneUrl(), repo.getGitAccessToken(), featureBranch, "unpublished");
             if (!archived) {
                 log.warn("Failed to archive branch {} for repo {}", featureBranch, repoId.value());
             }
@@ -306,7 +306,8 @@ public class IterationAppService {
                             .map(IterationRepoVersionInfo::getFeatureBranch)
                             .orElse("feature/" + existing.getId().value());
                     codeRepositoryPort.findById(repoId).ifPresent(repo -> {
-                        boolean archived = gitLabBranchPort.archiveBranch(repo.getCloneUrl(), featureBranch, "unpublished");
+                        var gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
+                        boolean archived = gitPort.archiveBranch(repo.getCloneUrl(), repo.getGitAccessToken(), featureBranch, "unpublished");
                         if (!archived) {
                             log.warn("Failed to archive branch {} for repo {}", featureBranch, repoId.value());
                         }

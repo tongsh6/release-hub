@@ -24,6 +24,7 @@ import java.util.regex.Pattern;
 
 @Slf4j
 @Component
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "releasehub.gitlab.real-adapter", havingValue = "true")
 public class GitLabGitBranchAdapter implements GitBranchPort {
 
     private RestTemplate restTemplate;

@@ -2,9 +2,9 @@ package io.releasehub.application.iteration;
 
 import io.releasehub.application.branchrule.BranchRuleUseCase;
 import io.releasehub.application.group.GroupPort;
+import io.releasehub.application.iteration.IterationRepoVersionInfo;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
-import io.releasehub.application.port.out.GitLabBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.version.VersionDeriverUseCase;
@@ -45,6 +45,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -65,30 +66,34 @@ class IterationAppServiceTest {
     @Mock
     private IterationRepoPort iterationRepoPort;
     @Mock
-    private GitLabBranchPort gitLabBranchPort;
-    @Mock
-    private VersionDeriverUseCase versionDeriverUseCase;
-    @Mock
     private VersionExtractorUseCase versionExtractorUseCase;
-    @Mock
-    private BranchRuleUseCase branchRuleUseCase;
     @Mock
     private GroupPort groupPort;
     @Mock
     private GitBranchAdapterFactory gitBranchAdapterFactory;
     @Mock
     private GitBranchPort gitBranchPort;
+    @Mock
+    private BranchRuleUseCase branchRuleUseCase;
+    @Mock
+    private VersionDeriverUseCase versionDeriverUseCase;
+    @Mock
+    private java.time.Clock clock;
 
     private IterationAppService iterationAppService;
+
+    private final Instant now = Instant.parse("2026-05-11T10:00:00Z");
 
     @BeforeEach
     void setUp() {
         iterationAppService = new IterationAppService(
                 iterationPort, releaseWindowPort, windowIterationPort,
-                codeRepositoryPort, iterationRepoPort, gitLabBranchPort,
+                codeRepositoryPort, iterationRepoPort,
                 gitBranchAdapterFactory, branchRuleUseCase, versionDeriverUseCase,
-                versionExtractorUseCase, groupPort
+                versionExtractorUseCase, groupPort, clock
         );
+        lenient().when(clock.instant()).thenReturn(now);
+        lenient().when(clock.getZone()).thenReturn(java.time.ZoneId.of("UTC"));
     }
 
     @Test
@@ -146,11 +151,12 @@ class IterationAppServiceTest {
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
         when(branchRuleUseCase.isCompliant("feature/ITER-1")).thenReturn(true);
-        when(gitLabBranchPort.createBranch(repo.getCloneUrl(), "feature/ITER-1", "master")).thenReturn(true);
+        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
+        when(gitBranchPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/ITER-1", "master")).thenReturn(true);
 
         iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.AUTO, null);
 
-        verify(gitLabBranchPort).createBranch(repo.getCloneUrl(), "feature/ITER-1", "master");
+        verify(gitBranchPort).createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/ITER-1", "master");
         verify(iterationRepoPort).saveWithVersion(
                 eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
                 eq("feature/ITER-1"), eq("SYSTEM"), any(Instant.class));
@@ -175,10 +181,11 @@ class IterationAppServiceTest {
         when(iterationRepoPort.getVersionInfo("ITER-1", "repo-1"))
                 .thenReturn(Optional.of(versionInfo));
         when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
 
         iterationAppService.removeRepos("ITER-1", Set.of("repo-1"));
 
-        verify(gitLabBranchPort).archiveBranch(repo.getCloneUrl(), "feature/ITER-1", "unpublished");
+        verify(gitBranchPort).archiveBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/ITER-1", "unpublished");
         verify(iterationPort).save(any(Iteration.class));
     }
 
@@ -264,11 +271,12 @@ class IterationAppServiceTest {
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
         when(branchRuleUseCase.isCompliant("feature/upgrade-guava")).thenReturn(true);
-        when(gitLabBranchPort.createBranch(repo.getCloneUrl(), "feature/upgrade-guava", "master")).thenReturn(true);
+        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
+        when(gitBranchPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/upgrade-guava", "master")).thenReturn(true);
 
         iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.NAMED, "feature/upgrade-guava");
 
-        verify(gitLabBranchPort).createBranch(repo.getCloneUrl(), "feature/upgrade-guava", "master");
+        verify(gitBranchPort).createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/upgrade-guava", "master");
         verify(iterationRepoPort).saveWithVersion(
                 eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
                 eq("feature/upgrade-guava"), eq("SYSTEM"), any(Instant.class));
@@ -292,7 +300,6 @@ class IterationAppServiceTest {
 
         iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.EXISTING, "feature/JIRA-4521");
 
-        verify(gitLabBranchPort, never()).createBranch(anyString(), anyString(), anyString());
         verify(iterationRepoPort).saveWithVersion(
                 eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
                 eq("feature/JIRA-4521"), eq("SYSTEM"), any(Instant.class));
@@ -333,7 +340,8 @@ class IterationAppServiceTest {
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
         when(branchRuleUseCase.isCompliant(anyString())).thenReturn(true);
-        when(gitLabBranchPort.createBranch(anyString(), anyString(), anyString())).thenReturn(true);
+        when(gitBranchAdapterFactory.getAdapter(any())).thenReturn(gitBranchPort);
+        when(gitBranchPort.createBranch(anyString(), any(), anyString(), anyString())).thenReturn(true);
 
         List<IterationAppService.RepoBranchConfig> configs = List.of(
                 new IterationAppService.RepoBranchConfig("repo-1", BranchCreationMode.AUTO, null),
@@ -357,12 +365,13 @@ class IterationAppServiceTest {
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
         when(branchRuleUseCase.isCompliant(anyString())).thenReturn(true);
-        when(gitLabBranchPort.createBranch(eq(repo.getCloneUrl()), anyString(), eq("master"))).thenReturn(true);
+        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
+        when(gitBranchPort.createBranch(eq(repo.getCloneUrl()), any(), anyString(), eq("master"))).thenReturn(true);
 
         iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", Set.of("repo-1"), null);
 
         ArgumentCaptor<String> branchCaptor = ArgumentCaptor.forClass(String.class);
-        verify(gitLabBranchPort).createBranch(eq(repo.getCloneUrl()), branchCaptor.capture(), eq("master"));
+        verify(gitBranchPort).createBranch(eq(repo.getCloneUrl()), any(), branchCaptor.capture(), eq("master"));
         assertThat(branchCaptor.getValue()).startsWith("feature/ITER-");
     }
 

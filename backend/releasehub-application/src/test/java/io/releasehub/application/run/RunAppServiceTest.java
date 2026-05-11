@@ -62,10 +62,12 @@ class RunAppServiceTest {
     @Mock private VersionUpdateAppService versionUpdateAppService;
     @Mock private ConflictDetectionAppService conflictDetectionAppService;
     @Mock private VersionDeriverUseCase versionDeriverUseCase;
+    @Mock private io.releasehub.application.settings.SettingsPort settingsPort;
+    @Mock private java.time.Clock clock;
 
     private RunAppService service;
 
-    private final Instant now = Instant.now();
+    private final Instant now = Instant.parse("2026-05-11T10:00:00Z");
     private final String windowId = "window-1";
     private final String windowKey = "RW-1";
     private final String repoId = "repo-1";
@@ -77,7 +79,10 @@ class RunAppServiceTest {
     void setUp() {
         service = new RunAppService(runPort, releaseWindowPort, windowIterationPort, iterationPort,
                 iterationRepoPort, codeRepositoryPort, gitBranchAdapterFactory, versionUpdateAppService,
-                conflictDetectionAppService, versionDeriverUseCase);
+                conflictDetectionAppService, versionDeriverUseCase, settingsPort, clock);
+        lenient().when(clock.instant()).thenReturn(now);
+        lenient().when(clock.getZone()).thenReturn(java.time.ZoneId.of("UTC"));
+        lenient().when(settingsPort.getNaming()).thenReturn(Optional.empty());
     }
 
     private void setupWindowAndIteration() {
