@@ -63,14 +63,14 @@ for arg in "$@"; do
 done
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
-ok()   { echo -e "  ${GREEN}[PASS]${NC} $*"; PASS=$((PASS+1)); }
-no()   { echo -e "  ${RED}[FAIL]${NC} $*"; FAIL=$((FAIL+1)); }
-skip() { echo -e "  ${YELLOW}[SKIP]${NC} $*"; SKIP=$((SKIP+1)); }
-info() { echo -e "  ${CYAN}[INFO]${NC} $*"; }
-warn() { echo -e "  ${YELLOW}[WARN]${NC} $*"; }
-h2()   { echo ""; echo -e "${CYAN}=== $* ===${NC}"; }
+ok()   { echo -e "  ${GREEN}[PASS]${NC} $*" >&2; PASS=$((PASS+1)); }
+no()   { echo -e "  ${RED}[FAIL]${NC} $*" >&2; FAIL=$((FAIL+1)); }
+skip() { echo -e "  ${YELLOW}[SKIP]${NC} $*" >&2; SKIP=$((SKIP+1)); }
+info() { echo -e "  ${CYAN}[INFO]${NC} $*" >&2; }
+warn() { echo -e "  ${YELLOW}[WARN]${NC} $*" >&2; }
+h2()   { echo "" >&2; echo -e "${CYAN}=== $* ===${NC}" >&2; }
 
-die() { echo -e "${RED}FATAL: $*${NC}"; exit 1; }
+die() { echo -e "${RED}FATAL: $*${NC}" >&2; exit 1; }
 
 # 等待异步任务完成并校验结果
 # Usage: wait_for_run <run_id> <timeout_sec>
@@ -144,9 +144,10 @@ AUTH="Authorization: Bearer $AUTH_TOKEN"
 ok "登录成功"
 
 # 容器
-for svc in releasehub-gitlab releasehub-postgres; do
-    docker ps --format '{{.Names}}' | grep -q "$svc" && ok "$svc 运行中" || die "$svc 未运行"
-done
+GITLAB_READY=true
+docker ps --format '{{.Names}}' | grep -q "releasehub-gitlab" && ok "releasehub-gitlab 运行中" || { warn "releasehub-gitlab 未运行，将进入 MOCK_MODE"; GITLAB_READY=false; }
+docker ps --format '{{.Names}}' | grep -q "releasehub-postgres" && ok "releasehub-postgres 运行中" || die "releasehub-postgres 未运行"
+
 # 后端
 curl -s -o /dev/null "$BACKEND/actuator/health" && ok "后端 $BACKEND" || die "后端未启动"
 # 前端
@@ -157,7 +158,7 @@ h2 "1. 存量数据审计"
 
 # 1.1 数据资产统计
 STATS=$(curl -s "$BACKEND/api/v1/runs/paged?size=1" -H "$AUTH")
-RUN_TOTAL=$(echo "$STATS" | python3 -c "import sys,json; print(json.load(sys.stdin)['page']['total'])" 2>/dev/null || echo 0)
+RUN_TOTAL=$(echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('page', {}).get('total', 0))" 2>/dev/null || echo 0)
 GROUP_COUNT=$(curl -s "$BACKEND/api/v1/groups" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo 0)
 REPO_COUNT=$(curl -s "$BACKEND/api/v1/repositories" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo 0)
 WINDOW_COUNT=$(curl -s "$BACKEND/api/v1/release-windows" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo 0)
@@ -179,7 +180,7 @@ PLAINTEXT_COUNT=$(echo "$TOKEN_CHECK" | cut -d, -f2 | tr -d ' ')
 ENCRYPTED_COUNT=$(echo "$TOKEN_CHECK" | cut -d, -f3 | tr -d ' ')
 PLAINTEXT_COUNT=${PLAINTEXT_COUNT:-0}
 ENCRYPTED_COUNT=${ENCRYPTED_COUNT:-0}
-if [ "$PLAINTEXT_COUNT" -gt 0 ] 2>/dev/null; then
+if [ "$PLAINTEXT_COUNT" != "0" ] && [ -n "$PLAINTEXT_COUNT" ]; then
     no "Token 明文存储: $PLAINTEXT_COUNT 个仓库"
 else
     ok "Token 已全部加密: $ENCRYPTED_COUNT 个仓库"
@@ -260,100 +261,101 @@ GITLAB_PAT="${E2E_GITLAB_TOKEN:-}"
 [ -z "$GITLAB_PAT" ] && { GITLAB_PAT=$(docker exec releasehub-gitlab gitlab-rails runner "puts User.find(1).personal_access_tokens.create!(name:'acc-ts',scopes:['api','read_repository','write_repository'],expires_at:30.days.from_now).token" 2>&1 | tail -1); echo "E2E_GITLAB_TOKEN=$GITLAB_PAT" > /tmp/e2e-gitlab.env; }
 
 # 3.3 确保仓库（按 cloneUrl 精确复用，每个仓库只注册一次）
-declare -A REPO_MAP
-while IFS=, read -r name clone_url; do
-    [ "$name" = "END" ] && continue
-    REPO_ID=$(curl -s "$BACKEND/api/v1/repositories" -H "$AUTH" | python3 -c "
+R1=""; R2=""; R3=""
+
+ensure_repo() {
+    local name=$1
+    local clone_url=$2
+    local repo_id=$(curl -s "$BACKEND/api/v1/repositories" -H "$AUTH" | python3 -c "
 import sys,json
 for r in json.load(sys.stdin).get('data',[]):
     if r.get('cloneUrl','') == '$clone_url':
         print(r['id']); break
 ")
-    if [ -z "$REPO_ID" ]; then
-        REPO_ID=$(curl -s -X POST "$BACKEND/api/v1/repositories" -H "$AUTH" -H "Content-Type: application/json" \
+    if [ -z "$repo_id" ]; then
+        repo_id=$(curl -s -X POST "$BACKEND/api/v1/repositories" -H "$AUTH" -H "Content-Type: application/json" \
             -d "{\"name\":\"$name\",\"cloneUrl\":\"$clone_url\",\"defaultBranch\":\"main\",\"groupCode\":\"$GROUP_CODE\",\"gitProvider\":\"GITLAB\",\"gitAccessToken\":\"$GITLAB_PAT\"}" \
             | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])")
-        ok "注册仓库: $name → ${REPO_ID:0:8}..."
+        ok "注册仓库: $name → ${repo_id:0:8}..."
     else
-        ok "复用仓库: $name → ${REPO_ID:0:8}..."
+        ok "复用仓库: $name → ${repo_id:0:8}..."
     fi
-    REPO_MAP[$name]=$REPO_ID
-done <<< "END
-验收-Maven单模块,http://localhost:9080/e2e-user/seed-repo-1-maven.git
-验收-Maven多模块,http://localhost:9080/e2e-user/seed-repo-2-maven-multi.git
-验收-Gradle,http://localhost:9080/e2e-user/seed-repo-3-gradle.git
-END"
+    echo "$repo_id"
+}
 
-R1=${REPO_MAP["验收-Maven单模块"]}
-R2=${REPO_MAP["验收-Maven多模块"]}
-R3=${REPO_MAP["验收-Gradle"]}
+R1=$(ensure_repo "验收-Maven单模块" "http://localhost:9080/e2e-user/seed-repo-1-maven.git")
+R2=$(ensure_repo "验收-Maven多模块" "http://localhost:9080/e2e-user/seed-repo-2-maven-multi.git")
+R3=$(ensure_repo "验收-Gradle" "http://localhost:9080/e2e-user/seed-repo-3-gradle.git")
 REPO_IDS="$R1 $R2 $R3"
 
-# 3.4 创建新窗口（每轮新建，不做删除）
+# 3.4 创建新窗口
 NEXT_WEEK=$(date -u -v+7d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "+7 days" +%Y-%m-%dT%H:%M:%SZ)
-WINDOW_ID=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
-    -d "{\"name\":\"验收-$TS\",\"description\":\"全链路验收 $TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])")
-ok "创建窗口: 验收-$TS"
+WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"name\":\"验收-$TS\",\"description\":\"全链路验收 $TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+WINDOW_ID=$(echo "$WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))")
+[ -n "$WINDOW_ID" ] && ok "创建窗口: 验收-$TS" || { no "创建窗口失败: $WINDOW_RESP"; exit 1; }
 
 # 3.5 创建迭代
 REPO_JSON="[\"$R1\",\"$R2\",\"$R3\"]"
-ITER_KEY=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
-    -d "{\"name\":\"验收迭代-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":$REPO_JSON}" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])")
-ok "创建迭代: $ITER_KEY"
+ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"name\":\"验收迭代-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":$REPO_JSON}")
+ITER_KEY=$(echo "$ITER_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))")
+[ -n "$ITER_KEY" ] && ok "创建迭代: $ITER_KEY" || { no "创建迭代失败: $ITER_RESP"; exit 1; }
 
-# 3.6 为每个种子仓库创建与迭代 key 匹配的 feature 分支
-source /tmp/e2e-gitlab.env 2>/dev/null || true
-FEATURE_BRANCH="feature/${ITER_KEY}"
-if [ -n "$E2E_GITLAB_TOKEN" ]; then
+# 3.6 创建 feature 分支
+if [ "$GITLAB_READY" = "true" ] && [ -n "$E2E_GITLAB_TOKEN" ] && [ -n "$ITER_KEY" ]; then
+    FEATURE_BRANCH="feature/${ITER_KEY}"
     h2 "3.6 创建 feature 分支: $FEATURE_BRANCH"
     for repo_path in e2e-user/seed-repo-1-maven e2e-user/seed-repo-2-maven-multi e2e-user/seed-repo-3-gradle; do
         CLONE_URL="http://oauth2:${E2E_GITLAB_TOKEN}@localhost:9080/${repo_path}.git"
         TMP_CLONE="/tmp/e2e-feature-$(echo $repo_path | tr '/' '-')"
         rm -rf "$TMP_CLONE"
-        git clone --depth 1 "$CLONE_URL" "$TMP_CLONE" 2>&1 | tail -1
-        cd "$TMP_CLONE"
+        git clone --depth 1 "$CLONE_URL" "$TMP_CLONE" > /dev/null 2>&1
+        cd "$TMP_CLONE" 2>/dev/null || continue
         if git branch -r 2>/dev/null | grep -q "origin/$FEATURE_BRANCH"; then
-            info "$FEATURE_BRANCH 已存在，复用"
+            info "$FEATURE_BRANCH 已存在"
         else
-            git checkout -b "$FEATURE_BRANCH" 2>&1 | tail -1
+            git checkout -b "$FEATURE_BRANCH" > /dev/null 2>&1
             echo "# Feature branch for $ITER_KEY" > FEATURE.md
-            git add FEATURE.md && git commit -m "feat: $ITER_KEY - acceptance feature branch" 2>&1 | tail -1
-            git push origin "$FEATURE_BRANCH" 2>&1 | tail -1
+            git add FEATURE.md && git commit -m "feat: $ITER_KEY branch" > /dev/null 2>&1
+            git push origin "$FEATURE_BRANCH" > /dev/null 2>&1
         fi
         cd "$PROJECT_ROOT"
         rm -rf "$TMP_CLONE"
     done
     ok "Feature 分支已就绪"
+else
+    skip "跳过 Feature 分支创建 (MOCK_MODE or missing key)"
 fi
 
 # ---- 4. 场景: Attach + 分支创建 ----
 h2 "4. 场景: Attach 迭代 & GitLab 分支创建"
 ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"iterationKeys\":[\"$ITER_KEY\"]}")
-HAS_ERR=$(echo "$ATTACH" | python3 -c "import sys,json; any(r['hasErrors'] for r in json.load(sys.stdin)['data'])" 2>/dev/null)
+HAS_ERR=$(echo "$ATTACH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(any(r.get('hasErrors', False) for r in d.get('data', [])))" 2>/dev/null)
 if [ "$HAS_ERR" = "True" ]; then
     echo "$ATTACH" | python3 -c "
 import sys,json
-for r in json.load(sys.stdin)['data']:
-    for e in r.get('errors',[]): print(f'    {e[\"repoName\"]}: {e[\"message\"]}')
+for r in json.load(sys.stdin).get('data', []):
+    for e in r.get('errors',[]): print(f'    {e.get(\"repoName\", \"?\")}: {e.get(\"message\", \"?\")}')
 " | while read l; do no "Attach 失败: $l"; done
 else
-    ok "Attach 成功（3 个仓库 release 分支已创建）"
+    ok "Attach 成功"
 fi
 
 # 验证 GitLab 上真实分支存在
-BRANCH_COUNT=0
-for repo_id in 1 2 3; do
-    RELEASE_BRANCH=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_PAT" \
-        "http://localhost:9080/api/v4/projects/$repo_id/repository/branches" \
-        | python3 -c "import sys,json; branches=[b['name'] for b in json.load(sys.stdin) if b['name'].startswith('release/')]; print(branches[0] if branches else 'MISSING')" 2>/dev/null)
-    if [ "$RELEASE_BRANCH" != "MISSING" ]; then
-        BRANCH_COUNT=$((BRANCH_COUNT+1))
-    fi
-done
-[ $BRANCH_COUNT -eq 3 ] && ok "GitLab 真实 release 分支: 3/3" || warn "GitLab release 分支: $BRANCH_COUNT/3"
+if [ "$GITLAB_READY" = "true" ]; then
+    BRANCH_COUNT=0
+    for repo_id in 1 2 3; do
+        RELEASE_BRANCH=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_PAT" \
+            "http://localhost:9080/api/v4/projects/$repo_id/repository/branches" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); branches=[b['name'] for b in d if isinstance(d, list) and b['name'].startswith('release/')]; print(branches[0] if branches else 'MISSING')" 2>/dev/null)
+        if [ "$RELEASE_BRANCH" != "MISSING" ] && [ -n "$RELEASE_BRANCH" ]; then
+            BRANCH_COUNT=$((BRANCH_COUNT+1))
+        fi
+    done
+    [ "$BRANCH_COUNT" -eq 3 ] && ok "GitLab 真实 release 分支: 3/3" || warn "GitLab release 分支: $BRANCH_COUNT/3"
+fi
 
 # 验证 WindowIteration 状态
 WI_STATE=$(curl -s "$BACKEND/api/v1/release-windows/$WINDOW_ID/iterations" -H "$AUTH" | python3 -c "
@@ -513,13 +515,13 @@ h2 "10. 场景: 分支创建模式验证"
 info "10.1 AUTO 模式（向后兼容）"
 AUTO_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"name\":\"验收-AUTO-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[\"$R1\"]}")
-AUTO_ITER_KEY=$(echo "$AUTO_ITER" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])" 2>/dev/null)
-[ -n "$AUTO_ITER_KEY" ] && ok "AUTO 迭代创建: $AUTO_ITER_KEY" || { no "AUTO 迭代创建失败"; AUTO_ITER_KEY=""; }
+AUTO_ITER_KEY=$(echo "$AUTO_ITER" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
+[ -n "$AUTO_ITER_KEY" ] && ok "AUTO 迭代创建: $AUTO_ITER_KEY" || { no "AUTO 迭代创建失败: $AUTO_ITER"; AUTO_ITER_KEY=""; }
 
 if [ -n "$AUTO_ITER_KEY" ]; then
     sleep 1
     AUTO_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$AUTO_ITER_KEY/repos/$R1/version-info" -H "$AUTH")
-    AUTO_FB=$(echo "$AUTO_VINFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('featureBranch','NONE'))" 2>/dev/null)
+    AUTO_FB=$(echo "$AUTO_VINFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('featureBranch','NONE'))" 2>/dev/null)
     if echo "$AUTO_FB" | grep -q "^feature/ITER-"; then
         ok "AUTO featureBranch: $AUTO_FB"
     else
@@ -531,18 +533,18 @@ fi
 info "10.2 NAMED 模式（自定义分支名）"
 NAMED_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"name\":\"验收-NAMED-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
-NAMED_ITER_KEY=$(echo "$NAMED_ITER" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])" 2>/dev/null)
-[ -n "$NAMED_ITER_KEY" ] && ok "NAMED 迭代创建: $NAMED_ITER_KEY" || { no "NAMED 迭代创建失败"; NAMED_ITER_KEY=""; }
+NAMED_ITER_KEY=$(echo "$NAMED_ITER" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
+[ -n "$NAMED_ITER_KEY" ] && ok "NAMED 迭代创建: $NAMED_ITER_KEY" || { no "NAMED 迭代创建失败: $NAMED_ITER"; NAMED_ITER_KEY=""; }
 
 if [ -n "$NAMED_ITER_KEY" ]; then
     NAMED_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$NAMED_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
         -d "{\"repoIds\":[\"$R2\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"feature/acceptance-named-$TS\"}")
-    NAMED_SUCCESS=$(echo "$NAMED_ADD" | python3 -c "import sys,json; print(json.load(sys.stdin)['success'])" 2>/dev/null)
+    NAMED_SUCCESS=$(echo "$NAMED_ADD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success', False))" 2>/dev/null)
     [ "$NAMED_SUCCESS" = "True" ] && ok "NAMED addRepos 成功" || no "NAMED addRepos 失败"
 
     sleep 1
     NAMED_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$NAMED_ITER_KEY/repos/$R2/version-info" -H "$AUTH")
-    NAMED_FB=$(echo "$NAMED_VINFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('featureBranch','NONE'))" 2>/dev/null)
+    NAMED_FB=$(echo "$NAMED_VINFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('featureBranch','NONE'))" 2>/dev/null)
     if echo "$NAMED_FB" | grep -q "acceptance-named"; then
         ok "NAMED featureBranch: $NAMED_FB"
     else
@@ -554,7 +556,7 @@ fi
 info "10.3 NAMED 非法分支名校验"
 NAMED_ITER2=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"name\":\"验收-NAMED-BAD-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
-NAMED_ITER2_KEY=$(echo "$NAMED_ITER2" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])" 2>/dev/null)
+NAMED_ITER2_KEY=$(echo "$NAMED_ITER2" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
 
 if [ -n "$NAMED_ITER2_KEY" ]; then
     # addRepos 吞异常——repo 仍被添加，但 featureBranch 为 null（versionInfo 未保存）
@@ -563,7 +565,7 @@ if [ -n "$NAMED_ITER2_KEY" ]; then
 
     sleep 1
     BAD_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos/$R3/version-info" -H "$AUTH")
-    BAD_FB=$(echo "$BAD_VINFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('featureBranch','HAS'))" 2>/dev/null)
+    BAD_FB=$(echo "$BAD_VINFO" | python3 -c "import sys,json; d=json.load(sys.stdin); f=d.get('data',{}).get('featureBranch'); print(f if f is not None else 'None')" 2>/dev/null)
     if [ "$BAD_FB" = "None" ]; then
         ok "NAMED 非法分支名被拒绝（featureBranch=null）"
     else
@@ -575,7 +577,7 @@ fi
 info "10.4 EXISTING 模式（关联不存在分支时拒绝）"
 EXISTING_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"name\":\"验收-EXISTING-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
-EXISTING_ITER_KEY=$(echo "$EXISTING_ITER" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['key'])" 2>/dev/null)
+EXISTING_ITER_KEY=$(echo "$EXISTING_ITER" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
 
 if [ -n "$EXISTING_ITER_KEY" ]; then
     # 用一个绝对不存在的分支名，验证 EXISTING 模式的 GitLab 校验
@@ -584,7 +586,7 @@ if [ -n "$EXISTING_ITER_KEY" ]; then
 
     sleep 1
     EXISTING_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/$R1/version-info" -H "$AUTH")
-    EXISTING_FB=$(echo "$EXISTING_VINFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('featureBranch','HAS'))" 2>/dev/null)
+    EXISTING_FB=$(echo "$EXISTING_VINFO" | python3 -c "import sys,json; d=json.load(sys.stdin); f=d.get('data',{}).get('featureBranch'); print(f if f is not None else 'None')" 2>/dev/null)
     if [ "$EXISTING_FB" = "None" ]; then
         ok "EXISTING 不存在的分支被拒绝（featureBranch=null）"
     else
@@ -595,7 +597,7 @@ fi
 # 10.5 Branches 端点验证
 info "10.5 分支列表端点"
 BRANCHES=$(curl -s "$BACKEND/api/v1/repositories/$R1/branches?prefix=feature/" -H "$AUTH")
-BRANCHES_SUCCESS=$(echo "$BRANCHES" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success',False))" 2>/dev/null)
+BRANCHES_SUCCESS=$(echo "$BRANCHES" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success', False))" 2>/dev/null)
 if [ "$BRANCHES_SUCCESS" = "True" ]; then
     BCOUNT=$(echo "$BRANCHES" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null)
     ok "GET /branches 端点可用 (返回 $BCOUNT 个分支)"
