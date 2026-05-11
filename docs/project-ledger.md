@@ -28,9 +28,10 @@
 | 冲突检测（7 种）| 已实现 | `ConflictDetectionAppService` | acc-v0.1.10 #11 + acc-v0.1.11 #5 | 闭环 |
 | 远程版本更新 | 已实现 | commit `bbbae46` + `MavenVersionUpdaterAdapter` | 单测 | **未真实验证**（被 acc-v0.1.11 P1 阻塞） |
 | 设置持久化（GitLab settings） | 已实现 | commit `55cb5b0` + `SystemSettingsJpaEntity` | 单测 | **未真实验证**（脚本未做重启回归） |
-| GitLabRequest 反序列化修复 | 已实现 | commit `962be80`（@NoArgs/@AllArgs） | 单测 | 待脚本 v3.1 触达 POST /settings/gitlab |
-| WindowLifecycleListener AFTER_COMMIT | 已实现 | commit `e1c5a31` | acc-v0.1.10 #13 | ⚠️ 异常未隔离引入新 P0（见第 4 节） |
-| 验收脚本 v3 + wait_for_run + MOCK 模式降级 | 已实现 | commit `9eb5444` + `68381b1` | acc-v0.1.11 已使用 | 待 v3.1 补 ensure-settings 步骤 |
+| GitLabRequest 反序列化修复 | 已实现 | commit `962be80`（@NoArgs/@AllArgs） | 单测 + acc-v0.1.11 第 1 轮 POST /settings/gitlab 成功 | 闭环 |
+| WindowLifecycleListener AFTER_COMMIT + 异常隔离 | 已实现 | commit `e1c5a31` + 本会话 commit | acc-v0.1.10 #13 + acc-v0.1.11 终轮 0 次 UnexpectedRollback | 闭环 |
+| 验收脚本 v3.2（含 ensure-settings + token 刷新 + 冲突识别） | 已实现 | commit `9eb5444` + `68381b1` + 本会话 | acc-v0.1.11 第 3 轮 25/26 PASS | 闭环 |
+| GitLabGitBranchAdapter URL 双重 encode 修复 | 已实现 | 本会话（uri(...) 包装 + ENC 测试同步） | acc-v0.1.11 终轮 release 分支 3/3、listBranches 18 个 | 闭环 |
 
 ---
 
@@ -39,21 +40,18 @@
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |---|---|---|---|
 | 全链路核心闭环 | 真实 GitLab 验收 v0.1.10 | `docs/reports/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS |
-| v0.1.11 三层关联 5 场景 | 真实 GitLab 验收 v0.1.11 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 10.1-10.5 全 PASS |
-| 多 Provider 端口工厂路由 | 真实 GitLab 验收 v0.1.11 | 同上 | 后端日志显示 GitLab API 真实调用走 GitLabGitBranchAdapter |
-| 单测基线 | `mvn test` | 本会话 2026-05-11 | 161 用例全过 |
+| v0.1.11 全链路 + 三层关联 + 多 Provider + 设置持久化 | 真实 GitLab 验收 v0.1.11 终轮 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | **25 PASS / 0 FAIL / 1 SKIP**（SKIP 为业务正确拒绝） |
+| URL 双重 encode 修复连带 release 分支创建 | 同上场景 4 | 同上 | 1/3 → **3/3** |
+| Listener 异常隔离 | 同上后端日志 | 同上 | UnexpectedRollback 出现次数 2 → **0** |
+| 单测基线 | `mvn test` | 本会话 2026-05-11 | 161 用例全过（含 GitLabGitBranchAdapterTest ENC 同步纠正） |
 | 前端 Vitest / typecheck | `npx vitest run` / `tsc --noEmit` | 2026-05-09 上次记录 | 18 / 0 错误 |
 
 ---
 
 ## 4. 进行中事项
 
-| 事项 | 当前状态 | 阻塞点 | 下一步 |
-|---|---|---|---|
-| 闭掉 acc-v0.1.10 已知限制 ①「编排 0 items」 | 链路条件已具备（三层关联 + fallback 移除） | 被 acc-v0.1.11 P1「Settings missing」阻塞，未跑到该路径 | 修脚本 v3.1 后重跑 |
-| 闭掉 acc-v0.1.10 已知限制 ②「VERSION_UPDATE FAILED」 | 远程版本更新已实现 | 同上 | 同上 |
-| 验收脚本 v3.1（POST /settings/gitlab 一步） | 待实现 | — | 5 行代码追加在场景 2 末尾 |
-| WindowLifecycleListener 异常隔离 | 待修 | — | `afterCommit` 中 BusinessException 仅 log 不 throw |
+> 暂无（2026-05-11 23:46 起）。v0.1.11 终轮验收 25/26 PASS（1 SKIP 为业务正确拒绝），
+> 所有阻塞 P0/P0+/P1 全部下线。下一波 Top 由用户驱动。
 
 ---
 
@@ -71,12 +69,13 @@
 
 ## 6. 当前 Top Priority
 
+> 暂无强制 P0/P1（2026-05-11 23:46）。下方为可选改进，按出现顺序由用户决定何时推进。
+
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| **P0** | `WindowLifecycleListener` 异常隔离 | acc-v0.1.11 真实复现 `UnexpectedRollbackException`，污染日志 | Listener 中 BusinessException 不再向上抛 |
-| **P1** | 验收脚本 v3.1 — POST /settings/gitlab | acc-v0.1.11 1 FAIL + 1 SKIP 都源于此 | 重跑达到 24/24 PASS |
-| **P2** | 重跑验收，闭掉 v0.1.10 已知限制 ① ② | 「实现已超过验证」缺口尚未真正补齐 | acc-v0.1.11 报告升级为「通过」 |
-| P3 | acc-v0.1.11 P2「release 分支 1/3」根因排查 | 真实数据观察项 | 找到 cloneUrl 重复前缀或 token 缺失根因 |
+| 可选 | 累积冲突清理脚本 | 验收幂等 + 累积造成 14 个真实分支冲突，clean-room 路径不可重现 | 一键 reset 仓库到只剩 main + seed feature 分支 |
+| 可选 | 前端 Playwright E2E 真实跑一次 | 3 spec / 24 case 历史报告未在本会话刷新 | 24/24 通过 |
+| 可选 | acc-v0.1.10 报告中段移到 archive | 已被 v0.1.11 报告完全覆盖 | reports/ 目录瘦身 |
 
 ---
 

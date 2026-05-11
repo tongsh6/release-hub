@@ -260,6 +260,19 @@ source /tmp/e2e-gitlab.env 2>/dev/null || true
 GITLAB_PAT="${E2E_GITLAB_TOKEN:-}"
 [ -z "$GITLAB_PAT" ] && { GITLAB_PAT=$(docker exec releasehub-gitlab gitlab-rails runner "puts User.find(1).personal_access_tokens.create!(name:'acc-ts',scopes:['api','read_repository','write_repository'],expires_at:30.days.from_now).token" 2>&1 | tail -1); echo "E2E_GITLAB_TOKEN=$GITLAB_PAT" > /tmp/e2e-gitlab.env; }
 
+# 3.2.1 确保后端已配置 GitLab Settings（v0.1.11：脱离 MVP 后这是 Orchestrate / 版本更新的硬前置）
+CURRENT_GL=$(curl -s "$BACKEND/api/v1/settings/gitlab" -H "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('baseUrl','') or '')" 2>/dev/null)
+if [ -z "$CURRENT_GL" ] && [ -n "$GITLAB_PAT" ] && [ "$GITLAB_READY" = "true" ]; then
+    SETTINGS_RESP=$(curl -s -X POST "$BACKEND/api/v1/settings/gitlab" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"baseUrl\":\"$GITLAB\",\"token\":\"$GITLAB_PAT\"}")
+    SETTINGS_OK=$(echo "$SETTINGS_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+    [ "$SETTINGS_OK" = "True" ] && ok "GitLab Settings 已配置: $GITLAB" || no "GitLab Settings 配置失败: $SETTINGS_RESP"
+elif [ -n "$CURRENT_GL" ]; then
+    ok "GitLab Settings 已存在: $CURRENT_GL（持久化校验：✓）"
+else
+    skip "跳过 GitLab Settings 配置（MOCK_MODE 或缺 PAT）"
+fi
+
 # 3.3 确保仓库（按 cloneUrl 精确复用，每个仓库只注册一次）
 R1=""; R2=""; R3=""
 
@@ -278,7 +291,13 @@ for r in json.load(sys.stdin).get('data',[]):
             | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])")
         ok "注册仓库: $name → ${repo_id:0:8}..."
     else
-        ok "复用仓库: $name → ${repo_id:0:8}..."
+        # 复用时也刷新 token —— init-gitlab.sh 每次会撤销并重建 PAT，
+        # 旧 token 在 GitLab 端已失效，不刷新会导致后续 401。
+        if [ -n "$GITLAB_PAT" ]; then
+            curl -s -o /dev/null -X PUT "$BACKEND/api/v1/repositories/$repo_id" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"name\":\"$name\",\"cloneUrl\":\"$clone_url\",\"defaultBranch\":\"main\",\"groupCode\":\"$GROUP_CODE\",\"gitProvider\":\"GITLAB\",\"gitAccessToken\":\"$GITLAB_PAT\"}"
+        fi
+        ok "复用仓库: $name → ${repo_id:0:8}... (token 已刷新)"
     fi
     echo "$repo_id"
 }
@@ -418,7 +437,14 @@ if [ "$ORCH_SUCCESS" = "True" ]; then
         no "Orchestrate 执行失败 (Run status: $FINAL_ORCH_STATUS)"
     fi
 else
-    no "Orchestrate 启动失败"
+    # 区分「真失败」与「业务正确拒绝」（如冲突未解决）
+    ORCH_CODE=$(echo "$ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null)
+    ORCH_MSG=$(echo "$ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('message',''))" 2>/dev/null)
+    if [ "$ORCH_CODE" = "CONFLICT_001" ]; then
+        ok "Orchestrate 被冲突预检拒绝（业务正确）: $ORCH_MSG"
+    else
+        no "Orchestrate 启动失败: code=$ORCH_CODE msg=$ORCH_MSG"
+    fi
 fi
 
 # ---- 7. 场景: Run 详情 ----
