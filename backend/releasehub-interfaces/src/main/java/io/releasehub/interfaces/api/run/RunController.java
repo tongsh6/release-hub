@@ -60,7 +60,8 @@ public class RunController {
             String status,
             String startedAt,
             String finishedAt,
-            String operator
+            String operator,
+            List<RunItemView> items
     ) {
         public static RunView from(Run run) {
             String status = determineStatus(run);
@@ -70,7 +71,8 @@ public class RunController {
                     status,
                     run.getStartedAt() != null ? run.getStartedAt().toString() : null,
                     run.getFinishedAt() != null ? run.getFinishedAt().toString() : null,
-                    run.getOperator()
+                    run.getOperator(),
+                    run.getItems().stream().map(RunItemView::from).toList()
             );
         }
 
@@ -92,6 +94,40 @@ public class RunController {
                 return "SUCCESS";
             }
             return run.getFinishedAt() != null ? "COMPLETED" : "RUNNING";
+        }
+    }
+
+    public record RunItemView(
+            String id,
+            String windowKey,
+            String repoId,
+            String iterationKey,
+            String finalResult,
+            List<RunStepView> steps
+    ) {
+        static RunItemView from(io.releasehub.domain.run.RunItem item) {
+            return new RunItemView(
+                    item.getId().value(),
+                    item.getWindowKey(),
+                    item.getRepo().value(),
+                    item.getIterationKey().value(),
+                    item.getFinalResult() != null ? item.getFinalResult().name() : null,
+                    item.getSteps().stream().map(RunStepView::from).toList()
+            );
+        }
+    }
+
+    public record RunStepView(
+            String actionType,
+            String result,
+            String message
+    ) {
+        static RunStepView from(io.releasehub.domain.run.RunStep step) {
+            return new RunStepView(
+                    step.actionType().name(),
+                    step.result() != null ? step.result().name() : null,
+                    step.message()
+            );
         }
     }
 }
