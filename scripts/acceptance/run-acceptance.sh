@@ -775,9 +775,12 @@ fi
 
 # ---- 8. 场景: 版本更新 + 校验 ----
 h2 "SA-014: 8. 场景: 版本更新 & 校验"
+VU_WINDOW_ID="${CLEAN_WINDOW_ID:-$WINDOW_ID}"
+VU_REPO_ID="$R1"
+info "SA-014 使用窗口: $VU_WINDOW_ID"
 
 # 8.1 版本校验（验证 VersionPolicy 推导功能可用）
-VERSION_VALIDATE=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/validate" -H "$AUTH" -H "Content-Type: application/json" \
+VERSION_VALIDATE=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$VU_WINDOW_ID/validate" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"currentVersion\":\"1.4.0\"}" 2>/dev/null)
 VU_VALID=$(echo "$VERSION_VALIDATE" | python3 -c "
 import sys,json; d=json.load(sys.stdin)
@@ -790,8 +793,8 @@ else
 fi
 
 # 8.2 版本更新（对 Maven 仓库执行实际更新）
-VERSION_UPDATE=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/execute/version-update" -H "$AUTH" -H "Content-Type: application/json" \
-    -d "{\"repoId\":\"$R1\",\"targetVersion\":\"1.5.0\",\"buildTool\":\"MAVEN\",\"repoPath\":\".\",\"pomPath\":\"pom.xml\"}" 2>/dev/null)
+VERSION_UPDATE=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$VU_WINDOW_ID/execute/version-update" -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"repoId\":\"$VU_REPO_ID\",\"targetVersion\":\"1.5.0\",\"buildTool\":\"MAVEN\",\"repoPath\":\".\",\"pomPath\":\"pom.xml\"}" 2>/dev/null)
 VU_SUCCESS=$(echo "$VERSION_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success','?'))" 2>/dev/null)
 if [ "$VU_SUCCESS" = "True" ]; then
     VU_RUN_ID=$(echo "$VERSION_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['runId'])" 2>/dev/null)
@@ -802,15 +805,17 @@ if [ "$VU_SUCCESS" = "True" ]; then
         ok "版本更新执行成功 (Run status: $FINAL_STATUS)"
         
         # 增加 Git 远程校验
-        REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))")
-        WINDOW_KEY=$(curl -s "$BACKEND/api/v1/release-windows/$WINDOW_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))")
+        REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$VU_REPO_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))")
+        WINDOW_KEY=$(curl -s "$BACKEND/api/v1/release-windows/$VU_WINDOW_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))")
         
         # 预期的分支名（与后端逻辑一致）
         TARGET_BRANCH="release/$WINDOW_KEY"
         
         GIT_COMMIT=$(verify_gitlab_commit "$REPO_URL" "$TARGET_BRANCH" "ReleaseHub: Update")
         if [ "$GIT_COMMIT" = "FOUND" ]; then
-            ok "Git 远程校验成功: 已发现版本更新 Commit"
+            ok "SA-014 Git 远程校验成功: 已发现版本更新 Commit"
+        elif [ -n "$CLEAN_WINDOW_ID" ]; then
+            no "SA-014 Git 远程校验失败: 未发现版本更新 Commit ($GIT_COMMIT)"
         else
             warn "Git 远程校验未确认: 可能是分支名或 Commit Message 匹配问题 ($GIT_COMMIT)"
         fi
@@ -820,7 +825,11 @@ if [ "$VU_SUCCESS" = "True" ]; then
     fi
 else
     ERR=$(echo "$VERSION_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('message','?'))" 2>/dev/null || echo "?")
-    skip "版本更新未执行: $ERR"
+    if [ -n "$CLEAN_WINDOW_ID" ]; then
+        no "SA-014 版本更新失败: $ERR"
+    else
+        skip "SA-014 版本更新未执行: $ERR"
+    fi
 fi
 
 # ---- 9. 场景: 存量冒烟 ----
