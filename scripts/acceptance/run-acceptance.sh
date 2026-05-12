@@ -156,7 +156,7 @@ curl -s -o /dev/null "$BACKEND/actuator/health" && ok "后端 $BACKEND" || die "
 curl -s -o /dev/null "$FRONTEND" 2>/dev/null && ok "前端 $FRONTEND" || warn "前端未启动"
 
 # ---- 1. 存量数据审计 ----
-h2 "1. 存量数据审计"
+h2 "SA-002: 1. 存量数据审计"
 
 # 1.1 数据资产统计
 STATS=$(curl -s "$BACKEND/api/v1/runs/paged?size=1" -H "$AUTH")
@@ -211,7 +211,7 @@ BAD_URLS=${BAD_URLS:-0}
 [ "$BAD_URLS" -eq 0 ] && ok "cloneUrl 格式: 0 个异常" || warn "cloneUrl 格式异常: $BAD_URLS 个含双 http:// 前缀"
 
 # 1.4 脏数据检测
-h2 "1.4 脏数据检测"
+h2 "SA-002: 1.4 脏数据检测"
 DIRTY=0
 DRAFT_WINDOWS=$(curl -s "$BACKEND/api/v1/release-windows" -H "$AUTH" | python3 -c "
 import sys,json
@@ -263,7 +263,7 @@ fi
 ok "种子数据就绪"
 
 # ---- 3. 场景：新增全链路 ----
-h2 "3. 场景: 新增发布窗口全链路验证"
+h2 "SA-003/SA-005/SA-008/SA-009: 3. 场景: 发布准备数据验证"
 
 # 3.1 确保分组（复用）
 GROUP_CODE=$(curl -s "$BACKEND/api/v1/groups" -H "$AUTH" | python3 -c "
@@ -374,7 +374,7 @@ else
 fi
 
 # ---- 3.7 设置持久化重启验证 ----
-h2 "3.7 设置持久化重启验证"
+h2 "SA-001/SA-004: 3.7 设置持久化重启验证"
 info "重启后端以验证 Settings 持久化..."
 pkill -f "spring-boot:run" 2>/dev/null || true
 sleep 5
@@ -408,7 +408,7 @@ REPO_AFTER=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" | python3 -c 
 [ "${REPO_AFTER:-0}" -gt 0 ] && ok "仓库数据重启后可查询" || warn "仓库数据重启后查询异常"
 
 # ---- 4. 场景: Attach + 分支创建 ----
-h2 "4. 场景: Attach 迭代 & GitLab 分支创建"
+h2 "SA-010: 4. 场景: Attach 迭代 & GitLab release 分支创建"
 ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"iterationKeys\":[\"$ITER_KEY\"]}")
 HAS_ERR=$(echo "$ATTACH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(any(r.get('hasErrors', False) for r in d.get('data', [])))" 2>/dev/null)
@@ -460,7 +460,7 @@ for wi in json.load(sys.stdin).get('data',[]):
 echo "$WI_STATE" | while read l; do info "  $l"; done
 
 # ---- 5. 场景: 冲突检测 ----
-h2 "5. 场景: 冲突检测"
+h2 "SA-011: 5. 场景: 冲突检测"
 # 先触发扫描
 CONFLICT_SCAN=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/conflicts/check" -H "$AUTH" -H "Content-Type: application/json" -d '{}' 2>/dev/null)
 # 再获取报告
@@ -484,7 +484,7 @@ else
 fi
 
 # ---- 5.1 冲突分类统计 ----
-h2 "5.1 冲突分类统计"
+h2 "SA-011: 5.1 冲突分类统计"
 CONFLICT_TYPES=$(echo "$CONFLICT" | python3 -c "
 import sys,json
 from collections import Counter
@@ -500,7 +500,7 @@ if [ -n "$CONFLICT_TYPES" ]; then
 fi
 
 # ---- 5.2 干净窗口黄金路径：解决冲突 → 0 冲突 → Publish → Orchestrate SUCCESS ----
-h2 "5.2 干净窗口黄金路径: 冲突解决 + 编排验证"
+h2 "SA-012/SA-013: 5.2 干净窗口黄金路径: 冲突解决 + 编排验证"
 
 # 5.2.1 创建干净窗口（新 key 确保 release 分支不冲突）
 CLEAN_TS=$(date -u +%Y%m%d-%H%M%S)
@@ -616,7 +616,7 @@ print(f'items={len(items)} stepActions={dict(actions)} stepResults={dict(results
 fi
 
 # ---- 6. 场景: Publish + Auto-Orchestration ----
-h2 "6. 场景: Publish & 自动编排"
+h2 "SA-013: 6. 场景: Publish & 自动编排"
 PUB_RESULT=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/publish" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
 PUB_SUCCESS=$(echo "$PUB_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['success'])" 2>/dev/null)
 if [ "$PUB_SUCCESS" = "True" ]; then
@@ -655,7 +655,7 @@ else
 fi
 
 # ---- 7. 场景: Run 详情 ----
-h2 "7. 场景: Run 执行详情"
+h2 "SA-015: 7. 场景: Run 执行详情"
 sleep 1
 RUNS=$(curl -s "$BACKEND/api/v1/runs" -H "$AUTH")
 LATEST_RUN=$(echo "$RUNS" | python3 -c "
@@ -700,7 +700,7 @@ else:
 fi
 
 # ---- 8. 场景: 版本更新 + 校验 ----
-h2 "8. 场景: 版本更新 & 校验"
+h2 "SA-014: 8. 场景: 版本更新 & 校验"
 
 # 8.1 版本校验（验证 VersionPolicy 推导功能可用）
 VERSION_VALIDATE=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/validate" -H "$AUTH" -H "Content-Type: application/json" \
@@ -765,7 +765,7 @@ info "历史窗口: $PREV_WINDOWS"
 [ "$RUN_TOTAL" -gt 1 ] && ok "历史 Run 可查询: total=$RUN_TOTAL" || info "Run 累积: $RUN_TOTAL"
 
 # ---- 10. 场景: 分支创建模式（三层关联验证） ----
-h2 "10. 场景: 分支创建模式验证"
+h2 "SA-006/SA-009: 10. 场景: 分支创建模式验证"
 
 # 10.1 AUTO 模式：创建迭代带仓库，无 repoConfigs → 默认 AUTO
 info "10.1 AUTO 模式（向后兼容）"
