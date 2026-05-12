@@ -140,4 +140,40 @@ test.describe('Slice-2: Full Release Flow', () => {
       await expect(page.locator('.el-main, .el-container, .el-card').first()).toBeVisible({ timeout: 5000 })
     }
   })
+
+  // 9. 测试人员复核 Run 执行证据
+  test('9. Tester can inspect run evidence', async ({ page }) => {
+    await ensureLoggedIn(page)
+    await page.goto('/runs')
+    await page.waitForTimeout(1000)
+    await expect(page.locator('.el-table, .el-table__body-wrapper').first()).toBeVisible({ timeout: 5000 })
+
+    const rows = page.locator('.el-table__body-wrapper tbody tr')
+    expect(await rows.count()).toBeGreaterThan(0)
+
+    const runId = (await rows.first().locator('td').first().innerText()).trim()
+    expect(runId.length).toBeGreaterThan(0)
+
+    await page.goto(`/runs/${runId}`)
+    await page.waitForTimeout(1000)
+    await expect(page.locator('.el-descriptions, .el-card, .el-table').first()).toBeVisible({ timeout: 5000 })
+  })
+
+  // 10. 测试人员复核发布窗口详情
+  test('10. Tester can inspect release window detail', async ({ page }) => {
+    await ensureLoggedIn(page)
+    await page.goto('/release-windows')
+    await page.waitForTimeout(1000)
+    await expect(page.locator('.el-table, .el-table__body-wrapper').first()).toBeVisible({ timeout: 5000 })
+
+    const rows = page.locator('.el-table__body-wrapper tbody tr')
+    expect(await rows.count()).toBeGreaterThan(0)
+
+    const viewButton = rows.first().locator('button').first()
+    await expect(viewButton).toBeVisible({ timeout: 5000 })
+    await viewButton.click(FORCE)
+    await page.waitForTimeout(1000)
+
+    await expect(page.locator('.release-window-detail-page, .el-descriptions, .el-card, .el-main').first()).toBeVisible({ timeout: 5000 })
+  })
 })
