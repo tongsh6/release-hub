@@ -649,10 +649,20 @@ for c in json.load(sys.stdin).get('data',{}).get('conflicts',[]):
                 info "干净窗口编排已启动 (run=$CLEAN_RUN_ID)，等待结果..."
                 CLEAN_FINAL_STATUS=$(wait_for_run "$CLEAN_RUN_ID" 60)
                 if [ "$CLEAN_FINAL_STATUS" = "SUCCESS" ]; then
-                    ok "干净窗口编排 SUCCESS (黄金路径验证通过)"
+                    ok "SA-013 干净窗口编排 SUCCESS"
 
-                    # 5.2.10 验证 RunItem step 分布
+                    # 5.2.10 验证 RunItem / RunStep 分布
                     CLEAN_RUN_DETAIL=$(curl -s "$BACKEND/api/v1/runs/$CLEAN_RUN_ID" -H "$AUTH")
+                    CLEAN_ITEM_COUNT=$(echo "$CLEAN_RUN_DETAIL" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',{}).get('items',[])))" 2>/dev/null || echo "0")
+                    [ "$CLEAN_ITEM_COUNT" -gt 0 ] && ok "SA-013 RunItem > 0: $CLEAN_ITEM_COUNT" || no "SA-013 RunItem 为 0"
+
+                    CLEAN_STEP_COUNT=$(echo "$CLEAN_RUN_DETAIL" | python3 -c "
+import sys,json
+items=json.load(sys.stdin).get('data',{}).get('items',[])
+print(sum(len(item.get('steps',[])) for item in items))
+" 2>/dev/null || echo "0")
+                    [ "$CLEAN_STEP_COUNT" -gt 0 ] && ok "SA-013 RunStep > 0: $CLEAN_STEP_COUNT" || no "SA-013 RunStep 为 0"
+
                     CLEAN_STEP_INFO=$(echo "$CLEAN_RUN_DETAIL" | python3 -c "
 import sys,json
 from collections import Counter
@@ -666,9 +676,9 @@ for item in items:
         results[s.get('result', '?')] += 1
 print(f'items={len(items)} stepActions={dict(actions)} stepResults={dict(results)}')
 " 2>/dev/null)
-                    ok "RunItem 详情: $CLEAN_STEP_INFO"
+                    ok "SA-013 RunItem 详情: $CLEAN_STEP_INFO"
                 else
-                    no "干净窗口编排状态: $CLEAN_FINAL_STATUS (预期 SUCCESS)"
+                    no "SA-013 干净窗口编排状态: $CLEAN_FINAL_STATUS (预期 SUCCESS)"
                 fi
             else
                 ORCH_CODE=$(echo "$CLEAN_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code','?'))")
