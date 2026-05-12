@@ -1,12 +1,12 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 全链路验收脚本 v3.3
+# ReleaseHub 场景化验收证据脚本 v3.4
 #
 # ╔═══════════════════════════════════════════════════════════╗
-# ║  ⚠️  重要提示：请先用本脚本，不要手工逐 API 调试验收  ⚠️  ║
+# ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
 # ╚═══════════════════════════════════════════════════════════╝
 #
-# 为什么必须先用本脚本？
+# 为什么必须先用本脚本收集证据？
 #   - 它知道所有前置条件（GitLab 种子数据初始化、GitLab Settings 配置、
 #     Group/Repo/Window/Iteration 的依赖关系、feature 分支的创建时机）
 #   - 手工逐 API 调试容易踩的坑：
@@ -18,26 +18,25 @@
 #   - 本脚本按正确顺序完成全部步骤，遇到失败会显式报告而非静默降级
 #   - 绕过本脚本的手工验证已经在 v0.1.10 验收中浪费了大量排查时间
 #
-# 能力清单（13 个场景，30+ 验收项）:
-#   0. 环境检查 + 后端 profile 确认
-#   1. 存量数据审计（含 BranchCreationMode 分布 + featureBranch null 检测 + cloneUrl 格式校验）
-#   2. GitLab 种子数据初始化（幂等）
-#   3. 新增发布窗口全链路（含 GitLab Settings 自动配置 + 持久化重启验证）
-#   4. Attach 迭代 & GitLab 分支创建 & errors/runItems 细粒度断言
-#   5. 冲突检测（含分类统计）
-#   5.1 冲突解决回路（USE_SYSTEM）
-#   5.2 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate SUCCESS + items > 0
-#   6. Publish & 自动编排 & WindowLifecycleListener 验证
-#   7. Run 执行详情（含 RunItem step 分布）
-#   8. 版本更新 & 校验 & Git 远程提交验证
-#   9. 存量数据冒烟
-#  10. 分支创建模式验证（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
-#  11. 汇总报告
+# 能力清单（SA-001..SA-016 的后端/GitLab/数据证据）:
+#   SA-001/SA-004: GitLab Settings 自动配置、复用、重启持久化
+#   SA-002: 存量数据审计（BranchCreationMode、featureBranch、cloneUrl、token 安全）
+#   SA-003: 客户/业务线/品牌三层分组，非叶子资源挂载拒绝
+#   SA-005: 品牌仓库纳管、真实 GitLab cloneUrl、token 安全审计
+#   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
+#   SA-008: 发布窗口创建、空窗口发布拒绝、windowKey
+#   SA-010: Attach 迭代、GitLab release 分支创建、runItems 细粒度断言
+#   SA-011: 冲突检测和分类统计
+#   SA-012: 冲突解决回路（USE_SYSTEM）
+#   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate SUCCESS
+#   SA-014: 版本更新、校验、Git 远程提交验证
+#   SA-015: Run 执行详情（RunItem/RunStep）
+#   SA-016: 窗口关闭和收尾能力目前记录为后续缺口
 #
 # 原则:
 #   1. 永不 DROP DATABASE / DELETE 数据（本地持久化模式）
 #   2. 脏数据检测 → 报告 + 提供清理方案，由人决定
-#   3. 场景化验证：存量冒烟 + 新增全链路 + 冲突 + 版本更新 + 多仓编排
+#   3. 场景化证据：本脚本证明后端/GitLab/数据，不替代前端用户旅程验收
 #   4. 双模式：本地持久化（默认） / CI 一次性（--ci）
 #
 # 用法:

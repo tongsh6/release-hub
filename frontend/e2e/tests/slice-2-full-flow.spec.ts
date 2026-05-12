@@ -1,7 +1,8 @@
 /**
- * Slice 2 E2E: 完整发布全链路 UI 验收
+ * Slice 2 E2E: 完整发布用户旅程 UI 验收
  *
- * 覆盖: 登录 → 存量验证 → 新建窗口 → 迭代 → 运行记录 → 数据持久化
+ * 覆盖: 登录 → 存量验证 → 新建窗口 → 迭代 → 运行记录 → 数据持久化。
+ * 定位: 证明用户能从页面完成操作和复核证据，API/GitLab 状态由 acceptance 脚本补充证明。
  */
 import { test, expect } from '@playwright/test'
 import { ensureLoggedIn, loadLabels, confirmDialog, tcName, FORCE } from './helpers'
@@ -141,8 +142,8 @@ test.describe('Slice-2: Full Release Flow', () => {
     }
   })
 
-  // 9. 测试人员复核 Run 执行证据
-  test('9. Tester can inspect run evidence', async ({ page }) => {
+  // SA-015: 测试人员复核 Run 执行证据
+  test('SA-015: Tester can inspect run evidence', async ({ page }) => {
     await ensureLoggedIn(page)
     await page.goto('/runs')
     await page.waitForTimeout(1000)
@@ -159,8 +160,8 @@ test.describe('Slice-2: Full Release Flow', () => {
     await expect(page.locator('.el-descriptions, .el-card, .el-table').first()).toBeVisible({ timeout: 5000 })
   })
 
-  // 10. 测试人员复核发布窗口详情
-  test('10. Tester can inspect release window detail', async ({ page }) => {
+  // SA-015: 测试人员复核发布窗口详情
+  test('SA-015: Tester can inspect release window detail', async ({ page }) => {
     await ensureLoggedIn(page)
     await page.goto('/release-windows')
     await page.waitForTimeout(1000)
