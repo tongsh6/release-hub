@@ -606,12 +606,7 @@ print(','.join(f'{t}={n}' for t,n in sorted(types.items())))
         # 5.2.6 逐个解决版本冲突（MISMATCH → USE_SYSTEM）
         if [ "$CLEAN_CONFLICT_COUNT" -gt 0 ]; then
             RESOLVED=0
-            echo "$CLEAN_CONFLICT" | python3 -c "
-import sys,json
-for c in json.load(sys.stdin).get('data',{}).get('conflicts',[]):
-    if c.get('conflictType') in ('MISMATCH', 'CROSS_REPO_VERSION_MISMATCH'):
-        print(f"{c['iterationKey']}|{c['repoId']}")
-" 2>/dev/null | while IFS='|' read -r ikey rid; do
+            while IFS='|' read -r ikey rid; do
                 if [ -n "$ikey" ] && [ -n "$rid" ]; then
                     RESOLVE_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations/$ikey/repos/$rid/resolve-conflict" -H "$AUTH" -H "Content-Type: application/json"                         -d '{"resolution":"USE_SYSTEM"}')
                     RESOLVE_OK=$(echo "$RESOLVE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))")
@@ -619,7 +614,12 @@ for c in json.load(sys.stdin).get('data',{}).get('conflicts',[]):
                         RESOLVED=$((RESOLVED + 1))
                     fi
                 fi
-            done
+            done < <(echo "$CLEAN_CONFLICT" | python3 -c '
+import sys,json
+for c in json.load(sys.stdin).get('data',{}).get('conflicts',[]):
+    if c.get('conflictType') in ('MISMATCH', 'CROSS_REPO_VERSION_MISMATCH'):
+        print("{}|{}".format(c.get("iterationKey",""), c.get("repoId","")))
+' 2>/dev/null)
             info "已解决 $RESOLVED 个版本冲突"
 
             # 5.2.7 重新检测冲突 → 应为 0
