@@ -66,21 +66,26 @@
 
 ## 五、验收矩阵草案
 
-| ID | 角色旅程 | 场景 | 类型 | 当前覆盖 | 本轮动作 |
+SA-001 和 SA-002 是验收运行治理场景，保障验收环境可信；SA-003 到 SA-016 是完整业务蓝图主线，用于发现系统能力不完整、实现不足或自动化覆盖不足的地方。
+
+| ID | 分组 | 主角色 | 场景 | P0 完整验收焦点 | 当前判断 |
 |---|---|---|---|---|---|
-| SA-001 | 管理员配置基础环境 | GitLab Settings 配置并重启后仍存在 | 正常 | `run-acceptance.sh` 3.2.1 / 3.7 | 矩阵登记 |
-| SA-002 | 管理员治理数据质量 | 存量数据审计：Token 加密、BranchCreationMode、featureBranch、cloneUrl | 正常 | `run-acceptance.sh` 1.x | 矩阵登记 |
-| SA-003 | 发布经理创建发布窗口 | 新建窗口、创建迭代、注册 3 个真实仓库 | 正常 | `run-acceptance.sh` 3.x | 矩阵登记 |
-| SA-004 | 技术负责人准备迭代分支 | AUTO/NAMED/EXISTING 分支创建模式和非法分支拒绝 | 正常/边界 | `run-acceptance.sh` 10.x | 矩阵登记 |
-| SA-005 | 发布经理挂载迭代 | Attach 后 GitLab release 分支真实存在，WindowIteration 状态正确 | 正常 | `run-acceptance.sh` 4.x | 矩阵登记 |
-| SA-006 | 测试人员检查发布风险 | 冲突检测返回数量和类型分布 | 正常 | `run-acceptance.sh` 5.x | 矩阵登记 |
-| SA-007 | 发布经理执行干净发布 | 干净窗口 0 冲突后 Publish + Orchestrate SUCCESS，RunItem > 0 | 正常 | `run-acceptance.sh` 5.2 已有雏形 | 固化为正式验收项 |
-| SA-008 | 技术负责人解决冲突 | 版本冲突解决后重新扫描为 0，再发布成功 | 异常恢复 | 部分覆盖 | 补齐脚本断言 |
-| SA-009 | 测试人员复核执行明细 | Run 详情含 RunItem 和 RunStep 分布 | 正常 | `run-acceptance.sh` 7.x | 补前端观察路径 |
-| SA-010 | 发布经理处理业务阻断 | 未解决冲突时 Orchestrate 返回 `CONFLICT_001`，被判定为业务正确拒绝 | 异常 | `run-acceptance.sh` 6.x | 矩阵登记 |
-| SA-011 | 技术负责人执行版本更新 | 版本更新 Run 成功，GitLab 远程 Commit 可验证 | 正常 | `run-acceptance.sh` 8.x，当前可能被冲突阻断 | 绑定干净窗口重验 |
-| SA-012 | 测试人员通过 UI 观察发布状态 | 前端可查看窗口、Run、日历、仓库历史 | 正常 | `frontend/e2e/tests/slice-2-full-flow.spec.ts` 冒烟 | 升级关键断言 |
-| SA-013 | 测试人员通过 UI 复核冲突/Run | UI 能进入发布窗口详情和 Run 详情，看到执行结果 | 正常 | 缺口 | 补 Playwright |
+| SA-001 | 验收运行治理 | 系统 | GitLab Settings 配置并重启后仍存在 | 保存、复用、重启持久化、真实 GitLab 可用 | 已覆盖，补编号 |
+| SA-002 | 验收运行治理 | 系统 | 存量数据质量审计 | Token 安全、分支模式数据、featureBranch、cloneUrl、脏数据可见 | 已覆盖，补编号 |
+| SA-003 | Admin Setup | 系统管理员 | 建立客户/业务线/品牌分组树 | 三层分组、资源只能挂品牌叶子节点 | 部分覆盖 |
+| SA-004 | Admin Setup | 系统管理员 | 配置 GitLab 连接 | 保存、不泄露、重启持久化、真实 API 可用 | 部分覆盖 |
+| SA-005 | Admin Setup | 系统管理员 | 纳管代码仓库 | 品牌叶子归属、真实 GitLab 可用、token 安全、默认分支/版本基础信息 | 部分覆盖 |
+| SA-006 | Admin Setup | 系统管理员 | 配置分支规则 | feature/hotfix/release 规则在分支创建时生效，不合规拒绝 | 部分覆盖 |
+| SA-007 | Admin Setup | 系统管理员 | 配置版本策略 | 基础策略、SemVer、版本校验、Maven 单模块真实写回前置 | 部分覆盖 |
+| SA-008 | Release Planning | 发布经理 | 创建品牌发布窗口 | 品牌叶子创建、windowKey、DRAFT、空窗口发布拒绝、列表/日历可见 | 部分覆盖 |
+| SA-009 | Release Planning | 技术负责人 | 创建迭代并选择已纳管仓库 | 品牌叶子创建、同品牌仓库选择、iterationKey、分支模式、版本/分支记录 | 部分覆盖 |
+| SA-010 | Release Planning | 发布经理 | 挂载迭代到发布窗口 | 同品牌挂载、多迭代多仓计划、release 分支真实创建、细粒度 attach 结果、冲突阻断 | 部分覆盖 |
+| SA-011 | Risk & Execution | 测试人员 | 检查冲突与发布风险 | 冲突扫描、类型分布、阻塞发布、解决后重扫清零 | 部分覆盖 |
+| SA-012 | Risk & Execution | 技术负责人 | 解决冲突 | 版本冲突 `USE_SYSTEM` 解决、重扫为 0、发布可继续 | 部分覆盖 |
+| SA-013 | Risk & Execution | 技术负责人 | 触发发布编排 | 无阻塞冲突后 Run SUCCESS、RunItem > 0、GitLab 状态一致、未解决冲突阻断 | 部分覆盖 |
+| SA-014 | Risk & Execution | 技术负责人 | 执行版本更新 | Maven 单模块真实写回 release 分支、Run SUCCESS、GitLab commit 可验证 | 部分覆盖 |
+| SA-015 | Risk & Execution | 测试人员 | 复核发布状态和执行证据 | 窗口/Run 列表与详情、状态和执行明细可见 | 部分覆盖 |
+| SA-016 | Post Release | 发布经理 | 关闭发布窗口并完成收尾 | 关闭状态流转、关闭后禁止关键操作、收尾 Run 可见 | 缺口较大 |
 
 ## 六、第一批自动化切片
 
@@ -103,8 +108,9 @@
 在 `scripts/acceptance/run-acceptance.sh` 上做小步增强：
 
 - 为场景输出增加 SA 编号，方便报告和矩阵追踪。
+- 将单层“验收分组”升级为客户/业务线/品牌三层结构，用于验证 SA-003/SA-005/SA-008/SA-009/SA-010。
 - 将 5.2 干净路径的 `items > 0`、RunStep 分布、最终状态作为硬断言。
-- 将版本更新优先绑定到干净窗口，避免主窗口冲突导致 SA-011 长期 SKIP。
+- 将版本更新优先绑定到干净窗口，避免主窗口冲突导致 SA-014 长期 SKIP。
 - 明确冲突恢复场景：解决后重新扫描，断言 total=0。
 
 ### Slice C：前端 Playwright 观察路径
@@ -129,8 +135,11 @@
 
 - GitLab token 过期/无效后的提示与恢复。
 - GitLab 不可达时的错误展示和恢复。
+- 分组删除保护、资源归属移动、code 自动生成。
+- 版本策略品牌/仓库作用域继承，Maven 多模块和 Gradle 真实写回。
 - release 分支累积冲突的一键清理脚本。
 - 合并冲突制造、解决和 Run retry。
+- 关闭窗口后的 tag、merge to main、分支归档真实 GitLab 验证。
 - 多窗口并行发布。
 - 空仓库、无 `pom.xml` / `gradle.properties`、异常版本号。
 - 100 个迭代或多仓库批量窗口。
