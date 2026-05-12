@@ -492,3 +492,30 @@ bash scripts/acceptance/run-acceptance.sh
 - SA-013/SA-014 仍未通过：系统在 attach 后把正常存在的 `feature/<iterationKey>` 和 `release/<windowKey>` 判定为 `BRANCH_EXISTS`，并产生 `MERGE_CONFLICT`，导致干净窗口仍有 4 个冲突，版本更新被 `CONFLICT_001` 阻断。
 
 结论：本轮自动化成功把“干净路径不可达”从历史 SKIP/WARN 升级为明确 FAIL。后续需要修正冲突检测语义，区分“发布准备阶段应存在的分支”和“真正阻断发布的重复/冲突分支”。
+
+### 2026-05-13 后端服务管理与冲突语义复验
+
+命令：
+
+```bash
+bash -n scripts/acceptance/run-acceptance.sh
+mvn -pl releasehub-application -Dtest=ConflictDetectionAppServiceTest test
+bash scripts/acceptance/run-acceptance.sh --start-services
+bash scripts/acceptance/run-acceptance.sh
+bash scripts/acceptance/run-acceptance.sh --stop-services
+```
+
+结果：完整验收为 `PASS=37 / FAIL=1 / SKIP=0`。
+
+已验证新增能力：
+
+- 验收脚本已内置后端服务状态检查、启动和停止入口。
+- 验收脚本启动后端前会先安装当前 workspace 的 backend reactor 模块，避免重启后加载本地 Maven 仓库里的旧 application 包。
+- SA-001/SA-004 的 Settings 重启持久化验证复用统一的 `stop_backend/start_backend` 服务生命周期逻辑。
+- `BRANCH_EXISTS` 不再出现在 attach 后的主窗口和干净窗口冲突扫描中。
+- `ConflictDetectionAppServiceTest` 已新增回归用例，确认已管理的 feature/release 分支存在不应被判为 `BRANCH_EXISTS`。
+
+仍暴露缺口：
+
+- SA-013/SA-014 仍未完全通过：干净窗口剩余 `MISMATCH=1` 和 `MERGE_CONFLICT=1`，版本更新仍被冲突预检阻断。
+- 下一步需要继续定位版本提取/版本记录不一致，以及 attach 后 mergeability 对已合并分支的判断语义。

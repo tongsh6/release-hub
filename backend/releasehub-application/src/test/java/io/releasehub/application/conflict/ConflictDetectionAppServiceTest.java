@@ -92,7 +92,31 @@ class ConflictDetectionAppServiceTest {
     }
 
     @Test
-    void shouldDetectBranchAlreadyExists() {
+    void shouldDetectBranchNoncompliant() {
+        // Given
+        setupWindowWithIteration();
+        setupRepo("R001", "test-repo", "master");
+        setupVersionInfo("1.0.0");
+        when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
+                .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0", null)));
+        when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
+                .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
+        when(gitBranchPort.checkMergeability(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(GitBranchPort.MergeabilityResult.mergeable());
+        when(branchRuleUseCase.isCompliant("feature/" + ITERATION_KEY)).thenReturn(false);
+        when(branchRuleUseCase.isCompliant("release/rel-1.0")).thenReturn(true);
+
+        // When
+        ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
+
+        // Then
+        assertThat(report.hasConflicts()).isTrue();
+        assertThat(report.getConflicts().stream().anyMatch(
+                c -> c.getConflictType() == ConflictType.BRANCH_NONCOMPLIANT)).isTrue();
+    }
+
+    @Test
+    void shouldNotTreatManagedFeatureAndReleaseBranchesAsBranchExistsConflict() {
         // Given
         setupWindowWithIteration();
         setupRepo("R001", "test-repo", "master");
@@ -108,9 +132,8 @@ class ConflictDetectionAppServiceTest {
         ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
 
         // Then
-        assertThat(report.hasConflicts()).isTrue();
-        assertThat(report.getConflicts().stream().anyMatch(
-                c -> c.getConflictType() == ConflictType.BRANCH_EXISTS)).isTrue();
+        assertThat(report.getConflicts()).noneMatch(
+                c -> c.getConflictType() == ConflictType.BRANCH_EXISTS);
     }
 
     @Test

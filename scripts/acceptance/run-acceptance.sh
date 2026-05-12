@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 场景化验收证据脚本 v3.4
+# ReleaseHub 场景化验收证据脚本 v3.5
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
@@ -43,15 +43,24 @@
 #   bash run-acceptance.sh              # 本地模式
 #   bash run-acceptance.sh --ci         # CI 模式（docker compose up/down）
 #   bash run-acceptance.sh --check      # 仅检查存量数据完整性
+#   bash run-acceptance.sh --start-services
+#   bash run-acceptance.sh --stop-services
 # ============================================================
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BACKEND="${BACKEND_URL:-http://localhost:8080}"
 FRONTEND="${FRONTEND_URL:-http://localhost:5173}"
 GITLAB="${GITLAB_URL:-http://localhost:9080}"
+BACKEND_PORT=$(echo "$BACKEND" | sed -E 's#.*:([0-9]+).*#\1#')
+[ "$BACKEND_PORT" = "$BACKEND" ] && BACKEND_PORT=8080
+BACKEND_LOG="${BACKEND_LOG:-/tmp/releasehub-backend-acceptance.log}"
+BACKEND_PID_FILE="${BACKEND_PID_FILE:-/tmp/releasehub-backend-acceptance.pid}"
 
 MODE="local"
 CHECK_ONLY=false
+AUTO_START_SERVICES=true
+START_SERVICES_ONLY=false
+STOP_SERVICES_ONLY=false
 TS=$(date -u +%Y%m%d-%H%M%S)
 PASS=0; FAIL=0; SKIP=0
 
@@ -59,7 +68,10 @@ for arg in "$@"; do
     case $arg in
         --ci) MODE="ci" ;;
         --check) CHECK_ONLY=true ;;
-        --help) echo "Usage: $0 [--ci] [--check]"; exit 0 ;;
+        --start-services) START_SERVICES_ONLY=true ;;
+        --stop-services) STOP_SERVICES_ONLY=true ;;
+        --no-auto-start) AUTO_START_SERVICES=false ;;
+        --help) echo "Usage: $0 [--ci] [--check] [--start-services] [--stop-services] [--no-auto-start]"; exit 0 ;;
     esac
 done
 
@@ -72,6 +84,140 @@ warn() { echo -e "  ${YELLOW}[WARN]${NC} $*" >&2; }
 h2()   { echo "" >&2; echo -e "${CYAN}=== $* ===${NC}" >&2; }
 
 die() { echo -e "${RED}FATAL: $*${NC}" >&2; exit 1; }
+
+backend_health() {
+    curl -s -o /dev/null "$BACKEND/actuator/health" 2>/dev/null
+}
+
+wait_for_http() {
+    local url=$1
+    local timeout=${2:-60}
+    for i in $(seq 1 "$timeout"); do
+        if curl -s -o /dev/null "$url" 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+ensure_postgres() {
+    if docker ps --format '{{.Names}}' | grep -qx "releasehub-postgres"; then
+        ok "releasehub-postgres 运行中"
+        return
+    fi
+    if [ "$AUTO_START_SERVICES" != "true" ]; then
+        die "releasehub-postgres 未运行"
+    fi
+    info "releasehub-postgres 未运行，正在启动..."
+    docker compose -f "$PROJECT_ROOT/docs/docker-compose.yml" up -d postgres >/tmp/releasehub-postgres-start.log 2>&1 \
+        || die "PostgreSQL 启动失败: /tmp/releasehub-postgres-start.log"
+    for i in $(seq 1 30); do
+        if docker ps --format '{{.Names}}' | grep -qx "releasehub-postgres"; then
+            ok "releasehub-postgres 已启动"
+            return
+        fi
+        sleep 1
+    done
+    die "releasehub-postgres 启动超时"
+}
+
+ensure_gitlab() {
+    if docker ps --format '{{.Names}}' | grep -qx "releasehub-gitlab"; then
+        ok "releasehub-gitlab 运行中"
+        GITLAB_READY=true
+        return
+    fi
+    if [ "$AUTO_START_SERVICES" != "true" ]; then
+        warn "releasehub-gitlab 未运行，将进入 MOCK_MODE"
+        GITLAB_READY=false
+        return
+    fi
+    info "releasehub-gitlab 未运行，正在启动..."
+    docker compose -f "$PROJECT_ROOT/docker-compose.gitlab.yml" up -d gitlab >/tmp/releasehub-gitlab-start.log 2>&1 \
+        || { warn "GitLab 启动失败，将进入 MOCK_MODE: /tmp/releasehub-gitlab-start.log"; GITLAB_READY=false; return; }
+    if wait_for_http "$GITLAB/users/sign_in" 180; then
+        ok "releasehub-gitlab 已启动"
+        GITLAB_READY=true
+    else
+        warn "GitLab 等待超时，将进入 MOCK_MODE"
+        GITLAB_READY=false
+    fi
+}
+
+stop_backend() {
+    local stopped=false
+    if [ -f "$BACKEND_PID_FILE" ]; then
+        local pid
+        pid=$(cat "$BACKEND_PID_FILE" 2>/dev/null || true)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            info "停止后端进程 PID=$pid"
+            kill "$pid" 2>/dev/null || true
+            stopped=true
+        fi
+        rm -f "$BACKEND_PID_FILE"
+    fi
+
+    local port_pids
+    port_pids=$(lsof -iTCP:"$BACKEND_PORT" -sTCP:LISTEN -t 2>/dev/null || true)
+    if [ -n "$port_pids" ]; then
+        info "停止占用端口 $BACKEND_PORT 的后端进程: $port_pids"
+        echo "$port_pids" | xargs kill 2>/dev/null || true
+        stopped=true
+    fi
+
+    if [ "$stopped" = "true" ]; then
+        for _ in $(seq 1 20); do
+            backend_health || { ok "后端已停止"; return; }
+            sleep 1
+        done
+        port_pids=$(lsof -iTCP:"$BACKEND_PORT" -sTCP:LISTEN -t 2>/dev/null || true)
+        [ -n "$port_pids" ] && echo "$port_pids" | xargs kill -9 2>/dev/null || true
+        ok "后端已强制停止"
+    else
+        info "后端未运行"
+    fi
+}
+
+start_backend() {
+    if backend_health; then
+        ok "后端 $BACKEND"
+        return
+    fi
+    if [ "$AUTO_START_SERVICES" != "true" ]; then
+        die "后端未启动"
+    fi
+
+    info "后端未启动，正在编译当前工作区模块并启动..."
+    : > "$BACKEND_LOG"
+    nohup bash -c '
+        cd "$1/backend" && mvn -pl releasehub-bootstrap -am -DskipTests install &&
+        cd "$1/backend/releasehub-bootstrap" && SPRING_PROFILES_ACTIVE=local,real mvn spring-boot:run
+    ' _ "$PROJECT_ROOT" >> "$BACKEND_LOG" 2>&1 &
+    local pid=$!
+    echo "$pid" > "$BACKEND_PID_FILE"
+    info "后端启动中 (PID=$pid)，日志: $BACKEND_LOG"
+
+    for i in $(seq 1 90); do
+        if backend_health; then
+            ok "后端启动成功 (${i}s)"
+            return
+        fi
+        if ! kill -0 "$pid" 2>/dev/null; then
+            tail -80 "$BACKEND_LOG" >&2 || true
+            die "后端启动进程已退出"
+        fi
+        sleep 1
+    done
+    tail -80 "$BACKEND_LOG" >&2 || true
+    die "后端启动超时"
+}
+
+ensure_services() {
+    ensure_gitlab
+    ensure_postgres
+    start_backend
+}
 
 # 等待异步任务完成并校验结果
 # Usage: wait_for_run <run_id> <timeout_sec>
@@ -140,17 +286,20 @@ auth() {
 
 # ---- 0. 前置 ----
 h2 "0. 环境检查"
+if [ "$STOP_SERVICES_ONLY" = "true" ]; then
+    stop_backend
+    exit 0
+fi
+
+if [ "$START_SERVICES_ONLY" = "true" ]; then
+    ensure_services
+    exit 0
+fi
+
+ensure_services
 AUTH_TOKEN=$(auth)
 AUTH="Authorization: Bearer $AUTH_TOKEN"
 ok "登录成功"
-
-# 容器
-GITLAB_READY=true
-docker ps --format '{{.Names}}' | grep -q "releasehub-gitlab" && ok "releasehub-gitlab 运行中" || { warn "releasehub-gitlab 未运行，将进入 MOCK_MODE"; GITLAB_READY=false; }
-docker ps --format '{{.Names}}' | grep -q "releasehub-postgres" && ok "releasehub-postgres 运行中" || die "releasehub-postgres 未运行"
-
-# 后端
-curl -s -o /dev/null "$BACKEND/actuator/health" && ok "后端 $BACKEND" || die "后端未启动"
 # 前端
 curl -s -o /dev/null "$FRONTEND" 2>/dev/null && ok "前端 $FRONTEND" || warn "前端未启动"
 
@@ -439,23 +588,9 @@ fi
 # ---- 3.7 设置持久化重启验证 ----
 h2 "SA-001/SA-004: 3.7 设置持久化重启验证"
 info "重启后端以验证 Settings 持久化..."
-pkill -f "spring-boot:run" 2>/dev/null || true
-sleep 5
-# 确保老进程彻底退出
-lsof -iTCP:8080 -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
-sleep 3
-# 重新启动
-cd "$PROJECT_ROOT/backend/releasehub-bootstrap" && SPRING_PROFILES_ACTIVE=local,real mvn spring-boot:run > /tmp/releasehub-backend-restart.log 2>&1 &
-RESTART_PID=$!
-info "后端重启中 (PID=$RESTART_PID)，等待就绪..."
-for i in $(seq 1 30); do
-    if curl -s -o /dev/null http://localhost:8080/actuator/health 2>/dev/null; then
-        ok "后端重启成功 (${i}s)"
-        break
-    fi
-    sleep 2
-done
-curl -s -o /dev/null http://localhost:8080/actuator/health || die "后端重启后无法访问"
+stop_backend
+start_backend
+backend_health || die "后端重启后无法访问"
 cd "$PROJECT_ROOT"
 
 # 重新登录（token 可能因重启失效）
