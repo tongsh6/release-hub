@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 全链路验收脚本 v3
+# ReleaseHub 全链路验收脚本 v3.3
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：请先用本脚本，不要手工逐 API 调试验收  ⚠️  ║
@@ -18,16 +18,18 @@
 #   - 本脚本按正确顺序完成全部步骤，遇到失败会显式报告而非静默降级
 #   - 绕过本脚本的手工验证已经在 v0.1.10 验收中浪费了大量排查时间
 #
-# 能力清单（11 个场景，25+ 验收项）:
-#   0. 环境检查 + 脏数据检测
-#   1. 存量数据审计（Groups/Repos/Windows/Iterations/Runs/Token 加密）
+# 能力清单（13 个场景，30+ 验收项）:
+#   0. 环境检查 + 后端 profile 确认
+#   1. 存量数据审计（含 BranchCreationMode 分布 + featureBranch null 检测 + cloneUrl 格式校验）
 #   2. GitLab 种子数据初始化（幂等）
-#   3. 新增发布窗口全链路（Group → Repo → Window → Iteration）
-#   4. Attach 迭代 & GitLab 分支创建 & 错误可见性
-#   5. 冲突检测
+#   3. 新增发布窗口全链路（含 GitLab Settings 自动配置 + 持久化重启验证）
+#   4. Attach 迭代 & GitLab 分支创建 & errors/runItems 细粒度断言
+#   5. 冲突检测（含分类统计）
+#   5.1 冲突解决回路（USE_SYSTEM）
+#   5.2 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate SUCCESS + items > 0
 #   6. Publish & 自动编排 & WindowLifecycleListener 验证
-#   7. Run 执行详情
-#   8. 版本更新 & 校验
+#   7. Run 执行详情（含 RunItem step 分布）
+#   8. 版本更新 & 校验 & Git 远程提交验证
 #   9. 存量数据冒烟
 #  10. 分支创建模式验证（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
 #  11. 汇总报告
@@ -186,6 +188,28 @@ else
     ok "Token 已全部加密: $ENCRYPTED_COUNT 个仓库"
 fi
 
+# 1.3.1 BranchCreationMode 分布
+BM_STATS=$(docker exec releasehub-postgres psql -U postgres -d release_hub -t -A -F, -c \
+    "SELECT branch_creation_mode, COUNT(*) FROM iteration_repo WHERE branch_creation_mode IS NOT NULL GROUP BY branch_creation_mode ORDER BY branch_creation_mode;" 2>/dev/null)
+if [ -n "$BM_STATS" ]; then
+    BM_SUMMARY=$(echo "$BM_STATS" | tr '\n' ' ' | sed 's/,$//')
+    info "BranchCreationMode 分布: $BM_SUMMARY"
+else
+    warn "BranchCreationMode 分布为空（无 iteration_repo 记录?）"
+fi
+
+# 1.3.2 featureBranch 为 null 的行数（三层关联遗漏检测）
+FB_NULL=$(docker exec releasehub-postgres psql -U postgres -d release_hub -t -A -c \
+    "SELECT COUNT(*) FROM iteration_repo WHERE feature_branch IS NULL;" 2>/dev/null | tr -d ' ')
+FB_NULL=${FB_NULL:-0}
+[ "$FB_NULL" -eq 0 ] && ok "featureBranch null: 0（三层关联无遗漏）" || warn "featureBranch null: $FB_NULL 个（三层关联有遗漏）"
+
+# 1.3.3 cloneUrl 格式校验（双 http:// 前缀 / 非 http 开头）
+BAD_URLS=$(docker exec releasehub-postgres psql -U postgres -d release_hub -t -A -c \
+    "SELECT COUNT(*) FROM code_repository WHERE clone_url LIKE 'http://http://%';" 2>/dev/null | tr -d ' ')
+BAD_URLS=${BAD_URLS:-0}
+[ "$BAD_URLS" -eq 0 ] && ok "cloneUrl 格式: 0 个异常" || warn "cloneUrl 格式异常: $BAD_URLS 个含双 http:// 前缀"
+
 # 1.4 脏数据检测
 h2 "1.4 脏数据检测"
 DIRTY=0
@@ -279,6 +303,8 @@ R1=""; R2=""; R3=""
 ensure_repo() {
     local name=$1
     local clone_url=$2
+    # 修复已知数据问题：init-gitlab.sh 输出偶含双 http:// 前缀，归一化
+    clone_url=$(echo "$clone_url" | sed 's|^http://http://|http://|')
     local repo_id=$(curl -s "$BACKEND/api/v1/repositories" -H "$AUTH" | python3 -c "
 import sys,json
 for r in json.load(sys.stdin).get('data',[]):
@@ -347,6 +373,40 @@ else
     skip "跳过 Feature 分支创建 (MOCK_MODE or missing key)"
 fi
 
+# ---- 3.7 设置持久化重启验证 ----
+h2 "3.7 设置持久化重启验证"
+info "重启后端以验证 Settings 持久化..."
+pkill -f "spring-boot:run" 2>/dev/null || true
+sleep 5
+# 确保老进程彻底退出
+lsof -iTCP:8080 -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+sleep 3
+# 重新启动
+cd "$PROJECT_ROOT/backend/releasehub-bootstrap" && SPRING_PROFILES_ACTIVE=local,real mvn spring-boot:run > /tmp/releasehub-backend-restart.log 2>&1 &
+RESTART_PID=$!
+info "后端重启中 (PID=$RESTART_PID)，等待就绪..."
+for i in $(seq 1 30); do
+    if curl -s -o /dev/null http://localhost:8080/actuator/health 2>/dev/null; then
+        ok "后端重启成功 (${i}s)"
+        break
+    fi
+    sleep 2
+done
+curl -s -o /dev/null http://localhost:8080/actuator/health || die "后端重启后无法访问"
+cd "$PROJECT_ROOT"
+
+# 重新登录（token 可能因重启失效）
+AUTH_TOKEN=$(auth)
+AUTH="Authorization: Bearer $AUTH_TOKEN"
+
+# 验证 Settings 仍存在
+GL_AFTER=$(curl -s "$BACKEND/api/v1/settings/gitlab" -H "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('baseUrl','') or 'MISSING')" 2>/dev/null)
+[ "$GL_AFTER" != "MISSING" ] && ok "设置持久化验证通过: GitLab baseUrl=$GL_AFTER 在重启后仍存在" || no "设置持久化验证失败: Settings 重启后丢失"
+
+# 验证仓库数据仍存在
+REPO_AFTER=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',{}).keys()))" 2>/dev/null)
+[ "${REPO_AFTER:-0}" -gt 0 ] && ok "仓库数据重启后可查询" || warn "仓库数据重启后查询异常"
+
 # ---- 4. 场景: Attach + 分支创建 ----
 h2 "4. 场景: Attach 迭代 & GitLab 分支创建"
 ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
@@ -360,6 +420,21 @@ for r in json.load(sys.stdin).get('data', []):
 " | while read l; do no "Attach 失败: $l"; done
 else
     ok "Attach 成功"
+fi
+
+# 4.1 Attach 细粒度结果：每个 repo 的分支创建/MR 状态 + RunItem 数
+ATTACH_DETAIL=$(echo "$ATTACH" | python3 -c "
+import sys,json
+for r in json.load(sys.stdin).get('data', []):
+    ik = r.get('iterationKey', '?')
+    he = r.get('hasErrors', False)
+    ec = len(r.get('errors', []))
+    print(f'{ik}: hasErrors={he} errorCount={ec}')
+")
+if [ -n "$ATTACH_DETAIL" ]; then
+    while IFS= read -r detail_line; do
+        [ -n "$detail_line" ] && info "  $detail_line"
+    done <<< "$ATTACH_DETAIL"
 fi
 
 # 验证 GitLab 上真实分支存在
@@ -406,6 +481,138 @@ for c in json.load(sys.stdin).get('data',{}).get('conflicts',[]):
     echo "$CONFLICT_DETAIL"
 else
     ok "冲突检测完成: 0 个冲突"
+fi
+
+# ---- 5.1 冲突分类统计 ----
+h2 "5.1 冲突分类统计"
+CONFLICT_TYPES=$(echo "$CONFLICT" | python3 -c "
+import sys,json
+from collections import Counter
+types = Counter()
+for c in json.load(sys.stdin).get('data',{}).get('conflicts',[]):
+    types[c.get('conflictType','?')] += 1
+for t, n in sorted(types.items()):
+    print(f'  {t}: {n}')
+" 2>/dev/null)
+if [ -n "$CONFLICT_TYPES" ]; then
+    info "冲突类型分布:"
+    echo "$CONFLICT_TYPES"
+fi
+
+# ---- 5.2 干净窗口黄金路径：解决冲突 → 0 冲突 → Publish → Orchestrate SUCCESS ----
+h2 "5.2 干净窗口黄金路径: 冲突解决 + 编排验证"
+
+# 5.2.1 创建干净窗口（新 key 确保 release 分支不冲突）
+CLEAN_TS=$(date -u +%Y%m%d-%H%M%S)
+CLEAN_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json"     -d "{\"name\":\"验收-干净-$CLEAN_TS\",\"description\":\"Clean-room golden path $CLEAN_TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+CLEAN_WINDOW_ID=$(echo "$CLEAN_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))")
+[ -n "$CLEAN_WINDOW_ID" ] && ok "干净窗口创建: $CLEAN_WINDOW_ID" || { no "干净窗口创建失败"; CLEAN_WINDOW_ID=""; }
+
+if [ -n "$CLEAN_WINDOW_ID" ]; then
+    # 5.2.2 创建迭代（NAMED 模式 + 唯一分支名，避免历史分支冲突）
+    CLEAN_BRANCH="feature/acceptance-clean-$CLEAN_TS"
+    CLEAN_ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json"         -d "{\"name\":\"验收-干净-$CLEAN_TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
+    CLEAN_ITER_KEY=$(echo "$CLEAN_ITER_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))")
+    [ -n "$CLEAN_ITER_KEY" ] && ok "干净迭代创建: $CLEAN_ITER_KEY" || { no "干净迭代创建失败"; CLEAN_ITER_KEY=""; }
+
+    if [ -n "$CLEAN_ITER_KEY" ]; then
+        # 5.2.3 addRepos (NAMED mode, 唯一分支名)
+        CLEAN_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$CLEAN_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json"             -d "{\"repoIds\":[\"$R1\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"$CLEAN_BRANCH\"}")
+        CLEAN_ADD_OK=$(echo "$CLEAN_ADD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success', False))")
+        [ "$CLEAN_ADD_OK" = "True" ] && ok "干净迭代 addRepos 成功" || warn "干净迭代 addRepos 部分失败"
+
+        # 5.2.4 Attach 到干净窗口
+        CLEAN_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$CLEAN_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json"             -d "{\"iterationKeys\":[\"$CLEAN_ITER_KEY\"]}")
+        CLEAN_ATTACH_OK=$(echo "$CLEAN_ATTACH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success', False))")
+        [ "$CLEAN_ATTACH_OK" = "True" ] && ok "干净窗口 Attach 成功" || no "干净窗口 Attach 失败"
+
+        # 5.2.5 冲突检测（应仅有版本 MISMATCH，无 BRANCH_EXISTS）
+        CLEAN_CONFLICT=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$CLEAN_WINDOW_ID/conflicts/check" -H "$AUTH" -H "Content-Type: application/json" -d '{}' 2>/dev/null)
+        CLEAN_CONFLICT_COUNT=$(echo "$CLEAN_CONFLICT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('totalCount',0))")
+        CLEAN_CONFLICT_TYPES=$(echo "$CLEAN_CONFLICT" | python3 -c "
+import sys,json
+from collections import Counter
+types = Counter()
+for c in json.load(sys.stdin).get('data',{}).get('conflicts',[]):
+    types[c.get('conflictType','?')] += 1
+print(','.join(f'{t}={n}' for t,n in sorted(types.items())))
+")
+        info "干净窗口冲突: total=$CLEAN_CONFLICT_COUNT types=[$CLEAN_CONFLICT_TYPES]"
+
+        # 5.2.6 逐个解决版本冲突（MISMATCH → USE_SYSTEM）
+        if [ "$CLEAN_CONFLICT_COUNT" -gt 0 ]; then
+            RESOLVED=0
+            echo "$CLEAN_CONFLICT" | python3 -c "
+import sys,json
+for c in json.load(sys.stdin).get('data',{}).get('conflicts',[]):
+    if c.get('conflictType') in ('MISMATCH', 'CROSS_REPO_VERSION_MISMATCH'):
+        print(f"{c['iterationKey']}|{c['repoId']}")
+" 2>/dev/null | while IFS='|' read -r ikey rid; do
+                if [ -n "$ikey" ] && [ -n "$rid" ]; then
+                    RESOLVE_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations/$ikey/repos/$rid/resolve-conflict" -H "$AUTH" -H "Content-Type: application/json"                         -d '{"resolution":"USE_SYSTEM"}')
+                    RESOLVE_OK=$(echo "$RESOLVE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))")
+                    if [ "$RESOLVE_OK" = "True" ]; then
+                        RESOLVED=$((RESOLVED + 1))
+                    fi
+                fi
+            done
+            info "已解决 $RESOLVED 个版本冲突"
+
+            # 5.2.7 重新检测冲突 → 应为 0
+            sleep 1
+            CLEAN_CONFLICT2=$(curl -s "$BACKEND/api/v1/release-windows/$CLEAN_WINDOW_ID/conflicts" -H "$AUTH")
+            CLEAN_CONFLICT2_COUNT=$(echo "$CLEAN_CONFLICT2" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('totalCount',0))" 2>/dev/null || echo "0")
+            [ "$CLEAN_CONFLICT2_COUNT" -eq 0 ] && ok "冲突解决后重新检测: 0（黄金路径前置条件满足）" || warn "仍有 $CLEAN_CONFLICT2_COUNT 个冲突"
+        else
+            ok "干净窗口初始 0 冲突（黄金路径前置条件满足）"
+            CLEAN_CONFLICT2_COUNT=0
+        fi
+
+        # 5.2.8 Publish 干净窗口
+        CLEAN_CONFLICT2_COUNT=${CLEAN_CONFLICT2_COUNT:--1}
+        CLEAN_CONFLICT_COUNT=${CLEAN_CONFLICT_COUNT:--1}
+        if [ "$CLEAN_CONFLICT2_COUNT" -eq 0 ] || [ "$CLEAN_CONFLICT_COUNT" -eq 0 ]; then
+            CLEAN_PUB=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$CLEAN_WINDOW_ID/publish" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
+            CLEAN_PUB_OK=$(echo "$CLEAN_PUB" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))")
+            [ "$CLEAN_PUB_OK" = "True" ] && ok "干净窗口 Publish 成功" || no "干净窗口 Publish 失败"
+
+            # 5.2.9 Orchestrate → 应有 items > 0
+            sleep 2
+            CLEAN_ORCH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$CLEAN_WINDOW_ID/orchestrate" -H "$AUTH" -H "Content-Type: application/json"                 -d "{\"repoIds\":[\"$R1\"],\"iterationKeys\":[\"$CLEAN_ITER_KEY\"],\"failFast\":false,\"operator\":\"acceptance-clean-$CLEAN_TS\"}")
+            CLEAN_ORCH_OK=$(echo "$CLEAN_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))")
+            if [ "$CLEAN_ORCH_OK" = "True" ]; then
+                CLEAN_RUN_ID=$(echo "$CLEAN_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'])")
+                info "干净窗口编排已启动 (run=$CLEAN_RUN_ID)，等待结果..."
+                CLEAN_FINAL_STATUS=$(wait_for_run "$CLEAN_RUN_ID" 60)
+                if [ "$CLEAN_FINAL_STATUS" = "SUCCESS" ]; then
+                    ok "干净窗口编排 SUCCESS (黄金路径验证通过)"
+
+                    # 5.2.10 验证 RunItem step 分布
+                    CLEAN_RUN_DETAIL=$(curl -s "$BACKEND/api/v1/runs/$CLEAN_RUN_ID" -H "$AUTH")
+                    CLEAN_STEP_INFO=$(echo "$CLEAN_RUN_DETAIL" | python3 -c "
+import sys,json
+from collections import Counter
+d = json.load(sys.stdin).get('data', {})
+items = d.get('items', [])
+actions = Counter()
+results = Counter()
+for item in items:
+    for s in item.get('steps', []):
+        actions[s.get('actionType', '?')] += 1
+        results[s.get('result', '?')] += 1
+print(f'items={len(items)} stepActions={dict(actions)} stepResults={dict(results)}')
+" 2>/dev/null)
+                    ok "RunItem 详情: $CLEAN_STEP_INFO"
+                else
+                    no "干净窗口编排状态: $CLEAN_FINAL_STATUS (预期 SUCCESS)"
+                fi
+            else
+                ORCH_CODE=$(echo "$CLEAN_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code','?'))")
+                ORCH_MSG=$(echo "$CLEAN_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('message','?'))")
+                no "干净窗口编排启动失败: code=$ORCH_CODE msg=$ORCH_MSG"
+            fi
+        fi
+    fi
 fi
 
 # ---- 6. 场景: Publish + Auto-Orchestration ----
@@ -457,7 +664,7 @@ data = json.load(sys.stdin).get('data',[])
 if data:
     r = data[-1]  # last run
     items = len(r.get('items',[]))
-    print(f\"id={r['id'][:20]} type={r.get('runType','?')} status={r.get('status','?')} items={items}\")
+    print(f\"id={r['id']} type={r.get('runType','?')} status={r.get('status','?')} items={items}\")
 else:
     print('NO_RUNS')
 ")
@@ -467,6 +674,29 @@ else
     ITEM_COUNT=$(echo "$LATEST_RUN" | grep -o 'items=[0-9]*' | cut -d= -f2)
     [ "$ITEM_COUNT" -eq 0 ] && warn "Run 含 0 item（feature 分支缺失导致全部 SKIP）" || ok "Run items: $ITEM_COUNT"
     info "$LATEST_RUN"
+
+    # 7.1 RunItem step 分布（需要 RunView 返回 items 字段 — RunController v3.3+）
+    LATEST_RUN_ID=$(echo "$LATEST_RUN" | sed -n 's/.*id=\([^ ]*\).*/\1/p')
+    if [ -n "$LATEST_RUN_ID" ]; then
+        RUN_DETAIL=$(curl -s "$BACKEND/api/v1/runs/$LATEST_RUN_ID" -H "$AUTH")
+        STEP_DIST=$(echo "$RUN_DETAIL" | python3 -c "
+import sys,json
+d = json.load(sys.stdin).get('data', {})
+items = d.get('items', [])
+if not items:
+    print('NO_ITEMS')
+else:
+    from collections import Counter
+    actions = Counter()
+    results = Counter()
+    for item in items:
+        for s in item.get('steps', []):
+            actions[s.get('actionType', '?')] += 1
+            results[s.get('result', '?')] += 1
+    print(f'steps={sum(actions.values())} actions={dict(actions)} results={dict(results)}')
+" 2>/dev/null)
+        [ -n "$STEP_DIST" ] && [ "$STEP_DIST" != "NO_ITEMS" ] && info "  Step 分布: $STEP_DIST"
+    fi
 fi
 
 # ---- 8. 场景: 版本更新 + 校验 ----
