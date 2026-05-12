@@ -265,19 +265,83 @@ ok "种子数据就绪"
 # ---- 3. 场景：新增全链路 ----
 h2 "SA-003/SA-005/SA-008/SA-009: 3. 场景: 发布准备数据验证"
 
-# 3.1 确保分组（复用）
-GROUP_CODE=$(curl -s "$BACKEND/api/v1/groups" -H "$AUTH" | python3 -c "
+# 3.1 确保三层组织分组（客户 → 业务线 → 品牌，资源挂品牌叶子节点）
+ensure_group() {
+    local name=$1
+    local parent_code=${2:-}
+    local group_code=$(curl -s "$BACKEND/api/v1/groups" -H "$AUTH" | python3 -c "
 import sys,json
+name = '''$name'''
+parent = '''$parent_code'''
 for g in json.load(sys.stdin).get('data',[]):
-    if g.get('name') == '验收分组': print(g['code']); break
-")
-if [ -z "$GROUP_CODE" ]; then
-    GROUP_CODE=$(curl -s -X POST "$BACKEND/api/v1/groups" -H "$AUTH" -H "Content-Type: application/json" \
-        -d '{"name":"验收分组","parentCode":null}' | python3 -c "import sys,json; print(json.load(sys.stdin)['data'])")
-    ok "创建分组: $GROUP_CODE"
-else
-    ok "复用分组: $GROUP_CODE"
+    if g.get('name') == name and (g.get('parentCode') or '') == parent:
+        print(g.get('code',''))
+        break
+" 2>/dev/null)
+
+    if [ -n "$group_code" ]; then
+        ok "复用分组: $name → $group_code"
+        echo "$group_code"
+        return 0
+    fi
+
+    local payload
+    if [ -n "$parent_code" ]; then
+        payload="{\"name\":\"$name\",\"parentCode\":\"$parent_code\"}"
+    else
+        payload="{\"name\":\"$name\",\"parentCode\":null}"
+    fi
+
+    local group_id=$(curl -s -X POST "$BACKEND/api/v1/groups" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "$payload" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',''))" 2>/dev/null)
+    if [ -z "$group_id" ]; then
+        no "创建分组失败: $name"
+        echo ""
+        return 1
+    fi
+
+    group_code=$(curl -s "$BACKEND/api/v1/groups/$group_id" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('code',''))" 2>/dev/null)
+    [ -n "$group_code" ] && ok "创建分组: $name → $group_code" || no "创建分组后无法读取 code: $name"
+    echo "$group_code"
+}
+
+CUSTOMER_CODE=$(ensure_group "验收-客户A")
+BUSINESS_LINE_CODE=$(ensure_group "验收-业务线X" "$CUSTOMER_CODE")
+BRAND_CODE=$(ensure_group "验收-品牌Y" "$BUSINESS_LINE_CODE")
+GROUP_CODE="$BRAND_CODE"
+
+if [ -z "$CUSTOMER_CODE" ] || [ -z "$BUSINESS_LINE_CODE" ] || [ -z "$BRAND_CODE" ]; then
+    die "三层分组初始化失败"
 fi
+
+GROUP_TREE_OK=$(curl -s "$BACKEND/api/v1/groups/tree" -H "$AUTH" | python3 -c "
+import sys,json
+data = json.load(sys.stdin).get('data', [])
+names = set()
+def walk(nodes):
+    for n in nodes:
+        names.add(n.get('name',''))
+        walk(n.get('children') or [])
+walk(data)
+print(all(name in names for name in ['验收-客户A','验收-业务线X','验收-品牌Y']))
+" 2>/dev/null)
+[ "$GROUP_TREE_OK" = "True" ] && ok "三层分组树可见: 客户A → 业务线X → 品牌Y" || no "三层分组树校验失败"
+info "资源将挂载到品牌叶子节点: $GROUP_CODE"
+
+NON_LEAF_WINDOW=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"name\":\"验收-非叶子窗口-$TS\",\"description\":\"non-leaf probe\",\"groupCode\":\"$CUSTOMER_CODE\"}" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "False")
+[ "$NON_LEAF_WINDOW" = "True" ] && no "非叶子分组创建发布窗口未被拒绝" || ok "非叶子分组创建发布窗口被拒绝"
+
+NON_LEAF_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"name\":\"验收-非叶子迭代-$TS\",\"groupCode\":\"$BUSINESS_LINE_CODE\",\"repoIds\":[]}" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "False")
+[ "$NON_LEAF_ITER" = "True" ] && no "非叶子分组创建迭代未被拒绝" || ok "非叶子分组创建迭代被拒绝"
+
+NON_LEAF_REPO=$(curl -s -X POST "$BACKEND/api/v1/repositories" -H "$AUTH" -H "Content-Type: application/json" \
+    -d "{\"name\":\"验收-非叶子仓库-$TS\",\"cloneUrl\":\"http://localhost:9080/e2e-user/non-leaf-probe.git\",\"defaultBranch\":\"main\",\"groupCode\":\"$CUSTOMER_CODE\",\"gitProvider\":\"MOCK\"}" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "False")
+[ "$NON_LEAF_REPO" = "True" ] && no "非叶子分组创建仓库未被拒绝" || ok "非叶子分组创建仓库被拒绝"
 
 # 3.2 GitLab PAT
 source /tmp/e2e-gitlab.env 2>/dev/null || true
