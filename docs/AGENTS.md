@@ -18,7 +18,8 @@
 
 | 目录 | 用途 | 何时加载 |
 |------|------|----------|
-| [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) | 项目事实台账（权威基线） | **每次会话首次加载**，判断项目阶段和已完成事项 |
+| [project-ledger.md](project-ledger.md) | 项目事实台账（权威基线） | **每次会话首次加载**，判断项目阶段、已完成事项、当前原则和 Top Priority |
+| [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) | 项目变更日志 | 需要追溯历史变更时加载 |
 | [context/](context/INDEX.md) | 项目知识库（长期记忆） | 理解业务/技术背景 |
 | [context/experience/](context/experience/INDEX.md) | 经验索引（可检索） | 实现类任务前必读 |
 | [requirements/](requirements/INDEX.md) | 需求管理 | 日常需求跟踪 |
@@ -237,6 +238,16 @@ ls docs/reports/acceptance-*.md
 5. 冲突检测/编排 API 依赖前置数据（versionInfo、featureBranch）→ 500
 
 这些前置条件在 `run-acceptance.sh` 中已全部处理。绕过它的手工验证在 v0.1.10 验收中已浪费大量时间。详见 [scripts/README.md](../scripts/README.md)。
+
+### 用户旅程自动化原则（P0）
+
+当任务是“场景化验收”“用户旅程”“前端 E2E”“Playwright 自动化”时，AI 必须先读取 [project-ledger.md](project-ledger.md) 和 [reports/scenario-acceptance-matrix.md](reports/scenario-acceptance-matrix.md)，并遵守以下边界：
+
+- ReleaseHub 业务数据必须由前端 UI 旅程创建或变更。分组、仓库纳管、迭代、发布窗口、挂载、冲突扫描、冲突解决、发布编排、版本更新等，不能用 API/数据库直接造数后声称完成用户旅程。
+- 允许脚本准备外部环境 fixture：GitLab/Postgres/Backend/Frontend 服务、GitLab seed repo、GitLab PAT、基础容器状态。
+- API、数据库、GitLab 查询只能作为页面动作后的证据复核，不能替代用户点击路径。
+- 如果测试只是观察历史数据或既有 Run，必须标注为“可见性/复核既有记录”，不得标注为“用户触发动作的完整旅程”。
+- SA-012/SA-013/SA-014 的黄金路径必须从页面完成关键动作，并用 Run/GitLab/数据证据复核结果。
 
 ### 经验沉淀（任务完成后）
 
