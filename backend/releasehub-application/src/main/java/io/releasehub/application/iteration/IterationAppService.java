@@ -7,6 +7,9 @@ import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.version.VersionDeriverUseCase;
 import io.releasehub.application.version.VersionExtractorUseCase;
+import io.releasehub.application.version.VersionUpdateAppService;
+import io.releasehub.application.version.VersionUpdateRequest;
+import io.releasehub.application.version.VersionUpdateResult;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
@@ -19,6 +22,7 @@ import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.version.BuildTool;
 import io.releasehub.domain.version.ConflictResolution;
 import io.releasehub.domain.version.VersionSource;
 import io.releasehub.domain.window.WindowIteration;
@@ -51,6 +55,7 @@ public class IterationAppService {
     private final BranchRuleUseCase branchRuleUseCase;
     private final VersionDeriverUseCase versionDeriverUseCase;
     private final VersionExtractorUseCase versionExtractorUseCase;
+    private final VersionUpdateAppService versionUpdateAppService;
     private final GroupPort groupPort;
     private final Clock clock;
 
@@ -402,7 +407,7 @@ public class IterationAppService {
                 return syncVersionFromRepo(iterationKey, repoId);
 
             case USE_SYSTEM:
-                // 使用系统版本，更新同步时间
+                updateRepoToSystemVersion(repoId, versionInfo);
                 iterationRepoPort.updateVersion(
                         iterationKey.value(),
                         repoId.value(),
@@ -420,6 +425,38 @@ public class IterationAppService {
                 log.info("Conflict resolution cancelled for repo {} iteration {}",
                         repoId.value(), iterationKey.value());
                 return versionInfo;
+        }
+    }
+
+    private void updateRepoToSystemVersion(RepoId repoId, IterationRepoVersionInfo versionInfo) {
+        if (versionInfo.getFeatureBranch() == null || versionInfo.getFeatureBranch().isBlank()) {
+            throw ValidationException.invalidParameter("featureBranch");
+        }
+        if (versionInfo.getDevVersion() == null || versionInfo.getDevVersion().isBlank()) {
+            throw ValidationException.invalidParameter("devVersion");
+        }
+
+        CodeRepository repo = codeRepositoryPort.findById(repoId)
+                .orElseThrow(() -> NotFoundException.repository(repoId.value()));
+        VersionExtractorUseCase.VersionInfo repoVersion = versionExtractorUseCase
+                .extractVersion(repo.getCloneUrl(), versionInfo.getFeatureBranch())
+                .orElseThrow(BusinessException::versionNotFoundInFile);
+
+        BuildTool buildTool = switch (repoVersion.source()) {
+            case POM -> BuildTool.MAVEN;
+            case GRADLE -> BuildTool.GRADLE;
+            default -> throw ValidationException.invalidParameter("Unsupported version source: " + repoVersion.source());
+        };
+
+        VersionUpdateRequest request = buildTool == BuildTool.MAVEN
+                ? VersionUpdateRequest.forMaven(repoId, versionInfo.getFeatureBranch(), ".",
+                        versionInfo.getDevVersion(), "pom.xml")
+                : VersionUpdateRequest.forGradle(repoId, versionInfo.getFeatureBranch(), ".",
+                        versionInfo.getDevVersion(), "gradle.properties");
+
+        VersionUpdateResult result = versionUpdateAppService.updateVersion(request);
+        if (!result.success()) {
+            throw ValidationException.invalidParameter(result.errorMessage());
         }
     }
 

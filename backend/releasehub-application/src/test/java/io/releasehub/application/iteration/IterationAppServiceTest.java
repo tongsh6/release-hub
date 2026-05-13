@@ -9,6 +9,9 @@ import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.version.VersionDeriverUseCase;
 import io.releasehub.application.version.VersionExtractorUseCase;
+import io.releasehub.application.version.VersionUpdateAppService;
+import io.releasehub.application.version.VersionUpdateRequest;
+import io.releasehub.application.version.VersionUpdateResult;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
@@ -22,8 +25,12 @@ import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.repo.RepoType;
+import io.releasehub.domain.version.BuildTool;
+import io.releasehub.domain.version.ConflictResolution;
+import io.releasehub.domain.version.VersionSource;
 import io.releasehub.domain.window.WindowIteration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -78,6 +85,8 @@ class IterationAppServiceTest {
     @Mock
     private VersionDeriverUseCase versionDeriverUseCase;
     @Mock
+    private VersionUpdateAppService versionUpdateAppService;
+    @Mock
     private java.time.Clock clock;
 
     private IterationAppService iterationAppService;
@@ -90,7 +99,7 @@ class IterationAppServiceTest {
                 iterationPort, releaseWindowPort, windowIterationPort,
                 codeRepositoryPort, iterationRepoPort,
                 gitBranchAdapterFactory, branchRuleUseCase, versionDeriverUseCase,
-                versionExtractorUseCase, groupPort, clock
+                versionExtractorUseCase, versionUpdateAppService, groupPort, clock
         );
         lenient().when(clock.instant()).thenReturn(now);
         lenient().when(clock.getZone()).thenReturn(java.time.ZoneId.of("UTC"));
@@ -221,6 +230,66 @@ class IterationAppServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("ITER_002"));
         verify(iterationPort, never()).deleteByKey(any());
+    }
+
+    @Test
+    @DisplayName("resolveVersionConflict USE_SYSTEM 时把系统版本写回 feature 分支")
+    void shouldUpdateRepoVersionWhenResolvingConflictWithSystemVersion() {
+        IterationRepoVersionInfo versionInfo = IterationRepoVersionInfo.builder()
+                .repoId("repo-1")
+                .baseVersion("1.2.0")
+                .devVersion("1.3.0-SNAPSHOT")
+                .targetVersion("1.3.0")
+                .featureBranch("feature/ITER-1")
+                .versionSource(VersionSource.SYSTEM)
+                .build();
+        CodeRepository repo = CodeRepository.rehydrate(
+                RepoId.of("repo-1"), "Repo", "http://localhost/group/repo.git",
+                "master", "G001", RepoType.SERVICE, GitProvider.GITLAB, "token",
+                false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+        ArgumentCaptor<VersionUpdateRequest> requestCaptor = ArgumentCaptor.forClass(VersionUpdateRequest.class);
+
+        when(iterationRepoPort.getVersionInfo("ITER-1", "repo-1")).thenReturn(Optional.of(versionInfo));
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+        when(versionExtractorUseCase.extractVersion(repo.getCloneUrl(), "feature/ITER-1"))
+                .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.2.0", VersionSource.POM)));
+        when(versionUpdateAppService.updateVersion(any(VersionUpdateRequest.class)))
+                .thenReturn(VersionUpdateResult.success("1.2.0", "1.3.0-SNAPSHOT", "diff", "pom.xml"));
+
+        iterationAppService.resolveVersionConflict(
+                IterationKey.of("ITER-1"), RepoId.of("repo-1"), ConflictResolution.USE_SYSTEM);
+
+        verify(versionUpdateAppService).updateVersion(requestCaptor.capture());
+        VersionUpdateRequest request = requestCaptor.getValue();
+        assertThat(request.repoId()).isEqualTo(RepoId.of("repo-1"));
+        assertThat(request.branchName()).isEqualTo("feature/ITER-1");
+        assertThat(request.buildTool()).isEqualTo(BuildTool.MAVEN);
+        assertThat(request.targetVersion()).isEqualTo("1.3.0-SNAPSHOT");
+        assertThat(request.repoPath()).isEqualTo(".");
+        assertThat(request.pomPath()).isEqualTo("pom.xml");
+        verify(iterationRepoPort).updateVersion(
+                eq("ITER-1"), eq("repo-1"), eq("1.3.0-SNAPSHOT"), eq("SYSTEM"), any(Instant.class));
+    }
+
+    @Test
+    @DisplayName("resolveVersionConflict USE_SYSTEM 缺少 featureBranch 时拒绝写回仓库")
+    void shouldRejectSystemResolutionWhenFeatureBranchMissing() {
+        IterationRepoVersionInfo versionInfo = IterationRepoVersionInfo.builder()
+                .repoId("repo-1")
+                .baseVersion("1.2.0")
+                .devVersion("1.3.0-SNAPSHOT")
+                .targetVersion("1.3.0")
+                .featureBranch(null)
+                .versionSource(VersionSource.SYSTEM)
+                .build();
+
+        when(iterationRepoPort.getVersionInfo("ITER-1", "repo-1")).thenReturn(Optional.of(versionInfo));
+
+        assertThatThrownBy(() -> iterationAppService.resolveVersionConflict(
+                IterationKey.of("ITER-1"), RepoId.of("repo-1"), ConflictResolution.USE_SYSTEM))
+                .isInstanceOf(ValidationException.class);
+        verify(versionUpdateAppService, never()).updateVersion(any(VersionUpdateRequest.class));
+        verify(iterationRepoPort, never()).updateVersion(anyString(), anyString(), anyString(), anyString(), any());
     }
 
     @Test
