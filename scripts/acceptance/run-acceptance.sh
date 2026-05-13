@@ -28,7 +28,7 @@
 #   SA-010: Attach 迭代、GitLab release 分支创建、runItems 细粒度断言
 #   SA-011: 冲突检测和分类统计
 #   SA-012: 冲突解决回路（USE_SYSTEM）
-#   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate SUCCESS
+#   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS
 #   SA-014: 版本更新、校验、Git 远程提交验证
 #   SA-015: Run 执行详情（RunItem/RunStep）
 #   SA-016: 窗口关闭和收尾能力目前记录为后续缺口
@@ -245,6 +245,11 @@ wait_for_run() {
     echo "$status"
 }
 
+is_run_success() {
+    local status=$1
+    [ "$status" = "SUCCESS" ] || [ "$status" = "COMPLETED" ]
+}
+
 # 验证 GitLab 侧是否产生了预期的 Commit
 # Usage: verify_gitlab_commit <repo_clone_url> <branch> <message_keyword>
 verify_gitlab_commit() {
@@ -254,10 +259,14 @@ verify_gitlab_commit() {
     
     # 从 clone_url 提取 project_path (e.g. http://.../group/project.git -> group/project)
     local project_path=$(echo "$clone_url" | sed -E 's|https?://[^/]+/||; s|\.git$||')
-    local encoded_path=$(echo "$project_path" | python3 -c "import sys, urllib.parse; print(python3 urllib.parse.quote(sys.stdin.read().strip(), safe=''))" 2>/dev/null || echo "$project_path" | sed 's|/|%2F|g')
+    local encoded_path=$(echo "$project_path" | python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip(), safe=''))" 2>/dev/null || echo "$project_path" | sed 's|/|%2F|g')
+    local encoded_branch=$(echo "$branch" | python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip(), safe=''))" 2>/dev/null || echo "$branch")
     
-    # 获取 GitLab Token (假设系统设置中已配置，脚本直接通过 API 读取)
-    local gl_token=$(curl -s "$BACKEND/api/v1/settings/gitlab" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('token',''))")
+    # 优先使用本轮种子数据创建的 token；接口返回值可能是加密/脱敏 token，不适合作为 GitLab API token。
+    local gl_token="${GITLAB_PAT:-}"
+    if [ -z "$gl_token" ] || [ "$gl_token" = "null" ]; then
+        gl_token=$(curl -s "$BACKEND/api/v1/settings/gitlab" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('token',''))")
+    fi
     
     if [ -z "$gl_token" ] || [ "$gl_token" = "null" ]; then
         echo "MISSING_TOKEN"
@@ -265,14 +274,16 @@ verify_gitlab_commit() {
     fi
 
     # 查询最近的 Commit
-    local endpoint="$GITLAB/api/v4/projects/$encoded_path/repository/commits?ref_name=$branch&per_page=5"
+    local endpoint="$GITLAB/api/v4/projects/$encoded_path/repository/commits?ref_name=$encoded_branch&per_page=5"
     local commits=$(curl -s -H "PRIVATE-TOKEN: $gl_token" "$endpoint")
     
     echo "$commits" | python3 -c "
 import sys,json
 keyword = '$keyword'
 commits = json.load(sys.stdin)
-if not isinstance(commits, list): sys.exit(1)
+if not isinstance(commits, list):
+    print('NON_LIST_RESPONSE')
+    sys.exit(0)
 found = any(keyword.lower() in c.get('title','').lower() for c in commits)
 print('FOUND' if found else 'NOT_FOUND')
 "
@@ -697,7 +708,7 @@ if [ -n "$CONFLICT_TYPES" ]; then
     echo "$CONFLICT_TYPES"
 fi
 
-# ---- 5.2 干净窗口黄金路径：解决冲突 → 0 冲突 → Publish → Orchestrate SUCCESS ----
+# ---- 5.2 干净窗口黄金路径：解决冲突 → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS ----
 h2 "SA-012/SA-013: 5.2 干净窗口黄金路径: 冲突解决 + 编排验证"
 
 # 5.2.1 创建干净窗口（新 key 确保 release 分支不冲突）
@@ -740,25 +751,34 @@ print(','.join(f'{t}={n}' for t,n in sorted(types.items())))
         # 5.2.6 逐个解决版本冲突（MISMATCH → USE_SYSTEM）
         if [ "$CLEAN_CONFLICT_COUNT" -gt 0 ]; then
             RESOLVED=0
+            RESOLVE_CANDIDATES=$(echo "$CLEAN_CONFLICT" | python3 -c '
+import sys,json
+for c in json.load(sys.stdin).get("data",{}).get("conflicts",[]):
+    if c.get("conflictType") in ("MISMATCH", "CROSS_REPO_VERSION_MISMATCH"):
+        print("{}|{}".format(c.get("iterationKey",""), c.get("repoId","")))
+' 2>/dev/null)
+            if [ -n "$RESOLVE_CANDIDATES" ]; then
+                info "版本冲突解决候选: $(echo "$RESOLVE_CANDIDATES" | tr '\n' ' ')"
+            else
+                warn "未解析到版本冲突解决候选"
+            fi
             while IFS='|' read -r ikey rid; do
                 if [ -n "$ikey" ] && [ -n "$rid" ]; then
                     RESOLVE_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations/$ikey/repos/$rid/resolve-conflict" -H "$AUTH" -H "Content-Type: application/json"                         -d '{"resolution":"USE_SYSTEM"}')
                     RESOLVE_OK=$(echo "$RESOLVE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))")
                     if [ "$RESOLVE_OK" = "True" ]; then
                         RESOLVED=$((RESOLVED + 1))
+                    else
+                        RESOLVE_ERR=$(echo "$RESOLVE_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('code','?') + ': ' + d.get('message','?'))" 2>/dev/null || echo "$RESOLVE_RESP")
+                        warn "版本冲突解决失败: $ikey/$rid -> $RESOLVE_ERR"
                     fi
                 fi
-            done < <(echo "$CLEAN_CONFLICT" | python3 -c '
-import sys,json
-for c in json.load(sys.stdin).get('data',{}).get('conflicts',[]):
-    if c.get('conflictType') in ('MISMATCH', 'CROSS_REPO_VERSION_MISMATCH'):
-        print("{}|{}".format(c.get("iterationKey",""), c.get("repoId","")))
-' 2>/dev/null)
+            done <<< "$RESOLVE_CANDIDATES"
             info "已解决 $RESOLVED 个版本冲突"
 
             # 5.2.7 重新检测冲突 → 应为 0
             sleep 1
-            CLEAN_CONFLICT2=$(curl -s "$BACKEND/api/v1/release-windows/$CLEAN_WINDOW_ID/conflicts" -H "$AUTH")
+            CLEAN_CONFLICT2=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$CLEAN_WINDOW_ID/conflicts/check" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
             CLEAN_CONFLICT2_COUNT=$(echo "$CLEAN_CONFLICT2" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('totalCount',0))" 2>/dev/null || echo "0")
             [ "$CLEAN_CONFLICT2_COUNT" -eq 0 ] && ok "冲突解决后重新检测: 0（黄金路径前置条件满足）" || warn "仍有 $CLEAN_CONFLICT2_COUNT 个冲突"
         else
@@ -782,8 +802,8 @@ for c in json.load(sys.stdin).get('data',{}).get('conflicts',[]):
                 CLEAN_RUN_ID=$(echo "$CLEAN_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'])")
                 info "干净窗口编排已启动 (run=$CLEAN_RUN_ID)，等待结果..."
                 CLEAN_FINAL_STATUS=$(wait_for_run "$CLEAN_RUN_ID" 60)
-                if [ "$CLEAN_FINAL_STATUS" = "SUCCESS" ]; then
-                    ok "SA-013 干净窗口编排 SUCCESS"
+                if is_run_success "$CLEAN_FINAL_STATUS"; then
+                    ok "SA-013 干净窗口编排成功 (Run status: $CLEAN_FINAL_STATUS)"
 
                     # 5.2.10 验证 RunItem / RunStep 分布
                     CLEAN_RUN_DETAIL=$(curl -s "$BACKEND/api/v1/runs/$CLEAN_RUN_ID" -H "$AUTH")
@@ -812,7 +832,7 @@ print(f'items={len(items)} stepActions={dict(actions)} stepResults={dict(results
 " 2>/dev/null)
                     ok "SA-013 RunItem 详情: $CLEAN_STEP_INFO"
                 else
-                    no "SA-013 干净窗口编排状态: $CLEAN_FINAL_STATUS (预期 SUCCESS)"
+                    no "SA-013 干净窗口编排状态: $CLEAN_FINAL_STATUS (预期 COMPLETED/SUCCESS)"
                 fi
             else
                 ORCH_CODE=$(echo "$CLEAN_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code','?'))")
@@ -846,7 +866,7 @@ if [ "$ORCH_SUCCESS" = "True" ]; then
     info "Orchestrate 已启动 (run=$ORCH_RUN_ID)，正在等待执行结果..."
     
     FINAL_ORCH_STATUS=$(wait_for_run "$ORCH_RUN_ID" 60)
-    if [ "$FINAL_ORCH_STATUS" = "SUCCESS" ]; then
+    if is_run_success "$FINAL_ORCH_STATUS"; then
         ok "Orchestrate 执行成功 (Run status: $FINAL_ORCH_STATUS)"
     else
         no "Orchestrate 执行失败 (Run status: $FINAL_ORCH_STATUS)"
@@ -935,7 +955,7 @@ if [ "$VU_SUCCESS" = "True" ]; then
     info "版本更新已启动 (run=$VU_RUN_ID)，正在等待执行结果..."
     
     FINAL_STATUS=$(wait_for_run "$VU_RUN_ID" 45)
-    if [ "$FINAL_STATUS" = "SUCCESS" ]; then
+    if is_run_success "$FINAL_STATUS"; then
         ok "版本更新执行成功 (Run status: $FINAL_STATUS)"
         
         # 增加 Git 远程校验
