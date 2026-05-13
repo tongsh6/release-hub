@@ -58,6 +58,8 @@
     <jacoco.version>0.8.12</jacoco.version>
             
     <testcontainers.version>1.20.4</testcontainers.version>
+
+    <maven.surefire.version>3.5.5</maven.surefire.version>
         
   </properties>
       
@@ -295,6 +297,8 @@
                               
           <artifactId>maven-failsafe-plugin</artifactId>
                               
+          <version>${maven.surefire.version}</version>
+
           <configuration>
                                     
             <classesDirectory>${project.build.outputDirectory}</classesDirectory>
@@ -344,6 +348,8 @@
                         
         <artifactId>maven-surefire-plugin</artifactId>
                         
+        <version>${maven.surefire.version}</version>
+
         <configuration>
                               
           <includes>
