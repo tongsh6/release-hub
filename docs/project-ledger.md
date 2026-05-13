@@ -21,6 +21,14 @@
 - 历史存量数据只能用于“可见性/复核既有记录”场景；SA-012/SA-013/SA-014 这类“用户触发并完成动作”的黄金路径，必须从页面完成关键动作。
 - 自动化测试如果需要已知起点，必须在同一个 serial Playwright 旅程中通过 UI 建立，或明确声明它验证的是外部 fixture/存量可见性，而不是完整业务用户旅程。
 
+可执行入口：
+
+- 服务托管入口：`bash scripts/acceptance/run-acceptance.sh --start-services --hold-services`
+- 服务停止入口：`bash scripts/acceptance/run-acceptance.sh --stop-services`
+- Slice-1 分组/发布窗口旅程：`cd frontend && pnpm run test:e2e:slice-1`
+- 完整前端用户旅程基线：`cd frontend && pnpm run test:e2e`
+- 测试源码入口：`frontend/e2e/tests/slice-1-group-window.spec.ts`、`frontend/e2e/tests/slice-2-full-flow.spec.ts`
+
 ---
 
 ## 2. 已完成事项
@@ -42,7 +50,7 @@
 | GitLabGitBranchAdapter URL 双重 encode 修复 | 已实现 | 本会话（uri(...) 包装 + ENC 测试同步） | acc-v0.1.11 终轮 release 分支 3/3、listBranches 18 个 | 闭环 |
 | 场景化验收 SA-013/SA-014 | 已验证 | `docs/reports/scenario-acceptance-matrix.md` + `scripts/acceptance/run-acceptance.sh` | 2026-05-13 真实 GitLab 验收 | PASS=45 / FAIL=0 / SKIP=0 |
 | 前端 SA-012/SA-013/SA-014 用户触发旅程 | 已验证 | `frontend/e2e/tests/slice-2-full-flow.spec.ts` | 2026-05-14 真实前后端联调 + 前端请求证据 | UI 创建业务数据后完成冲突解决、编排和版本更新触发；最终请求体断言作用域正确 |
-| 前端 Playwright E2E 基线 | 已验证 | `frontend/e2e/tests` | 2026-05-14 真实前后端联调 | 26 PASS / 0 FAIL / 3 SKIP（SKIP 为 spec 内显式历史缺口） |
+| 前端 Playwright E2E 基线 | 已验证 | `frontend/e2e/tests` | 2026-05-14 真实前后端联调 | 29 PASS / 0 FAIL / 0 SKIP；历史显式 skip 已转为可执行旅程 |
 | Maven surefire/failsafe 插件版本显式化 | 已验证 | `backend/pom.xml` | `mvn -pl releasehub-bootstrap -DskipTests validate` + `mvn -pl releasehub-application -Dtest=ConflictDetectionAppServiceTest test` | malformed POM 中插件版本缺失警告已关闭 |
 
 ---
@@ -56,7 +64,7 @@
 | 场景化验收 SA-013/SA-014 收口 | `bash scripts/acceptance/run-acceptance.sh` | `docs/reports/scenario-acceptance-matrix.md` | **45 PASS / 0 FAIL / 0 SKIP** |
 | URL 双重 encode 修复连带 release 分支创建 | 同上场景 4 | 同上 | 1/3 → **3/3** |
 | Listener 异常隔离 | 同上后端日志 | 同上 | UnexpectedRollback 出现次数 2 → **0** |
-| 前端 Playwright E2E 基线刷新 | `pnpm run test:e2e` | 本会话 2026-05-14 | **26 PASS / 0 FAIL / 3 SKIP**；登录、Slice-1、Slice-2 可跑通 |
+| 前端 Playwright E2E 基线刷新 | `cd frontend && pnpm run test:e2e` | 本会话 2026-05-14 | **29 PASS / 0 FAIL / 0 SKIP**；登录、Slice-1、Slice-2 可跑通，历史显式 skip 已清零 |
 | Maven 插件版本显式化 | `mvn -pl releasehub-bootstrap -DskipTests validate` | 本会话 2026-05-13 | surefire/failsafe version missing 警告消失，targeted surefire 测试通过 |
 | 单测基线 | `mvn test` | 本会话 2026-05-11 | 161 用例全过（含 GitLabGitBranchAdapterTest ENC 同步纠正） |
 | 前端 Vitest / typecheck | `pnpm run test -- src/views/release-window/__tests__/ReleaseWindowDetail.spec.ts src/views/release-window/__tests__/VersionUpdateDialog.spec.ts src/views/release-window/__tests__/OrchestrationPanel.spec.ts src/api/modules/__tests__/releaseWindow.spec.ts` / `pnpm run typecheck` | 2026-05-14 | 25 Vitest 通过；vue-tsc 通过 |
@@ -67,7 +75,7 @@
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| 前端用户旅程自动化验证 | 2026-05-14 已完成 SA-012/SA-013/SA-014 UI 触发链路 | 继续复核失败 Run/冲突详情、SA-016 收尾窗口旅程 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
+| 前端用户旅程自动化验证 | 2026-05-14 已完成 SA-012/SA-013/SA-014 UI 触发链路，并补齐 Slice-1 历史 skip | 继续复核失败 Run/冲突详情；扩展更多冲突解决分支 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
 
 ---
 
@@ -100,7 +108,7 @@
 | 证据 | 路径 | 说明 |
 |---|---|---|
 | 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-13 场景化验收记录：45 PASS / 0 FAIL / 0 SKIP |
-| 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-14 Playwright 真实前后端联调：26 PASS / 0 FAIL / 3 SKIP |
+| 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-14 Playwright 真实前后端联调：29 PASS / 0 FAIL / 0 SKIP；入口 `cd frontend && pnpm run test:e2e` |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
 | 验收脚本 | `scripts/acceptance/run-acceptance.sh` | v3.6，含服务生命周期、`--hold-services`、SA-013 干净黄金路径、SA-014 GitLab commit 校验 |

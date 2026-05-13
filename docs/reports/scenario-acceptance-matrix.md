@@ -644,3 +644,32 @@ pnpm run test:e2e
 
 - SA-012 的真实仓库写回证据仍由 `run-acceptance.sh` 承担；Playwright 当前断言前端旅程和请求语义。
 - release 分支已存在、feature 缺失、分支不合规等更多冲突解决路径仍为 P1/P2。
+
+### 2026-05-14 Slice-1 历史 SKIP 可执行化
+
+可执行入口：
+
+```bash
+bash scripts/acceptance/run-acceptance.sh --start-services --hold-services
+cd frontend && pnpm run test:e2e:slice-1
+cd frontend && pnpm run test:e2e
+bash scripts/acceptance/run-acceptance.sh --stop-services
+```
+
+结果：
+
+- Slice-1 单入口：`10 PASS / 0 FAIL / 0 SKIP`。
+- 完整 Playwright 回归：`29 PASS / 0 FAIL / 0 SKIP`。
+- `frontend/e2e/tests` 中已无 `test.skip` / `.skip(`。
+
+已补齐原显式 SKIP：
+
+- 删除含子节点父分组的保护断言：通过 UI 选中父分组、点击删除并确认，断言父分组和子分组仍存在。
+- 非叶子分组创建发布窗口：通过创建窗口弹窗验证非叶子节点禁用，用户不能选择非叶子分组提交窗口。
+- 关闭窗口前置：通过 UI 创建迭代、在发布窗口弹窗中关联迭代、发布窗口、关闭窗口并断言状态为 `CLOSED`。
+
+同步修复的小问题：
+
+- 创建子分组弹窗的 `parentCode` 预填和锁定不稳定；现在打开后会回填并禁用父编码，提交成功后关闭弹窗。
+- 关联迭代弹窗清空选择只清业务状态、不清表格选中态；现在同步清空 Element Plus 表格 selection。
+- 分组 TreeSelect 默认展开，减少大量存量分组下叶子节点不可发现的问题。
