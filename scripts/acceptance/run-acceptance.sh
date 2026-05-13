@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 场景化验收证据脚本 v3.5
+# ReleaseHub 场景化验收证据脚本 v3.6
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
@@ -44,6 +44,7 @@
 #   bash run-acceptance.sh --ci         # CI 模式（docker compose up/down）
 #   bash run-acceptance.sh --check      # 仅检查存量数据完整性
 #   bash run-acceptance.sh --start-services
+#   bash run-acceptance.sh --start-services --hold-services
 #   bash run-acceptance.sh --stop-services
 # ============================================================
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -61,6 +62,7 @@ CHECK_ONLY=false
 AUTO_START_SERVICES=true
 START_SERVICES_ONLY=false
 STOP_SERVICES_ONLY=false
+HOLD_SERVICES=false
 TS=$(date -u +%Y%m%d-%H%M%S)
 PASS=0; FAIL=0; SKIP=0
 
@@ -69,9 +71,10 @@ for arg in "$@"; do
         --ci) MODE="ci" ;;
         --check) CHECK_ONLY=true ;;
         --start-services) START_SERVICES_ONLY=true ;;
+        --hold-services) HOLD_SERVICES=true ;;
         --stop-services) STOP_SERVICES_ONLY=true ;;
         --no-auto-start) AUTO_START_SERVICES=false ;;
-        --help) echo "Usage: $0 [--ci] [--check] [--start-services] [--stop-services] [--no-auto-start]"; exit 0 ;;
+        --help) echo "Usage: $0 [--ci] [--check] [--start-services] [--hold-services] [--stop-services] [--no-auto-start]"; exit 0 ;;
     esac
 done
 
@@ -304,6 +307,17 @@ fi
 
 if [ "$START_SERVICES_ONLY" = "true" ]; then
     ensure_services
+    if [ "$HOLD_SERVICES" = "true" ]; then
+        info "服务已启动，保持脚本运行；按 Ctrl-C 或发送 TERM 可停止后端"
+        trap 'stop_backend; exit 0' INT TERM
+        while true; do
+            if ! backend_health; then
+                warn "后端健康检查失败，退出保活模式"
+                exit 1
+            fi
+            sleep 5
+        done
+    fi
     exit 0
 fi
 
