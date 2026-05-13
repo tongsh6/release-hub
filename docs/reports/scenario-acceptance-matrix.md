@@ -71,7 +71,7 @@
 | SA-009 | 技术负责人在迭代页创建迭代并选择仓库 | 同品牌仓库选择、iterationKey、分支模式记录 | feature 分支和版本信息落库并可追踪 | 前端迭代详情和跨品牌仓库拒绝证据不足 |
 | SA-010 | 发布经理在窗口详情页挂载迭代并查看发布计划 | attach 细粒度结果、状态流转、冲突阻断 | release 分支真实创建，WindowIteration 状态一致 | 前端发布计划可见性、解除挂载和部分失败重试不足 |
 | SA-011 | 测试人员在窗口详情页触发/查看风险扫描 | 冲突总数、类型分布、阻塞发布 | 冲突与 GitLab 分支/版本状态可对应 | 前端风险详情、严重级别和建议处理方式不足 |
-| SA-012 | 技术负责人在冲突详情中执行解决动作 | `USE_SYSTEM` 等解决动作更新记录，重扫清零 | 必要时写回仓库或保留处理证据 | 前端解决闭环、更多冲突类型解决路径不足 |
+| SA-012 | 技术负责人在冲突详情中执行解决动作 | `USE_SYSTEM` 等解决动作更新记录，重扫清零 | 必要时写回仓库或保留处理证据 | 前端已覆盖版本冲突 `USE_SYSTEM` 解决；更多冲突类型解决路径为 P1/P2 |
 | SA-013 | 技术负责人在窗口详情页触发发布编排 | 无阻塞冲突后 Run COMPLETED/SUCCESS，冲突未解决时拒绝 | RunItem/RunStep、GitLab 分支状态一致 | 前端已覆盖 UI 建数后触发请求作用域；单条连续 UI→真实 GitLab Run 仍由后端验收证据拼接 |
 | SA-014 | 技术负责人在版本操作入口执行版本更新 | 版本更新 Run COMPLETED/SUCCESS，失败原因可见 | `pom.xml` 在 release 分支真实 commit | 前端已覆盖 UI 建数后版本更新请求；真实 GitLab commit 仍由验收脚本承担 |
 | SA-015 | 测试人员在 Run/窗口详情复核执行证据 | Run 列表、Run 详情、窗口详情返回完整状态 | RunItem/RunStep 可追溯到窗口、迭代、仓库 | 已有最小 UI 观察路径，仍缺冲突/失败详情复核 |
@@ -342,13 +342,13 @@ P0 验收焦点：
 
 当前覆盖：
 
-- `run-acceptance.sh` 5.2 有版本冲突 `USE_SYSTEM` 解决雏形。
+- `run-acceptance.sh` 5.2 已验证版本冲突 `USE_SYSTEM` 解决后重扫为 0。
+- Playwright 已覆盖前端真实旅程：复用同一个 serial UI 旅程创建出的发布窗口、迭代和仓库，在窗口详情冲突面板重新扫描，点击“同步版本”，确认后提交 `resolution=USE_SYSTEM`，并断言重扫后无冲突。
 
 缺口：
 
-- 需要固化为正式断言。
 - release 分支已存在、feature 缺失、分支不合规等解决路径为 P1。
-- 前端解决闭环为 P1/P2。
+- 真实仓库写回证据由 `run-acceptance.sh` 承担；Playwright 当前断言前端旅程和请求语义。
 
 ### SA-013：技术负责人触发发布编排
 
@@ -550,7 +550,7 @@ bash scripts/acceptance/run-acceptance.sh --stop-services
 - SA-014 版本更新已绑定干净窗口，Run 为 `SUCCESS`，GitLab release 分支可查到 `ReleaseHub: Update` commit。
 - GitLab MR `commits_status` / `No commits between` 被视为已无可合并提交的幂等成功，避免 attach 已合入后再次编排失败。
 
-- 前端触发编排和版本更新旅程已有 UI 建数 + 请求作用域自动化；冲突解决旅程仍未达到完整 P0。
+- 前端触发编排、冲突解决和版本更新旅程已有 UI 建数 + 请求语义自动化；真实 GitLab Run/commit 强证据仍由验收脚本承担。
 - Maven 多模块、Gradle 真实写回、失败重试和多仓部分失败仍为 Phase 2。
 
 ### 2026-05-13 前端 Playwright 基线复验
@@ -577,7 +577,7 @@ pnpm run test:e2e
 
 仍保留缺口：
 
-- SA-012 冲突解决 UI 旅程仍未完整覆盖；SA-013/SA-014 已有前端触发请求证据，但单条连续 UI→真实 GitLab Run 成功仍由验收脚本证据补齐。
+- SA-012/SA-013/SA-014 已有前端触发请求证据，但单条连续 UI→真实 GitLab Run 成功仍由验收脚本证据补齐。
 
 ### 2026-05-13 SA-013 前端用户旅程自动化启动
 
@@ -600,7 +600,7 @@ pnpm run test:e2e
 仍保留缺口：
 
 - SA-013 目前前端层断言到“触发请求作用域正确”，Run 完整执行证据仍由 `run-acceptance.sh` 后端/GitLab 验收承担。
-- SA-012 冲突解决 UI 旅程仍未补齐。
+- SA-012 冲突解决 UI 旅程已在 2026-05-14 补齐版本冲突 `USE_SYSTEM` 路径。
 
 ### 2026-05-13 SA-014 前端用户旅程自动化补齐
 
@@ -622,4 +622,25 @@ pnpm run test:e2e
 仍保留缺口：
 
 - SA-014 的真实 GitLab commit、Run SUCCESS 由 `run-acceptance.sh` 验收脚本承担；Playwright 当前断言前端旅程和请求作用域，不直接让 UI 创建的 mock 仓库执行真实版本写回。
-- SA-012 冲突解决 UI 旅程仍未补齐。
+
+### 2026-05-14 SA-012 前端用户旅程自动化补齐
+
+命令：
+
+```bash
+pnpm exec playwright test slice-2-full-flow.spec.ts -g "UI-created release orchestration journey"
+pnpm run test:e2e
+```
+
+结果：
+
+- SA-012/SA-013/SA-014 serial 前端旅程通过：同一条 Playwright 旅程通过 UI 创建业务数据，再从窗口详情完成版本冲突解决、发布编排触发和版本更新触发。
+- SA-012 新增前端旅程通过：冲突面板重新扫描出版本不一致，用户点击“同步版本”，确认后请求 `resolution=USE_SYSTEM`，随后重扫为无冲突。
+- 修复冲突解决事件链路：`ConflictPanel` 显式 emit `resolve`，`ReleaseWindowDetail` 调用 `iterationApi.resolveVersionConflict(..., 'USE_SYSTEM')` 并刷新冲突面板。
+- 修复两个非本轮引入但影响旅程稳定的小问题：冲突解决按钮不再包在 tooltip 触发器里；迭代详情“添加仓库”不再在可见按钮后做静默前端权限二次拦截。
+- 完整 Playwright 回归结果更新为 `26 PASS / 0 FAIL / 3 SKIP`。
+
+仍保留缺口：
+
+- SA-012 的真实仓库写回证据仍由 `run-acceptance.sh` 承担；Playwright 当前断言前端旅程和请求语义。
+- release 分支已存在、feature 缺失、分支不合规等更多冲突解决路径仍为 P1/P2。
