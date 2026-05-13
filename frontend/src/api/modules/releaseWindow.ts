@@ -50,6 +50,13 @@ export interface VersionUpdateResponse {
   status: string
 }
 
+export interface OrchestrateRequest {
+  repoIds: string[]
+  iterationKeys: string[]
+  failFast: boolean
+  operator: string
+}
+
 // --- API Functions ---
 
 export async function list(query: PageQuery & { name?: string; status?: string }): Promise<PageResult<ReleaseWindowView>> {
@@ -102,8 +109,8 @@ export function listIterations(id: string): Promise<any[]> {
   return apiGet<any[]>(`${BASE}/release-windows/${id}/iterations`)
 }
 
-export function orchestrate(id: string): Promise<any> {
-  return apiPost<any>(`${BASE}/release-windows/${id}/orchestrate`, {})
+export function orchestrate(id: string, req: OrchestrateRequest): Promise<any> {
+  return apiPost<any>(`${BASE}/release-windows/${id}/orchestrate`, req)
 }
 
 export function getPlan(id: string): Promise<any> {

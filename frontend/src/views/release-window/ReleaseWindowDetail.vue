@@ -154,6 +154,8 @@
       :window-status="form.status || 'DRAFT'"
       :iteration-count="iterations.length"
       :repo-count="totalRepoCount"
+      :repo-ids="orchestrationRepoIds"
+      :iteration-keys="orchestrationIterationKeys"
       @open-version-update="openVersionUpdate"
       @refresh="handleRefresh"
     />
@@ -297,6 +299,14 @@ const title = computed(() => form.value.name || t('releaseWindow.details'))
 
 const totalRepoCount = computed(() => {
   return iterations.value.reduce((sum, iter) => sum + (iter.repos?.length || 0), 0)
+})
+
+const orchestrationRepoIds = computed(() => {
+  return Array.from(new Set(iterations.value.flatMap(iter => (iter.repos || []).map(repo => repo.id))))
+})
+
+const orchestrationIterationKeys = computed(() => {
+  return Array.from(new Set(iterations.value.map(iter => iter.key)))
 })
 
 const goBack = () => {

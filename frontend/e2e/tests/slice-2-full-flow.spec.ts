@@ -5,7 +5,8 @@
  * 定位: 证明用户能从页面完成操作和复核证据，API/GitLab 状态由 acceptance 脚本补充证明。
  */
 import { test, expect } from '@playwright/test'
-import { ensureLoggedIn, loadLabels, confirmDialog, tcName, FORCE } from './helpers'
+import type { Locator, Page } from '@playwright/test'
+import { ensureLoggedIn, loadLabels, confirmDialog, confirmMessageBox, tcName, FORCE } from './helpers'
 
 test.describe('Slice-2: Full Release Flow', () => {
   let L: Record<string, string> = {}
@@ -176,5 +177,154 @@ test.describe('Slice-2: Full Release Flow', () => {
     await page.waitForTimeout(1000)
 
     await expect(page.locator('.release-window-detail-page, .el-descriptions, .el-card, .el-main').first()).toBeVisible({ timeout: 5000 })
+  })
+})
+
+test.describe.serial('Slice-2: UI-created release orchestration journey', () => {
+  let L: Record<string, string> = {}
+  const suffix = Date.now().toString()
+  const groupCode = `UIJ${suffix}`
+  const groupName = `UI Journey ${suffix}`
+  const repoName = `ui-journey-repo-${suffix}`
+  const iterationName = `UI Journey Iteration ${suffix}`
+  const windowName = `UI Journey Window ${suffix}`
+  let iterationKey = ''
+
+  test.beforeAll(async ({ browser }) => {
+    const page = await browser.newPage()
+    await ensureLoggedIn(page)
+    L = await loadLabels(page, [
+      'common.confirm', 'common.keyword', 'common.search', 'common.view',
+      'group.createTop', 'group.name', 'group.code',
+      'repository.addOrSync', 'repository.columns.repo', 'repository.columns.cloneUrl',
+      'repository.columns.defaultBranch', 'repository.columns.initialVersion',
+      'iteration.new', 'iteration.columns.name', 'iteration.detail.addRepos',
+      'releaseWindow.create', 'releaseWindow.name', 'releaseWindow.publish',
+      'releaseWindow.statusText.PUBLISHED',
+      'releaseWindow.attachIterations',
+      'orchestration.executeFinish'
+    ])
+    await page.close()
+  })
+
+  async function selectLeafGroup(page: Page, dialog: Locator) {
+    await dialog.locator('.el-tree-select, .el-select').first().click(FORCE)
+    await page.waitForTimeout(500)
+    const searchBox = page.locator('.el-popper input').last()
+    if (await searchBox.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await searchBox.fill(groupCode)
+      await page.waitForTimeout(300)
+    }
+    await page.locator('.el-tree-node__content').filter({ hasText: groupCode }).last().click(FORCE)
+    await page.waitForTimeout(300)
+  }
+
+  async function searchByKeyword(page: Page, keyword: string) {
+    await page.getByRole('textbox', { name: L['common.keyword'] }).first().fill(keyword)
+    await page.locator('button').filter({ hasText: L['common.search'] }).click(FORCE)
+    await page.locator('.el-loading-mask').last().waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+    await page.locator('.el-loading-mask').last().waitFor({ state: 'detached', timeout: 3000 }).catch(() => {})
+  }
+
+  async function findWindowRow(page: Page) {
+    await page.getByRole('textbox', { name: L['releaseWindow.name'] }).first().fill(windowName)
+    await page.locator('button').filter({ hasText: L['common.search'] }).click(FORCE)
+    await page.locator('.el-loading-mask').last().waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+    return page.locator('.el-table__body tr').filter({ hasText: windowName }).last()
+  }
+
+  test('SA-013 frontend path submits UI-created repo and iteration scope to orchestration', async ({ page }) => {
+    await ensureLoggedIn(page)
+
+    await page.goto('/groups')
+    await page.getByRole('button', { name: L['group.createTop'] }).click(FORCE)
+    const groupDialog = page.locator('.el-dialog').last()
+    await groupDialog.getByRole('textbox', { name: L['group.name'] }).fill(groupName)
+    await groupDialog.getByRole('textbox', { name: L['group.code'], exact: true }).fill(groupCode)
+    await confirmDialog(page)
+    await expect(page.locator('.el-tree-node__content').filter({ hasText: groupCode })).toBeVisible()
+
+    await page.goto('/repositories')
+    await page.getByRole('button', { name: L['repository.addOrSync'] }).click(FORCE)
+    const repoDialog = page.locator('.el-dialog').last()
+    const repoInputs = repoDialog.locator('.el-input__inner')
+    await repoInputs.nth(0).fill(repoName)
+    await repoInputs.nth(1).fill(`mock:///${repoName}.git`)
+    await repoInputs.nth(2).fill('main')
+    await repoInputs.nth(3).fill('1.4.0')
+    await selectLeafGroup(page, repoDialog)
+    await confirmDialog(page)
+    await searchByKeyword(page, repoName)
+    await expect(page.locator('.el-table__body tr').filter({ hasText: repoName }).last()).toBeVisible()
+
+    await page.goto('/iterations')
+    await page.getByRole('button', { name: L['iteration.new'] }).click(FORCE)
+    const iterationDialog = page.locator('.el-dialog').last()
+    await iterationDialog.getByRole('textbox', { name: L['iteration.columns.name'] }).fill(iterationName)
+    await selectLeafGroup(page, iterationDialog)
+    await confirmDialog(page)
+    await searchByKeyword(page, iterationName)
+    const iterationRow = page.locator('.el-table__body tr').filter({ hasText: iterationName }).last()
+    await expect(iterationRow).toBeVisible()
+    iterationKey = (await iterationRow.locator('td').first().innerText()).trim()
+    expect(iterationKey).toContain('ITER-')
+    await iterationRow.locator('button').filter({ hasText: L['common.view'] }).click(FORCE)
+    await expect(page).toHaveURL(/\/iterations\//)
+
+    await page.getByRole('button', { name: L['iteration.detail.addRepos'] }).click(FORCE)
+    const addRepoDialog = page.locator('.el-dialog').last()
+    await addRepoDialog.getByPlaceholder(/Search repository name|搜索仓库名/).fill(repoName)
+    await addRepoDialog.locator('.repo-item').filter({ hasText: repoName }).click()
+    await expect(addRepoDialog.locator('.selected-info')).toContainText('1')
+    await confirmDialog(page)
+    await expect(page.locator('.el-table__body tr').filter({ hasText: repoName }).last()).toBeVisible()
+
+    await page.goto('/release-windows')
+    await page.getByRole('button', { name: L['releaseWindow.create'] }).click(FORCE)
+    const windowDialog = page.locator('.el-dialog').last()
+    await windowDialog.getByRole('textbox', { name: L['releaseWindow.name'] }).fill(windowName)
+    await selectLeafGroup(page, windowDialog)
+    await confirmDialog(page)
+    const row = await findWindowRow(page)
+    await expect(row).toBeVisible()
+    await row.locator('button').filter({ hasText: L['common.view'] }).click(FORCE)
+    await expect(page).toHaveURL(/\/release-windows\//)
+
+    await page.getByRole('button', { name: L['releaseWindow.attachIterations'] }).click(FORCE)
+    const attachDialog = page.locator('.el-dialog').last()
+    await attachDialog.getByRole('textbox').first().fill(iterationKey)
+    await attachDialog.locator('button').filter({ hasText: L['common.search'] }).click(FORCE)
+    await attachDialog
+      .locator('.el-table__body tr')
+      .filter({ hasText: iterationKey })
+      .locator('.el-checkbox__inner')
+      .click()
+    await confirmDialog(page)
+    await expect(page.locator('.iterations-list')).toContainText(iterationKey)
+    await expect(page.locator('.iterations-list')).toContainText(repoName)
+
+    await page.getByRole('button', { name: L['releaseWindow.publish'] }).click(FORCE)
+    await confirmMessageBox(page)
+    await expect(page.locator('.el-descriptions')).toContainText(L['releaseWindow.statusText.PUBLISHED'], { timeout: 10000 })
+
+    let orchestrateBody: any
+    await page.route('**/api/v1/release-windows/*/orchestrate', async (route) => {
+      orchestrateBody = route.request().postDataJSON()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: 'run-ui-journey' })
+      })
+    })
+
+    await page.getByRole('button', { name: L['orchestration.executeFinish'] }).click(FORCE)
+    await confirmMessageBox(page)
+
+    expect(orchestrateBody).toMatchObject({
+      iterationKeys: [iterationKey],
+      failFast: false,
+      operator: 'frontend'
+    })
+    expect(orchestrateBody.repoIds).toHaveLength(1)
   })
 })

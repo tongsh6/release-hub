@@ -20,16 +20,24 @@
       </div>
       <div v-loading="loading" class="repo-list">
         <el-checkbox-group v-model="selectedRepoIds">
-          <div v-for="repo in filteredRepos" :key="repo.id" class="repo-item">
-            <el-checkbox :value="repo.id" :disabled="existingRepoIds.has(repo.id)">
-              <div class="repo-info">
-                <span class="repo-name">{{ repo.name }}</span>
-                <span class="repo-branch">{{ repo.defaultBranch }}</span>
-                <el-tag v-if="existingRepoIds.has(repo.id)" type="info" size="small">
-                  {{ t('iteration.detail.alreadyAdded') }}
-                </el-tag>
-              </div>
-            </el-checkbox>
+          <div
+            v-for="repo in filteredRepos"
+            :key="repo.id"
+            class="repo-item"
+            @click.capture.prevent="toggleRepoSelection(repo.id)"
+          >
+            <el-checkbox
+              :value="repo.id"
+              :disabled="existingRepoIds.has(repo.id)"
+              @mousedown.stop.prevent="toggleRepoSelection(repo.id)"
+            />
+            <div class="repo-info">
+              <span class="repo-name">{{ repo.name }}</span>
+              <span class="repo-branch">{{ repo.defaultBranch }}</span>
+              <el-tag v-if="existingRepoIds.has(repo.id)" type="info" size="small">
+                {{ t('iteration.detail.alreadyAdded') }}
+              </el-tag>
+            </div>
           </div>
         </el-checkbox-group>
         <el-empty v-if="filteredRepos.length === 0 && !loading" :description="t('common.noData')" />
@@ -180,6 +188,15 @@ const loadRepos = async () => {
 
 const handleSearch = () => {
   // 搜索是响应式的，通过 computed 自动过滤
+}
+
+const toggleRepoSelection = (repoId: string) => {
+  if (existingRepoIds.value.has(repoId)) return
+  if (selectedRepoIds.value.includes(repoId)) {
+    selectedRepoIds.value = selectedRepoIds.value.filter(id => id !== repoId)
+  } else {
+    selectedRepoIds.value = [...selectedRepoIds.value, repoId]
+  }
 }
 
 const validateBranchName = () => {

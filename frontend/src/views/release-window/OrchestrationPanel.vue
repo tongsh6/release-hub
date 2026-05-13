@@ -199,6 +199,8 @@ const props = defineProps<{
   windowStatus: string
   iterationCount: number
   repoCount: number
+  repoIds: string[]
+  iterationKeys: string[]
 }>()
 
 const emit = defineEmits<{
@@ -302,7 +304,12 @@ async function handleOrchestrate() {
     )
     
     orchestrating.value = true
-    await releaseWindowApi.orchestrate(props.windowId)
+    await releaseWindowApi.orchestrate(props.windowId, {
+      repoIds: props.repoIds,
+      iterationKeys: props.iterationKeys,
+      failFast: false,
+      operator: 'frontend'
+    })
     ElMessage.success(t('common.success'))
     
     loadRecentRuns()
