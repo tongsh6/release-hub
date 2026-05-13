@@ -13,8 +13,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.put;
+import static com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.verify;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -86,6 +88,99 @@ class GitLabGitBranchAdapterTest {
     }
 
     @Test
+    void shouldTreatNoCommitsBetweenBranchesAsSuccessfulMerge(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(400)
+                        .withBody("{\"message\":[\"No commits between feature/ITER-1 and release/RW-1\"]}")));
+
+        GitBranchPort.MergeResult result = adapter.mergeBranch(
+                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
+
+        assertEquals(MergeStatus.SUCCESS, result.status());
+    }
+
+    @Test
+    void shouldWaitForGitLabMergeRequestReadinessBeforeMerging(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
+                        .withBody("{\"iid\":102,\"merge_status\":\"unchecked\"}")));
+        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/102"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{\"iid\":102,\"merge_status\":\"can_be_merged\"}")));
+        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/102/merge"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{}")));
+
+        GitBranchPort.MergeResult result = adapter.mergeBranch(
+                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
+
+        assertEquals(MergeStatus.SUCCESS, result.status());
+    }
+
+    @Test
+    void shouldTreatGitLabCommitsStatusAsNoOpMerge(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
+                        .withBody("{\"iid\":104,\"merge_status\":\"unchecked\"}")));
+        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/104"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{\"iid\":104,\"detailed_merge_status\":\"commits_status\"}")));
+        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/104"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{}")));
+
+        GitBranchPort.MergeResult result = adapter.mergeBranch(
+                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
+
+        assertEquals(MergeStatus.SUCCESS, result.status());
+        verify(putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/104")));
+    }
+
+    @Test
+    void shouldCloseMergeRequestWhenMergeEndpointFails(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
+                        .withBody("{\"iid\":103,\"merge_status\":\"can_be_merged\"}")));
+        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/103/merge"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(405)
+                        .withBody("{\"message\":\"405 Method Not Allowed\"}")));
+        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/103"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{\"iid\":103,\"merge_status\":\"can_be_merged\"}")));
+        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/103"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{}")));
+
+        GitBranchPort.MergeResult result = adapter.mergeBranch(
+                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
+
+        assertEquals(MergeStatus.FAILED, result.status());
+        verify(putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/103")));
+    }
+
+    @Test
+    void shouldTreatCommitsStatusAfterMergeEndpoint405AsNoOpMerge(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
+                        .withBody("{\"iid\":105,\"merge_status\":\"can_be_merged\"}")));
+        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/105/merge"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(405)
+                        .withBody("{\"message\":\"405 Method Not Allowed\"}")));
+        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/105"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{\"iid\":105,\"detailed_merge_status\":\"commits_status\"}")));
+        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/105"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{}")));
+
+        GitBranchPort.MergeResult result = adapter.mergeBranch(
+                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
+
+        assertEquals(MergeStatus.SUCCESS, result.status());
+        verify(putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/105")));
+    }
+
+    @Test
     void shouldGetBranchStatusSuccessfully(WireMockRuntimeInfo wm) {
         stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%2FRW-1"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
@@ -124,5 +219,36 @@ class GitLabGitBranchAdapterTest {
                 baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1");
 
         assertFalse(result.canMerge());
+    }
+
+    @Test
+    void shouldTreatNoCommitsBetweenBranchesAsMergeable(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(400)
+                        .withBody("{\"message\":[\"No commits between feature/ITER-1 and release/RW-1\"]}")));
+
+        GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
+                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1");
+
+        assertTrue(result.canMerge());
+    }
+
+    @Test
+    void shouldTreatGitLabCommitsStatusAsMergeable(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
+                        .withBody("{\"iid\":203,\"merge_status\":\"unchecked\"}")));
+        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/203"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{\"iid\":203,\"detailed_merge_status\":\"commits_status\"}")));
+        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/203"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{}")));
+
+        GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
+                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1");
+
+        assertTrue(result.canMerge());
+        verify(putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/203")));
     }
 }

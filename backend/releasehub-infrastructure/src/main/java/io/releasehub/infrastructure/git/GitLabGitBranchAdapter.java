@@ -84,20 +84,161 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
                 return MergeResult.failed("failed to create merge request");
             }
             int iid = toInt(created.getBody().get("iid"));
-            String mergeEndpoint = String.format("%s/api/v4/projects/%s/merge_requests/%d/merge", repoRef.baseUrl, repoRef.encodedPath, iid);
-            ResponseEntity<Map<String, Object>> merged = restTemplate.exchange(uri(mergeEndpoint), HttpMethod.PUT, new HttpEntity<>(Map.of("merge_commit_message", commitMessage), headers(token)), new ParameterizedTypeReference<>() {});
-            if (merged.getStatusCode().is2xxSuccessful()) {
+            MergeReadiness readiness = waitForMergeReadiness(repoRef, token, iid, created.getBody());
+            if (readiness == MergeReadiness.CONFLICT) {
+                closeMergeRequest(repoRef, token, iid);
+                return MergeResult.conflict("merge conflict detected");
+            }
+            if (readiness == MergeReadiness.NO_COMMITS) {
+                closeMergeRequest(repoRef, token, iid);
                 return MergeResult.success();
             }
-            return MergeResult.failed("merge failed");
+            String mergeEndpoint = String.format("%s/api/v4/projects/%s/merge_requests/%d/merge", repoRef.baseUrl, repoRef.encodedPath, iid);
+            try {
+                ResponseEntity<Map<String, Object>> merged = restTemplate.exchange(uri(mergeEndpoint), HttpMethod.PUT, new HttpEntity<>(Map.of("merge_commit_message", commitMessage), headers(token)), new ParameterizedTypeReference<>() {});
+                if (merged.getStatusCode().is2xxSuccessful()) {
+                    return MergeResult.success();
+                }
+                closeMergeRequest(repoRef, token, iid);
+                return MergeResult.failed("merge failed");
+            } catch (HttpClientErrorException e) {
+                if (e.getStatusCode().value() == 405) {
+                    MergeReadiness retryReadiness = waitForMergeReadiness(repoRef, token, iid, Map.of("merge_status", "unchecked"));
+                    if (retryReadiness == MergeReadiness.MERGEABLE) {
+                        try {
+                            ResponseEntity<Map<String, Object>> retried = restTemplate.exchange(uri(mergeEndpoint), HttpMethod.PUT, new HttpEntity<>(Map.of("merge_commit_message", commitMessage), headers(token)), new ParameterizedTypeReference<>() {});
+                            if (retried.getStatusCode().is2xxSuccessful()) {
+                                return MergeResult.success();
+                            }
+                        } catch (HttpClientErrorException retry) {
+                            e = retry;
+                        }
+                    } else if (retryReadiness == MergeReadiness.CONFLICT) {
+                        closeMergeRequest(repoRef, token, iid);
+                        return MergeResult.conflict("merge conflict detected");
+                    } else if (retryReadiness == MergeReadiness.NO_COMMITS) {
+                        closeMergeRequest(repoRef, token, iid);
+                        return MergeResult.success();
+                    }
+                }
+                closeMergeRequest(repoRef, token, iid);
+                String body = e.getResponseBodyAsString();
+                if (isNoCommitsBetweenResponse(body)) {
+                    return MergeResult.success();
+                }
+                if (body != null && (body.contains("conflict") || body.contains("cannot be merged"))) {
+                    return MergeResult.conflict(body);
+                }
+                log.warn("GitLab merge failed for {} -> {}: status={} body={}",
+                        sourceBranch, targetBranch, e.getStatusCode().value(), body);
+                return MergeResult.failed(body);
+            }
         } catch (HttpClientErrorException e) {
             String body = e.getResponseBodyAsString();
+            if (isNoCommitsBetweenResponse(body)) {
+                return MergeResult.success();
+            }
             if (body != null && (body.contains("conflict") || body.contains("cannot be merged"))) {
                 return MergeResult.conflict(body);
             }
+            log.warn("GitLab merge failed for {} -> {}: status={} body={}",
+                    sourceBranch, targetBranch, e.getStatusCode().value(), body);
             return MergeResult.failed(body);
         } catch (Exception e) {
+            log.warn("GitLab merge failed for {} -> {}: {}", sourceBranch, targetBranch, e.getMessage());
             return MergeResult.failed(e.getMessage());
+        }
+    }
+
+    private MergeReadiness waitForMergeReadiness(RepoRef repoRef, String token, int iid, Map<String, Object> mr) {
+        String initialStatus = mergeStatus(mr);
+        if (isMergeableStatus(initialStatus)) {
+            return MergeReadiness.MERGEABLE;
+        }
+        if (isConflictStatus(initialStatus)) {
+            return MergeReadiness.CONFLICT;
+        }
+        if (isNoCommitsStatus(initialStatus)) {
+            return MergeReadiness.NO_COMMITS;
+        }
+        if (!isPendingStatus(initialStatus)) {
+            return MergeReadiness.UNKNOWN;
+        }
+
+        String endpoint = String.format("%s/api/v4/projects/%s/merge_requests/%d",
+                repoRef.baseUrl, repoRef.encodedPath, iid);
+        String lastStatus = initialStatus;
+        for (int attempt = 0; attempt < 20; attempt++) {
+            sleepBeforeMergeReadinessPoll();
+            try {
+                ResponseEntity<Map<String, Object>> response = restTemplate.exchange(uri(endpoint), HttpMethod.GET,
+                        new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
+                String status = mergeStatus(response.getBody());
+                lastStatus = status;
+                log.debug("GitLab merge request readiness iid={} attempt={} status={}", iid, attempt + 1, status);
+                if (isMergeableStatus(status)) {
+                    return MergeReadiness.MERGEABLE;
+                }
+                if (isConflictStatus(status)) {
+                    return MergeReadiness.CONFLICT;
+                }
+                if (isNoCommitsStatus(status)) {
+                    return MergeReadiness.NO_COMMITS;
+                }
+            } catch (Exception e) {
+                log.warn("GitLab merge request readiness check failed for iid={}: {}", iid, e.getMessage());
+                return MergeReadiness.UNKNOWN;
+            }
+        }
+        log.warn("GitLab merge request readiness timed out for iid={} status={}", iid, lastStatus);
+        return MergeReadiness.UNKNOWN;
+    }
+
+    private void sleepBeforeMergeReadinessPoll() {
+        try {
+            Thread.sleep(250);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private String mergeStatus(Map<String, Object> mr) {
+        if (mr == null) {
+            return "";
+        }
+        Object detailed = mr.get("detailed_merge_status");
+        if (detailed != null) {
+            return String.valueOf(detailed).toLowerCase();
+        }
+        Object status = mr.get("merge_status");
+        return status == null ? "" : String.valueOf(status).toLowerCase();
+    }
+
+    private boolean isMergeableStatus(String status) {
+        return "can_be_merged".equals(status) || "mergeable".equals(status);
+    }
+
+    private boolean isConflictStatus(String status) {
+        return "cannot_be_merged".equals(status) || "conflict".equals(status);
+    }
+
+    private boolean isNoCommitsStatus(String status) {
+        return "commits_status".equals(status);
+    }
+
+    private boolean isPendingStatus(String status) {
+        return "unchecked".equals(status) || "checking".equals(status) || "preparing".equals(status);
+    }
+
+    private void closeMergeRequest(RepoRef repoRef, String token, int iid) {
+        try {
+            String closeEndpoint = String.format("%s/api/v4/projects/%s/merge_requests/%d",
+                    repoRef.baseUrl, repoRef.encodedPath, iid);
+            restTemplate.exchange(uri(closeEndpoint), HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("state_event", "close"), headers(token)),
+                    new ParameterizedTypeReference<>() {});
+        } catch (Exception e) {
+            log.warn("Failed to close GitLab merge request {}: {}", iid, e.getMessage());
         }
     }
 
@@ -141,32 +282,37 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
 
             Map<String, Object> mr = mrResponse.getBody();
             int iid = toInt(mr.get("iid"));
-            String mergeStatus = String.valueOf(mr.getOrDefault("merge_status", ""));
+            MergeReadiness readiness = waitForMergeReadiness(repoRef, token, iid, mr);
 
-            // Close the temporary MR
-            String closeEndpoint = String.format("%s/api/v4/projects/%s/merge_requests/%d",
-                    repoRef.baseUrl, repoRef.encodedPath, iid);
-            Map<String, String> closeBody = Map.of("state_event", "close");
-            restTemplate.exchange(uri(closeEndpoint), HttpMethod.PUT,
-                    new HttpEntity<>(closeBody, headers(token)),
-                    new ParameterizedTypeReference<>() {});
+            closeMergeRequest(repoRef, token, iid);
 
-            if ("cannot_be_merged".equals(mergeStatus)) {
+            if (readiness == MergeReadiness.CONFLICT) {
                 return MergeabilityResult.conflict("merge conflict detected");
             }
             return MergeabilityResult.mergeable();
         } catch (HttpClientErrorException e) {
             String body = e.getResponseBodyAsString();
+            if (isNoCommitsBetweenResponse(body)) {
+                return MergeabilityResult.mergeable();
+            }
             if (e.getStatusCode().value() == 400 || e.getStatusCode().value() == 404) {
                 return MergeabilityResult.conflict("branch not found or invalid: " + body);
             }
             if (e.getStatusCode().value() == 409) {
                 return MergeabilityResult.conflict("merge conflict: " + body);
             }
+            log.warn("GitLab mergeability check failed for {} -> {}: status={} body={}",
+                    sourceBranch, targetBranch, e.getStatusCode().value(), body);
             return MergeabilityResult.error(body);
         } catch (Exception e) {
+            log.warn("GitLab mergeability check failed for {} -> {}: {}",
+                    sourceBranch, targetBranch, e.getMessage());
             return MergeabilityResult.error(e.getMessage());
         }
+    }
+
+    private boolean isNoCommitsBetweenResponse(String body) {
+        return body != null && body.toLowerCase().contains("no commits between");
     }
 
     @Override
@@ -301,5 +447,12 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     }
 
     private record RepoRef(String baseUrl, String encodedPath) {
+    }
+
+    private enum MergeReadiness {
+        MERGEABLE,
+        CONFLICT,
+        NO_COMMITS,
+        UNKNOWN
     }
 }
