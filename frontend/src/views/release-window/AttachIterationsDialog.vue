@@ -20,6 +20,7 @@
         <el-button class="ml-8" @click="clearSelection">{{ t('common.clear') }}</el-button>
       </div>
       <el-table
+        ref="tableRef"
         v-loading="loading"
         :data="list"
         border
@@ -67,6 +68,7 @@ const { t } = useI18n()
 const emit = defineEmits<{ (e: 'success'): void }>()
 
 const entityRef = ref<InstanceType<typeof EntityDialog>>()
+const tableRef = ref()
 const windowIdRef = ref<string>('')
 const keyword = ref('')
 const selected = ref<Iteration[]>([])
@@ -94,6 +96,7 @@ const doSearch = () => {
 
 const clearSelection = () => {
   selected.value = []
+  tableRef.value?.clearSelection()
 }
 
 const onSelectionChange = (rows: Iteration[]) => {

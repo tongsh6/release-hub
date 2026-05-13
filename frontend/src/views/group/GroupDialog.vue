@@ -24,6 +24,7 @@
           <el-input
             v-model="form.parentCode"
             clearable
+            :disabled="!!presetParentCode"
             :placeholder="t('common.pleaseEnter') + t('group.parentCode')"
           />
           <div v-if="presetParentName" class="preset-tip">
@@ -51,6 +52,7 @@ const emit = defineEmits<{ (e: 'success'): void }>()
 const entityRef = ref<InstanceType<typeof EntityDialog>>()
 const formRef = ref<FormInstance>()
 const presetParentName = ref<string | undefined>(undefined)
+const presetParentCode = ref<string | undefined>(undefined)
 
 type GroupForm = Pick<GroupView, 'name' | 'code' | 'parentCode'>
 
@@ -99,7 +101,10 @@ const {
   }
 })
 
-onSuccess(() => emit('success'))
+onSuccess(() => {
+  entityRef.value?.close()
+  emit('success')
+})
 
 const rules: FormRules = {
   name: [
@@ -116,12 +121,17 @@ const rules: FormRules = {
 
 const openWithPreset = (opts?: { parentCode?: string; parentName?: string }) => {
   presetParentName.value = opts?.parentName
+  presetParentCode.value = opts?.parentCode
   open({ mode: 'create', preset: { parentCode: opts?.parentCode } })
+  if (opts?.parentCode) {
+    form.value.parentCode = opts.parentCode
+  }
   entityRef.value?.open()
 }
 
 const openEdit = (code: string) => {
   presetParentName.value = undefined
+  presetParentCode.value = undefined
   open({ mode: 'edit', id: code })
   entityRef.value?.open()
 }
@@ -137,6 +147,9 @@ const submitWithValidation = async () => {
 }
 
 const onOpened = () => {
+  if (mode.value === 'create' && presetParentCode.value) {
+    form.value.parentCode = presetParentCode.value
+  }
   formRef.value?.clearValidate()
 }
 

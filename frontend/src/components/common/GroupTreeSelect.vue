@@ -7,6 +7,7 @@
     :clearable="clearable"
     :disabled="disabled"
     :check-strictly="true"
+    default-expand-all
     :render-after-expand="false"
     :filter-node-method="filterNode"
     filterable
