@@ -548,8 +548,6 @@ bash scripts/acceptance/run-acceptance.sh --stop-services
 - SA-014 版本更新已绑定干净窗口，Run 为 `SUCCESS`，GitLab release 分支可查到 `ReleaseHub: Update` commit。
 - GitLab MR `commits_status` / `No commits between` 被视为已无可合并提交的幂等成功，避免 attach 已合入后再次编排失败。
 
-仍保留缺口：
-
 - 前端触发编排、冲突解决和版本更新旅程仍未达到完整 P0，只能由现有 Run/窗口详情观察路径部分证明。
 - Maven 多模块、Gradle 真实写回、失败重试和多仓部分失败仍为 Phase 2。
 
@@ -578,3 +576,26 @@ pnpm run test:e2e
 仍保留缺口：
 
 - SA-013/SA-014 的前端触发编排、冲突解决、版本更新旅程仍未完整覆盖。
+
+### 2026-05-13 SA-013 前端用户旅程自动化启动
+
+命令：
+
+```bash
+pnpm exec playwright test slice-2-full-flow.spec.ts -g "SA-013 frontend path"
+pnpm run test:e2e
+```
+
+结果：
+
+- SA-013 新增前端旅程通过：从 UI 创建分组、纳管仓库、创建迭代、给迭代添加仓库、创建发布窗口、挂载迭代、发布窗口，并在窗口详情页触发“执行收尾”。
+- 新增旅程未用 API/DB 直接准备 ReleaseHub 业务数据；最终编排请求仅在前端层拦截以断言请求体包含 UI 创建出的 `repoIds` / `iterationKeys` / `failFast=false` / `operator=frontend`。
+- 完整 Playwright 回归结果更新为 `24 PASS / 0 FAIL / 3 SKIP`。
+- 修复前端编排请求缺口：`OrchestrationPanel` 不再只传 `windowId`，会从窗口详情关联迭代/仓库派生编排作用域。
+- 修复迭代添加仓库弹窗的真实点击选择问题，保证用户点击仓库行后“已选择 N 个新仓库”正确更新。
+- 验收脚本新增 `--hold-services`，用于自动化验证期间保活脚本托管的后端服务，避免回到一次性手写启动命令。
+
+仍保留缺口：
+
+- SA-013 目前前端层断言到“触发请求作用域正确”，Run 完整执行证据仍由 `run-acceptance.sh` 后端/GitLab 验收承担。
+- SA-012 冲突解决 UI 旅程和 SA-014 版本更新 UI 旅程仍未补齐。

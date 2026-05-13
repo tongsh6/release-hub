@@ -58,7 +58,7 @@
 | 前端 Playwright E2E 基线刷新 | `pnpm run test:e2e` | 本会话 2026-05-13 | **23 PASS / 0 FAIL / 3 SKIP**；登录、Slice-1、Slice-2 可跑通 |
 | Maven 插件版本显式化 | `mvn -pl releasehub-bootstrap -DskipTests validate` | 本会话 2026-05-13 | surefire/failsafe version missing 警告消失，targeted surefire 测试通过 |
 | 单测基线 | `mvn test` | 本会话 2026-05-11 | 161 用例全过（含 GitLabGitBranchAdapterTest ENC 同步纠正） |
-| 前端 Vitest / typecheck | `npx vitest run` / `tsc --noEmit` | 2026-05-09 上次记录 | 18 / 0 错误 |
+| 前端 Vitest / typecheck | `pnpm run test -- src/api/modules/__tests__/releaseWindow.spec.ts src/views/release-window/__tests__/OrchestrationPanel.spec.ts` / `pnpm run typecheck` | 2026-05-13 | 22 Vitest 通过；vue-tsc 通过 |
 
 ---
 
@@ -66,7 +66,7 @@
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| 前端用户旅程自动化验证 | 2026-05-13 启动推进 | 先补 SA-012/SA-013/SA-014：从窗口详情触发冲突解决、发布编排、版本更新，并复核 Run/页面状态 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
+| 前端用户旅程自动化验证 | 2026-05-13 已完成 SA-013 首条 UI 触发链路 | 继续补 SA-012 冲突解决、SA-014 版本更新，并复核 Run/页面状态 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
 
 ---
 
@@ -89,7 +89,7 @@
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
 | 可选 | 累积冲突清理脚本 | 验收幂等 + 累积造成 14 个真实分支冲突，clean-room 路径不可重现 | 一键 reset 仓库到只剩 main + seed feature 分支 |
-| 当前 | 前端场景化旅程补齐 | SA-013/SA-014 后端/GitLab 强证据已通过，但前端触发编排、冲突解决、版本更新旅程仍未完整覆盖 | Playwright 从窗口详情完成触发/观察/失败原因复核 |
+| 当前 | 前端场景化旅程补齐 | SA-013 已补 UI 创建业务数据并触发编排请求；SA-012/SA-014 前端旅程仍未完整覆盖 | Playwright 从窗口详情完成触发/观察/失败原因复核 |
 | 可选 | acc-v0.1.10 报告中段移到 archive | 已被 v0.1.11 报告完全覆盖 | reports/ 目录瘦身 |
 
 ---
@@ -99,10 +99,10 @@
 | 证据 | 路径 | 说明 |
 |---|---|---|
 | 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-13 场景化验收记录：45 PASS / 0 FAIL / 0 SKIP |
-| 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-13 Playwright 真实前后端联调：23 PASS / 0 FAIL / 3 SKIP |
+| 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-13 Playwright 真实前后端联调：24 PASS / 0 FAIL / 3 SKIP |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
-| 验收脚本 | `scripts/acceptance/run-acceptance.sh` | v3.5，含服务生命周期、SA-013 干净黄金路径、SA-014 GitLab commit 校验 |
+| 验收脚本 | `scripts/acceptance/run-acceptance.sh` | v3.6，含服务生命周期、`--hold-services`、SA-013 干净黄金路径、SA-014 GitLab commit 校验 |
 | 种子初始化 | `scripts/e2e/init-gitlab.sh` | 幂等，3 个种子仓库 |
 | 启动脚本 | `backend/scripts/run.sh` | `mvn spring-boot:run -pl releasehub-bootstrap` |
 | 本地容器 | `releasehub-postgres`(5433) + `releasehub-gitlab`(9080) | 模式 A 常驻；端口策略见 memory `feedback_mode_a_b_port_isolation.md` |
