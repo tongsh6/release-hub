@@ -283,12 +283,10 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await expect(page).toHaveURL(/\/iterations\//)
 
     const addReposButton = page.getByRole('button', { name: L['iteration.detail.addRepos'] })
-    await addReposButton.click(FORCE)
+    await expect(addReposButton).toBeVisible({ timeout: 5000 })
+    await addReposButton.evaluate((el: HTMLElement) => el.click())
     const addRepoDialog = page.locator('.el-dialog').last()
-    if (!(await addRepoDialog.isVisible({ timeout: 1500 }).catch(() => false))) {
-      await addReposButton.click(FORCE)
-    }
-    await expect(addRepoDialog).toBeVisible()
+    await expect(addRepoDialog).toBeVisible({ timeout: 10000 })
     const repoSearchInput = addRepoDialog.getByPlaceholder(/Search repository name|搜索仓库名/)
     await expect(repoSearchInput).toBeVisible()
     await repoSearchInput.fill(repoName)
@@ -412,11 +410,9 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await conflictPanel.getByRole('button', { name: L['conflict.rescan'] }).click(FORCE)
     await expect(conflictPanel).toContainText(L['conflict.types.MISMATCH'])
     const resolveButton = conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })
-    await resolveButton.click(FORCE)
-    const confirmBox = page.locator('.el-message-box')
-    if (!(await confirmBox.isVisible({ timeout: 1500 }).catch(() => false))) {
-      await resolveButton.click(FORCE)
-    }
+    await expect(resolveButton).toBeVisible({ timeout: 5000 })
+    await resolveButton.evaluate((el: HTMLElement) => el.click())
+    await expect(page.locator('.el-message-box').last()).toBeVisible({ timeout: 5000 })
     await confirmMessageBox(page)
 
     expect(resolveBody).toMatchObject({ resolution: 'USE_SYSTEM' })

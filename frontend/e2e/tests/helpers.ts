@@ -35,7 +35,9 @@ export async function confirmDialog(page: Page) {
  * then wait for it to dismiss.
  */
 export async function confirmMessageBox(page: Page) {
-  await page.locator('.el-message-box .el-button--primary').last().click(FORCE)
+  const confirmButton = page.locator('.el-message-box .el-button--primary').last()
+  await expect(confirmButton).toBeVisible({ timeout: 10000 })
+  await confirmButton.click(FORCE)
   await page.waitForTimeout(500)
 }
 
