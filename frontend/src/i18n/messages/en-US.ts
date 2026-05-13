@@ -535,6 +535,8 @@ export default {
     filterAll: 'All',
     action: 'Action',
     resolveVersion: 'Sync Version',
+    confirmUseSystem: 'Use the system recorded version to resolve this conflict?',
+    resolveSuccess: 'Conflict resolved',
     resolveInGit: 'Resolve in Git',
     resolveBranch: 'Resolve Branch',
     types: {

@@ -562,6 +562,8 @@ export default {
     filterAll: '全部',
     action: '操作',
     resolveVersion: '同步版本',
+    confirmUseSystem: '确认使用系统记录版本解决该冲突？',
+    resolveSuccess: '冲突已解决',
     resolveInGit: '请到 Git 平台解决',
     resolveBranch: '请处理此分支',
     types: {

@@ -81,17 +81,18 @@
         <el-table-column prop="message" :label="t('conflict.message')" min-width="250" />
         <el-table-column :label="t('conflict.action')" width="140">
           <template #default="{ row }">
-            <el-tooltip :content="row.suggestion" placement="top">
-              <el-button
-                v-if="isResolvableInApp(row.conflictType)"
-                type="primary"
-                size="small"
-                link
-                @click="$emit('resolve', row)"
-              >
-                {{ t('conflict.resolveVersion') }}
-              </el-button>
-              <span v-else class="external-hint">
+            <el-button
+              v-if="isResolvableInApp(row.conflictType)"
+              type="primary"
+              size="small"
+              link
+              :title="row.suggestion"
+              @click.stop="emitResolve(row)"
+            >
+              {{ t('conflict.resolveVersion') }}
+            </el-button>
+            <el-tooltip v-else :content="row.suggestion" placement="top">
+              <span class="external-hint">
                 {{ getExternalHint(row.conflictType) }}
               </span>
             </el-tooltip>
@@ -109,7 +110,7 @@ import { checkConflicts, getConflicts, type ConflictReportView, type ConflictIte
 import dayjs from 'dayjs'
 
 const props = defineProps<{ windowId: string }>()
-defineEmits<{
+const emit = defineEmits<{
   resolve: [item: ConflictItemView]
 }>()
 const { t } = useI18n()
@@ -158,13 +159,17 @@ const getTagType = (type: string) => {
 const isResolvableInApp = (type: string) =>
   type === 'MISMATCH' || type === 'REPO_AHEAD' || type === 'SYSTEM_AHEAD'
 
+const emitResolve = (item: ConflictItemView) => {
+  emit('resolve', item)
+}
+
 const getExternalHint = (type: string) => {
   if (type === 'MERGE_CONFLICT') return t('conflict.resolveInGit')
   if (type === 'BRANCH_EXISTS' || type === 'BRANCH_NONCOMPLIANT') return t('conflict.resolveBranch')
   return ''
 }
 
-defineExpose({ report })
+defineExpose({ report, refresh: handleScan })
 
 onMounted(async () => {
   try {

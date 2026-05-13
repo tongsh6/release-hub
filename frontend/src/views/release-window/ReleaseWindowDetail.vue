@@ -171,6 +171,7 @@
       v-if="form.id && iterations.length > 0"
       ref="conflictPanelRef"
       :window-id="form.id"
+      @resolve="handleResolveConflict"
     />
 
     <AttachIterationsDialog ref="attachDialogRef" @success="handleAttachSuccess" />
@@ -184,7 +185,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { releaseWindowApi, type ReleaseWindow } from '@/api/modules/releaseWindow'
+import { releaseWindowApi, type ConflictItemView, type ReleaseWindow } from '@/api/modules/releaseWindow'
 import { iterationApi } from '@/api/iterationApi'
 import { repositoryApi, type Repository } from '@/api/repositoryApi'
 import { handleError } from '@/utils/error'
@@ -340,6 +341,17 @@ const openCodeMerge = () => {
 const openVersionUpdate = () => {
   if (!form.value?.id) return
   versionUpdateDialogRef.value?.open(form.value.id, iterations.value.flatMap(iter => iter.repos || []))
+}
+
+const handleResolveConflict = async (item: ConflictItemView) => {
+  try {
+    await ElMessageBox.confirm(t('conflict.confirmUseSystem'), t('common.confirm'), { type: 'warning' })
+    await iterationApi.resolveVersionConflict(item.iterationKey, item.repoId, 'USE_SYSTEM')
+    ElMessage.success(t('conflict.resolveSuccess'))
+    await conflictPanelRef.value?.refresh?.()
+  } catch (error) {
+    if (error !== 'cancel') handleError(error)
+  }
 }
 
 const handleRefresh = () => {

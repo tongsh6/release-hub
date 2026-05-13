@@ -190,6 +190,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
   const windowName = `UI Journey Window ${suffix}`
   let iterationKey = ''
   let windowDetailUrl = ''
+  let createdRepoId = ''
 
   test.beforeAll(async ({ browser }) => {
     const page = await browser.newPage()
@@ -208,7 +209,11 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'releaseWindow.versionUpdate.targetVersion',
       'releaseWindow.versionUpdate.repoPath',
       'releaseWindow.versionUpdate.pomPath',
-      'orchestration.executeFinish'
+      'orchestration.executeFinish',
+      'conflict.rescan',
+      'conflict.resolveVersion',
+      'conflict.noConflicts',
+      'conflict.types.MISMATCH'
     ])
     await page.close()
   })
@@ -277,9 +282,16 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await iterationRow.locator('button').filter({ hasText: L['common.view'] }).click(FORCE)
     await expect(page).toHaveURL(/\/iterations\//)
 
-    await page.getByRole('button', { name: L['iteration.detail.addRepos'] }).click(FORCE)
+    const addReposButton = page.getByRole('button', { name: L['iteration.detail.addRepos'] })
+    await addReposButton.click(FORCE)
     const addRepoDialog = page.locator('.el-dialog').last()
-    await addRepoDialog.getByPlaceholder(/Search repository name|搜索仓库名/).fill(repoName)
+    if (!(await addRepoDialog.isVisible({ timeout: 1500 }).catch(() => false))) {
+      await addReposButton.click(FORCE)
+    }
+    await expect(addRepoDialog).toBeVisible()
+    const repoSearchInput = addRepoDialog.getByPlaceholder(/Search repository name|搜索仓库名/)
+    await expect(repoSearchInput).toBeVisible()
+    await repoSearchInput.fill(repoName)
     await addRepoDialog.locator('.repo-item').filter({ hasText: repoName }).click()
     await expect(addRepoDialog.locator('.selected-info')).toContainText('1')
     await confirmDialog(page)
@@ -333,6 +345,82 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       operator: 'frontend'
     })
     expect(orchestrateBody.repoIds).toHaveLength(1)
+    createdRepoId = orchestrateBody.repoIds[0]
+  })
+
+  test('SA-012 frontend path resolves a version conflict with USE_SYSTEM and rescans clean', async ({ page }) => {
+    await ensureLoggedIn(page)
+    expect(windowDetailUrl).toContain('/release-windows/')
+    expect(createdRepoId).toBeTruthy()
+
+    let conflictResolved = false
+    let resolveBody: any
+    const conflictReport = () => ({
+      windowId: 'ui-journey-window',
+      checkedAt: new Date().toISOString(),
+      hasConflicts: !conflictResolved,
+      totalCount: conflictResolved ? 0 : 1,
+      conflicts: conflictResolved
+        ? []
+        : [{
+            repoId: createdRepoId,
+            repoName,
+            iterationKey,
+            conflictType: 'MISMATCH',
+            systemVersion: '1.4.0',
+            repoVersion: '1.4.1',
+            message: 'Version mismatch',
+            suggestion: 'Use system version'
+          }]
+    })
+
+    await page.route('**/api/v1/release-windows/*/conflicts', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: conflictReport() })
+      })
+    })
+    await page.route('**/api/v1/release-windows/*/conflicts/check', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: conflictReport() })
+      })
+    })
+    await page.route('**/api/v1/iterations/*/repos/*/resolve-conflict', async (route) => {
+      resolveBody = route.request().postDataJSON()
+      conflictResolved = true
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'OK',
+          message: 'OK',
+          data: {
+            repoId: createdRepoId,
+            repoName,
+            targetVersion: '1.4.0',
+            versionSource: 'SYSTEM'
+          }
+        })
+      })
+    })
+
+    await page.goto(windowDetailUrl)
+    const conflictPanel = page.locator('.conflict-panel')
+    await conflictPanel.getByRole('button', { name: L['conflict.rescan'] }).click(FORCE)
+    await expect(conflictPanel).toContainText(L['conflict.types.MISMATCH'])
+    const resolveButton = conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })
+    await resolveButton.click(FORCE)
+    const confirmBox = page.locator('.el-message-box')
+    if (!(await confirmBox.isVisible({ timeout: 1500 }).catch(() => false))) {
+      await resolveButton.click(FORCE)
+    }
+    await confirmMessageBox(page)
+
+    expect(resolveBody).toMatchObject({ resolution: 'USE_SYSTEM' })
+    await expect(conflictPanel).toContainText(L['conflict.noConflicts'])
   })
 
   test('SA-014 frontend path submits version update for the UI-created release window repo', async ({ page }) => {

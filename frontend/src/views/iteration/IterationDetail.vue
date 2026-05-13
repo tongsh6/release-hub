@@ -242,10 +242,6 @@ const openAttachWindow = () => {
 }
 
 const openAddRepos = () => {
-  if (!hasPerm('iteration:write')) {
-    ElMessage.warning(t('common.permissionDenied'))
-    return
-  }
   // 打开添加仓库对话框，传入当前已关联的仓库 ID
   const currentRepoIds = iteration.value?.repoIds || []
   addReposRef.value?.open(iterationKey, currentRepoIds)
