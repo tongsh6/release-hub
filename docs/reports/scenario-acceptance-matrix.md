@@ -47,8 +47,8 @@
 | SA-010 | Release Planning | 发布经理 | 挂载迭代到发布窗口 | 同品牌挂载、多迭代多仓计划、release 分支真实创建、细粒度 attach 结果、冲突阻断 | 部分覆盖 |
 | SA-011 | Risk & Execution | 测试人员 | 检查冲突与发布风险 | 冲突扫描、类型分布、阻塞发布、解决后重扫清零 | 部分覆盖 |
 | SA-012 | Risk & Execution | 技术负责人 | 解决冲突 | 版本冲突 `USE_SYSTEM` 解决、重扫为 0、发布可继续 | 部分覆盖 |
-| SA-013 | Risk & Execution | 技术负责人 | 触发发布编排 | 无阻塞冲突后 Run SUCCESS、RunItem > 0、GitLab 状态一致、未解决冲突阻断 | 部分覆盖 |
-| SA-014 | Risk & Execution | 技术负责人 | 执行版本更新 | Maven 单模块真实写回 release 分支、Run SUCCESS、GitLab commit 可验证 | 部分覆盖 |
+| SA-013 | Risk & Execution | 技术负责人 | 触发发布编排 | 无阻塞冲突后 Run COMPLETED/SUCCESS、RunItem > 0、GitLab 状态一致、未解决冲突阻断 | 部分覆盖 |
+| SA-014 | Risk & Execution | 技术负责人 | 执行版本更新 | Maven 单模块真实写回 release 分支、Run COMPLETED/SUCCESS、GitLab commit 可验证 | 部分覆盖 |
 | SA-015 | Risk & Execution | 测试人员 | 复核发布状态和执行证据 | 窗口/Run 列表与详情、状态和执行明细可见 | 部分覆盖 |
 | SA-016 | Post Release | 发布经理 | 关闭发布窗口并完成收尾 | 关闭状态流转、关闭后禁止关键操作、收尾 Run 可见 | 缺口较大 |
 
@@ -66,8 +66,8 @@
 | SA-010 | 发布经理在窗口详情页挂载迭代并查看发布计划 | attach 细粒度结果、状态流转、冲突阻断 | release 分支真实创建，WindowIteration 状态一致 | 前端发布计划可见性、解除挂载和部分失败重试不足 |
 | SA-011 | 测试人员在窗口详情页触发/查看风险扫描 | 冲突总数、类型分布、阻塞发布 | 冲突与 GitLab 分支/版本状态可对应 | 前端风险详情、严重级别和建议处理方式不足 |
 | SA-012 | 技术负责人在冲突详情中执行解决动作 | `USE_SYSTEM` 等解决动作更新记录，重扫清零 | 必要时写回仓库或保留处理证据 | 前端解决闭环、更多冲突类型解决路径不足 |
-| SA-013 | 技术负责人在窗口详情页触发发布编排 | 无阻塞冲突后 Run SUCCESS，冲突未解决时拒绝 | RunItem/RunStep、GitLab 分支状态一致 | 当前被分支冲突语义误判阻断，前端触发编排旅程不足 |
-| SA-014 | 技术负责人在版本操作入口执行版本更新 | 版本更新 Run SUCCESS，失败原因可见 | `pom.xml` 在 release 分支真实 commit | 当前被 SA-013 冲突阻断，前端版本更新旅程不足 |
+| SA-013 | 技术负责人在窗口详情页触发发布编排 | 无阻塞冲突后 Run COMPLETED/SUCCESS，冲突未解决时拒绝 | RunItem/RunStep、GitLab 分支状态一致 | 后端/GitLab 强证据已覆盖；前端触发编排旅程不足 |
+| SA-014 | 技术负责人在版本操作入口执行版本更新 | 版本更新 Run COMPLETED/SUCCESS，失败原因可见 | `pom.xml` 在 release 分支真实 commit | 后端/GitLab 强证据已覆盖；前端版本更新旅程不足 |
 | SA-015 | 测试人员在 Run/窗口详情复核执行证据 | Run 列表、Run 详情、窗口详情返回完整状态 | RunItem/RunStep 可追溯到窗口、迭代、仓库 | 已有最小 UI 观察路径，仍缺冲突/失败详情复核 |
 | SA-016 | 发布经理在窗口详情页关闭窗口并查看收尾结果 | CLOSED 状态、关闭后关键操作禁止 | tag、merge、归档和收尾 Run 可追踪 | 真实 GitLab 收尾和前端闭环缺口较大 |
 
@@ -226,10 +226,10 @@ P0 验收焦点：
 
 - 后端版本推导、校验、更新有单测和 API 测试。
 - `run-acceptance.sh` 场景 8 有版本校验。
+- `run-acceptance.sh` SA-014 已验证 Maven 单模块真实 GitLab 写回。
 
 缺口：
 
-- 真实 GitLab 版本更新当前可能被主窗口冲突阻断。
 - Maven 多模块、Gradle 真实写回为 P1。
 - 品牌/仓库作用域和策略继承为 P1/P2。
 
@@ -351,7 +351,7 @@ P0 验收焦点：
 P0 验收焦点：
 
 - 无阻塞冲突后编排成功。
-- Run 状态为 SUCCESS。
+- Run 状态为 COMPLETED 或 SUCCESS。
 - RunItem 数量大于 0。
 - RunStep 分布可见。
 - GitLab release 分支、合并结果等状态一致。
@@ -361,11 +361,11 @@ P0 验收焦点：
 
 - `run-acceptance.sh` 场景 5.2 有干净窗口黄金路径。
 - 场景 7 读取 Run 详情和 Step 分布。
-- 干净路径已升级为正式 PASS/FAIL 验收项，断言 Run `SUCCESS`、`RunItem > 0`、`RunStep > 0`。
+- 干净路径已升级为正式 PASS/FAIL 验收项，断言 Run `COMPLETED/SUCCESS`、`RunItem > 0`、`RunStep > 0`。
+- 真实 GitLab 验收已验证干净窗口编排 `COMPLETED`，且 RunItem/RunStep 中包含 `MERGED`。
 
 缺口：
 
-- 当前后端冲突检测会把 attach 后正常存在的 feature/release 分支误判为 `BRANCH_EXISTS`，导致干净路径不可达。
 - 失败 Run 重试和窗口/Run 状态一致性为 P1。
 - 前端触发编排和 Run 详情完整性为 P1。
 
@@ -376,7 +376,7 @@ P0 验收焦点：
 P0 验收焦点：
 
 - Maven 单模块 `pom.xml` 在 `release/<windowKey>` 上更新。
-- 版本更新 Run SUCCESS。
+- 版本更新 Run COMPLETED 或 SUCCESS。
 - GitLab commit 可验证。
 - 更新后版本校验通过。
 
@@ -384,10 +384,10 @@ P0 验收焦点：
 
 - `run-acceptance.sh` 场景 8 有版本更新和 GitLab commit 验证。
 - SA-014 已优先绑定干净窗口；干净窗口存在时，版本更新或 GitLab commit 验证失败计为 FAIL。
+- 真实 GitLab 验收已验证 Maven 单模块 `pom.xml` 在 release 分支产生 `ReleaseHub: Update` commit。
 
 缺口：
 
-- 当前被 SA-013 的冲突检测语义问题阻断，版本更新无法到达真实写回阶段。
 - Maven 多模块、Gradle 真实写回为 P1。
 - 失败原因分类、重试幂等、多仓部分失败为 P1。
 
@@ -440,14 +440,14 @@ P0 验收焦点：
 
 脚本输出应包含 SA 编号，验收报告引用脚本日志时必须保留这些编号。
 三层分组 fixture 固定使用“验收-客户A / 验收-业务线X / 验收-品牌Y”，所有仓库、迭代和发布窗口均挂载到品牌叶子节点。
-SA-013 干净黄金路径必须硬断言 Run `SUCCESS`、`RunItem > 0`、`RunStep > 0`。
+SA-013 干净黄金路径必须硬断言 Run `COMPLETED/SUCCESS`、`RunItem > 0`、`RunStep > 0`。
 SA-014 版本更新优先绑定干净窗口；干净窗口存在时，版本更新或 GitLab commit 验证失败必须计为失败。
 SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路径。
 
 1. 文档矩阵：本文件作为验收蓝图入口。
 2. 脚本编号：`run-acceptance.sh` 输出 SA 编号，便于报告回连。
 3. 三层分组：脚本已使用客户/业务线/品牌三层验收分组。
-4. 干净黄金路径：SA-013 的 Run SUCCESS、RunItem > 0、RunStep 分布改为硬断言。
+4. 干净黄金路径：SA-013 的 Run COMPLETED/SUCCESS、RunItem > 0、RunStep 分布改为硬断言。
 5. 版本更新绑定干净窗口：SA-014 不再因主窗口冲突长期 SKIP。
 6. 前端观察路径：补 SA-015 的 Playwright 最小旅程。
 
@@ -486,10 +486,10 @@ bash scripts/acceptance/run-acceptance.sh
 - 非叶子分组创建发布窗口、迭代、仓库均被拒绝。
 - SA-001/SA-004 Settings 重启持久化仍通过。
 
-暴露缺口：
+当轮暴露缺口（已在 2026-05-13 SA-013/SA-014 收口复验中关闭）：
 
 - SA-012 的版本冲突解析脚本存在 shell 引号问题，已修复为单引号 Python 片段和 process substitution。
-- SA-013/SA-014 仍未通过：系统在 attach 后把正常存在的 `feature/<iterationKey>` 和 `release/<windowKey>` 判定为 `BRANCH_EXISTS`，并产生 `MERGE_CONFLICT`，导致干净窗口仍有 4 个冲突，版本更新被 `CONFLICT_001` 阻断。
+- SA-013/SA-014 当轮未通过：系统在 attach 后把正常存在的 `feature/<iterationKey>` 和 `release/<windowKey>` 判定为 `BRANCH_EXISTS`，并产生 `MERGE_CONFLICT`，导致干净窗口仍有 4 个冲突，版本更新被 `CONFLICT_001` 阻断。
 
 结论：本轮自动化成功把“干净路径不可达”从历史 SKIP/WARN 升级为明确 FAIL。后续需要修正冲突检测语义，区分“发布准备阶段应存在的分支”和“真正阻断发布的重复/冲突分支”。
 
@@ -515,7 +515,34 @@ bash scripts/acceptance/run-acceptance.sh --stop-services
 - `BRANCH_EXISTS` 不再出现在 attach 后的主窗口和干净窗口冲突扫描中。
 - `ConflictDetectionAppServiceTest` 已新增回归用例，确认已管理的 feature/release 分支存在不应被判为 `BRANCH_EXISTS`。
 
-仍暴露缺口：
+当轮暴露缺口（已在 2026-05-13 SA-013/SA-014 收口复验中关闭）：
 
-- SA-013/SA-014 仍未完全通过：干净窗口剩余 `MISMATCH=1` 和 `MERGE_CONFLICT=1`，版本更新仍被冲突预检阻断。
+- SA-013/SA-014 当轮未完全通过：干净窗口剩余 `MISMATCH=1` 和 `MERGE_CONFLICT=1`，版本更新被冲突预检阻断。
 - 下一步需要继续定位版本提取/版本记录不一致，以及 attach 后 mergeability 对已合并分支的判断语义。
+
+### 2026-05-13 SA-013/SA-014 收口复验
+
+命令：
+
+```bash
+bash -n scripts/acceptance/run-acceptance.sh
+mvn -pl releasehub-infrastructure -Dtest=GitLabGitBranchAdapterTest test
+mvn -pl releasehub-application -Dtest=AttachAppServiceTest,IterationAppServiceTest,ConflictDetectionAppServiceTest test
+bash scripts/acceptance/run-acceptance.sh
+bash scripts/acceptance/run-acceptance.sh --stop-services
+```
+
+结果：完整验收为 `PASS=45 / FAIL=0 / SKIP=0`。
+
+已验证新增能力：
+
+- SA-012 版本冲突 `USE_SYSTEM` 会把系统版本写回 feature 分支，重扫后冲突为 0。
+- SA-013 干净窗口黄金路径已通过：Publish 成功，编排 Run 为 `COMPLETED`，RunItem > 0，RunStep > 0，步骤结果包含 `MERGED`。
+- SA-013 主窗口未解决冲突时仍被编排预检拒绝，阻断语义正确。
+- SA-014 版本更新已绑定干净窗口，Run 为 `SUCCESS`，GitLab release 分支可查到 `ReleaseHub: Update` commit。
+- GitLab MR `commits_status` / `No commits between` 被视为已无可合并提交的幂等成功，避免 attach 已合入后再次编排失败。
+
+仍保留缺口：
+
+- 前端触发编排、冲突解决和版本更新旅程仍未达到完整 P0，只能由现有 Run/窗口详情观察路径部分证明。
+- Maven 多模块、Gradle 真实写回、失败重试和多仓部分失败仍为 Phase 2。

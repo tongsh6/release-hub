@@ -9,8 +9,8 @@
 
 ## 1. 当前阶段目标
 
-**v0.1.11 验证闭环 + 收口剩余 P0/P1**。
-- 主线：让 v0.1.11 三大特性（远程版本更新 / 设置持久化 / 三层关联）+ 多 Provider 迁移 在真实 GitLab 上跑通并沉淀报告
+**v0.1.11 验证闭环 + 场景化验收收口**。
+- 主线：让 v0.1.11 三大特性（远程版本更新 / 设置持久化 / 三层关联）+ 多 Provider 迁移 在真实 GitLab 上跑通，并把 SA-013/SA-014 纳入场景化验收强断言
 - 不做：新功能（RBAC、通知、CI 深集成）；不重构 Iteration 领域到 `repoAssociations`
 
 ---
@@ -26,12 +26,13 @@
 | Token AES-GCM 加密 | 已实现 | `GitTokenCrypto` + `GitTokenAttributeConverter` | 6 单测 + acc-v0.1.10 #4 | 闭环；新 DB 数据为空时 加密=0 是正常 |
 | Attach Run 追踪 | 已实现 | `AttachAppService` + RunItem | acc-v0.1.10 修复表 | 闭环 |
 | 冲突检测（7 种）| 已实现 | `ConflictDetectionAppService` | acc-v0.1.10 #11 + acc-v0.1.11 #5 | 闭环 |
-| 远程版本更新 | 已实现 | commit `bbbae46` + `MavenVersionUpdaterAdapter` | 单测 | **未真实验证**（被 acc-v0.1.11 P1 阻塞） |
-| 设置持久化（GitLab settings） | 已实现 | commit `55cb5b0` + `SystemSettingsJpaEntity` | 单测 | **未真实验证**（脚本未做重启回归） |
+| 远程版本更新 | 已验证 | commit `bbbae46` + `MavenVersionUpdaterAdapter` + `run-acceptance.sh` SA-014 | 单测 + 真实 GitLab 验收 | Maven 单模块 release 分支 commit 已验证 |
+| 设置持久化（GitLab settings） | 已验证 | commit `55cb5b0` + `SystemSettingsJpaEntity` + `run-acceptance.sh` SA-001/SA-004 | 单测 + 后端重启验收 | 重启后 settings 和仓库数据可查询 |
 | GitLabRequest 反序列化修复 | 已实现 | commit `962be80`（@NoArgs/@AllArgs） | 单测 + acc-v0.1.11 第 1 轮 POST /settings/gitlab 成功 | 闭环 |
 | WindowLifecycleListener AFTER_COMMIT + 异常隔离 | 已实现 | commit `e1c5a31` + 本会话 commit | acc-v0.1.10 #13 + acc-v0.1.11 终轮 0 次 UnexpectedRollback | 闭环 |
 | 验收脚本 v3.2（含 ensure-settings + token 刷新 + 冲突识别） | 已实现 | commit `9eb5444` + `68381b1` + 本会话 | acc-v0.1.11 第 3 轮 25/26 PASS | 闭环 |
 | GitLabGitBranchAdapter URL 双重 encode 修复 | 已实现 | 本会话（uri(...) 包装 + ENC 测试同步） | acc-v0.1.11 终轮 release 分支 3/3、listBranches 18 个 | 闭环 |
+| 场景化验收 SA-013/SA-014 | 已验证 | `docs/reports/scenario-acceptance-matrix.md` + `scripts/acceptance/run-acceptance.sh` | 2026-05-13 真实 GitLab 验收 | PASS=45 / FAIL=0 / SKIP=0 |
 
 ---
 
@@ -41,6 +42,7 @@
 |---|---|---|---|
 | 全链路核心闭环 | 真实 GitLab 验收 v0.1.10 | `docs/reports/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS |
 | v0.1.11 全链路 + 三层关联 + 多 Provider + 设置持久化 | 真实 GitLab 验收 v0.1.11 终轮 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | **25 PASS / 0 FAIL / 1 SKIP**（SKIP 为业务正确拒绝） |
+| 场景化验收 SA-013/SA-014 收口 | `bash scripts/acceptance/run-acceptance.sh` | `docs/reports/scenario-acceptance-matrix.md` | **45 PASS / 0 FAIL / 0 SKIP** |
 | URL 双重 encode 修复连带 release 分支创建 | 同上场景 4 | 同上 | 1/3 → **3/3** |
 | Listener 异常隔离 | 同上后端日志 | 同上 | UnexpectedRollback 出现次数 2 → **0** |
 | 单测基线 | `mvn test` | 本会话 2026-05-11 | 161 用例全过（含 GitLabGitBranchAdapterTest ENC 同步纠正） |
@@ -50,8 +52,8 @@
 
 ## 4. 进行中事项
 
-> 暂无（2026-05-11 23:46 起）。v0.1.11 终轮验收 25/26 PASS（1 SKIP 为业务正确拒绝），
-> 所有阻塞 P0/P0+/P1 全部下线。下一波 Top 由用户驱动。
+> 暂无（2026-05-13 起）。场景化验收终轮 `45 PASS / 0 FAIL / 0 SKIP`，
+> SA-013/SA-014 后端/GitLab 强证据已收口。下一波 Top 由用户驱动。
 
 ---
 
@@ -75,6 +77,8 @@
 |---|---|---|---|
 | 可选 | 累积冲突清理脚本 | 验收幂等 + 累积造成 14 个真实分支冲突，clean-room 路径不可重现 | 一键 reset 仓库到只剩 main + seed feature 分支 |
 | 可选 | 前端 Playwright E2E 真实跑一次 | 3 spec / 24 case 历史报告未在本会话刷新 | 24/24 通过 |
+| 可选 | 前端场景化旅程补齐 | SA-013/SA-014 后端/GitLab 强证据已通过，但前端触发编排、冲突解决、版本更新旅程仍未完整覆盖 | Playwright 从窗口详情完成触发/观察/失败原因复核 |
+| 可选 | Maven 插件版本显式化 | 当前 Maven 每次测试都警告 surefire/failsafe plugin version missing，非本次引入；未来 Maven 版本可能拒绝 malformed POM | 父 POM/模块 POM 明确插件版本，`mvn test` 不再输出该类 model warning |
 | 可选 | acc-v0.1.10 报告中段移到 archive | 已被 v0.1.11 报告完全覆盖 | reports/ 目录瘦身 |
 
 ---
@@ -83,9 +87,10 @@
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 最末验收报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 22/24 PASS，含 P0/P1/P2/P3 真实问题清单 |
+| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-13 场景化验收记录：45 PASS / 0 FAIL / 0 SKIP |
+| v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
-| 验收脚本 | `scripts/acceptance/run-acceptance.sh` | v3，619 行，含 wait_for_run + MOCK 降级 |
+| 验收脚本 | `scripts/acceptance/run-acceptance.sh` | v3.5，含服务生命周期、SA-013 干净黄金路径、SA-014 GitLab commit 校验 |
 | 种子初始化 | `scripts/e2e/init-gitlab.sh` | 幂等，3 个种子仓库 |
 | 启动脚本 | `backend/scripts/run.sh` | `mvn spring-boot:run -pl releasehub-bootstrap` |
 | 本地容器 | `releasehub-postgres`(5433) + `releasehub-gitlab`(9080) | 模式 A 常驻；端口策略见 memory `feedback_mode_a_b_port_isolation.md` |
