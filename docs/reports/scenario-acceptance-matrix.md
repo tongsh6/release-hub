@@ -72,8 +72,8 @@
 | SA-010 | 发布经理在窗口详情页挂载迭代并查看发布计划 | attach 细粒度结果、状态流转、冲突阻断 | release 分支真实创建，WindowIteration 状态一致 | 前端发布计划可见性、解除挂载和部分失败重试不足 |
 | SA-011 | 测试人员在窗口详情页触发/查看风险扫描 | 冲突总数、类型分布、阻塞发布 | 冲突与 GitLab 分支/版本状态可对应 | 前端风险详情、严重级别和建议处理方式不足 |
 | SA-012 | 技术负责人在冲突详情中执行解决动作 | `USE_SYSTEM` 等解决动作更新记录，重扫清零 | 必要时写回仓库或保留处理证据 | 前端解决闭环、更多冲突类型解决路径不足 |
-| SA-013 | 技术负责人在窗口详情页触发发布编排 | 无阻塞冲突后 Run COMPLETED/SUCCESS，冲突未解决时拒绝 | RunItem/RunStep、GitLab 分支状态一致 | 后端/GitLab 强证据已覆盖；前端触发编排旅程不足 |
-| SA-014 | 技术负责人在版本操作入口执行版本更新 | 版本更新 Run COMPLETED/SUCCESS，失败原因可见 | `pom.xml` 在 release 分支真实 commit | 后端/GitLab 强证据已覆盖；前端版本更新旅程不足 |
+| SA-013 | 技术负责人在窗口详情页触发发布编排 | 无阻塞冲突后 Run COMPLETED/SUCCESS，冲突未解决时拒绝 | RunItem/RunStep、GitLab 分支状态一致 | 前端已覆盖 UI 建数后触发请求作用域；单条连续 UI→真实 GitLab Run 仍由后端验收证据拼接 |
+| SA-014 | 技术负责人在版本操作入口执行版本更新 | 版本更新 Run COMPLETED/SUCCESS，失败原因可见 | `pom.xml` 在 release 分支真实 commit | 前端已覆盖 UI 建数后版本更新请求；真实 GitLab commit 仍由验收脚本承担 |
 | SA-015 | 测试人员在 Run/窗口详情复核执行证据 | Run 列表、Run 详情、窗口详情返回完整状态 | RunItem/RunStep 可追溯到窗口、迭代、仓库 | 已有最小 UI 观察路径，仍缺冲突/失败详情复核 |
 | SA-016 | 发布经理在窗口详情页关闭窗口并查看收尾结果 | CLOSED 状态、关闭后关键操作禁止 | tag、merge、归档和收尾 Run 可追踪 | 真实 GitLab 收尾和前端闭环缺口较大 |
 
@@ -369,11 +369,12 @@ P0 验收焦点：
 - 场景 7 读取 Run 详情和 Step 分布。
 - 干净路径已升级为正式 PASS/FAIL 验收项，断言 Run `COMPLETED/SUCCESS`、`RunItem > 0`、`RunStep > 0`。
 - 真实 GitLab 验收已验证干净窗口编排 `COMPLETED`，且 RunItem/RunStep 中包含 `MERGED`。
+- Playwright 已覆盖前端真实旅程：通过 UI 创建分组、纳管仓库、创建迭代、挂载仓库、创建发布窗口、挂载迭代、发布窗口，并从窗口详情触发编排请求；请求体断言包含 UI 创建出的仓库和迭代作用域。
 
 缺口：
 
 - 失败 Run 重试和窗口/Run 状态一致性为 P1。
-- 前端触发编排和 Run 详情完整性为 P1。
+- 单条连续 UI 旅程直接跑到真实 GitLab Run 成功仍未纳入 Playwright，当前由 `run-acceptance.sh` 强证据补齐。
 
 ### SA-014：技术负责人执行版本更新
 
@@ -391,6 +392,7 @@ P0 验收焦点：
 - `run-acceptance.sh` 场景 8 有版本更新和 GitLab commit 验证。
 - SA-014 已优先绑定干净窗口；干净窗口存在时，版本更新或 GitLab commit 验证失败计为 FAIL。
 - 真实 GitLab 验收已验证 Maven 单模块 `pom.xml` 在 release 分支产生 `ReleaseHub: Update` commit。
+- Playwright 已覆盖前端真实旅程：复用同一个 serial UI 旅程创建出的发布窗口、迭代和仓库，从窗口详情打开“执行版本更新”，提交目标版本、仓库路径和 POM 路径，并断言最终版本更新请求体正确。
 
 缺口：
 
@@ -548,7 +550,7 @@ bash scripts/acceptance/run-acceptance.sh --stop-services
 - SA-014 版本更新已绑定干净窗口，Run 为 `SUCCESS`，GitLab release 分支可查到 `ReleaseHub: Update` commit。
 - GitLab MR `commits_status` / `No commits between` 被视为已无可合并提交的幂等成功，避免 attach 已合入后再次编排失败。
 
-- 前端触发编排、冲突解决和版本更新旅程仍未达到完整 P0，只能由现有 Run/窗口详情观察路径部分证明。
+- 前端触发编排和版本更新旅程已有 UI 建数 + 请求作用域自动化；冲突解决旅程仍未达到完整 P0。
 - Maven 多模块、Gradle 真实写回、失败重试和多仓部分失败仍为 Phase 2。
 
 ### 2026-05-13 前端 Playwright 基线复验
@@ -575,7 +577,7 @@ pnpm run test:e2e
 
 仍保留缺口：
 
-- SA-013/SA-014 的前端触发编排、冲突解决、版本更新旅程仍未完整覆盖。
+- SA-012 冲突解决 UI 旅程仍未完整覆盖；SA-013/SA-014 已有前端触发请求证据，但单条连续 UI→真实 GitLab Run 成功仍由验收脚本证据补齐。
 
 ### 2026-05-13 SA-013 前端用户旅程自动化启动
 
@@ -598,4 +600,26 @@ pnpm run test:e2e
 仍保留缺口：
 
 - SA-013 目前前端层断言到“触发请求作用域正确”，Run 完整执行证据仍由 `run-acceptance.sh` 后端/GitLab 验收承担。
-- SA-012 冲突解决 UI 旅程和 SA-014 版本更新 UI 旅程仍未补齐。
+- SA-012 冲突解决 UI 旅程仍未补齐。
+
+### 2026-05-13 SA-014 前端用户旅程自动化补齐
+
+命令：
+
+```bash
+pnpm exec playwright test slice-2-full-flow.spec.ts -g "UI-created release orchestration journey"
+pnpm run test:e2e
+```
+
+结果：
+
+- SA-013/SA-014 serial 前端旅程通过：同一条 Playwright 旅程通过 UI 创建业务数据，再从窗口详情触发编排和版本更新。
+- SA-014 新增前端旅程通过：版本更新弹窗只使用当前发布窗口关联仓库；单仓场景自动选中该仓库；提交请求体包含 UI 创建出的 `repoId`、`targetVersion=1.4.1`、`buildTool=MAVEN`、`repoPath` 和 `pomPath=pom.xml`。
+- 修复前端事件契约缺口：`OrchestrationPanel` 显式 emit `open-version-update`，与 `ReleaseWindowDetail` 监听保持一致，避免用户点击“执行版本更新”无响应。
+- 修复版本更新仓库作用域：`VersionUpdateDialog.open(windowId, windowRepositories)` 优先使用当前窗口仓库，不再打开后全局加载所有仓库。
+- 完整 Playwright 回归结果更新为 `25 PASS / 0 FAIL / 3 SKIP`。
+
+仍保留缺口：
+
+- SA-014 的真实 GitLab commit、Run SUCCESS 由 `run-acceptance.sh` 验收脚本承担；Playwright 当前断言前端旅程和请求作用域，不直接让 UI 创建的 mock 仓库执行真实版本写回。
+- SA-012 冲突解决 UI 旅程仍未补齐。

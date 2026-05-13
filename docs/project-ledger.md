@@ -41,7 +41,8 @@
 | 验收脚本 v3.2（含 ensure-settings + token 刷新 + 冲突识别） | 已实现 | commit `9eb5444` + `68381b1` + 本会话 | acc-v0.1.11 第 3 轮 25/26 PASS | 闭环 |
 | GitLabGitBranchAdapter URL 双重 encode 修复 | 已实现 | 本会话（uri(...) 包装 + ENC 测试同步） | acc-v0.1.11 终轮 release 分支 3/3、listBranches 18 个 | 闭环 |
 | 场景化验收 SA-013/SA-014 | 已验证 | `docs/reports/scenario-acceptance-matrix.md` + `scripts/acceptance/run-acceptance.sh` | 2026-05-13 真实 GitLab 验收 | PASS=45 / FAIL=0 / SKIP=0 |
-| 前端 Playwright E2E 基线 | 已验证 | `frontend/e2e/tests` | 2026-05-13 真实前后端联调 | 23 PASS / 0 FAIL / 3 SKIP（SKIP 为 spec 内显式历史缺口） |
+| 前端 SA-013/SA-014 用户触发旅程 | 已验证 | `frontend/e2e/tests/slice-2-full-flow.spec.ts` | 2026-05-13 真实前后端联调 + 前端请求证据 | UI 创建业务数据后触发编排和版本更新；最终请求体断言作用域正确 |
+| 前端 Playwright E2E 基线 | 已验证 | `frontend/e2e/tests` | 2026-05-13 真实前后端联调 | 25 PASS / 0 FAIL / 3 SKIP（SKIP 为 spec 内显式历史缺口） |
 | Maven surefire/failsafe 插件版本显式化 | 已验证 | `backend/pom.xml` | `mvn -pl releasehub-bootstrap -DskipTests validate` + `mvn -pl releasehub-application -Dtest=ConflictDetectionAppServiceTest test` | malformed POM 中插件版本缺失警告已关闭 |
 
 ---
@@ -55,10 +56,10 @@
 | 场景化验收 SA-013/SA-014 收口 | `bash scripts/acceptance/run-acceptance.sh` | `docs/reports/scenario-acceptance-matrix.md` | **45 PASS / 0 FAIL / 0 SKIP** |
 | URL 双重 encode 修复连带 release 分支创建 | 同上场景 4 | 同上 | 1/3 → **3/3** |
 | Listener 异常隔离 | 同上后端日志 | 同上 | UnexpectedRollback 出现次数 2 → **0** |
-| 前端 Playwright E2E 基线刷新 | `pnpm run test:e2e` | 本会话 2026-05-13 | **23 PASS / 0 FAIL / 3 SKIP**；登录、Slice-1、Slice-2 可跑通 |
+| 前端 Playwright E2E 基线刷新 | `pnpm run test:e2e` | 本会话 2026-05-13 | **25 PASS / 0 FAIL / 3 SKIP**；登录、Slice-1、Slice-2 可跑通 |
 | Maven 插件版本显式化 | `mvn -pl releasehub-bootstrap -DskipTests validate` | 本会话 2026-05-13 | surefire/failsafe version missing 警告消失，targeted surefire 测试通过 |
 | 单测基线 | `mvn test` | 本会话 2026-05-11 | 161 用例全过（含 GitLabGitBranchAdapterTest ENC 同步纠正） |
-| 前端 Vitest / typecheck | `pnpm run test -- src/api/modules/__tests__/releaseWindow.spec.ts src/views/release-window/__tests__/OrchestrationPanel.spec.ts` / `pnpm run typecheck` | 2026-05-13 | 22 Vitest 通过；vue-tsc 通过 |
+| 前端 Vitest / typecheck | `pnpm run test -- src/views/release-window/__tests__/VersionUpdateDialog.spec.ts src/views/release-window/__tests__/OrchestrationPanel.spec.ts src/api/modules/__tests__/releaseWindow.spec.ts` / `pnpm run typecheck` | 2026-05-13 | 24 Vitest 通过；vue-tsc 通过 |
 
 ---
 
@@ -66,7 +67,7 @@
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| 前端用户旅程自动化验证 | 2026-05-13 已完成 SA-013 首条 UI 触发链路 | 继续补 SA-012 冲突解决、SA-014 版本更新，并复核 Run/页面状态 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
+| 前端用户旅程自动化验证 | 2026-05-13 已完成 SA-013/SA-014 UI 触发链路 | 继续补 SA-012 冲突解决，并复核 Run/页面状态 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
 
 ---
 
@@ -89,7 +90,7 @@
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
 | 可选 | 累积冲突清理脚本 | 验收幂等 + 累积造成 14 个真实分支冲突，clean-room 路径不可重现 | 一键 reset 仓库到只剩 main + seed feature 分支 |
-| 当前 | 前端场景化旅程补齐 | SA-013 已补 UI 创建业务数据并触发编排请求；SA-012/SA-014 前端旅程仍未完整覆盖 | Playwright 从窗口详情完成触发/观察/失败原因复核 |
+| 当前 | 前端场景化旅程补齐 | SA-013/SA-014 已补 UI 创建业务数据后的前端触发请求；SA-012 冲突解决仍未完整覆盖 | Playwright 从窗口详情完成触发/观察/失败原因复核 |
 | 可选 | acc-v0.1.10 报告中段移到 archive | 已被 v0.1.11 报告完全覆盖 | reports/ 目录瘦身 |
 
 ---
@@ -99,7 +100,7 @@
 | 证据 | 路径 | 说明 |
 |---|---|---|
 | 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-13 场景化验收记录：45 PASS / 0 FAIL / 0 SKIP |
-| 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-13 Playwright 真实前后端联调：24 PASS / 0 FAIL / 3 SKIP |
+| 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-13 Playwright 真实前后端联调：25 PASS / 0 FAIL / 3 SKIP |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
 | 验收脚本 | `scripts/acceptance/run-acceptance.sh` | v3.6，含服务生命周期、`--hold-services`、SA-013 干净黄金路径、SA-014 GitLab commit 校验 |
