@@ -204,7 +204,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'openVersionUpdate'): void
+  (e: 'open-version-update'): void
   (e: 'refresh'): void
 }>()
 
@@ -292,7 +292,7 @@ async function handleMergeAll() {
 }
 
 function handleVersionUpdate() {
-  emit('openVersionUpdate')
+  emit('open-version-update')
 }
 
 async function handleOrchestrate() {

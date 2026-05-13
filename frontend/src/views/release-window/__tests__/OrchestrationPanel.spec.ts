@@ -106,4 +106,23 @@ describe('OrchestrationPanel', () => {
       operator: 'frontend'
     })
   })
+
+  it('emits the version update event name used by the release window detail page', async () => {
+    const wrapper = mount(OrchestrationPanel, {
+      props: {
+        windowId: 'window-1',
+        windowStatus: 'PUBLISHED',
+        iterationCount: 1,
+        repoCount: 1,
+        repoIds: ['repo-1'],
+        iterationKeys: ['ITER-1']
+      },
+      global: { stubs }
+    })
+
+    await wrapper.findAll('button').at(-2)!.trigger('click')
+
+    expect(wrapper.emitted('open-version-update')?.length).toBeGreaterThan(0)
+    expect(wrapper.emitted('openVersionUpdate')).toBeUndefined()
+  })
 })

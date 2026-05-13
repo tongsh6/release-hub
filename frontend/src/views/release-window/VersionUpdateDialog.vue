@@ -98,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { releaseWindowApi, getConflicts, type VersionUpdateRequest } from '@/api/modules/releaseWindow'
@@ -117,6 +117,7 @@ const submitting = ref(false)
 const conflictBlocked = ref(false)
 const formRef = ref<FormInstance>()
 const repositories = ref<Repository[]>([])
+const scopedRepositories = ref(false)
 
 const form = reactive<VersionUpdateRequest & { buildTool: BuildTool }>({
   repoId: '',
@@ -136,7 +137,19 @@ const rules: FormRules = {
 
 let windowId = ''
 
+const resetForm = () => {
+  formRef.value?.resetFields()
+  form.repoId = ''
+  form.targetVersion = ''
+  form.buildTool = 'MAVEN'
+  form.repoPath = ''
+  form.pomPath = ''
+  form.gradlePropertiesPath = ''
+}
+
 const loadRepositories = async () => {
+  if (scopedRepositories.value) return
+
   try {
     const result = await repositoryApi.list({ page: 1, pageSize: 100 })
     repositories.value = result.list
@@ -157,13 +170,9 @@ const handleRepoChange = (repoId: string) => {
 
 const handleClose = () => {
   visible.value = false
-  formRef.value?.resetFields()
-  form.repoId = ''
-  form.targetVersion = ''
-  form.buildTool = 'MAVEN'
-  form.repoPath = ''
-  form.pomPath = ''
-  form.gradlePropertiesPath = ''
+  scopedRepositories.value = false
+  repositories.value = []
+  resetForm()
 }
 
 const handleSubmit = async () => {
@@ -206,8 +215,15 @@ const handleSubmit = async () => {
   })
 }
 
-const open = async (id: string) => {
+const open = async (id: string, windowRepositories: Repository[] = []) => {
   windowId = id
+  resetForm()
+  scopedRepositories.value = windowRepositories.length > 0
+  repositories.value = [...windowRepositories]
+  if (windowRepositories.length === 1) {
+    form.repoId = windowRepositories[0].id
+    handleRepoChange(windowRepositories[0].id)
+  }
   visible.value = true
   conflictBlocked.value = false
 
@@ -219,14 +235,8 @@ const open = async (id: string) => {
     conflictBlocked.value = false
   }
 
-  loadRepositories()
+  await loadRepositories()
 }
-
-watch(visible, (val) => {
-  if (val) {
-    loadRepositories()
-  }
-})
 
 defineExpose({
   open

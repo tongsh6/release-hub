@@ -189,6 +189,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
   const iterationName = `UI Journey Iteration ${suffix}`
   const windowName = `UI Journey Window ${suffix}`
   let iterationKey = ''
+  let windowDetailUrl = ''
 
   test.beforeAll(async ({ browser }) => {
     const page = await browser.newPage()
@@ -202,6 +203,11 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'releaseWindow.create', 'releaseWindow.name', 'releaseWindow.publish',
       'releaseWindow.statusText.PUBLISHED',
       'releaseWindow.attachIterations',
+      'releaseWindow.versionUpdate.execute',
+      'releaseWindow.versionUpdate.title',
+      'releaseWindow.versionUpdate.targetVersion',
+      'releaseWindow.versionUpdate.repoPath',
+      'releaseWindow.versionUpdate.pomPath',
       'orchestration.executeFinish'
     ])
     await page.close()
@@ -289,6 +295,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await expect(row).toBeVisible()
     await row.locator('button').filter({ hasText: L['common.view'] }).click(FORCE)
     await expect(page).toHaveURL(/\/release-windows\//)
+    windowDetailUrl = page.url()
 
     await page.getByRole('button', { name: L['releaseWindow.attachIterations'] }).click(FORCE)
     const attachDialog = page.locator('.el-dialog').last()
@@ -326,5 +333,63 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       operator: 'frontend'
     })
     expect(orchestrateBody.repoIds).toHaveLength(1)
+  })
+
+  test('SA-014 frontend path submits version update for the UI-created release window repo', async ({ page }) => {
+    await ensureLoggedIn(page)
+    expect(windowDetailUrl).toContain('/release-windows/')
+
+    let versionUpdateBody: any
+    await page.route('**/api/v1/release-windows/*/conflicts', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'OK',
+          message: 'OK',
+          data: {
+            windowId: 'ui-journey-window',
+            checkedAt: new Date().toISOString(),
+            hasConflicts: false,
+            totalCount: 0,
+            conflicts: []
+          }
+        })
+      })
+    })
+    await page.route('**/api/v1/release-windows/*/execute/version-update', async (route) => {
+      versionUpdateBody = route.request().postDataJSON()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'OK',
+          message: 'OK',
+          data: { runId: 'run-version-update-ui-journey', status: 'RUNNING' }
+        })
+      })
+    })
+
+    await page.goto(windowDetailUrl)
+    await expect(page.locator('.iterations-list')).toContainText(iterationKey)
+    await expect(page.locator('.iterations-list')).toContainText(repoName)
+
+    await page.getByRole('button', { name: L['releaseWindow.versionUpdate.execute'] }).click(FORCE)
+    const dialog = page.locator('.el-dialog').filter({ hasText: L['releaseWindow.versionUpdate.title'] }).last()
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText(repoName)
+
+    await dialog.getByRole('textbox', { name: L['releaseWindow.versionUpdate.targetVersion'] }).fill('1.4.1')
+    await dialog.getByRole('textbox', { name: L['releaseWindow.versionUpdate.repoPath'] }).fill(repoName)
+    await dialog.getByRole('textbox', { name: L['releaseWindow.versionUpdate.pomPath'] }).fill('pom.xml')
+    await confirmDialog(page)
+
+    expect(versionUpdateBody).toMatchObject({
+      targetVersion: '1.4.1',
+      buildTool: 'MAVEN',
+      repoPath: repoName,
+      pomPath: 'pom.xml'
+    })
+    expect(versionUpdateBody.repoId).toBeTruthy()
   })
 })
