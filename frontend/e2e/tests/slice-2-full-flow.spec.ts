@@ -218,8 +218,10 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'orchestration.executeFinish',
       'conflict.rescan',
       'conflict.resolveVersion',
+      'conflict.resolveBranch',
       'conflict.noConflicts',
       'conflict.types.MISMATCH',
+      'conflict.types.BRANCH_NONCOMPLIANT',
       'conflict.severity.title',
       'conflict.severity.blocker',
       'conflict.recommendation'
@@ -489,6 +491,63 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
 
     expect(resolveBody).toMatchObject({ resolution: 'USE_SYSTEM' })
     await expect(conflictPanel).toContainText(L['conflict.noConflicts'])
+  })
+
+  test('SA-012 frontend path surfaces branch-rule conflicts as external handling work', async ({ page }) => {
+    await ensureLoggedIn(page)
+    expect(windowDetailUrl).toContain('/release-windows/')
+    expect(createdRepoId).toBeTruthy()
+
+    const badFeatureBranch = `topic/${iterationKey}`
+    let resolveCalled = false
+    const branchConflictReport = {
+      windowId: 'ui-journey-window',
+      checkedAt: new Date().toISOString(),
+      hasConflicts: true,
+      totalCount: 1,
+      conflicts: [{
+        repoId: createdRepoId,
+        repoName,
+        iterationKey,
+        conflictType: 'BRANCH_NONCOMPLIANT',
+        sourceBranch: badFeatureBranch,
+        targetBranch: 'release/rel-1.0',
+        message: `Branch name '${badFeatureBranch}' does not comply with branch rules`,
+        suggestion: 'Rename the branch to comply with BranchRule'
+      }]
+    }
+
+    await page.route('**/api/v1/release-windows/*/conflicts', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: branchConflictReport })
+      })
+    })
+    await page.route('**/api/v1/release-windows/*/conflicts/check', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: branchConflictReport })
+      })
+    })
+    await page.route('**/api/v1/iterations/*/repos/*/resolve-conflict', async (route) => {
+      resolveCalled = true
+      await route.abort()
+    })
+
+    await page.goto(windowDetailUrl)
+    const conflictPanel = page.locator('.conflict-panel')
+    await conflictPanel.getByRole('button', { name: L['conflict.rescan'] }).click(FORCE)
+    await expect(conflictPanel).toContainText(L['conflict.types.BRANCH_NONCOMPLIANT'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.title'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.blocker'])
+    await expect(conflictPanel).toContainText(L['conflict.recommendation'])
+    await expect(conflictPanel).toContainText(badFeatureBranch)
+    await expect(conflictPanel).toContainText('Rename the branch to comply with BranchRule')
+    await expect(conflictPanel.getByText(L['conflict.resolveBranch'])).toBeVisible()
+    await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toHaveCount(0)
+    expect(resolveCalled).toBe(false)
   })
 
   test('SA-014 frontend path submits version update for the UI-created release window repo', async ({ page }) => {
