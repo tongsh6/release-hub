@@ -49,11 +49,11 @@
 | WindowLifecycleListener AFTER_COMMIT + 异常隔离 | 已实现 | commit `e1c5a31` + 本会话 commit | acc-v0.1.10 #13 + acc-v0.1.11 终轮 0 次 UnexpectedRollback | 闭环 |
 | 验收脚本 v3.2（含 ensure-settings + token 刷新 + 冲突识别） | 已实现 | commit `9eb5444` + `68381b1` + 本会话 | acc-v0.1.11 第 3 轮 25/26 PASS | 闭环 |
 | GitLabGitBranchAdapter URL 双重 encode 修复 | 已实现 | 本会话（uri(...) 包装 + ENC 测试同步） | acc-v0.1.11 终轮 release 分支 3/3、listBranches 18 个 | 闭环 |
-| 场景化验收矩阵基线 | 已验证 | `docs/reports/scenario-acceptance-matrix.md` + `scripts/acceptance/run-acceptance.sh` | 2026-05-15 真实 GitLab 验收 | PASS=50 / FAIL=0 / SKIP=0；SA-012/SA-013/SA-014/SA-016 P0 已覆盖 |
+| 场景化验收矩阵基线 | 已验证 | `docs/reports/scenario-acceptance-matrix.md` + `scripts/acceptance/run-acceptance.sh` | 2026-05-15 真实 GitLab 验收 | PASS=51 / FAIL=0 / SKIP=0；SA-012/SA-013/SA-014/SA-016 P0 已覆盖 |
 | 前端 SA-012/SA-013/SA-014 用户触发旅程 | 已验证 | `frontend/e2e/tests/slice-2-full-flow.spec.ts` | 2026-05-14 真实前后端联调 + 前端请求证据 | UI 创建业务数据后完成冲突解决、编排和版本更新触发；最终请求体断言作用域正确 |
 | 前端 Playwright E2E 基线 | 已验证 | `frontend/e2e/tests` | 2026-05-15 真实前后端联调 | 29 PASS / 0 FAIL / 0 SKIP；历史显式 skip 已转为可执行旅程 |
 | 本地环境统一启停脚本 | 已验证 | `scripts/dev/start-local-env.sh` | 2026-05-15 真实前后端联调 | `start|hold|stop|restart|status` 可用；`hold` 托管前后端；前端 `/api` 代理登录 200 |
-| SA-016 发布后收尾闭环 | 已验证 | `scripts/acceptance/run-acceptance.sh` + `frontend/e2e/tests/slice-1-group-window.spec.ts` | 2026-05-15 真实 GitLab 验收 + Playwright | 关闭窗口、关闭后挂载/版本更新拒绝、收尾 Run 可见、前端 CLOSED 窗口隐藏挂载入口 |
+| SA-016 发布后收尾闭环 | 已验证 | `scripts/acceptance/run-acceptance.sh` + `frontend/e2e/tests/slice-1-group-window.spec.ts` | 2026-05-15 真实 GitLab 验收 + Playwright | 关闭窗口、重复关闭幂等、关闭后挂载/版本更新拒绝、收尾 Run 可见、前端 CLOSED 窗口隐藏挂载入口 |
 | Maven surefire/failsafe 插件版本显式化 | 已验证 | `backend/pom.xml` | `mvn -pl releasehub-bootstrap -DskipTests validate` + `mvn -pl releasehub-application -Dtest=ConflictDetectionAppServiceTest test` | malformed POM 中插件版本缺失警告已关闭 |
 
 ---
@@ -64,7 +64,7 @@
 |---|---|---|---|
 | 全链路核心闭环 | 真实 GitLab 验收 v0.1.10 | `docs/reports/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS |
 | v0.1.11 全链路 + 三层关联 + 多 Provider + 设置持久化 | 真实 GitLab 验收 v0.1.11 终轮 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | **25 PASS / 0 FAIL / 1 SKIP**（SKIP 为业务正确拒绝） |
-| 场景化验收矩阵基线复验 | `bash scripts/acceptance/run-acceptance.sh` | `docs/reports/scenario-acceptance-matrix.md` | **50 PASS / 0 FAIL / 0 SKIP** |
+| 场景化验收矩阵基线复验 | `bash scripts/acceptance/run-acceptance.sh` | `docs/reports/scenario-acceptance-matrix.md` | **51 PASS / 0 FAIL / 0 SKIP** |
 | URL 双重 encode 修复连带 release 分支创建 | 同上场景 4 | 同上 | 1/3 → **3/3** |
 | Listener 异常隔离 | 同上后端日志 | 同上 | UnexpectedRollback 出现次数 2 → **0** |
 | 前端 Playwright E2E 基线刷新 | `cd frontend && pnpm run test:e2e` | 本会话 2026-05-15 | **29 PASS / 0 FAIL / 0 SKIP**；登录、Slice-1、Slice-2 可跑通，历史显式 skip 已清零 |
@@ -105,7 +105,7 @@
 | P1 | SA-012 更多冲突解决路径 | 版本冲突 `USE_SYSTEM` 已闭环，但 release 分支已存在、feature 缺失、分支不合规等路径未覆盖 | 至少新增一个非版本冲突解决/阻断路径，并形成前端旅程 + 后端/GitLab 证据 |
 | P1 | SA-010/SA-011 发布计划与风险详情 | attach 和冲突阻断已有强证据，发布计划、冲突严重级别和建议处理方式已补前端观察 | 补更多真实冲突类型详情、类型分布复核和部分失败重试 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run 并复核失败步骤，冲突详情/部分失败/品牌筛选仍不足 | Playwright 从窗口详情/Run 详情观察冲突详情、部分失败和品牌筛选结果 |
-| P1 | SA-016 收尾扩展 | P0 已覆盖，幂等关闭、部分失败重试和报告导出仍不足 | 补幂等关闭、部分失败重试和发布报告导出 |
+| P1 | SA-016 收尾扩展 | P0 已覆盖，重复关闭幂等已纳入验收脚本，部分失败重试和报告导出仍不足 | 补部分失败重试和发布报告导出 |
 | 可选 | 累积冲突清理脚本 | 验收幂等 + 累积真实分支冲突会影响 clean-room 复现 | 一键 reset 仓库到只剩 main + seed feature 分支 |
 | 可选 | acc-v0.1.10 报告中段移到 archive | 已被 v0.1.11 报告完全覆盖 | reports/ 目录瘦身 |
 
@@ -115,7 +115,7 @@
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-15 SA-010 发布计划与 SA-011 风险详情前端观察补强；SA-016 收口复验：50 PASS / 0 FAIL / 0 SKIP；当前推进队列在第七节 |
+| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-15 SA-010 发布计划与 SA-011 风险详情前端观察补强；SA-016 收口复验含重复关闭幂等：51 PASS / 0 FAIL / 0 SKIP；当前推进队列在第七节 |
 | 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-15 Playwright 真实前后端联调：29 PASS / 0 FAIL / 0 SKIP；SA-010/SA-011 目标 Slice-2 serial 回归 4 PASS / 0 FAIL；入口 `cd frontend && pnpm run test:e2e` |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |

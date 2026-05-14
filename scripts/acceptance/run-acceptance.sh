@@ -1017,6 +1017,15 @@ else
         no "SA-016 关闭窗口失败: $CLOSE_RESULT"
     fi
 
+    IDEMPOTENT_CLOSE_RESULT=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID/close" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
+    IDEMPOTENT_CLOSE_SUCCESS=$(echo "$IDEMPOTENT_CLOSE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success','?'))" 2>/dev/null)
+    IDEMPOTENT_CLOSE_STATUS=$(echo "$IDEMPOTENT_CLOSE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('status',''))" 2>/dev/null)
+    if [ "$IDEMPOTENT_CLOSE_SUCCESS" = "True" ] && [ "$IDEMPOTENT_CLOSE_STATUS" = "CLOSED" ]; then
+        ok "SA-016 重复关闭保持幂等 → CLOSED"
+    else
+        no "SA-016 重复关闭未保持幂等: $IDEMPOTENT_CLOSE_RESULT"
+    fi
+
     POST_CLOSE_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
         -d "{\"iterationKeys\":[\"$ITER_KEY\"]}" 2>/dev/null)
     POST_CLOSE_ATTACH_CODE=$(echo "$POST_CLOSE_ATTACH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null)
