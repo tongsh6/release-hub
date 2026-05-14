@@ -3,7 +3,7 @@ releasehub:
     enabled: true
   crypto:
     enabled: true
-    secret-key: "dGVzdC1rZXktMzJieXRlcy1sb25nLWVub3VnaC0="
+    secret-key: "dGVzdC1yZWxlYXNlaHViLWNyeXB0by1rZXktMzIhISE="
 
 server:
   port: 8080

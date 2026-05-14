@@ -25,7 +25,7 @@
 
 | 脚本 | 用途 |
 |------|------|
-| [dev/start-local-env.sh](dev/start-local-env.sh) | 启动本地开发环境（Docker + Backend + Frontend） |
+| [dev/start-local-env.sh](dev/start-local-env.sh) | 统一启停本地开发环境（`start|hold|stop|restart|status`，Docker + Backend + Frontend） |
 | [dev/static-scan-topn.sh](dev/static-scan-topn.sh) | 静态代码扫描（SpotBugs + ESLint + typecheck） |
 
 ## CI
