@@ -178,6 +178,21 @@ export default {
       allSuccess: 'All repositories merged successfully',
       hasConflict: 'Some repositories have conflicts, please resolve in GitLab',
       hasFailed: 'Some repositories failed to merge, please check error messages'
+    },
+    releasePlan: {
+      title: 'Release Plan',
+      empty: 'No release plan data; this window has no associated repositories.',
+      plannedOrder: 'Plan Order',
+      featureBranch: 'Feature Branch',
+      releaseBranch: 'Release Branch',
+      mergeStatus: 'Merge Status',
+      exists: 'Exists',
+      missing: 'Missing',
+      mergeStatusText: {
+        MERGED: 'Merged',
+        CONFLICT: 'Conflict',
+        PENDING: 'Pending'
+      }
     }
   },
   branchRule: {
@@ -531,6 +546,7 @@ export default {
     type: 'Conflict Type',
     branches: 'Branches / Versions',
     message: 'Description',
+    recommendation: 'Recommendation',
     resolveBeforeExecute: 'Unresolved conflicts exist, please resolve all conflicts first',
     filterAll: 'All',
     action: 'Action',
@@ -539,6 +555,19 @@ export default {
     resolveSuccess: 'Conflict resolved',
     resolveInGit: 'Resolve in Git',
     resolveBranch: 'Resolve Branch',
+    severity: {
+      title: 'Severity',
+      blocker: 'Blocking',
+      high: 'High',
+      medium: 'Medium'
+    },
+    recommendations: {
+      syncVersion: 'Sync the version recorded by ReleaseHub, then rescan.',
+      resolveMerge: 'Resolve the merge conflict in the Git platform, then rescan.',
+      reviewExistingBranch: 'Review the existing release branch and archive or reuse it according to the release plan.',
+      renameBranch: 'Adjust the branch name to match the configured branch rule, then rescan.',
+      alignVersions: 'Align repository versions across the release scope, then rescan.'
+    },
     types: {
       MISMATCH: 'Version Mismatch',
       REPO_AHEAD: 'Repo Ahead',

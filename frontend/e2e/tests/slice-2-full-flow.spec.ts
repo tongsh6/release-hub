@@ -205,6 +205,8 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'releaseWindow.create', 'releaseWindow.name', 'releaseWindow.publish',
       'releaseWindow.statusText.PUBLISHED',
       'releaseWindow.attachIterations',
+      'releaseWindow.releasePlan.title',
+      'releaseWindow.releasePlan.plannedOrder',
       'releaseWindow.versionUpdate.execute',
       'releaseWindow.versionUpdate.title',
       'releaseWindow.versionUpdate.targetVersion',
@@ -217,7 +219,10 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'conflict.rescan',
       'conflict.resolveVersion',
       'conflict.noConflicts',
-      'conflict.types.MISMATCH'
+      'conflict.types.MISMATCH',
+      'conflict.severity.title',
+      'conflict.severity.blocker',
+      'conflict.recommendation'
     ])
     await page.close()
   })
@@ -326,6 +331,12 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await confirmDialog(page)
     await expect(page.locator('.iterations-list')).toContainText(iterationKey)
     await expect(page.locator('.iterations-list')).toContainText(repoName)
+    const releasePlanPanel = page.locator('.release-plan-panel')
+    await expect(releasePlanPanel).toContainText(L['releaseWindow.releasePlan.title'], { timeout: 10000 })
+    await expect(releasePlanPanel).toContainText(L['releaseWindow.releasePlan.plannedOrder'])
+    await expect(releasePlanPanel).toContainText(iterationKey)
+    await expect(releasePlanPanel).toContainText(repoName)
+    await expect(releasePlanPanel).toContainText('1')
 
     await page.getByRole('button', { name: L['releaseWindow.publish'] }).click(FORCE)
     await confirmMessageBox(page)
@@ -466,6 +477,10 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     const conflictPanel = page.locator('.conflict-panel')
     await conflictPanel.getByRole('button', { name: L['conflict.rescan'] }).click(FORCE)
     await expect(conflictPanel).toContainText(L['conflict.types.MISMATCH'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.title'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.blocker'])
+    await expect(conflictPanel).toContainText(L['conflict.recommendation'])
+    await expect(conflictPanel).toContainText('Use system version')
     const resolveButton = conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })
     await expect(resolveButton).toBeVisible({ timeout: 5000 })
     await resolveButton.evaluate((el: HTMLElement) => el.click())
@@ -515,9 +530,11 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await expect(page.locator('.iterations-list')).toContainText(iterationKey)
     await expect(page.locator('.iterations-list')).toContainText(repoName)
 
-    await page.getByRole('button', { name: L['releaseWindow.versionUpdate.execute'] }).click(FORCE)
+    const versionUpdateButton = page.getByRole('button', { name: L['releaseWindow.versionUpdate.execute'] })
+    await expect(versionUpdateButton).toBeVisible({ timeout: 5000 })
+    await versionUpdateButton.evaluate((el: HTMLElement) => el.click())
     const dialog = page.locator('.el-dialog').filter({ hasText: L['releaseWindow.versionUpdate.title'] }).last()
-    await expect(dialog).toBeVisible()
+    await expect(dialog).toBeVisible({ timeout: 10000 })
     await expect(dialog).toContainText(repoName)
 
     await dialog.getByRole('textbox', { name: L['releaseWindow.versionUpdate.targetVersion'] }).fill('1.4.1')

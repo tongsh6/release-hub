@@ -178,6 +178,21 @@ export default {
       allSuccess: '所有仓库合并成功',
       hasConflict: '部分仓库存在冲突，请在 GitLab 中手动解决',
       hasFailed: '部分仓库合并失败，请检查错误信息'
+    },
+    releasePlan: {
+      title: '发布计划',
+      empty: '暂无发布计划数据（窗口内无关联仓库）',
+      plannedOrder: '计划顺序',
+      featureBranch: 'Feature 分支',
+      releaseBranch: 'Release 分支',
+      mergeStatus: '合并状态',
+      exists: '存在',
+      missing: '不存在',
+      mergeStatusText: {
+        MERGED: '已合并',
+        CONFLICT: '冲突',
+        PENDING: '待合并'
+      }
     }
   },
   branchRule: {
@@ -558,6 +573,7 @@ export default {
     type: '冲突类型',
     branches: '分支 / 版本',
     message: '描述',
+    recommendation: '建议处理方式',
     resolveBeforeExecute: '存在未解决的冲突，请先解决所有冲突',
     filterAll: '全部',
     action: '操作',
@@ -566,6 +582,19 @@ export default {
     resolveSuccess: '冲突已解决',
     resolveInGit: '请到 Git 平台解决',
     resolveBranch: '请处理此分支',
+    severity: {
+      title: '严重级别',
+      blocker: '阻断',
+      high: '高',
+      medium: '中'
+    },
+    recommendations: {
+      syncVersion: '同步 ReleaseHub 记录的版本后重新扫描。',
+      resolveMerge: '在 Git 平台解决合并冲突后重新扫描。',
+      reviewExistingBranch: '复核已存在的 release 分支，并按发布计划归档或复用。',
+      renameBranch: '调整分支名称使其符合分支规则后重新扫描。',
+      alignVersions: '对齐发布范围内的仓库版本后重新扫描。'
+    },
     types: {
       MISMATCH: '版本不一致',
       REPO_AHEAD: '仓库版本较新',

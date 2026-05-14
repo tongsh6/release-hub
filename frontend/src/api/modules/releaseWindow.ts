@@ -57,6 +57,14 @@ export interface OrchestrateRequest {
   operator: string
 }
 
+export interface PlanItemView {
+  windowKey: string
+  repoId: string
+  iterationKey: string
+  plannedOrder: number
+  lastExecutedOrder?: number
+}
+
 // --- API Functions ---
 
 export async function list(query: PageQuery & { name?: string; status?: string }): Promise<PageResult<ReleaseWindowView>> {
@@ -113,8 +121,8 @@ export function orchestrate(id: string, req: OrchestrateRequest): Promise<any> {
   return apiPost<any>(`${BASE}/release-windows/${id}/orchestrate`, req)
 }
 
-export function getPlan(id: string): Promise<any> {
-  return apiGet<any>(`${BASE}/release-windows/${id}/plan`)
+export function getPlan(id: string): Promise<PlanItemView[]> {
+  return apiGet<PlanItemView[]>(`${BASE}/release-windows/${id}/plan`)
 }
 
 export function getDryPlan(id: string): Promise<any> {

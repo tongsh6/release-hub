@@ -67,6 +67,13 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column :label="t('conflict.severity.title')" width="120">
+          <template #default="{ row }">
+            <el-tag :type="getSeverityTagType(row.conflictType)" size="small">
+              {{ t(`conflict.severity.${getSeverity(row.conflictType)}`) }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column :label="t('conflict.branches')" width="200">
           <template #default="{ row }">
             <span v-if="row.sourceBranch">
@@ -78,7 +85,12 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="message" :label="t('conflict.message')" min-width="250" />
+        <el-table-column prop="message" :label="t('conflict.message')" min-width="220" />
+        <el-table-column :label="t('conflict.recommendation')" min-width="240">
+          <template #default="{ row }">
+            {{ getRecommendation(row) }}
+          </template>
+        </el-table-column>
         <el-table-column :label="t('conflict.action')" width="140">
           <template #default="{ row }">
             <el-button
@@ -120,6 +132,8 @@ const scanning = ref(false)
 const activeFilter = ref<string>('ALL')
 
 const conflictTypes = ['MISMATCH', 'MERGE_CONFLICT', 'BRANCH_EXISTS', 'BRANCH_NONCOMPLIANT', 'CROSS_REPO_VERSION_MISMATCH', 'REPO_AHEAD', 'SYSTEM_AHEAD']
+type ConflictType = ConflictItemView['conflictType']
+type ConflictSeverity = 'blocker'
 
 const getCount = (ct: string) =>
   report.value?.conflicts.filter(c => c.conflictType === ct).length ?? 0
@@ -156,6 +170,10 @@ const getTagType = (type: string) => {
   }
 }
 
+const getSeverity = (_type: ConflictType): ConflictSeverity => 'blocker'
+
+const getSeverityTagType = (_type: ConflictType) => 'danger'
+
 const isResolvableInApp = (type: string) =>
   type === 'MISMATCH' || type === 'REPO_AHEAD' || type === 'SYSTEM_AHEAD'
 
@@ -167,6 +185,15 @@ const getExternalHint = (type: string) => {
   if (type === 'MERGE_CONFLICT') return t('conflict.resolveInGit')
   if (type === 'BRANCH_EXISTS' || type === 'BRANCH_NONCOMPLIANT') return t('conflict.resolveBranch')
   return ''
+}
+
+const getRecommendation = (item: ConflictItemView) => {
+  if (item.suggestion) return item.suggestion
+  if (isResolvableInApp(item.conflictType)) return t('conflict.recommendations.syncVersion')
+  if (item.conflictType === 'MERGE_CONFLICT') return t('conflict.recommendations.resolveMerge')
+  if (item.conflictType === 'BRANCH_EXISTS') return t('conflict.recommendations.reviewExistingBranch')
+  if (item.conflictType === 'BRANCH_NONCOMPLIANT') return t('conflict.recommendations.renameBranch')
+  return t('conflict.recommendations.alignVersions')
 }
 
 defineExpose({ report, refresh: handleScan })
