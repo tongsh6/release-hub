@@ -137,6 +137,7 @@ class RunAppServiceTest {
 
             assertThat(result.getItems()).hasSize(1);
             var item = result.getItems().get(0);
+            assertThat(item.getWindowKey()).isEqualTo(windowKey);
             assertThat(item.getFinalResult()).isEqualTo(RunItemResult.MERGED);
             assertThat(item.getSteps()).hasSize(4);
             assertThat(item.getSteps().get(0).result()).isEqualTo(RunItemResult.SUCCESS);  // ENSURE_FEATURE
@@ -248,6 +249,52 @@ class RunAppServiceTest {
 
             assertThatThrownBy(() -> service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester"))
                     .isInstanceOf(io.releasehub.common.exception.BusinessException.class);
+        }
+
+        @Test
+        @DisplayName("窗口关闭后禁止继续执行编排")
+        void shouldRejectOrchestrateWhenWindowClosed() {
+            ReleaseWindow rw = ReleaseWindow.rehydrate(
+                    ReleaseWindowId.of(windowId), windowKey, "Release 1.0", "",
+                    now, "G001", ReleaseWindowStatus.CLOSED, now, now, false, now);
+            when(releaseWindowPort.findById(ReleaseWindowId.of(windowId))).thenReturn(Optional.of(rw));
+
+            assertThatThrownBy(() -> service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester"))
+                    .isInstanceOf(io.releasehub.common.exception.BusinessException.class)
+                    .satisfies(ex -> assertThat(((io.releasehub.common.exception.BusinessException) ex).getCode()).isEqualTo("RW_009"));
+        }
+
+        @Test
+        @DisplayName("窗口关闭后禁止继续执行版本更新")
+        void shouldRejectVersionUpdateWhenWindowClosed() {
+            ReleaseWindow rw = ReleaseWindow.rehydrate(
+                    ReleaseWindowId.of(windowId), windowKey, "Release 1.0", "",
+                    now, "G001", ReleaseWindowStatus.CLOSED, now, now, false, now);
+            when(releaseWindowPort.findById(ReleaseWindowId.of(windowId))).thenReturn(Optional.of(rw));
+
+            assertThatThrownBy(() -> service.executeVersionUpdate(
+                    windowId, repoId, "1.2.3", io.releasehub.domain.version.BuildTool.MAVEN,
+                    "/tmp/repo", "pom.xml", null, "tester"))
+                    .isInstanceOf(io.releasehub.common.exception.BusinessException.class)
+                    .satisfies(ex -> assertThat(((io.releasehub.common.exception.BusinessException) ex).getCode()).isEqualTo("RW_009"));
+        }
+
+        @Test
+        @DisplayName("窗口关闭后禁止继续执行批量版本更新")
+        void shouldRejectBatchVersionUpdateWhenWindowClosed() {
+            ReleaseWindow rw = ReleaseWindow.rehydrate(
+                    ReleaseWindowId.of(windowId), windowKey, "Release 1.0", "",
+                    now, "G001", ReleaseWindowStatus.CLOSED, now, now, false, now);
+            when(releaseWindowPort.findById(ReleaseWindowId.of(windowId))).thenReturn(Optional.of(rw));
+
+            assertThatThrownBy(() -> service.executeBatchVersionUpdate(
+                    windowId,
+                    List.of(new RunAppService.RepoVersionUpdateInfo(
+                            repoId, io.releasehub.domain.version.BuildTool.MAVEN, "/tmp/repo", "pom.xml", null)),
+                    "1.2.3",
+                    "tester"))
+                    .isInstanceOf(io.releasehub.common.exception.BusinessException.class)
+                    .satisfies(ex -> assertThat(((io.releasehub.common.exception.BusinessException) ex).getCode()).isEqualTo("RW_009"));
         }
     }
 }

@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OrchestrationPanel from '../OrchestrationPanel.vue'
 import { releaseWindowApi } from '@/api/modules/releaseWindow'
+import { runApi } from '@/api/runApi'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -82,12 +83,15 @@ describe('OrchestrationPanel', () => {
   beforeEach(() => {
     vi.mocked(releaseWindowApi.orchestrate).mockReset()
     vi.mocked(releaseWindowApi.orchestrate).mockResolvedValue('run-1')
+    vi.mocked(runApi.list).mockReset()
+    vi.mocked(runApi.list).mockResolvedValue({ list: [], total: 0 })
   })
 
   it('executes finish orchestration with the current window repository and iteration scope', async () => {
     const wrapper = mount(OrchestrationPanel, {
       props: {
         windowId: 'window-1',
+        windowKey: 'RW-1',
         windowStatus: 'PUBLISHED',
         iterationCount: 1,
         repoCount: 1,
@@ -111,6 +115,7 @@ describe('OrchestrationPanel', () => {
     const wrapper = mount(OrchestrationPanel, {
       props: {
         windowId: 'window-1',
+        windowKey: 'RW-1',
         windowStatus: 'PUBLISHED',
         iterationCount: 1,
         repoCount: 1,
@@ -124,5 +129,22 @@ describe('OrchestrationPanel', () => {
 
     expect(wrapper.emitted('open-version-update')?.length).toBeGreaterThan(0)
     expect(wrapper.emitted('openVersionUpdate')).toBeUndefined()
+  })
+
+  it('loads recent runs by release window key', () => {
+    mount(OrchestrationPanel, {
+      props: {
+        windowId: 'window-1',
+        windowKey: 'RW-1',
+        windowStatus: 'CLOSED',
+        iterationCount: 1,
+        repoCount: 1,
+        repoIds: ['repo-1'],
+        iterationKeys: ['ITER-1']
+      },
+      global: { stubs }
+    })
+
+    expect(runApi.list).toHaveBeenCalledWith({ page: 1, pageSize: 5, windowKey: 'RW-1' })
   })
 })

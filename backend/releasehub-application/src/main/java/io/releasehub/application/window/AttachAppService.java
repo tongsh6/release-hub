@@ -17,6 +17,7 @@ import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
+import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.ActionType;
@@ -54,9 +55,7 @@ public class AttachAppService {
     @Transactional
     public List<AttachResult> attach(String windowId, List<String> iterationKeys) {
         ReleaseWindow releaseWindow = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
-        if (releaseWindow.isFrozen()) {
-            throw BusinessException.rwAlreadyFrozen();
-        }
+        ensureWindowCanChangeIterations(releaseWindow);
         Instant now = Instant.now(clock);
         Run run = Run.start(RunType.ATTACH_ITERATION, "system", now);
         int[] order = {0};
@@ -70,7 +69,7 @@ public class AttachAppService {
 
                     List<AttachResult.RepoError> errors = new ArrayList<>();
                     for (RepoId repoId : iteration.getRepos()) {
-                        RunItem item = RunItem.create(releaseWindow.getName(), repoId, iterationKey, ++order[0], now);
+                        RunItem item = RunItem.create(releaseWindow.getWindowKey(), repoId, iterationKey, ++order[0], now);
                         try {
                             setupReleaseBranchForRepo(releaseWindow, iteration, iterationKey, repoId, now, item);
                             run.addItem(item);
@@ -166,9 +165,7 @@ public class AttachAppService {
     @Transactional
     public void detach(String windowId, String iterationKey) {
         ReleaseWindow releaseWindow = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
-        if (releaseWindow.isFrozen()) {
-            throw BusinessException.rwAlreadyFrozen();
-        }
+        ensureWindowCanChangeIterations(releaseWindow);
         Iteration iteration = iterationPort.findByKey(IterationKey.of(iterationKey)).orElseThrow();
         String releaseBranch = "release/" + releaseWindow.getWindowKey();
         for (RepoId repoId : iteration.getRepos()) {
@@ -197,6 +194,7 @@ public class AttachAppService {
     @Transactional
     public void createReleaseBranchForIteration(String windowId, String iterationKeyStr) {
         ReleaseWindow releaseWindow = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
+        ensureWindowOpenForReleaseBranchOps(releaseWindow);
         IterationKey iterationKey = IterationKey.of(iterationKeyStr);
         Iteration iteration = iterationPort.findByKey(iterationKey).orElseThrow();
         Instant now = Instant.now(clock);
@@ -227,6 +225,7 @@ public class AttachAppService {
     @Transactional
     public void mergeFeatureToRelease(String windowId, String iterationKeyStr) {
         ReleaseWindow releaseWindow = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
+        ensureWindowOpenForReleaseBranchOps(releaseWindow);
         IterationKey iterationKey = IterationKey.of(iterationKeyStr);
         Iteration iteration = iterationPort.findByKey(iterationKey).orElseThrow();
         Instant now = Instant.now(clock);
@@ -262,5 +261,20 @@ public class AttachAppService {
         }
 
         windowIterationPort.updateLastMergeAt(windowId, iterationKeyStr, now);
+    }
+
+    private void ensureWindowCanChangeIterations(ReleaseWindow releaseWindow) {
+        if (releaseWindow.getStatus() == ReleaseWindowStatus.CLOSED) {
+            throw BusinessException.rwInvalidState(releaseWindow.getStatus());
+        }
+        if (releaseWindow.isFrozen()) {
+            throw BusinessException.rwAlreadyFrozen();
+        }
+    }
+
+    private void ensureWindowOpenForReleaseBranchOps(ReleaseWindow releaseWindow) {
+        if (releaseWindow.getStatus() == ReleaseWindowStatus.CLOSED) {
+            throw BusinessException.rwInvalidState(releaseWindow.getStatus());
+        }
     }
 }

@@ -41,6 +41,7 @@
         
         <!-- 功能按钮 -->
         <el-button
+          v-if="form.status === 'DRAFT'"
           v-perm.disable="'release-window:write'"
           type="primary"
           @click="goAttach"
@@ -151,6 +152,7 @@
     <OrchestrationPanel
       v-if="form.id && iterations.length > 0"
       :window-id="form.id"
+      :window-key="form.windowKey || ''"
       :window-status="form.status || 'DRAFT'"
       :iteration-count="iterations.length"
       :repo-count="totalRepoCount"
@@ -340,6 +342,7 @@ const openCodeMerge = () => {
 
 const openVersionUpdate = () => {
   if (!form.value?.id) return
+  if (form.value.status === 'CLOSED') return
   versionUpdateDialogRef.value?.open(form.value.id, iterations.value.flatMap(iter => iter.repos || []))
 }
 

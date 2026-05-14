@@ -20,6 +20,7 @@ import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
+import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.ActionType;
@@ -76,6 +77,7 @@ public class RunAppService {
     public Run startOrchestrate(String windowId, List<String> repoIds, List<String> iterationKeys, boolean failFast, String operator) {
         Instant now = Instant.now(clock);
         ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
+        ensureWindowNotClosed(rw);
         Run run = Run.start(RunType.WINDOW_ORCHESTRATION, operator, now);
 
         // 冲突预检
@@ -127,7 +129,7 @@ public class RunAppService {
                 }
 
                 log.info("[Orchestrate] Creating RunItem: repo={} iteration={} order={}", repoIdStr, ik.value(), order + 1);
-                RunItem item = RunItem.create(rw.getName(), repoId, ik, ++order, now);
+                RunItem item = RunItem.create(rw.getWindowKey(), repoId, ik, ++order, now);
                 String iterationKey = ik.value();
 
                 Optional<IterationRepoVersionInfo> versionInfoOpt = iterationRepoPort.getVersionInfo(iterationKey, repoIdStr);
@@ -374,7 +376,7 @@ public class RunAppService {
                 String devVersion = repoVersionInfo.map(IterationRepoVersionInfo::getDevVersion).orElse(null);
                 String releaseVersion = devVersion != null ? versionDeriverUseCase.deriveTargetVersion(devVersion) : null;
 
-                RunItem item = RunItem.create(rw.getName(), repoId, wi.getIterationKey(), ++order, now);
+                RunItem item = RunItem.create(rw.getWindowKey(), repoId, wi.getIterationKey(), ++order, now);
                 boolean itemFailed = false;
 
                 // Step 1: UPDATE_VERSION — derive and record release version
@@ -501,6 +503,7 @@ public class RunAppService {
 
         ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId))
                 .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
+        ensureWindowNotClosed(rw);
 
         codeRepositoryPort.findById(RepoId.of(repoId))
                 .orElseThrow(() -> NotFoundException.repository(repoId));
@@ -522,7 +525,7 @@ public class RunAppService {
         Instant stepEnd = Instant.now(clock);
 
         IterationKey dummyIterationKey = IterationKey.of("VERSION_UPDATE");
-        RunItem item = RunItem.create(rw.getName(), RepoId.of(repoId), dummyIterationKey, 1, now);
+        RunItem item = RunItem.create(rw.getWindowKey(), RepoId.of(repoId), dummyIterationKey, 1, now);
 
         RunItemResult stepResult = result.success()
                 ? RunItemResult.VERSION_UPDATE_SUCCESS
@@ -565,6 +568,7 @@ public class RunAppService {
 
         ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId))
                 .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
+        ensureWindowNotClosed(rw);
 
         ConflictReport conflictReport = conflictDetectionAppService.getLatestReport(windowId)
                 .orElseGet(() -> conflictDetectionAppService.checkWindowConflicts(windowId));
@@ -588,7 +592,7 @@ public class RunAppService {
             Instant stepEnd = Instant.now(clock);
 
             IterationKey dummyIterationKey = IterationKey.of("VERSION_UPDATE");
-            RunItem item = RunItem.create(rw.getName(), RepoId.of(repoInfo.repoId()), dummyIterationKey, order, now);
+            RunItem item = RunItem.create(rw.getWindowKey(), RepoId.of(repoInfo.repoId()), dummyIterationKey, order, now);
 
             RunItemResult stepResult = result.success()
                     ? RunItemResult.VERSION_UPDATE_SUCCESS
@@ -629,4 +633,10 @@ public class RunAppService {
             String pomPath,
             String gradlePropertiesPath
     ) {}
+
+    private void ensureWindowNotClosed(ReleaseWindow releaseWindow) {
+        if (releaseWindow.getStatus() == ReleaseWindowStatus.CLOSED) {
+            throw BusinessException.rwInvalidState(releaseWindow.getStatus());
+        }
+    }
 }

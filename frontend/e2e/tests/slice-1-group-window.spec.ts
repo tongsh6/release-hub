@@ -314,5 +314,10 @@ test.describe.serial('Slice-1: Group + Window', () => {
 
     await searchWindow(page)
     await expect(windowRow(page)).toContainText(L['releaseWindow.statusText.CLOSED'], { timeout: 5000 })
+    await expect(windowRow(page).locator('button').filter({ hasText: L['releaseWindow.attachIterations'] })).toHaveCount(0)
+
+    await windowRow(page).locator('button').filter({ hasText: L['releaseWindow.view'] }).click(FORCE)
+    await expect(page).toHaveURL(/\/release-windows\//, { timeout: 5000 })
+    await expect(page.getByRole('button', { name: L['releaseWindow.attachIterations'] })).toHaveCount(0)
   })
 })

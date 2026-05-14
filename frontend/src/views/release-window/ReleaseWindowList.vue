@@ -65,6 +65,7 @@
           <el-button link type="primary" @click="handleView(row)">{{ t('releaseWindow.view') }}</el-button>
 
           <el-button 
+            v-if="row.status === 'DRAFT'"
             v-perm.disable="'release-window:write'"
             link 
             type="primary"

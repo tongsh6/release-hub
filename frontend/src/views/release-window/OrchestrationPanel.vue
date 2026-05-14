@@ -196,6 +196,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 const props = defineProps<{
   windowId: string
+  windowKey: string
   windowStatus: string
   iterationCount: number
   repoCount: number
@@ -323,7 +324,7 @@ async function handleOrchestrate() {
 
 async function loadRecentRuns() {
   try {
-    const result = await runApi.list({ page: 1, pageSize: 5, windowKey: props.windowId })
+    const result = await runApi.list({ page: 1, pageSize: 5, windowKey: props.windowKey })
     recentRuns.value = result.list
   } catch (e) {
     // 静默失败

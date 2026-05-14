@@ -31,7 +31,7 @@
 #   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS
 #   SA-014: 版本更新、校验、Git 远程提交验证
 #   SA-015: Run 执行详情（RunItem/RunStep）
-#   SA-016: 窗口关闭和收尾能力目前记录为后续缺口
+#   SA-016: 窗口关闭、关闭后关键操作禁止、收尾 Run 可见
 #
 # 原则:
 #   1. 永不 DROP DATABASE / DELETE 数据（本地持久化模式）
@@ -997,6 +997,67 @@ else
         no "SA-014 版本更新失败: $ERR"
     else
         skip "SA-014 版本更新未执行: $ERR"
+    fi
+fi
+
+# ---- 8.5 场景: 发布后关闭与收尾闭环 ----
+h2 "SA-016: 8.5 场景: 关闭窗口后禁止关键操作 & 收尾 Run"
+SA16_WINDOW_ID="$VU_WINDOW_ID"
+SA16_WINDOW_KEY=$(curl -s "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))" 2>/dev/null)
+
+if [ -z "$SA16_WINDOW_ID" ] || [ -z "$SA16_WINDOW_KEY" ]; then
+    no "SA-016 无可用窗口用于关闭验收"
+else
+    CLOSE_RESULT=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID/close" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
+    CLOSE_SUCCESS=$(echo "$CLOSE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success','?'))" 2>/dev/null)
+    CLOSE_STATUS=$(echo "$CLOSE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('status',''))" 2>/dev/null)
+    if [ "$CLOSE_SUCCESS" = "True" ] && [ "$CLOSE_STATUS" = "CLOSED" ]; then
+        ok "SA-016 关闭窗口成功 → CLOSED"
+    else
+        no "SA-016 关闭窗口失败: $CLOSE_RESULT"
+    fi
+
+    POST_CLOSE_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"iterationKeys\":[\"$ITER_KEY\"]}" 2>/dev/null)
+    POST_CLOSE_ATTACH_CODE=$(echo "$POST_CLOSE_ATTACH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null)
+    if [ "$POST_CLOSE_ATTACH_CODE" = "RW_009" ]; then
+        ok "SA-016 关闭后禁止挂载迭代 (RW_009)"
+    else
+        no "SA-016 关闭后挂载迭代未被正确拒绝: $POST_CLOSE_ATTACH"
+    fi
+
+    POST_CLOSE_VU=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID/execute/version-update" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"repoId\":\"$VU_REPO_ID\",\"targetVersion\":\"1.6.0\",\"buildTool\":\"MAVEN\",\"repoPath\":\".\",\"pomPath\":\"pom.xml\"}" 2>/dev/null)
+    POST_CLOSE_VU_CODE=$(echo "$POST_CLOSE_VU" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null)
+    if [ "$POST_CLOSE_VU_CODE" = "RW_009" ]; then
+        ok "SA-016 关闭后禁止版本更新 (RW_009)"
+    else
+        no "SA-016 关闭后版本更新未被正确拒绝: $POST_CLOSE_VU"
+    fi
+
+    CLEANUP_RUNS=$(curl -s "$BACKEND/api/v1/runs/paged?size=10&runType=WINDOW_ORCHESTRATION&windowKey=$SA16_WINDOW_KEY" -H "$AUTH")
+    CLEANUP_EVIDENCE=$(echo "$CLEANUP_RUNS" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+runs=d.get('data',[])
+cleanup=[]
+for r in runs:
+    actions=set()
+    for item in r.get('items',[]):
+        for s in item.get('steps',[]):
+            actions.add(s.get('actionType'))
+    if {'ARCHIVE_BRANCH','MERGE_TO_MASTER','CREATE_TAG','TRIGGER_CI'} & actions:
+        cleanup.append((r.get('id'), r.get('status'), len(r.get('items',[])), sorted(actions)))
+if cleanup:
+    rid,status,items,actions=cleanup[0]
+    print(f'FOUND id={rid} status={status} items={items} actions={actions}')
+else:
+    print('NOT_FOUND')
+" 2>/dev/null)
+    if echo "$CLEANUP_EVIDENCE" | grep -q '^FOUND'; then
+        ok "SA-016 收尾 Run 可见: $CLEANUP_EVIDENCE"
+    else
+        no "SA-016 未找到收尾 Run: $CLEANUP_EVIDENCE"
     fi
 fi
 
