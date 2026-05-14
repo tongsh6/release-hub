@@ -31,8 +31,8 @@
             <span>{{ t('run.detail.triplesTitle') }}</span>
           </div>
         </template>
-        <el-table :data="detail?.items || []" style="width: 100%">
-          <el-table-column prop="repo" :label="t('run.filters.repo')" />
+        <el-table :data="detail?.items || []" default-expand-all style="width: 100%">
+          <el-table-column prop="repoId" :label="t('run.filters.repo')" />
           <el-table-column prop="windowKey" :label="t('run.filters.windowKey')" />
           <el-table-column prop="iterationKey" :label="t('run.filters.iterationKey')" />
           <el-table-column prop="finalResult" :label="t('run.columns.status')" />

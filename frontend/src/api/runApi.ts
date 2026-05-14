@@ -17,7 +17,8 @@ export interface RunDetail extends Run {
 
 export interface RunItem {
   windowKey: string
-  repo: string
+  repo?: string
+  repoId: string
   iterationKey: string
   plannedOrder: number
   executedOrder: number
@@ -28,8 +29,10 @@ export interface RunItem {
 export interface RunStep {
   actionType: string
   result: string
-  startedAt: string
-  finishedAt: string
+  startedAt?: string
+  finishedAt?: string
+  startAt?: string | number
+  endAt?: string | number
   message: string
 }
 
@@ -70,8 +73,8 @@ export const runApi = {
   },
 
   async getRunById(id: Id): Promise<RunDetail> {
-    const res = await http.get<RunDetail>(`/v1/runs/${id}/export.json`)
-    return res.data
+    const res = await http.get<any>(`/v1/runs/${id}/export.json`)
+    return normalizeRunDetail(res.data, String(id))
   },
 
   async retry(id: Id, items: string[], operator: string): Promise<string> {
@@ -88,4 +91,43 @@ export const runApi = {
   async retryTask(runId: string, taskId: string): Promise<RunTask> {
     return apiPost<RunTask>(`/v1/runs/${runId}/tasks/${taskId}/retry`, {})
   }
+}
+
+function normalizeRunDetail(data: any, fallbackId: string): RunDetail {
+  const items = (data?.items || []).map((item: any) => ({
+    ...item,
+    repoId: item.repoId || item.repo || '',
+    repo: item.repo || item.repoId || '',
+    steps: (item.steps || []).map((step: any) => ({
+      ...step,
+      startedAt: normalizeTime(step.startedAt ?? step.startAt),
+      finishedAt: normalizeTime(step.finishedAt ?? step.endAt)
+    }))
+  }))
+
+  return {
+    id: data?.id || data?.runId || fallbackId,
+    runType: data?.runType || '',
+    status: data?.status || determineRunStatus(items, data?.finishedAt),
+    startedAt: normalizeTime(data?.startedAt),
+    finishedAt: normalizeTime(data?.finishedAt),
+    operator: data?.operator || '',
+    items
+  }
+}
+
+function normalizeTime(value: unknown): string {
+  if (value === null || value === undefined || value === '') return ''
+  if (typeof value === 'number') return new Date(value).toISOString()
+  return String(value)
+}
+
+function determineRunStatus(items: RunItem[], finishedAt: unknown): string {
+  if (items.some(item => item.finalResult?.includes('FAILED') || item.finalResult === 'MERGE_BLOCKED')) {
+    return 'FAILED'
+  }
+  if (items.length > 0 && items.every(item => item.finalResult?.includes('SUCCESS'))) {
+    return 'SUCCESS'
+  }
+  return finishedAt ? 'COMPLETED' : 'RUNNING'
 }

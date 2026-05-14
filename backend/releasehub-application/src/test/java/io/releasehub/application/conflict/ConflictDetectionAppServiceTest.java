@@ -181,6 +181,24 @@ class ConflictDetectionAppServiceTest {
     }
 
     @Test
+    void shouldSkipVersionConflictWhenVersionExtractionFails() {
+        // Given
+        setupWindowWithIteration();
+        setupRepo("R001", "test-repo", "master");
+        setupVersionInfo("1.0.0");
+        when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
+                .thenThrow(new RuntimeException("Invalid parameter: cloneUrl"));
+        when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
+                .thenReturn(GitBranchPort.BranchStatus.missing());
+
+        // When
+        ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
+
+        // Then
+        assertThat(report.hasConflicts()).isFalse();
+    }
+
+    @Test
     void shouldDetectCrossRepoVersionMismatch() {
         // Given
         setupWindowWithTwoReposIteration();

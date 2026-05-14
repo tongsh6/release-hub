@@ -4,7 +4,10 @@ import io.releasehub.application.port.out.GitLabFilePort;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
+import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.repo.RepoType;
 import io.releasehub.domain.version.BuildTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,11 +18,16 @@ import org.mockito.MockitoAnnotations;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Maven VersionUpdater 单元测试
@@ -106,6 +114,42 @@ class MavenVersionUpdaterTest {
         assertFalse(result.success());
         assertNotNull(result.errorMessage());
         assertTrue(result.errorMessage().contains("不存在") || result.errorMessage().contains("not found"));
+    }
+
+    @Test
+    void should_use_local_file_operator_for_mock_repo_even_when_branch_is_present() {
+        RepoId repoId = RepoId.newId();
+        CodeRepository repo = CodeRepository.rehydrate(
+                repoId,
+                "mock-repo",
+                "mock:///mock-repo.git",
+                "main",
+                "G001",
+                RepoType.SERVICE,
+                GitProvider.MOCK,
+                null,
+                false,
+                0, 0, 0, 0, 0, 0, 0,
+                null,
+                Instant.now(),
+                Instant.now(),
+                0L
+        );
+        when(codeRepositoryPort.findById(repoId)).thenReturn(Optional.of(repo));
+
+        VersionUpdateRequest request = VersionUpdateRequest.forMaven(
+                repoId,
+                "release/RW-1",
+                tempDir.toString(),
+                "1.2.3",
+                tempDir.resolve("nonexistent.xml").toString()
+        );
+
+        VersionUpdateResult result = updater.update(request);
+
+        assertFalse(result.success());
+        assertTrue(result.errorMessage().contains("不存在") || result.errorMessage().contains("not found"));
+        verify(gitLabFilePort, never()).fileExists("mock:///mock-repo.git", "release/RW-1", request.pomPath());
     }
 
     @Test

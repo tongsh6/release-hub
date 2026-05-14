@@ -17,6 +17,7 @@ import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.window.WindowIteration;
 import lombok.RequiredArgsConstructor;
@@ -105,8 +106,19 @@ public class ConflictDetectionAppService {
         String repoId = repo.getId().value();
         String repoName = repo.getName();
 
-        Optional<VersionExtractorUseCase.VersionInfo> extractedOpt =
-                versionExtractorUseCase.extractVersion(repo.getCloneUrl(), branch);
+        if (repo.getGitProvider() == GitProvider.MOCK) {
+            log.debug("Skip version conflict detection for mock repo {} on branch {}", repoId, branch);
+            return results;
+        }
+
+        Optional<VersionExtractorUseCase.VersionInfo> extractedOpt;
+        try {
+            extractedOpt = versionExtractorUseCase.extractVersion(repo.getCloneUrl(), branch);
+        } catch (RuntimeException e) {
+            log.warn("Skip version conflict detection for repo {} on branch {}: {}",
+                    repoId, branch, e.getMessage());
+            return results;
+        }
 
         if (extractedOpt.isEmpty()) return results;
 

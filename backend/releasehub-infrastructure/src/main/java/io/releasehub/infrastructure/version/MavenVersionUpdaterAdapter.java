@@ -8,6 +8,7 @@ import io.releasehub.application.version.VersionUpdaterPort;
 import io.releasehub.common.exception.BaseException;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.version.BuildTool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -133,7 +134,7 @@ public class MavenVersionUpdaterAdapter implements VersionUpdaterPort {
     private FileOperator getOperator(VersionUpdateRequest request) {
         if (request.branchName() != null) {
             CodeRepository repo = codeRepositoryPort.findById(request.repoId()).orElse(null);
-            if (repo != null && repo.getCloneUrl() != null) {
+            if (repo != null && repo.getGitProvider() != GitProvider.MOCK && repo.getCloneUrl() != null) {
                 log.info("Using RemoteFileOperator for repo {} on branch {}", repo.getName(), request.branchName());
                 return new RemoteFileOperator(gitLabFilePort, repo.getCloneUrl(), request.branchName());
             }

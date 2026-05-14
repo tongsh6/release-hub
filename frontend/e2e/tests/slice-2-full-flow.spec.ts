@@ -189,6 +189,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
   const iterationName = `UI Journey Iteration ${suffix}`
   const windowName = `UI Journey Window ${suffix}`
   let iterationKey = ''
+  let windowKey = ''
   let windowDetailUrl = ''
   let createdRepoId = ''
 
@@ -209,6 +210,9 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'releaseWindow.versionUpdate.targetVersion',
       'releaseWindow.versionUpdate.repoPath',
       'releaseWindow.versionUpdate.pomPath',
+      'run.actions.detail',
+      'run.filters.windowKey',
+      'run.filters.status',
       'orchestration.executeFinish',
       'conflict.rescan',
       'conflict.resolveVersion',
@@ -306,6 +310,9 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await row.locator('button').filter({ hasText: L['common.view'] }).click(FORCE)
     await expect(page).toHaveURL(/\/release-windows\//)
     windowDetailUrl = page.url()
+    const windowDetailText = await page.locator('.release-window-detail-page, .el-descriptions').first().innerText()
+    windowKey = windowDetailText.match(/RW-\d{8}-[A-Z0-9]+/)?.[0] || ''
+    expect(windowKey).toContain('RW-')
 
     await page.getByRole('button', { name: L['releaseWindow.attachIterations'] }).click(FORCE)
     const attachDialog = page.locator('.el-dialog').last()
@@ -344,6 +351,56 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     })
     expect(orchestrateBody.repoIds).toHaveLength(1)
     createdRepoId = orchestrateBody.repoIds[0]
+  })
+
+  test('SA-015: Tester can inspect a UI-triggered failed version-update run', async ({ page }) => {
+    await ensureLoggedIn(page)
+    expect(windowDetailUrl).toContain('/release-windows/')
+    expect(windowKey).toContain('RW-')
+    expect(createdRepoId).toBeTruthy()
+
+    await page.goto(windowDetailUrl)
+    const versionUpdateButton = page.getByRole('button', { name: L['releaseWindow.versionUpdate.execute'] })
+    await expect(versionUpdateButton).toBeVisible({ timeout: 5000 })
+    await versionUpdateButton.evaluate((el: HTMLElement) => el.click())
+    const dialog = page.locator('.el-dialog').filter({ hasText: L['releaseWindow.versionUpdate.title'] }).last()
+    await expect(dialog).toBeVisible({ timeout: 10000 })
+    await expect(dialog).toContainText(repoName)
+
+    const missingRepoPath = `/tmp/releasehub-ui-missing-${suffix}`
+    const missingPomPath = `${missingRepoPath}/pom.xml`
+    await dialog.getByRole('textbox', { name: L['releaseWindow.versionUpdate.targetVersion'] }).fill('9.9.9')
+    await dialog.getByRole('textbox', { name: L['releaseWindow.versionUpdate.repoPath'] }).fill(missingRepoPath)
+    await dialog.getByRole('textbox', { name: L['releaseWindow.versionUpdate.pomPath'] }).fill(missingPomPath)
+    const versionUpdateResponse = page.waitForResponse(response =>
+      response.url().includes('/api/v1/release-windows/') &&
+      response.url().includes('/execute/version-update') &&
+      response.request().method() === 'POST'
+    )
+    await dialog.locator('.el-button--primary').last().click(FORCE)
+    expect((await versionUpdateResponse).ok()).toBeTruthy()
+    await dialog.waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
+
+    await page.goto('/runs')
+    await page.getByRole('textbox', { name: L['run.filters.windowKey'] }).fill(windowKey)
+    await page.locator('.el-form-item').filter({ hasText: L['run.filters.status'] }).locator('.el-select').click(FORCE)
+    await page.getByRole('option', { name: 'FAILED' }).evaluate((el: HTMLElement) => el.click())
+    await page.locator('button').filter({ hasText: L['common.search'] }).click(FORCE)
+    await page.locator('.el-loading-mask').last().waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+
+    const failedRunRow = page.locator('.el-table__body tr')
+      .filter({ hasText: 'VERSION_UPDATE' })
+      .filter({ hasText: 'FAILED' })
+      .last()
+    await expect(failedRunRow).toBeVisible({ timeout: 10000 })
+    await failedRunRow.locator('button').filter({ hasText: L['run.actions.detail'] }).click(FORCE)
+
+    const drawer = page.locator('.el-drawer').last()
+    await expect(drawer).toBeVisible({ timeout: 10000 })
+    await expect(drawer).toContainText('VERSION_UPDATE_FAILED')
+    await expect(drawer).toContainText('UPDATE_VERSION')
+    await expect(drawer).toContainText(createdRepoId)
+    await expect(drawer).toContainText(missingPomPath)
   })
 
   test('SA-012 frontend path resolves a version conflict with USE_SYSTEM and rescans clean', async ({ page }) => {

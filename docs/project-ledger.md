@@ -9,8 +9,8 @@
 
 ## 1. 当前阶段目标
 
-**v0.1.11 验证闭环 + 场景化验收收口**。
-- 主线：让 v0.1.11 三大特性（远程版本更新 / 设置持久化 / 三层关联）+ 多 Provider 迁移 在真实 GitLab 上跑通，并把 SA-013/SA-014 纳入场景化验收强断言
+**v0.1.11 验证闭环 + 场景矩阵驱动收口**。
+- 主线：按 `docs/reports/scenario-acceptance-matrix.md` 推进用户旅行场景地图，把 SA-012/SA-013/SA-014/SA-016 已闭环证据沉淀为基线，并优先补 SA-015/SA-012/SA-010/SA-011 剩余缺口
 - 不做：新功能（RBAC、通知、CI 深集成）；不重构 Iteration 领域到 `repoAssociations`
 
 ### 场景化用户旅程自动化原则（AI 接手必读）
@@ -23,8 +23,9 @@
 
 可执行入口：
 
-- 服务托管入口：`bash scripts/acceptance/run-acceptance.sh --start-services --hold-services`
-- 服务停止入口：`bash scripts/acceptance/run-acceptance.sh --stop-services`
+- 本地前后端统一托管入口：`scripts/dev/start-local-env.sh hold`
+- 本地前后端状态检查/停止入口：`scripts/dev/start-local-env.sh status` / `scripts/dev/start-local-env.sh stop`
+- 后端/真实 GitLab 场景验收入口：`bash scripts/acceptance/run-acceptance.sh`
 - Slice-1 分组/发布窗口旅程：`cd frontend && pnpm run test:e2e:slice-1`
 - 完整前端用户旅程基线：`cd frontend && pnpm run test:e2e`
 - 测试源码入口：`frontend/e2e/tests/slice-1-group-window.spec.ts`、`frontend/e2e/tests/slice-2-full-flow.spec.ts`
@@ -48,9 +49,11 @@
 | WindowLifecycleListener AFTER_COMMIT + 异常隔离 | 已实现 | commit `e1c5a31` + 本会话 commit | acc-v0.1.10 #13 + acc-v0.1.11 终轮 0 次 UnexpectedRollback | 闭环 |
 | 验收脚本 v3.2（含 ensure-settings + token 刷新 + 冲突识别） | 已实现 | commit `9eb5444` + `68381b1` + 本会话 | acc-v0.1.11 第 3 轮 25/26 PASS | 闭环 |
 | GitLabGitBranchAdapter URL 双重 encode 修复 | 已实现 | 本会话（uri(...) 包装 + ENC 测试同步） | acc-v0.1.11 终轮 release 分支 3/3、listBranches 18 个 | 闭环 |
-| 场景化验收 SA-013/SA-014 | 已验证 | `docs/reports/scenario-acceptance-matrix.md` + `scripts/acceptance/run-acceptance.sh` | 2026-05-13 真实 GitLab 验收 | PASS=45 / FAIL=0 / SKIP=0 |
+| 场景化验收矩阵基线 | 已验证 | `docs/reports/scenario-acceptance-matrix.md` + `scripts/acceptance/run-acceptance.sh` | 2026-05-15 真实 GitLab 验收 | PASS=50 / FAIL=0 / SKIP=0；SA-012/SA-013/SA-014/SA-016 P0 已覆盖 |
 | 前端 SA-012/SA-013/SA-014 用户触发旅程 | 已验证 | `frontend/e2e/tests/slice-2-full-flow.spec.ts` | 2026-05-14 真实前后端联调 + 前端请求证据 | UI 创建业务数据后完成冲突解决、编排和版本更新触发；最终请求体断言作用域正确 |
-| 前端 Playwright E2E 基线 | 已验证 | `frontend/e2e/tests` | 2026-05-14 真实前后端联调 | 29 PASS / 0 FAIL / 0 SKIP；历史显式 skip 已转为可执行旅程 |
+| 前端 Playwright E2E 基线 | 已验证 | `frontend/e2e/tests` | 2026-05-15 真实前后端联调 | 29 PASS / 0 FAIL / 0 SKIP；历史显式 skip 已转为可执行旅程 |
+| 本地环境统一启停脚本 | 已验证 | `scripts/dev/start-local-env.sh` | 2026-05-15 真实前后端联调 | `start|hold|stop|restart|status` 可用；`hold` 托管前后端；前端 `/api` 代理登录 200 |
+| SA-016 发布后收尾闭环 | 已验证 | `scripts/acceptance/run-acceptance.sh` + `frontend/e2e/tests/slice-1-group-window.spec.ts` | 2026-05-15 真实 GitLab 验收 + Playwright | 关闭窗口、关闭后挂载/版本更新拒绝、收尾 Run 可见、前端 CLOSED 窗口隐藏挂载入口 |
 | Maven surefire/failsafe 插件版本显式化 | 已验证 | `backend/pom.xml` | `mvn -pl releasehub-bootstrap -DskipTests validate` + `mvn -pl releasehub-application -Dtest=ConflictDetectionAppServiceTest test` | malformed POM 中插件版本缺失警告已关闭 |
 
 ---
@@ -61,10 +64,11 @@
 |---|---|---|---|
 | 全链路核心闭环 | 真实 GitLab 验收 v0.1.10 | `docs/reports/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS |
 | v0.1.11 全链路 + 三层关联 + 多 Provider + 设置持久化 | 真实 GitLab 验收 v0.1.11 终轮 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | **25 PASS / 0 FAIL / 1 SKIP**（SKIP 为业务正确拒绝） |
-| 场景化验收 SA-013/SA-014 收口 | `bash scripts/acceptance/run-acceptance.sh` | `docs/reports/scenario-acceptance-matrix.md` | **45 PASS / 0 FAIL / 0 SKIP** |
+| 场景化验收矩阵基线复验 | `bash scripts/acceptance/run-acceptance.sh` | `docs/reports/scenario-acceptance-matrix.md` | **50 PASS / 0 FAIL / 0 SKIP** |
 | URL 双重 encode 修复连带 release 分支创建 | 同上场景 4 | 同上 | 1/3 → **3/3** |
 | Listener 异常隔离 | 同上后端日志 | 同上 | UnexpectedRollback 出现次数 2 → **0** |
-| 前端 Playwright E2E 基线刷新 | `cd frontend && pnpm run test:e2e` | 本会话 2026-05-14 | **29 PASS / 0 FAIL / 0 SKIP**；登录、Slice-1、Slice-2 可跑通，历史显式 skip 已清零 |
+| 前端 Playwright E2E 基线刷新 | `cd frontend && pnpm run test:e2e` | 本会话 2026-05-15 | **29 PASS / 0 FAIL / 0 SKIP**；登录、Slice-1、Slice-2 可跑通，历史显式 skip 已清零 |
+| 本地统一环境入口 | `scripts/dev/start-local-env.sh hold/status/stop` | 本会话 2026-05-15 | 后端、前端和前端 `/api` 代理均可用；停止后 8080/5173 无残留监听 |
 | Maven 插件版本显式化 | `mvn -pl releasehub-bootstrap -DskipTests validate` | 本会话 2026-05-13 | surefire/failsafe version missing 警告消失，targeted surefire 测试通过 |
 | 单测基线 | `mvn test` | 本会话 2026-05-11 | 161 用例全过（含 GitLabGitBranchAdapterTest ENC 同步纠正） |
 | 前端 Vitest / typecheck | `pnpm run test -- src/views/release-window/__tests__/ReleaseWindowDetail.spec.ts src/views/release-window/__tests__/VersionUpdateDialog.spec.ts src/views/release-window/__tests__/OrchestrationPanel.spec.ts src/api/modules/__tests__/releaseWindow.spec.ts` / `pnpm run typecheck` | 2026-05-14 | 25 Vitest 通过；vue-tsc 通过 |
@@ -75,7 +79,8 @@
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| 前端用户旅程自动化验证 | 2026-05-14 已完成 SA-012/SA-013/SA-014 UI 触发链路，并补齐 Slice-1 历史 skip | 继续复核失败 Run/冲突详情；扩展更多冲突解决分支 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
+| 场景矩阵驱动推进 | 2026-05-15 已把 SA-012/SA-013/SA-014/SA-015/SA-016 P0 收口；最新脚本矩阵验收 51/0/0，SA-015 UI 旅程 4/0/0 | 按矩阵当前推进队列优先补 SA-012 更多冲突路径和 SA-010/SA-011 风险详情，随后补 SA-015 扩展复核 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
+| 前端用户旅程自动化验证 | 2026-05-15 完整 Playwright 回归 30/0/0，CLOSED 窗口隐藏挂载入口已覆盖；SA-015 已由 UI 真实生成失败 Run 并在 Run 抽屉复核 | 补冲突详情、更多冲突解决分支、发布计划可见性、部分失败/品牌筛选复核 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
 
 ---
 
@@ -93,12 +98,15 @@
 
 ## 6. 当前 Top Priority
 
-> 暂无强制 P0/P1（2026-05-11 23:46）。下方为可选改进，按出现顺序由用户决定何时推进。
+> 当前主线按 `docs/reports/scenario-acceptance-matrix.md` 推进；优先级以场景矩阵缺口为准。
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| 可选 | 累积冲突清理脚本 | 验收幂等 + 累积造成 14 个真实分支冲突，clean-room 路径不可重现 | 一键 reset 仓库到只剩 main + seed feature 分支 |
-| 当前 | 前端场景化旅程补齐 | SA-012/SA-013/SA-014 已补 UI 创建业务数据后的前端触发请求；失败 Run/冲突详情和 SA-016 收尾仍不足 | Playwright 从窗口详情完成触发/观察/失败原因复核 |
+| P1 | SA-012 更多冲突解决路径 | 版本冲突 `USE_SYSTEM` 已闭环，但 release 分支已存在、feature 缺失、分支不合规等路径未覆盖 | 至少新增一个非版本冲突解决/阻断路径，并形成前端旅程 + 后端/GitLab 证据 |
+| P1 | SA-010/SA-011 发布计划与风险详情 | attach 和冲突阻断已有强证据，前端发布计划可见性和风险详情仍弱 | 窗口详情可见发布计划、冲突严重级别和建议处理方式 |
+| P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run 并复核失败步骤，冲突详情/部分失败/品牌筛选仍不足 | Playwright 从窗口详情/Run 详情观察冲突详情、部分失败和品牌筛选结果 |
+| P1 | SA-016 收尾扩展 | P0 已覆盖，幂等关闭、部分失败重试和报告导出仍不足 | 补幂等关闭、部分失败重试和发布报告导出 |
+| 可选 | 累积冲突清理脚本 | 验收幂等 + 累积真实分支冲突会影响 clean-room 复现 | 一键 reset 仓库到只剩 main + seed feature 分支 |
 | 可选 | acc-v0.1.10 报告中段移到 archive | 已被 v0.1.11 报告完全覆盖 | reports/ 目录瘦身 |
 
 ---
@@ -107,11 +115,12 @@
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-13 场景化验收记录：45 PASS / 0 FAIL / 0 SKIP |
-| 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-14 Playwright 真实前后端联调：29 PASS / 0 FAIL / 0 SKIP；入口 `cd frontend && pnpm run test:e2e` |
+| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-15 SA-016 收口复验：50 PASS / 0 FAIL / 0 SKIP；当前推进队列在第七节 |
+| 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-15 Playwright 真实前后端联调：29 PASS / 0 FAIL / 0 SKIP；入口 `cd frontend && pnpm run test:e2e` |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
 | 验收脚本 | `scripts/acceptance/run-acceptance.sh` | v3.6，含服务生命周期、`--hold-services`、SA-013 干净黄金路径、SA-014 GitLab commit 校验 |
+| 本地统一启停脚本 | `scripts/dev/start-local-env.sh` | `start|hold|stop|restart|status`；推荐用 `hold` 托管前后端联调环境 |
 | 种子初始化 | `scripts/e2e/init-gitlab.sh` | 幂等，3 个种子仓库 |
 | 启动脚本 | `backend/scripts/run.sh` | `mvn spring-boot:run -pl releasehub-bootstrap` |
 | 本地容器 | `releasehub-postgres`(5433) + `releasehub-gitlab`(9080) | 模式 A 常驻；端口策略见 memory `feedback_mode_a_b_port_isolation.md` |

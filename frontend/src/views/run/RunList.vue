@@ -110,8 +110,8 @@ async function handleRetry(row: any) {
 
     const detail = await runApi.getRunById(row.id)
     const failedItems = detail.items
-      .filter(item => ['FAILED', 'MERGE_BLOCKED'].includes(item.finalResult))
-      .map(item => `${item.windowKey}::${item.repo}::${item.iterationKey}`)
+      .filter(item => item.finalResult?.includes('FAILED') || item.finalResult === 'MERGE_BLOCKED')
+      .map(item => `${item.windowKey}::${item.repoId}::${item.iterationKey}`)
 
     if (failedItems.length === 0) {
       ElMessage.info(t('run.noFailedItems'))
