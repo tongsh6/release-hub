@@ -365,6 +365,19 @@ export default {
       defaultBranch: 'main（默认）',
       initialVersion: '例如 1.2.3（可选）'
     },
+    git: {
+      title: 'Git 配置',
+      provider: 'Git 提供商',
+      providerPlaceholder: '选择 Git 提供商',
+      token: 'Git Token',
+      tokenPlaceholder: 'Personal Access Token',
+      currentToken: '当前 Token: {token}',
+      providers: {
+        MOCK: 'Mock（测试用）',
+        GITHUB: 'GitHub',
+        GITLAB: 'GitLab'
+      }
+    },
     gateSummaryLabels: {
       protectedBranch: '保护分支',
       approvalRequired: '需要审批',
@@ -520,6 +533,25 @@ export default {
     month: '月',
     week: '周',
     weekOf: '第{n}周',
+    monthLabel: '{year}年{month}月',
+    weekdayShort: {
+      sun: '日',
+      mon: '一',
+      tue: '二',
+      wed: '三',
+      thu: '四',
+      fri: '五',
+      sat: '六'
+    },
+    weekday: {
+      sun: '周日',
+      mon: '周一',
+      tue: '周二',
+      wed: '周三',
+      thu: '周四',
+      fri: '周五',
+      sat: '周六'
+    },
     conflict: '发布冲突',
     conflictCount: '{n} 个窗口同日发布',
     noConflict: '本月无冲突',

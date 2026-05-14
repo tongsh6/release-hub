@@ -185,17 +185,13 @@ const releaseWindows = ref<ReleaseWindowView[]>([])
 const viewMode = ref<'month' | 'week'>('month')
 
 const weekdayHeaders = computed(() => {
-  if (locale.value === 'zh-CN') {
-    return ['日', '一', '二', '三', '四', '五', '六']
-  }
-  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  return ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+    .map(day => t(`calendar.weekdayShort.${day}`))
 })
 
 const weekDayNames = computed(() => {
-  if (locale.value === 'zh-CN') {
-    return ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-  }
-  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  return ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+    .map(day => t(`calendar.weekday.${day}`))
 })
 
 function getWeekNumber(date: Date): number {
@@ -209,7 +205,7 @@ const currentMonthLabel = computed(() => {
   const month = currentDate.value.getMonth()
   let baseStr = ''
   if (locale.value === 'zh-CN') {
-    baseStr = `${year}年${month + 1}月`
+    baseStr = t('calendar.monthLabel', { year, month: month + 1 })
   } else {
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December']

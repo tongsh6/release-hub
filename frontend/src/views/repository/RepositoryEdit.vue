@@ -41,25 +41,24 @@
         <el-switch v-model="form.monoRepo" />
       </el-form-item>
 
-      <!-- Git 配置折叠区 -->
-      <el-divider content-position="left">Git 配置</el-divider>
-      <el-form-item label="Git Provider" prop="gitProvider">
-        <el-select v-model="form.gitProvider" placeholder="选择 Git 提供商" style="width: 100%;">
-          <el-option label="Mock（测试用）" value="MOCK" />
-          <el-option label="GitHub" value="GITHUB" />
-          <el-option label="GitLab" value="GITLAB" />
+      <el-divider content-position="left">{{ t('repository.git.title') }}</el-divider>
+      <el-form-item :label="t('repository.git.provider')" prop="gitProvider">
+        <el-select v-model="form.gitProvider" :placeholder="t('repository.git.providerPlaceholder')" style="width: 100%;">
+          <el-option :label="t('repository.git.providers.MOCK')" value="MOCK" />
+          <el-option :label="t('repository.git.providers.GITHUB')" value="GITHUB" />
+          <el-option :label="t('repository.git.providers.GITLAB')" value="GITLAB" />
         </el-select>
       </el-form-item>
-      <el-form-item label="Git Token" prop="gitAccessToken">
+      <el-form-item :label="t('repository.git.token')" prop="gitAccessToken">
         <el-input
           v-model="form.gitAccessToken"
           type="password"
           show-password
-          placeholder="Personal Access Token"
+          :placeholder="t('repository.git.tokenPlaceholder')"
           clearable
         />
         <div v-if="mode === 'edit' && maskedToken" class="token-hint">
-          当前 Token: {{ maskedToken }}
+          {{ t('repository.git.currentToken', { token: maskedToken }) }}
         </div>
       </el-form-item>
     </el-form>

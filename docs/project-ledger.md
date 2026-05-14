@@ -71,7 +71,7 @@
 | 本地统一环境入口 | `scripts/dev/start-local-env.sh hold/status/stop` | 本会话 2026-05-15 | 后端、前端和前端 `/api` 代理均可用；停止后 8080/5173 无残留监听 |
 | Maven 插件版本显式化 | `mvn -pl releasehub-bootstrap -DskipTests validate` | 本会话 2026-05-13 | surefire/failsafe version missing 警告消失，targeted surefire 测试通过 |
 | 单测基线 | `mvn test` | 本会话 2026-05-11 | 161 用例全过（含 GitLabGitBranchAdapterTest ENC 同步纠正） |
-| 前端 Vitest / typecheck | `pnpm run test -- src/views/release-window/__tests__/ReleaseWindowDetail.spec.ts src/views/release-window/__tests__/VersionUpdateDialog.spec.ts src/views/release-window/__tests__/OrchestrationPanel.spec.ts src/api/modules/__tests__/releaseWindow.spec.ts` / `pnpm run typecheck` | 2026-05-14 | 25 Vitest 通过；vue-tsc 通过 |
+| 前端 Vitest / typecheck / i18n lint | `pnpm run test -- src/views/release-window/__tests__/ReleaseWindowDetail.spec.ts src/views/release-window/__tests__/VersionUpdateDialog.spec.ts src/views/release-window/__tests__/OrchestrationPanel.spec.ts src/api/modules/__tests__/releaseWindow.spec.ts` / `pnpm run typecheck` / `pnpm i18n:lint` | 2026-05-15 | 25 Vitest 通过；vue-tsc 通过；`CalendarView.vue`、`RepositoryEdit.vue` 既有硬编码中文已清理，i18n lint 通过 |
 
 ---
 
@@ -116,7 +116,7 @@
 | 证据 | 路径 | 说明 |
 |---|---|---|
 | 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-15 SA-010 发布计划与 SA-011 风险详情前端观察补强；SA-016 收口复验含重复关闭幂等：51 PASS / 0 FAIL / 0 SKIP；当前推进队列在第七节 |
-| 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-15 Playwright 真实前后端联调：29 PASS / 0 FAIL / 0 SKIP；SA-012 分支规则冲突目标 Slice-2 serial 回归 5 PASS / 0 FAIL；入口 `cd frontend && pnpm run test:e2e` |
+| 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-15 Playwright 真实前后端联调：29 PASS / 0 FAIL / 0 SKIP；SA-012 分支规则冲突目标 Slice-2 serial 回归 5 PASS / 0 FAIL；`pnpm i18n:lint` 已通过；入口 `cd frontend && pnpm run test:e2e` |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
 | 验收脚本 | `scripts/acceptance/run-acceptance.sh` | v3.6，含服务生命周期、`--hold-services`、SA-013 干净黄金路径、SA-014 GitLab commit 校验 |

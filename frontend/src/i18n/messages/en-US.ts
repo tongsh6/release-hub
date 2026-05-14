@@ -365,6 +365,19 @@ export default {
       defaultBranch: 'main (default)',
       initialVersion: 'e.g. 1.2.3 (optional)'
     },
+    git: {
+      title: 'Git Configuration',
+      provider: 'Git Provider',
+      providerPlaceholder: 'Select Git provider',
+      token: 'Git Token',
+      tokenPlaceholder: 'Personal Access Token',
+      currentToken: 'Current Token: {token}',
+      providers: {
+        MOCK: 'Mock (for testing)',
+        GITHUB: 'GitHub',
+        GITLAB: 'GitLab'
+      }
+    },
     gateSummaryLabels: {
       protectedBranch: 'Protected Branch',
       approvalRequired: 'Approval Required',
@@ -493,6 +506,25 @@ export default {
     month: 'Month',
     week: 'Week',
     weekOf: 'Week {n}',
+    monthLabel: '{month} {year}',
+    weekdayShort: {
+      sun: 'Sun',
+      mon: 'Mon',
+      tue: 'Tue',
+      wed: 'Wed',
+      thu: 'Thu',
+      fri: 'Fri',
+      sat: 'Sat'
+    },
+    weekday: {
+      sun: 'Sun',
+      mon: 'Mon',
+      tue: 'Tue',
+      wed: 'Wed',
+      thu: 'Thu',
+      fri: 'Fri',
+      sat: 'Sat'
+    },
     conflict: 'Release Conflict',
     conflictCount: '{n} windows on the same day',
     noConflict: 'No conflicts this month',
