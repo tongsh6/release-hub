@@ -209,6 +209,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'conflict.resolveBranch',
       'conflict.noConflicts',
       'conflict.types.MISMATCH',
+      'conflict.types.BRANCH_EXISTS',
       'conflict.types.BRANCH_NONCOMPLIANT',
       'conflict.severity.title',
       'conflict.severity.blocker',
@@ -552,6 +553,63 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await expect(conflictPanel).toContainText(L['conflict.recommendation'])
     await expect(conflictPanel).toContainText(badFeatureBranch)
     await expect(conflictPanel).toContainText('Rename the branch to comply with BranchRule')
+    await expect(conflictPanel.getByText(L['conflict.resolveBranch'])).toBeVisible()
+    await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toHaveCount(0)
+    expect(resolveCalled).toBe(false)
+  })
+
+  test('SA-012 frontend path surfaces existing release branch conflicts as external handling work', async ({ page }) => {
+    await ensureLoggedIn(page)
+    expect(windowDetailUrl).toContain('/release-windows/')
+    expect(createdRepoId).toBeTruthy()
+    expect(windowKey).toContain('RW-')
+
+    const existingReleaseBranch = `release/${windowKey}`
+    let resolveCalled = false
+    const branchExistsReport = {
+      windowId: 'ui-journey-window',
+      checkedAt: new Date().toISOString(),
+      hasConflicts: true,
+      totalCount: 1,
+      conflicts: [{
+        repoId: createdRepoId,
+        repoName,
+        iterationKey,
+        conflictType: 'BRANCH_EXISTS',
+        sourceBranch: existingReleaseBranch,
+        message: `Branch ${existingReleaseBranch} already exists`,
+        suggestion: 'Delete or archive the existing branch before retrying'
+      }]
+    }
+
+    await page.route('**/api/v1/release-windows/*/conflicts', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: branchExistsReport })
+      })
+    })
+    await page.route('**/api/v1/release-windows/*/conflicts/check', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: branchExistsReport })
+      })
+    })
+    await page.route('**/api/v1/iterations/*/repos/*/resolve-conflict', async (route) => {
+      resolveCalled = true
+      await route.abort()
+    })
+
+    await page.goto(windowDetailUrl)
+    const conflictPanel = page.locator('.conflict-panel')
+    await conflictPanel.getByRole('button', { name: L['conflict.rescan'] }).click(FORCE)
+    await expect(conflictPanel).toContainText(L['conflict.types.BRANCH_EXISTS'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.title'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.blocker'])
+    await expect(conflictPanel).toContainText(L['conflict.recommendation'])
+    await expect(conflictPanel).toContainText(existingReleaseBranch)
+    await expect(conflictPanel).toContainText('Delete or archive the existing branch before retrying')
     await expect(conflictPanel.getByText(L['conflict.resolveBranch'])).toBeVisible()
     await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toHaveCount(0)
     expect(resolveCalled).toBe(false)
