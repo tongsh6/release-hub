@@ -185,7 +185,7 @@
 ## 2026-05-09 验收推进
 
 ### 真实 GitLab 全链路验收 ✅（20/20 通过）
-- 验收报告：`docs/reports/acceptance-v0.1.10-real-gitlab.md`
+- 验收报告：`docs/reports/archive/acceptance-v0.1.10-real-gitlab.md`
 - 验收脚本：`scripts/acceptance/run-acceptance.sh`（20 PASS, 0 FAIL, 0 SKIP）
 - GitLab 种子数据：3 个仓库（Maven 单模块/多模块/Gradle），含 pom.xml + feature 分支
 - v0.1.9 "有条件通过" 升级为 "通过"

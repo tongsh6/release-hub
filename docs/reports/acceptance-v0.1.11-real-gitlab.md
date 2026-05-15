@@ -100,4 +100,4 @@
 - 第 1/2 轮对比：`/tmp/acceptance-v0.1.11.log`、`/tmp/acceptance-v0.1.11-rerun.log`、`/tmp/acceptance-v0.1.11-rerun2.log`、`/tmp/acceptance-v0.1.11-rerun3.log`
 - 后端日志：`/tmp/releasehub-backend.log`
 - 单测基线：`mvn test` 161 通过
-- 上轮报告：`docs/reports/acceptance-v0.1.10-real-gitlab.md`
+- 上轮报告：`docs/reports/archive/acceptance-v0.1.10-real-gitlab.md`
