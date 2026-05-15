@@ -21,8 +21,8 @@
 # 能力清单（SA-001..SA-016 的后端/GitLab/数据证据）:
 #   SA-001/SA-004: GitLab Settings 自动配置、复用、重启持久化
 #   SA-002: 存量数据审计（BranchCreationMode、featureBranch、cloneUrl、token 安全）
-#   SA-003: 客户/业务线/品牌三层分组，非叶子资源挂载拒绝
-#   SA-005: 品牌仓库纳管、真实 GitLab cloneUrl、token 安全审计
+#   SA-003: 三层分组，非叶子资源挂载拒绝
+#   SA-005: 分组仓库纳管、真实 GitLab cloneUrl、token 安全审计
 #   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
 #   SA-008: 发布窗口创建、空窗口发布拒绝、windowKey
 #   SA-010: Attach 迭代、GitLab release 分支创建、runItems 细粒度断言
@@ -438,7 +438,7 @@ ok "种子数据就绪"
 # ---- 3. 场景：新增全链路 ----
 h2 "SA-003/SA-005/SA-008/SA-009: 3. 场景: 发布准备数据验证"
 
-# 3.1 确保三层组织分组（客户 → 业务线 → 品牌，资源挂品牌叶子节点）
+# 3.1 确保三层组织分组（资源挂叶子分组）
 ensure_group() {
     local name=$1
     local parent_code=${2:-}
@@ -480,10 +480,10 @@ for g in json.load(sys.stdin).get('data',[]):
 
 CUSTOMER_CODE=$(ensure_group "验收-客户A")
 BUSINESS_LINE_CODE=$(ensure_group "验收-业务线X" "$CUSTOMER_CODE")
-BRAND_CODE=$(ensure_group "验收-品牌Y" "$BUSINESS_LINE_CODE")
-GROUP_CODE="$BRAND_CODE"
+LEAF_GROUP_CODE=$(ensure_group "验收-末级分组Y" "$BUSINESS_LINE_CODE")
+GROUP_CODE="$LEAF_GROUP_CODE"
 
-if [ -z "$CUSTOMER_CODE" ] || [ -z "$BUSINESS_LINE_CODE" ] || [ -z "$BRAND_CODE" ]; then
+if [ -z "$CUSTOMER_CODE" ] || [ -z "$BUSINESS_LINE_CODE" ] || [ -z "$LEAF_GROUP_CODE" ]; then
     die "三层分组初始化失败"
 fi
 
@@ -496,10 +496,10 @@ def walk(nodes):
         names.add(n.get('name',''))
         walk(n.get('children') or [])
 walk(data)
-print(all(name in names for name in ['验收-客户A','验收-业务线X','验收-品牌Y']))
+print(all(name in names for name in ['验收-客户A','验收-业务线X','验收-末级分组Y']))
 " 2>/dev/null)
-[ "$GROUP_TREE_OK" = "True" ] && ok "三层分组树可见: 客户A → 业务线X → 品牌Y" || no "三层分组树校验失败"
-info "资源将挂载到品牌叶子节点: $GROUP_CODE"
+[ "$GROUP_TREE_OK" = "True" ] && ok "三层分组树可见: 客户A → 业务线X → 末级分组Y" || no "三层分组树校验失败"
+info "资源将挂载到叶子分组: $GROUP_CODE"
 
 NON_LEAF_WINDOW=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"name\":\"验收-非叶子窗口-$TS\",\"description\":\"non-leaf probe\",\"groupCode\":\"$CUSTOMER_CODE\"}" \

@@ -71,11 +71,8 @@ public class GradleVersionUpdaterAdapter implements VersionUpdaterPort {
             
             // 如果都不存在，返回错误
             return VersionUpdateResult.failure(
-                    String.format(
-                            "在仓库路径中未找到 gradle.properties 或 build.gradle 文件: %s\n" +
-                            "请确保路径正确，或手动创建 gradle.properties 文件。",
-                            request.repoPath()
-                    ),
+                    "在仓库路径中未找到 gradle.properties 或 build.gradle 文件: " + request.repoPath() + "\n" +
+                    "请确保路径正确，或手动创建 gradle.properties 文件。",
                     request.repoPath()
             );
             
@@ -224,15 +221,15 @@ public class GradleVersionUpdaterAdapter implements VersionUpdaterPort {
             
             if (oldLine != null && newLine != null) {
                 if (!oldLine.equals(newLine)) {
-                    diff.append(String.format("@@ -%d +%d @@\n", i + 1, i + 1));
+                    diff.append("@@ -").append(i + 1).append(" +").append(i + 1).append(" @@\n");
                     diff.append("-").append(oldLine).append("\n");
                     diff.append("+").append(newLine).append("\n");
                 }
             } else if (oldLine != null) {
-                diff.append(String.format("@@ -%d +%d @@\n", i + 1, i));
+                diff.append("@@ -").append(i + 1).append(" +").append(i).append(" @@\n");
                 diff.append("-").append(oldLine).append("\n");
             } else if (newLine != null) {
-                diff.append(String.format("@@ -%d +%d @@\n", i, i + 1));
+                diff.append("@@ -").append(i).append(" +").append(i + 1).append(" @@\n");
                 diff.append("+").append(newLine).append("\n");
             }
         }

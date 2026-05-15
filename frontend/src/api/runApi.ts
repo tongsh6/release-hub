@@ -54,7 +54,7 @@ export interface RunTask {
 }
 
 export const runApi = {
-  async list(query: PageQuery & { windowKey?: string; repoId?: string; iterationKey?: string; status?: string; runType?: string; operator?: string }): Promise<PageResult<Run>> {
+  async list(query: PageQuery & { windowKey?: string; repoId?: string; iterationKey?: string; status?: string; groupCode?: string; runType?: string; operator?: string }): Promise<PageResult<Run>> {
     const params = {
       page: query.page,
       size: query.pageSize,
@@ -62,6 +62,7 @@ export const runApi = {
       repoId: query.repoId,
       iterationKey: query.iterationKey,
       status: query.status,
+      groupCode: query.groupCode,
       runType: query.runType,
       operator: query.operator
     }

@@ -411,6 +411,7 @@ export default {
       windowKey: '发布窗口标识',
       repo: '仓库',
       iterationKey: '迭代标识',
+      group: '分组',
       status: '状态'
     },
     columns: {

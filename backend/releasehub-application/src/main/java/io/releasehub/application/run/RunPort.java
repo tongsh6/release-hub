@@ -10,5 +10,5 @@ public interface RunPort {
     void save(Run run);
     Optional<Run> findById(String runId);
     List<Run> findAll();
-    PageResult<Run> findPaged(String runType, String operator, String windowKey, String repoId, String iterationKey, String status, int page, int size);
+    PageResult<Run> findPaged(String runType, String operator, String windowKey, String repoId, String iterationKey, String status, String groupCode, int page, int size);
 }

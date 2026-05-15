@@ -104,15 +104,17 @@ public class MockGitLabFileAdapter implements GitLabFilePort {
     private String generateDefaultPom(String repoCloneUrl) {
         // 根据仓库 URL 生成一个随机但确定的版本号
         int hash = Math.abs(repoCloneUrl.hashCode() % 10);
-        return String.format("""
+        return """
             <?xml version="1.0" encoding="UTF-8"?>
             <project>
                 <modelVersion>4.0.0</modelVersion>
                 <groupId>com.example</groupId>
-                <artifactId>%s</artifactId>
-                <version>1.%d.0</version>
+                <artifactId>${artifactId}</artifactId>
+                <version>1.${hash}.0</version>
             </project>
-            """, extractArtifactId(repoCloneUrl), hash);
+            """
+                .replace("${artifactId}", extractArtifactId(repoCloneUrl))
+                .replace("${hash}", String.valueOf(hash));
     }
     
     private String extractArtifactId(String repoCloneUrl) {

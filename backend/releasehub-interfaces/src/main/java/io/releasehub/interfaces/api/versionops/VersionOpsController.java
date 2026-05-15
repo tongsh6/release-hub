@@ -32,7 +32,7 @@ public class VersionOpsController {
             @RequestParam(name = "repoUrl", required = false) String repoUrl,
             @RequestParam(name = "branchName", required = false) String branchName) {
 
-        var result = runPort.findPaged("VERSION_UPDATE", null, null, null, null, status, page, size);
+        var result = runPort.findPaged("VERSION_UPDATE", null, null, null, null, status, null, page, size);
         List<RunSummaryView> views = result.items().stream()
                 .map(RunSummaryView::from)
                 .toList();
@@ -123,6 +123,14 @@ public class VersionOpsController {
             String finishedAt,
             List<ItemView> items
     ) {
+        public RunDetailView {
+            items = items == null ? List.of() : List.copyOf(items);
+        }
+
+        public List<ItemView> items() {
+            return List.copyOf(items);
+        }
+
         public static RunDetailView from(Run run) {
             return new RunDetailView(
                     run.getId().value(),
@@ -143,6 +151,14 @@ public class VersionOpsController {
             String result,
             List<StepView> steps
     ) {
+        public ItemView {
+            steps = steps == null ? List.of() : List.copyOf(steps);
+        }
+
+        public List<StepView> steps() {
+            return List.copyOf(steps);
+        }
+
         public static ItemView from(RunItem item) {
             return new ItemView(
                     item.getWindowKey(),
@@ -175,5 +191,13 @@ public class VersionOpsController {
     public record RunLogsView(
             String runId,
             List<String> lines
-    ) {}
+    ) {
+        public RunLogsView {
+            lines = lines == null ? List.of() : List.copyOf(lines);
+        }
+
+        public List<String> lines() {
+            return List.copyOf(lines);
+        }
+    }
 }

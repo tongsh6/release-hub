@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.releasehub.application.run.RunPort;
 import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.Run;
 import io.releasehub.domain.run.RunItem;
@@ -42,6 +43,9 @@ class RunPagedApiTest {
 
     @Autowired
     private RunPort runPort;
+
+    @Autowired
+    private io.releasehub.application.releasewindow.ReleaseWindowPort releaseWindowPort;
 
     private String token;
 
@@ -264,6 +268,37 @@ class RunPagedApiTest {
         for (JsonNode run : data) {
             assertThat(run.get("status").asText()).isEqualTo("FAILED");
         }
+    }
+
+    @Test
+    void should_filter_runs_by_release_window_group_code() throws Exception {
+        String uniqueOperator = "op-group-" + System.nanoTime();
+        String groupCode = "G-RUN-" + System.nanoTime();
+        String otherGroupCode = groupCode + "-OTHER";
+        String windowKey = "WK-GROUP-" + System.nanoTime();
+        String otherWindowKey = windowKey + "-OTHER";
+        Instant now = Instant.now();
+
+        releaseWindowPort.save(ReleaseWindow.createDraft(windowKey, "Window A", null, now, groupCode, now));
+        releaseWindowPort.save(ReleaseWindow.createDraft(otherWindowKey, "Window B", null, now, otherGroupCode, now));
+        createRunWithStatusAndWindowKey("FAILED", uniqueOperator, windowKey);
+        createRunWithStatusAndWindowKey("FAILED", uniqueOperator, otherWindowKey);
+
+        MvcResult result = mockMvc.perform(get("/api/v1/runs/paged")
+                .header("Authorization", "Bearer " + token)
+                .param("status", "FAILED")
+                .param("operator", uniqueOperator)
+                .param("groupCode", groupCode)
+                .param("page", "1")
+                .param("size", "20"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data").isArray())
+            .andReturn();
+
+        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
+        assertThat(data.size()).as("Should only return runs for the selected release window group").isEqualTo(1);
+        assertThat(data.get(0).get("items").get(0).get("windowKey").asText()).isEqualTo(windowKey);
     }
 
     @Test

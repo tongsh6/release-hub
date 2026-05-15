@@ -80,11 +80,12 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             mrBody.put("title", commitMessage);
             mrBody.put("remove_source_branch", false);
             ResponseEntity<Map<String, Object>> created = restTemplate.exchange(uri(createMrEndpoint), HttpMethod.POST, new HttpEntity<>(mrBody, headers(token)), new ParameterizedTypeReference<>() {});
-            if (!created.getStatusCode().is2xxSuccessful() || created.getBody() == null || created.getBody().get("iid") == null) {
+            Map<String, Object> createdBody = created.getBody();
+            if (!created.getStatusCode().is2xxSuccessful() || createdBody == null || createdBody.get("iid") == null) {
                 return MergeResult.failed("failed to create merge request");
             }
-            int iid = toInt(created.getBody().get("iid"));
-            MergeReadiness readiness = waitForMergeReadiness(repoRef, token, iid, created.getBody());
+            int iid = toInt(createdBody.get("iid"));
+            MergeReadiness readiness = waitForMergeReadiness(repoRef, token, iid, createdBody);
             if (readiness == MergeReadiness.CONFLICT) {
                 closeMergeRequest(repoRef, token, iid);
                 return MergeResult.conflict("merge conflict detected");
@@ -276,12 +277,16 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
                     new HttpEntity<>(mrBody, headers(token)),
                     new ParameterizedTypeReference<>() {});
 
-            if (!mrResponse.getStatusCode().is2xxSuccessful() || mrResponse.getBody() == null) {
+            Map<String, Object> mr = mrResponse.getBody();
+            if (!mrResponse.getStatusCode().is2xxSuccessful() || mr == null) {
                 return MergeabilityResult.error("failed to create merge request");
             }
 
-            Map<String, Object> mr = mrResponse.getBody();
-            int iid = toInt(mr.get("iid"));
+            Object iidValue = mr.get("iid");
+            if (iidValue == null) {
+                return MergeabilityResult.error("merge request response missing iid");
+            }
+            int iid = toInt(iidValue);
             MergeReadiness readiness = waitForMergeReadiness(repoRef, token, iid, mr);
 
             closeMergeRequest(repoRef, token, iid);
@@ -340,8 +345,9 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
                     uri(endpoint), HttpMethod.POST,
                     new HttpEntity<>(headers(token)),
                     new ParameterizedTypeReference<>() {});
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Object id = response.getBody().get("id");
+            Map<String, Object> responseBody = response.getBody();
+            if (response.getStatusCode().is2xxSuccessful() && responseBody != null) {
+                Object id = responseBody.get("id");
                 return id != null ? String.valueOf(id) : null;
             }
             return null;
@@ -363,11 +369,14 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
                     uri(endpoint), HttpMethod.GET, new HttpEntity<>(headers(token)),
                     new ParameterizedTypeReference<>() {});
-            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            List<Map<String, Object>> branches = response.getBody();
+            if (!response.getStatusCode().is2xxSuccessful() || branches == null) {
                 return List.of();
             }
-            return response.getBody().stream()
-                    .map(b -> String.valueOf(b.get("name")))
+            return branches.stream()
+                    .map(b -> b.get("name"))
+                    .filter(name -> name != null)
+                    .map(String::valueOf)
                     .filter(name -> name.startsWith(prefix))
                     .toList();
         } catch (Exception e) {
@@ -382,10 +391,11 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);
             String endpoint = String.format("%s/api/v4/projects/%s/repository/branches/%s", repoRef.baseUrl, repoRef.encodedPath, urlEncode(branchName));
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(uri(endpoint), HttpMethod.GET, new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
-            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            Map<String, Object> responseBody = response.getBody();
+            if (!response.getStatusCode().is2xxSuccessful() || responseBody == null) {
                 return BranchStatus.missing();
             }
-            Object commitObj = response.getBody().get("commit");
+            Object commitObj = responseBody.get("commit");
             String latestCommit = null;
             if (commitObj instanceof Map<?, ?> commitMap) {
                 Object id = commitMap.get("id");

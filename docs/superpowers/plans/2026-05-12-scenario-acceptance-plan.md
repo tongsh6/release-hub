@@ -84,7 +84,7 @@ Replace the current single `验收分组` setup with a helper that creates or re
 ```text
 验收-客户A
 └── 验收-业务线X
-    └── 验收-品牌Y
+    └── 验收-末级分组Y
 ```
 
 The helper must expose:
@@ -92,11 +92,11 @@ The helper must expose:
 ```bash
 CUSTOMER_CODE=""
 BUSINESS_LINE_CODE=""
-BRAND_CODE=""
-GROUP_CODE="$BRAND_CODE"
+LEAF_GROUP_CODE=""
+GROUP_CODE="$LEAF_GROUP_CODE"
 ```
 
-All later repo/window/iteration creation should continue to use `GROUP_CODE`, now pointing to the brand leaf.
+All later repo/window/iteration creation should continue to use `GROUP_CODE`, now pointing to the leaf group.
 
 - [ ] **Step 2: Verify group tree through API**
 

@@ -48,13 +48,14 @@ public class RunJpaPersistenceAdapter implements RunPort {
     }
 
     @Override
-    public PageResult<Run> findPaged(String runType, String operator, String windowKey, String repoId, String iterationKey, String status, int page, int size) {
+    public PageResult<Run> findPaged(String runType, String operator, String windowKey, String repoId, String iterationKey, String status, String groupCode, int page, int size) {
         String normalizedRunType = normalize(runType);
         String normalizedOperator = normalize(operator);
         String normalizedWindowKey = normalize(windowKey);
         String normalizedRepoId = normalize(repoId);
         String normalizedIterationKey = normalize(iterationKey);
         String normalizedStatus = normalize(status);
+        String normalizedGroupCode = normalize(groupCode);
 
         int pageIndex = Math.max(page - 1, 0);
         PageRequest pageable = PageRequest.of(pageIndex, size);
@@ -65,6 +66,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 normalizedRepoId,
                 normalizedIterationKey,
                 normalizedStatus,
+                normalizedGroupCode,
                 pageable
         );
         List<Run> items = result.getContent().stream()

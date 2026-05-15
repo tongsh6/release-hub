@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.releasehub.application.auth.TokenInfo;
 import io.releasehub.application.auth.TokenPort;
 import io.releasehub.domain.user.User;
@@ -23,6 +24,8 @@ public class JwtTokenAdapter implements TokenPort {
     private final long ttlMinutes;
     private final long rememberMeTtlMinutes;
 
+    @SuppressFBWarnings(value = "CT_CONSTRUCTOR_THROW",
+            justification = "Invalid JWT secrets must fail application startup before the token port is used.")
     public JwtTokenAdapter(@Value("${security.jwt.secret}") String secret,
                       @Value("${security.jwt.ttlMinutes:120}") long ttlMinutes,
                       @Value("${security.jwt.rememberMeTtlMinutes:10080}") long rememberMeTtlMinutes) {

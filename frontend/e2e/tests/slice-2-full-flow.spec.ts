@@ -9,20 +9,7 @@ import type { Locator, Page } from '@playwright/test'
 import { ensureLoggedIn, loadLabels, confirmDialog, confirmMessageBox, tcName, FORCE } from './helpers'
 
 test.describe('Slice-2: Full Release Flow', () => {
-  let L: Record<string, string> = {}
   const windowName = tcName('Win')
-
-  test.beforeAll(async ({ browser }) => {
-    const page = await browser.newPage()
-    await ensureLoggedIn(page)
-    L = await loadLabels(page, [
-      'releaseWindow.create', 'releaseWindow.name', 'releaseWindow.publish',
-      'iteration.create', 'iteration.name',
-      'common.confirm', 'common.cancel', 'common.search',
-      'repository.search', 'releaseWindow.windowKey',
-    ])
-    await page.close()
-  })
 
   // 1. 仪表板
   test('1. Dashboard renders', async ({ page }) => {
@@ -213,6 +200,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'releaseWindow.versionUpdate.repoPath',
       'releaseWindow.versionUpdate.pomPath',
       'run.actions.detail',
+      'run.filters.group',
       'run.filters.windowKey',
       'run.filters.status',
       'orchestration.executeFinish',
@@ -253,6 +241,18 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await page.locator('button').filter({ hasText: L['common.search'] }).click(FORCE)
     await page.locator('.el-loading-mask').last().waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
     return page.locator('.el-table__body tr').filter({ hasText: windowName }).last()
+  }
+
+  async function selectRunGroupFilter(page: Page, code: string) {
+    await page.getByRole('combobox', { name: L['run.filters.group'] }).click(FORCE)
+    await page.waitForTimeout(300)
+    const searchBox = page.locator('.el-popper input').last()
+    if (await searchBox.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await searchBox.fill(code)
+      await page.waitForTimeout(300)
+    }
+    await page.locator('.el-tree-node__content').filter({ hasText: code }).last().click(FORCE)
+    await page.waitForTimeout(300)
   }
 
   test('SA-013 frontend path submits UI-created repo and iteration scope to orchestration', async ({ page }) => {
@@ -396,9 +396,16 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
 
     await page.goto('/runs')
     await page.getByRole('textbox', { name: L['run.filters.windowKey'] }).fill(windowKey)
+    await selectRunGroupFilter(page, groupCode)
     await page.locator('.el-form-item').filter({ hasText: L['run.filters.status'] }).locator('.el-select').click(FORCE)
     await page.getByRole('option', { name: 'FAILED' }).evaluate((el: HTMLElement) => el.click())
+    const filteredRunsResponse = page.waitForResponse(response =>
+      response.request().method() === 'GET' &&
+      response.url().includes('/api/v1/runs/paged') &&
+      response.url().includes(`groupCode=${encodeURIComponent(groupCode)}`)
+    )
     await page.locator('button').filter({ hasText: L['common.search'] }).click(FORCE)
+    expect((await filteredRunsResponse).ok()).toBeTruthy()
     await page.locator('.el-loading-mask').last().waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
 
     const failedRunRow = page.locator('.el-table__body tr')

@@ -76,14 +76,14 @@ SA-001 和 SA-002 是验收运行治理场景，保障验收环境可信；SA-00
 |---|---|---|---|---|---|
 | SA-001 | 验收运行治理 | 系统 | GitLab Settings 配置并重启后仍存在 | 保存、复用、重启持久化、真实 GitLab 可用 | 已覆盖，补编号 |
 | SA-002 | 验收运行治理 | 系统 | 存量数据质量审计 | Token 安全、分支模式数据、featureBranch、cloneUrl、脏数据可见 | 已覆盖，补编号 |
-| SA-003 | Admin Setup | 系统管理员 | 建立客户/业务线/品牌分组树 | 三层分组、资源只能挂品牌叶子节点 | 部分覆盖 |
+| SA-003 | Admin Setup | 系统管理员 | 建立多层分组树 | 三层分组、资源只能挂叶子分组 | 部分覆盖 |
 | SA-004 | Admin Setup | 系统管理员 | 配置 GitLab 连接 | 保存、不泄露、重启持久化、真实 API 可用 | 部分覆盖 |
-| SA-005 | Admin Setup | 系统管理员 | 纳管代码仓库 | 品牌叶子归属、真实 GitLab 可用、token 安全、默认分支/版本基础信息 | 部分覆盖 |
+| SA-005 | Admin Setup | 系统管理员 | 纳管代码仓库 | 叶子分组归属、真实 GitLab 可用、token 安全、默认分支/版本基础信息 | 部分覆盖 |
 | SA-006 | Admin Setup | 系统管理员 | 配置分支规则 | feature/hotfix/release 规则在分支创建时生效，不合规拒绝 | 部分覆盖 |
 | SA-007 | Admin Setup | 系统管理员 | 配置版本策略 | 基础策略、SemVer、版本校验、Maven 单模块真实写回前置 | 部分覆盖 |
-| SA-008 | Release Planning | 发布经理 | 创建品牌发布窗口 | 品牌叶子创建、windowKey、DRAFT、空窗口发布拒绝、列表/日历可见 | 部分覆盖 |
-| SA-009 | Release Planning | 技术负责人 | 创建迭代并选择已纳管仓库 | 品牌叶子创建、同品牌仓库选择、iterationKey、分支模式、版本/分支记录 | 部分覆盖 |
-| SA-010 | Release Planning | 发布经理 | 挂载迭代到发布窗口 | 同品牌挂载、多迭代多仓计划、release 分支真实创建、细粒度 attach 结果、冲突阻断 | 部分覆盖 |
+| SA-008 | Release Planning | 发布经理 | 创建发布窗口 | 叶子分组创建、windowKey、DRAFT、空窗口发布拒绝、列表/日历可见 | 部分覆盖 |
+| SA-009 | Release Planning | 技术负责人 | 创建迭代并选择已纳管仓库 | 叶子分组创建、同分组仓库选择、iterationKey、分支模式、版本/分支记录 | 部分覆盖 |
+| SA-010 | Release Planning | 发布经理 | 挂载迭代到发布窗口 | 同分组挂载、多迭代多仓计划、release 分支真实创建、细粒度 attach 结果、冲突阻断 | 部分覆盖 |
 | SA-011 | Risk & Execution | 测试人员 | 检查冲突与发布风险 | 冲突扫描、类型分布、阻塞发布、解决后重扫清零 | 部分覆盖 |
 | SA-012 | Risk & Execution | 技术负责人 | 解决冲突 | 版本冲突 `USE_SYSTEM` 解决、重扫为 0、发布可继续 | 部分覆盖 |
 | SA-013 | Risk & Execution | 技术负责人 | 触发发布编排 | 无阻塞冲突后 Run SUCCESS、RunItem > 0、GitLab 状态一致、未解决冲突阻断 | 部分覆盖 |
@@ -112,7 +112,7 @@ SA-001 和 SA-002 是验收运行治理场景，保障验收环境可信；SA-00
 在 `scripts/acceptance/run-acceptance.sh` 上做小步增强：
 
 - 为场景输出增加 SA 编号，方便报告和矩阵追踪。
-- 使用客户/业务线/品牌三层结构，用于验证 SA-003/SA-005/SA-008/SA-009/SA-010。
+- 使用三层分组结构，用于验证 SA-003/SA-005/SA-008/SA-009/SA-010。
 - 将 5.2 干净路径的 `items > 0`、RunStep 分布、最终状态作为硬断言。
 - 将版本更新优先绑定到干净窗口，避免主窗口冲突导致 SA-014 长期 SKIP。
 - 明确冲突恢复场景：解决后重新扫描，断言 total=0。
@@ -149,7 +149,7 @@ SA-001 和 SA-002 是验收运行治理场景，保障验收环境可信；SA-00
 - GitLab token 过期/无效后的提示与恢复。
 - GitLab 不可达时的错误展示和恢复。
 - 分组删除保护、资源归属移动、code 自动生成。
-- 版本策略品牌/仓库作用域继承，Maven 多模块和 Gradle 真实写回。
+- 版本策略分组/仓库作用域继承，Maven 多模块和 Gradle 真实写回。
 - release 分支累积冲突的一键清理脚本。
 - 合并冲突制造、解决和 Run retry。
 - 关闭窗口后的 tag、merge to main、分支归档真实 GitLab 验证。

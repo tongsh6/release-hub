@@ -26,15 +26,12 @@ public class Group extends BaseEntity<GroupId> {
 
     private Group(GroupId id, String name, String code, String parentCode, Instant now) {
         super(id, now);
-        validateName(name);
-        validateCode(code);
-        validateParentCode(parentCode, code);
         this.name = name;
         this.code = code;
         this.parentCode = parentCode;
     }
 
-    private void validateName(String name) {
+    private static void validateName(String name) {
         if (name == null || name.isBlank()) {
             throw ValidationException.groupNameRequired();
         }
@@ -43,7 +40,7 @@ public class Group extends BaseEntity<GroupId> {
         }
     }
 
-    private void validateCode(String code) {
+    private static void validateCode(String code) {
         if (code == null || code.isBlank()) {
             throw ValidationException.groupCodeRequired();
         }
@@ -52,7 +49,7 @@ public class Group extends BaseEntity<GroupId> {
         }
     }
 
-    private void validateParentCode(String parentCode, String selfCode) {
+    private static void validateParentCode(String parentCode, String selfCode) {
         if (parentCode == null || parentCode.isBlank()) {
             return;
         }
@@ -65,7 +62,11 @@ public class Group extends BaseEntity<GroupId> {
     }
 
     public static Group create(String name, String code, String parentCode, Instant now) {
-        return new Group(GroupId.of(code), name, code, parentCode, now);
+        GroupId id = GroupId.of(code);
+        validateName(name);
+        validateCode(code);
+        validateParentCode(parentCode, code);
+        return new Group(id, name, code, parentCode, now);
     }
 
     public void rename(String name, Instant now) {

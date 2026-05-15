@@ -10,6 +10,9 @@
       <el-form-item :label="t('run.filters.iterationKey')">
         <el-input v-model="query.iterationKey" />
       </el-form-item>
+      <el-form-item :label="t('run.filters.group')">
+        <GroupTreeSelect v-model="query.groupCode" :placeholder="t('group.selectGroup')" clearable />
+      </el-form-item>
       <el-form-item :label="t('run.filters.status')">
         <el-select v-model="query.status" clearable style="width: 160px">
           <el-option label="FAILED" value="FAILED" />
@@ -70,6 +73,7 @@ import { useI18n } from 'vue-i18n'
 import { useListPage } from '@/composables/crud/useListPage'
 import SearchForm from '@/components/crud/SearchForm.vue'
 import DataTable from '@/components/crud/DataTable.vue'
+import GroupTreeSelect from '@/components/common/GroupTreeSelect.vue'
 import RunDrawer from './RunDrawer.vue'
 import { runApi } from '@/api/runApi'
 import { hasPerm } from '@/utils/perm'
@@ -87,6 +91,7 @@ const { query, loading, list, total, search, reset, onPageChange, onPageSizeChan
     windowKey: '',
     repoId: '',
     iterationKey: '',
+    groupCode: '',
     status: ''
   }
 })

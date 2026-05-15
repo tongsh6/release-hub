@@ -10,6 +10,14 @@ public record BranchStatusView(
         String windowKey,
         List<RepoBranchStatus> repos
 ) {
+    public BranchStatusView {
+        repos = repos == null ? List.of() : List.copyOf(repos);
+    }
+
+    @Override
+    public List<RepoBranchStatus> repos() {
+        return List.copyOf(repos);
+    }
 
     /**
      * 单个仓库的分支状态

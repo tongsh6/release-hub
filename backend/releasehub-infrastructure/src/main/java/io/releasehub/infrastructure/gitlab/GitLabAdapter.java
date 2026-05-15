@@ -13,6 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.URLEncoder;
@@ -207,7 +208,7 @@ public class GitLabAdapter implements GitLabPort {
                 }
             }
             return new GateSummary(protectedBranch, approvalRequired, pipelineGate, false);
-        } catch (Exception e) {
+        } catch (RestClientException | IllegalArgumentException e) {
             log.warn("Failed to fetch gate summary for project {}: {}", projectId, e.getMessage());
             return new GateSummary(false, false, false, true);
         }

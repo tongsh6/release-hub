@@ -204,5 +204,13 @@ public class BranchRuleController {
             boolean ok,
             String rendered,
             List<String> errors
-    ) {}
+    ) {
+        public TestResultView {
+            errors = errors == null ? List.of() : List.copyOf(errors);
+        }
+
+        public List<String> errors() {
+            return List.copyOf(errors);
+        }
+    }
 }

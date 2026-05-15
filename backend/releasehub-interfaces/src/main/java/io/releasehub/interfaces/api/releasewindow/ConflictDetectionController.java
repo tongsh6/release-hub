@@ -42,6 +42,14 @@ public class ConflictDetectionController {
             int totalCount,
             List<ConflictItemView> conflicts
     ) {
+        public ConflictReportView {
+            conflicts = conflicts == null ? List.of() : List.copyOf(conflicts);
+        }
+
+        public List<ConflictItemView> conflicts() {
+            return List.copyOf(conflicts);
+        }
+
         public static ConflictReportView from(ConflictReport report) {
             List<ConflictItemView> items = report.getConflicts().stream()
                     .map(ConflictItemView::from)

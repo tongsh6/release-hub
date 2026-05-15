@@ -61,10 +61,11 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
             RepoRef ref = parseRepoRef(repoCloneUrl);
             String branchEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/branches/%s", ref.owner, ref.repo, urlEncode(fromBranch));
             ResponseEntity<Map<String, Object>> branchResponse = restTemplate.exchange(branchEndpoint, HttpMethod.GET, new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
-            if (!branchResponse.getStatusCode().is2xxSuccessful() || branchResponse.getBody() == null) {
+            Map<String, Object> branchBody = branchResponse.getBody();
+            if (!branchResponse.getStatusCode().is2xxSuccessful() || branchBody == null) {
                 return false;
             }
-            Object commitObj = branchResponse.getBody().get("commit");
+            Object commitObj = branchBody.get("commit");
             if (!(commitObj instanceof Map<?, ?> commitMap) || commitMap.get("sha") == null) {
                 return false;
             }
@@ -117,10 +118,11 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
             RepoRef ref = parseRepoRef(repoCloneUrl);
             String branchEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/branches/%s", ref.owner, ref.repo, urlEncode(refName));
             ResponseEntity<Map<String, Object>> branchResponse = restTemplate.exchange(branchEndpoint, HttpMethod.GET, new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
-            if (!branchResponse.getStatusCode().is2xxSuccessful() || branchResponse.getBody() == null) {
+            Map<String, Object> branchBody = branchResponse.getBody();
+            if (!branchResponse.getStatusCode().is2xxSuccessful() || branchBody == null) {
                 return false;
             }
-            Object commitObj = branchResponse.getBody().get("commit");
+            Object commitObj = branchBody.get("commit");
             if (!(commitObj instanceof Map<?, ?> commitMap) || commitMap.get("sha") == null) {
                 return false;
             }
@@ -152,12 +154,16 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
                     new HttpEntity<>(prBody, headers(token)),
                     new ParameterizedTypeReference<>() {});
 
-            if (!prResponse.getStatusCode().is2xxSuccessful() || prResponse.getBody() == null) {
+            Map<String, Object> pr = prResponse.getBody();
+            if (!prResponse.getStatusCode().is2xxSuccessful() || pr == null) {
                 return MergeabilityResult.error("failed to create pull request");
             }
 
-            Map<String, Object> pr = prResponse.getBody();
-            int number = ((Number) pr.get("number")).intValue();
+            Object numberValue = pr.get("number");
+            if (!(numberValue instanceof Number numberValueAsNumber)) {
+                return MergeabilityResult.error("pull request response missing number");
+            }
+            int number = numberValueAsNumber.intValue();
 
             // Close the temporary PR
             String closeEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/pulls/%d",
@@ -194,10 +200,11 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
                     shaEndpoint, HttpMethod.GET,
                     new HttpEntity<>(headers(token)),
                     new ParameterizedTypeReference<>() {});
-            if (!refResponse.getStatusCode().is2xxSuccessful() || refResponse.getBody() == null) {
+            Map<String, Object> refBody = refResponse.getBody();
+            if (!refResponse.getStatusCode().is2xxSuccessful() || refBody == null) {
                 return false;
             }
-            Object objectObj = refResponse.getBody().get("object");
+            Object objectObj = refBody.get("object");
             if (!(objectObj instanceof Map<?, ?> objMap) || objMap.get("sha") == null) {
                 return false;
             }
@@ -252,10 +259,11 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
             RepoRef ref = parseRepoRef(repoCloneUrl);
             String endpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/branches/%s", ref.owner, ref.repo, urlEncode(branchName));
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(endpoint, HttpMethod.GET, new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
-            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            Map<String, Object> responseBody = response.getBody();
+            if (!response.getStatusCode().is2xxSuccessful() || responseBody == null) {
                 return BranchStatus.missing();
             }
-            Object commitObj = response.getBody().get("commit");
+            Object commitObj = responseBody.get("commit");
             String latestCommit = null;
             if (commitObj instanceof Map<?, ?> commitMap && commitMap.get("sha") != null) {
                 latestCommit = String.valueOf(commitMap.get("sha"));
@@ -301,11 +309,14 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
             ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
                     endpoint, HttpMethod.GET, new HttpEntity<>(headers(token)),
                     new ParameterizedTypeReference<>() {});
-            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            List<Map<String, Object>> branches = response.getBody();
+            if (!response.getStatusCode().is2xxSuccessful() || branches == null) {
                 return List.of();
             }
-            return response.getBody().stream()
-                    .map(b -> String.valueOf(b.get("name")))
+            return branches.stream()
+                    .map(b -> b.get("name"))
+                    .filter(name -> name != null)
+                    .map(String::valueOf)
                     .filter(name -> name.startsWith(prefix))
                     .toList();
         } catch (Exception e) {

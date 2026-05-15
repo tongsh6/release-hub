@@ -27,7 +27,6 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import java.io.ByteArrayInputStream;
-import java.io.File;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -211,10 +210,6 @@ public class MavenVersionUpdaterAdapter implements VersionUpdaterPort {
     /**
      * 解析 POM 文件 (保留旧方法签名兼容性，如果内部还在用)
      */
-    private Document parsePom(File pomFile) throws Exception {
-        return parsePom(Files.readString(pomFile.toPath()));
-    }
-
     /**
      * 提取当前版本号
      */
@@ -409,15 +404,15 @@ public class MavenVersionUpdaterAdapter implements VersionUpdaterPort {
             
             if (oldLine != null && newLine != null) {
                 if (!oldLine.equals(newLine)) {
-                    diff.append(String.format("@@ -%d +%d @@\n", i + 1, i + 1));
+                    diff.append("@@ -").append(i + 1).append(" +").append(i + 1).append(" @@\n");
                     diff.append("-").append(oldLine).append("\n");
                     diff.append("+").append(newLine).append("\n");
                 }
             } else if (oldLine != null) {
-                diff.append(String.format("@@ -%d +%d @@\n", i + 1, i));
+                diff.append("@@ -").append(i + 1).append(" +").append(i).append(" @@\n");
                 diff.append("-").append(oldLine).append("\n");
             } else if (newLine != null) {
-                diff.append(String.format("@@ -%d +%d @@\n", i, i + 1));
+                diff.append("@@ -").append(i).append(" +").append(i + 1).append(" @@\n");
                 diff.append("+").append(newLine).append("\n");
             }
         }

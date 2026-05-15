@@ -45,8 +45,9 @@ public class RunController {
                                                     @RequestParam(name = "windowKey", required = false) String windowKey,
                                                     @RequestParam(name = "repoId", required = false) String repoId,
                                                     @RequestParam(name = "iterationKey", required = false) String iterationKey,
-                                                    @RequestParam(name = "status", required = false) String status) {
-        var result = runPort.findPaged(runType, operator, windowKey, repoId, iterationKey, status, page, size);
+                                                    @RequestParam(name = "status", required = false) String status,
+                                                    @RequestParam(name = "groupCode", required = false) String groupCode) {
+        var result = runPort.findPaged(runType, operator, windowKey, repoId, iterationKey, status, groupCode, page, size);
         List<RunView> views = result.items().stream().map(RunView::from).toList();
         return ApiPageResponse.success(views, new PageMeta(page, size, result.total()));
     }
@@ -63,6 +64,14 @@ public class RunController {
             String operator,
             List<RunItemView> items
     ) {
+        public RunView {
+            items = items == null ? List.of() : List.copyOf(items);
+        }
+
+        public List<RunItemView> items() {
+            return List.copyOf(items);
+        }
+
         public static RunView from(Run run) {
             String status = determineStatus(run);
             return new RunView(
@@ -105,6 +114,14 @@ public class RunController {
             String finalResult,
             List<RunStepView> steps
     ) {
+        public RunItemView {
+            steps = steps == null ? List.of() : List.copyOf(steps);
+        }
+
+        public List<RunStepView> steps() {
+            return List.copyOf(steps);
+        }
+
         static RunItemView from(io.releasehub.domain.run.RunItem item) {
             return new RunItemView(
                     item.getId().value(),

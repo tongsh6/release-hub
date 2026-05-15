@@ -58,11 +58,6 @@ public class CodeRepository extends BaseEntity<RepoId> {
 
     private CodeRepository(RepoId id, String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, GitProvider gitProvider, String gitAccessToken, boolean monoRepo, Instant now) {
         super(id, now);
-        validateName(name);
-        validateUrl(cloneUrl);
-        validateBranch(defaultBranch);
-        validateGroupCode(groupCode);
-
         this.name = name;
         this.cloneUrl = cloneUrl;
         this.defaultBranch = defaultBranch;
@@ -81,7 +76,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
         this.lastSyncAt = null;
     }
 
-    private String normalizeGitAccessToken(String gitAccessToken) {
+    private static String normalizeGitAccessToken(String gitAccessToken) {
         if (gitAccessToken == null) {
             return null;
         }
@@ -89,7 +84,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
         return trimmed.isBlank() ? null : trimmed;
     }
 
-    private void validateName(String name) {
+    private static void validateName(String name) {
         if (name == null || name.isBlank()) {
             throw ValidationException.repoNameRequired();
         }
@@ -98,7 +93,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
         }
     }
 
-    private void validateUrl(String url) {
+    private static void validateUrl(String url) {
         if (url == null || url.isBlank()) {
             throw ValidationException.repoUrlRequired();
         }
@@ -107,7 +102,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
         }
     }
 
-    private void validateBranch(String branch) {
+    private static void validateBranch(String branch) {
         if (branch == null || branch.isBlank()) {
             throw ValidationException.repoBranchRequired();
         }
@@ -116,7 +111,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
         }
     }
 
-    private void validateGroupCode(String groupCode) {
+    private static void validateGroupCode(String groupCode) {
         if (groupCode == null || groupCode.isBlank()) {
             throw ValidationException.groupCodeRequired();
         }
@@ -130,6 +125,10 @@ public class CodeRepository extends BaseEntity<RepoId> {
     }
 
     public static CodeRepository create(String name, String cloneUrl, String defaultBranch, String groupCode, RepoType repoType, GitProvider gitProvider, String gitAccessToken, boolean monoRepo, Instant now) {
+        validateName(name);
+        validateUrl(cloneUrl);
+        validateBranch(defaultBranch);
+        validateGroupCode(groupCode);
         return new CodeRepository(RepoId.newId(), name, cloneUrl, defaultBranch, groupCode, repoType, gitProvider, gitAccessToken, monoRepo, now);
     }
 

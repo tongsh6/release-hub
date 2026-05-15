@@ -1,5 +1,6 @@
 package io.releasehub.application.version;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.releasehub.application.branchrule.BranchRuleUseCase;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.common.exception.BaseException;
@@ -29,6 +30,10 @@ public class VersionValidationAppService {
     private final ReleaseWindowPort releaseWindowPort;
     private final BranchRuleUseCase branchRuleUseCase;
 
+    @SuppressFBWarnings(
+            value = "EI_EXPOSE_REP2",
+            justification = "Spring injects application ports and use cases as stable collaborators; the service does not expose or mutate them."
+    )
     public VersionValidationAppService(
             VersionPolicyPort versionPolicyPort,
             ReleaseWindowPort releaseWindowPort,

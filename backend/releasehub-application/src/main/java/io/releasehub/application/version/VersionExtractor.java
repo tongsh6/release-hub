@@ -63,7 +63,6 @@ public class VersionExtractor implements VersionExtractorUseCase {
         Matcher matcher = POM_VERSION_PATTERN.matcher(pomContent);
         
         // 跳过 parent 中的版本号
-        int projectStart = pomContent.indexOf("<project");
         int parentStart = pomContent.indexOf("<parent");
         int parentEnd = pomContent.indexOf("</parent>");
         

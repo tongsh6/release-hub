@@ -10,4 +10,12 @@ public record BranchRuleTestResult(
         String rendered,
         List<String> errors
 ) {
+    public BranchRuleTestResult {
+        errors = errors == null ? List.of() : List.copyOf(errors);
+    }
+
+    @Override
+    public List<String> errors() {
+        return List.copyOf(errors);
+    }
 }

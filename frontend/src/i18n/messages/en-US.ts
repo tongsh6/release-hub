@@ -411,6 +411,7 @@ export default {
       windowKey: 'Window Key',
       repo: 'Repository',
       iterationKey: 'Iteration Key',
+      group: 'Group',
       status: 'Status'
     },
     columns: {

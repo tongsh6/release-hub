@@ -15,6 +15,11 @@ public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
               and (:windowKey is null or i.windowKey = :windowKey)
               and (:repoId is null or i.repoId = :repoId)
               and (:iterationKey is null or i.iterationKey = :iterationKey)
+              and (:groupCode is null or exists (
+                select 1 from ReleaseWindowJpaEntity w
+                where w.windowKey = i.windowKey
+                  and w.groupCode = :groupCode
+              ))
               and (
                 :status is null or
                 (
@@ -70,6 +75,11 @@ public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
                       and (:windowKey is null or i.windowKey = :windowKey)
                       and (:repoId is null or i.repoId = :repoId)
                       and (:iterationKey is null or i.iterationKey = :iterationKey)
+                      and (:groupCode is null or exists (
+                        select 1 from ReleaseWindowJpaEntity w
+                        where w.windowKey = i.windowKey
+                          and w.groupCode = :groupCode
+                      ))
                       and (
                         :status is null or
                         (
@@ -123,5 +133,6 @@ public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
                                           @Param("repoId") String repoId,
                                           @Param("iterationKey") String iterationKey,
                                           @Param("status") String status,
+                                          @Param("groupCode") String groupCode,
                                           Pageable pageable);
 }

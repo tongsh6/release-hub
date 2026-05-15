@@ -25,7 +25,7 @@ public class IterationView {
         v.description = it.getDescription();
         v.expectedReleaseAt = it.getExpectedReleaseAt();
         v.groupCode = it.getGroupCode();
-        v.repoIds = it.getRepos().stream().map(RepoId::value).collect(Collectors.toSet());
+        v.repoIds = it.getRepos().stream().map(RepoId::value).collect(Collectors.toUnmodifiableSet());
         v.createdAt = it.getCreatedAt();
         v.updatedAt = it.getUpdatedAt();
         return v;
@@ -36,7 +36,7 @@ public class IterationView {
     public String getDescription() { return description; }
     public LocalDate getExpectedReleaseAt() { return expectedReleaseAt; }
     public String getGroupCode() { return groupCode; }
-    public Set<String> getRepoIds() { return repoIds; }
+    public Set<String> getRepoIds() { return Set.copyOf(repoIds); }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

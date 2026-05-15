@@ -14,7 +14,7 @@ public class GitBranchAdapterFactoryImpl implements GitBranchAdapterFactory {
     private final List<GitBranchPort> adapters;
 
     public GitBranchAdapterFactoryImpl(List<GitBranchPort> adapters) {
-        this.adapters = adapters;
+        this.adapters = List.copyOf(adapters);
     }
 
     @Override
