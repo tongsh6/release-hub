@@ -292,6 +292,91 @@ print('FOUND' if found else 'NOT_FOUND')
 "
 }
 
+gitlab_encode() {
+    python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip(), safe=''))" 2>/dev/null
+}
+
+gitlab_project_path_from_clone_url() {
+    echo "$1" | sed -E 's|https?://[^/]+/||; s|\.git$||'
+}
+
+gitlab_branch_state() {
+    local clone_url=$1
+    local branch=$2
+    local gl_token="${GITLAB_PAT:-}"
+    if [ -z "$gl_token" ] || [ "$gl_token" = "null" ]; then
+        echo "MISSING_TOKEN"
+        return 1
+    fi
+
+    local project_path
+    project_path=$(gitlab_project_path_from_clone_url "$clone_url")
+    local encoded_path
+    encoded_path=$(echo "$project_path" | gitlab_encode)
+    local encoded_branch
+    encoded_branch=$(echo "$branch" | gitlab_encode)
+    local resp
+    resp=$(curl -s -H "PRIVATE-TOKEN: $gl_token" \
+        "$GITLAB/api/v4/projects/$encoded_path/repository/branches/$encoded_branch")
+
+    echo "$resp" | python3 -c "
+import sys,json
+branch = '''$branch'''
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('NON_JSON_RESPONSE')
+    sys.exit(0)
+if isinstance(d, dict) and d.get('name') == branch:
+    print('FOUND')
+elif isinstance(d, dict) and d.get('message'):
+    print('NOT_FOUND')
+else:
+    print('UNKNOWN')
+"
+}
+
+gitlab_delete_branch() {
+    local clone_url=$1
+    local branch=$2
+    local gl_token="${GITLAB_PAT:-}"
+    if [ -z "$gl_token" ] || [ "$gl_token" = "null" ]; then
+        echo "MISSING_TOKEN"
+        return 1
+    fi
+
+    local project_path
+    project_path=$(gitlab_project_path_from_clone_url "$clone_url")
+    local encoded_path
+    encoded_path=$(echo "$project_path" | gitlab_encode)
+    local encoded_branch
+    encoded_branch=$(echo "$branch" | gitlab_encode)
+    curl -s -o /dev/null -w "%{http_code}" -X DELETE -H "PRIVATE-TOKEN: $gl_token" \
+        "$GITLAB/api/v4/projects/$encoded_path/repository/branches/$encoded_branch"
+}
+
+gitlab_create_branch() {
+    local clone_url=$1
+    local branch=$2
+    local ref=${3:-main}
+    local gl_token="${GITLAB_PAT:-}"
+    if [ -z "$gl_token" ] || [ "$gl_token" = "null" ]; then
+        echo "MISSING_TOKEN"
+        return 1
+    fi
+
+    local project_path
+    project_path=$(gitlab_project_path_from_clone_url "$clone_url")
+    local encoded_path
+    encoded_path=$(echo "$project_path" | gitlab_encode)
+    local encoded_branch
+    encoded_branch=$(echo "$branch" | gitlab_encode)
+    local encoded_ref
+    encoded_ref=$(echo "$ref" | gitlab_encode)
+    curl -s -o /dev/null -w "%{http_code}" -X POST -H "PRIVATE-TOKEN: $gl_token" \
+        "$GITLAB/api/v4/projects/$encoded_path/repository/branches?branch=$encoded_branch&ref=$encoded_ref"
+}
+
 auth() {
     local resp=$(curl -s -X POST "$BACKEND/api/v1/auth/login" \
         -H "Content-Type: application/json" -d '{"username":"admin","password":"admin"}')
@@ -663,15 +748,18 @@ fi
 # 验证 GitLab 上真实分支存在
 if [ "$GITLAB_READY" = "true" ]; then
     BRANCH_COUNT=0
-    for repo_id in 1 2 3; do
-        RELEASE_BRANCH=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_PAT" \
-            "http://localhost:9080/api/v4/projects/$repo_id/repository/branches" \
-            | python3 -c "import sys,json; d=json.load(sys.stdin); branches=[b['name'] for b in d if isinstance(d, list) and b['name'].startswith('release/')]; print(branches[0] if branches else 'MISSING')" 2>/dev/null)
-        if [ "$RELEASE_BRANCH" != "MISSING" ] && [ -n "$RELEASE_BRANCH" ]; then
+    WINDOW_KEY_FOR_BRANCH=$(curl -s "$BACKEND/api/v1/release-windows/$WINDOW_ID" -H "$AUTH" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))" 2>/dev/null)
+    EXPECTED_RELEASE_BRANCH="release/$WINDOW_KEY_FOR_BRANCH"
+    for rh_repo_id in $REPO_IDS; do
+        REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$rh_repo_id" -H "$AUTH" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+        RELEASE_BRANCH_STATE=$(gitlab_branch_state "$REPO_URL" "$EXPECTED_RELEASE_BRANCH")
+        if [ "$RELEASE_BRANCH_STATE" = "FOUND" ]; then
             BRANCH_COUNT=$((BRANCH_COUNT+1))
         fi
     done
-    [ "$BRANCH_COUNT" -eq 3 ] && ok "GitLab 真实 release 分支: 3/3" || warn "GitLab release 分支: $BRANCH_COUNT/3"
+    [ "$BRANCH_COUNT" -eq 3 ] && ok "GitLab 真实 release 分支: 3/3 ($EXPECTED_RELEASE_BRANCH)" || warn "GitLab release 分支: $BRANCH_COUNT/3 ($EXPECTED_RELEASE_BRANCH)"
 fi
 
 # 验证 WindowIteration 状态
@@ -855,6 +943,213 @@ print(f'items={len(items)} stepActions={dict(actions)} stepResults={dict(results
             fi
         fi
     fi
+fi
+
+# ---- 5.3 feature 分支缺失：后端 + GitLab 强证据 ----
+h2 "SA-012: 5.3 Feature 分支缺失后端/GitLab 强证据"
+if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+    MISSING_TS=$(date -u +%Y%m%d-%H%M%S)
+    MISSING_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-feature缺失-$MISSING_TS\",\"description\":\"Feature missing evidence $MISSING_TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+    MISSING_WINDOW_ID=$(echo "$MISSING_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))" 2>/dev/null)
+    if [ -z "$MISSING_WINDOW_ID" ]; then
+        no "feature 缺失证据窗口创建失败: $MISSING_WINDOW_RESP"
+    else
+        ok "feature 缺失证据窗口创建: $MISSING_WINDOW_ID"
+    fi
+
+    MISSING_ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-feature缺失-$MISSING_TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[\"$R1\"]}")
+    MISSING_ITER_KEY=$(echo "$MISSING_ITER_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
+    if [ -z "$MISSING_ITER_KEY" ]; then
+        no "feature 缺失证据迭代创建失败: $MISSING_ITER_RESP"
+    else
+        ok "feature 缺失证据迭代创建: $MISSING_ITER_KEY"
+    fi
+
+    if [ -n "$MISSING_WINDOW_ID" ] && [ -n "$MISSING_ITER_KEY" ]; then
+        MISSING_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+        MISSING_FEATURE_BRANCH="feature/$MISSING_ITER_KEY"
+        MISSING_FEATURE_BEFORE=$(gitlab_branch_state "$MISSING_REPO_URL" "$MISSING_FEATURE_BRANCH")
+        [ "$MISSING_FEATURE_BEFORE" = "FOUND" ] && ok "GitLab feature 分支已由迭代创建: $MISSING_FEATURE_BRANCH" || warn "删除前 GitLab feature 分支状态: $MISSING_FEATURE_BEFORE"
+
+        DELETE_STATUS=$(gitlab_delete_branch "$MISSING_REPO_URL" "$MISSING_FEATURE_BRANCH")
+        if [ "$DELETE_STATUS" = "204" ] || [ "$DELETE_STATUS" = "200" ] || [ "$DELETE_STATUS" = "404" ]; then
+            ok "已制造本轮 feature 缺失 GitLab 状态: $MISSING_FEATURE_BRANCH (delete=$DELETE_STATUS)"
+        else
+            warn "删除 feature 分支返回异常状态: $DELETE_STATUS"
+        fi
+
+        MISSING_FEATURE_AFTER=$(gitlab_branch_state "$MISSING_REPO_URL" "$MISSING_FEATURE_BRANCH")
+        [ "$MISSING_FEATURE_AFTER" = "NOT_FOUND" ] && ok "GitLab 直查确认 feature 分支不存在: $MISSING_FEATURE_BRANCH" || no "GitLab 直查 feature 分支状态异常: $MISSING_FEATURE_AFTER"
+
+        MISSING_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$MISSING_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"iterationKeys\":[\"$MISSING_ITER_KEY\"]}")
+        MISSING_ATTACH_ERRORS=$(echo "$MISSING_ATTACH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print(any(r.get('hasErrors', False) for r in d.get('data', [])))
+" 2>/dev/null || echo "False")
+        [ "$MISSING_ATTACH_ERRORS" = "True" ] && ok "Attach 显式报告 feature 缺失导致的合并问题" || warn "Attach 未报告错误，继续以 branch-status/orchestrate 复核"
+
+        MISSING_BRANCH_STATUS=$(curl -s "$BACKEND/api/v1/release-windows/$MISSING_WINDOW_ID/branch-status" -H "$AUTH")
+        MISSING_STATUS_SUMMARY=$(echo "$MISSING_BRANCH_STATUS" | python3 -c "
+import sys,json
+d=json.load(sys.stdin).get('data', {})
+repos=d.get('repos', [])
+if not repos:
+    print('NO_REPOS')
+else:
+    r=repos[0]
+    fb=r.get('featureBranch', {})
+    rb=r.get('releaseBranch', {})
+    print('{}|{}|{}|{}'.format(
+        fb.get('branchName',''), fb.get('exists'),
+        rb.get('branchName',''), rb.get('exists')))
+" 2>/dev/null || echo "NO_REPOS")
+        IFS='|' read -r MISSING_FB_NAME MISSING_FB_EXISTS MISSING_RB_NAME MISSING_RB_EXISTS <<< "$MISSING_STATUS_SUMMARY"
+        if [ "$MISSING_FB_NAME" = "$MISSING_FEATURE_BRANCH" ] && [ "$MISSING_FB_EXISTS" = "False" ]; then
+            ok "branch-status 确认 feature 分支缺失: $MISSING_FB_NAME exists=$MISSING_FB_EXISTS"
+        else
+            no "branch-status feature 缺失证据异常: $MISSING_STATUS_SUMMARY"
+        fi
+        [ "$MISSING_RB_EXISTS" = "True" ] && ok "branch-status 同时确认 release 分支存在: $MISSING_RB_NAME" || warn "release 分支状态: $MISSING_RB_NAME exists=$MISSING_RB_EXISTS"
+
+        MISSING_PUB=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$MISSING_WINDOW_ID/publish" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
+        MISSING_PUB_OK=$(echo "$MISSING_PUB" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        if [ "$MISSING_PUB_OK" = "True" ]; then
+            MISSING_ORCH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$MISSING_WINDOW_ID/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"repoIds\":[\"$R1\"],\"iterationKeys\":[\"$MISSING_ITER_KEY\"],\"failFast\":false,\"operator\":\"acceptance-feature-missing-$MISSING_TS\"}")
+            MISSING_ORCH_OK=$(echo "$MISSING_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+            if [ "$MISSING_ORCH_OK" = "True" ]; then
+                MISSING_RUN_ID=$(echo "$MISSING_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',''))" 2>/dev/null)
+                MISSING_FINAL_STATUS=$(wait_for_run "$MISSING_RUN_ID" 60)
+                MISSING_RUN_DETAIL=$(curl -s "$BACKEND/api/v1/runs/$MISSING_RUN_ID" -H "$AUTH")
+                MISSING_ENSURE_FEATURE=$(echo "$MISSING_RUN_DETAIL" | python3 -c "
+import sys,json
+d=json.load(sys.stdin).get('data', {})
+for item in d.get('items', []):
+    for step in item.get('steps', []):
+        if step.get('actionType') == 'ENSURE_FEATURE':
+            print('{}|{}'.format(step.get('result'), step.get('message','')))
+            raise SystemExit
+print('MISSING_STEP|')
+" 2>/dev/null || echo "MISSING_STEP|")
+                IFS='|' read -r MISSING_STEP_RESULT MISSING_STEP_MESSAGE <<< "$MISSING_ENSURE_FEATURE"
+                if [ "$MISSING_STEP_RESULT" = "SKIPPED" ] && echo "$MISSING_STEP_MESSAGE" | grep -q "$MISSING_FEATURE_BRANCH"; then
+                    ok "Orchestrate RunStep 显式报告 feature 缺失: $MISSING_STEP_RESULT ($MISSING_FINAL_STATUS)"
+                else
+                    no "Orchestrate feature 缺失 RunStep 异常: $MISSING_ENSURE_FEATURE"
+                fi
+            else
+                MISSING_ORCH_CODE=$(echo "$MISSING_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code','?'))" 2>/dev/null)
+                MISSING_ORCH_MSG=$(echo "$MISSING_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('message','?'))" 2>/dev/null)
+                no "feature 缺失编排启动失败: code=$MISSING_ORCH_CODE msg=$MISSING_ORCH_MSG"
+            fi
+        else
+            warn "feature 缺失窗口发布失败，跳过 Orchestrate RunStep 复核: $MISSING_PUB"
+        fi
+    fi
+else
+    skip "跳过 feature 缺失强证据（MOCK_MODE 或缺 GitLab PAT）"
+fi
+
+# ---- 5.4 release 分支已存在：后端 + GitLab 强证据 ----
+h2 "SA-012: 5.4 Release 分支已存在后端/GitLab 强证据"
+if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+    EXISTS_TS=$(date -u +%Y%m%d-%H%M%S)
+    EXISTS_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-release已存在-$EXISTS_TS\",\"description\":\"Release branch exists evidence $EXISTS_TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+    EXISTS_WINDOW_ID=$(echo "$EXISTS_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))" 2>/dev/null)
+    EXISTS_WINDOW_KEY=$(echo "$EXISTS_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('windowKey', ''))" 2>/dev/null)
+    if [ -z "$EXISTS_WINDOW_ID" ] || [ -z "$EXISTS_WINDOW_KEY" ]; then
+        no "release 已存在证据窗口创建失败: $EXISTS_WINDOW_RESP"
+    else
+        ok "release 已存在证据窗口创建: $EXISTS_WINDOW_KEY"
+    fi
+
+    EXISTS_ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-release已存在-$EXISTS_TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[\"$R1\"]}")
+    EXISTS_ITER_KEY=$(echo "$EXISTS_ITER_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
+    if [ -z "$EXISTS_ITER_KEY" ]; then
+        no "release 已存在证据迭代创建失败: $EXISTS_ITER_RESP"
+    else
+        ok "release 已存在证据迭代创建: $EXISTS_ITER_KEY"
+    fi
+
+    if [ -n "$EXISTS_WINDOW_ID" ] && [ -n "$EXISTS_WINDOW_KEY" ] && [ -n "$EXISTS_ITER_KEY" ]; then
+        EXISTS_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+        EXISTS_RELEASE_BRANCH="release/$EXISTS_WINDOW_KEY"
+        CREATE_RELEASE_STATUS=$(gitlab_create_branch "$EXISTS_REPO_URL" "$EXISTS_RELEASE_BRANCH" "main")
+        if [ "$CREATE_RELEASE_STATUS" = "201" ] || [ "$CREATE_RELEASE_STATUS" = "400" ]; then
+            ok "已预置 GitLab release 分支: $EXISTS_RELEASE_BRANCH (create=$CREATE_RELEASE_STATUS)"
+        else
+            warn "预置 release 分支返回异常状态: $CREATE_RELEASE_STATUS"
+        fi
+
+        EXISTS_RELEASE_BEFORE=$(gitlab_branch_state "$EXISTS_REPO_URL" "$EXISTS_RELEASE_BRANCH")
+        [ "$EXISTS_RELEASE_BEFORE" = "FOUND" ] && ok "GitLab 直查确认 attach 前 release 分支已存在: $EXISTS_RELEASE_BRANCH" || no "GitLab 直查 release 分支状态异常: $EXISTS_RELEASE_BEFORE"
+
+        EXISTS_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$EXISTS_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"iterationKeys\":[\"$EXISTS_ITER_KEY\"]}")
+        EXISTS_ATTACH_OK=$(echo "$EXISTS_ATTACH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print(bool(d.get('success', False)) and not any(r.get('hasErrors', False) for r in d.get('data', [])))
+" 2>/dev/null || echo "False")
+        [ "$EXISTS_ATTACH_OK" = "True" ] && ok "Attach 在 release 已存在时完成并保留证据" || warn "Attach release 已存在路径返回异常: $EXISTS_ATTACH"
+
+        EXISTS_BRANCH_STATUS=$(curl -s "$BACKEND/api/v1/release-windows/$EXISTS_WINDOW_ID/branch-status" -H "$AUTH")
+        EXISTS_STATUS_SUMMARY=$(echo "$EXISTS_BRANCH_STATUS" | python3 -c "
+import sys,json
+d=json.load(sys.stdin).get('data', {})
+repos=d.get('repos', [])
+if not repos:
+    print('NO_REPOS')
+else:
+    r=repos[0]
+    fb=r.get('featureBranch', {})
+    rb=r.get('releaseBranch', {})
+    print('{}|{}|{}|{}'.format(
+        fb.get('branchName',''), fb.get('exists'),
+        rb.get('branchName',''), rb.get('exists')))
+" 2>/dev/null || echo "NO_REPOS")
+        IFS='|' read -r EXISTS_FB_NAME EXISTS_FB_EXISTS EXISTS_RB_NAME EXISTS_RB_EXISTS <<< "$EXISTS_STATUS_SUMMARY"
+        if [ "$EXISTS_RB_NAME" = "$EXISTS_RELEASE_BRANCH" ] && [ "$EXISTS_RB_EXISTS" = "True" ]; then
+            ok "branch-status 确认 release 分支已存在: $EXISTS_RB_NAME"
+        else
+            no "branch-status release 已存在证据异常: $EXISTS_STATUS_SUMMARY"
+        fi
+        [ "$EXISTS_FB_EXISTS" = "True" ] && ok "branch-status 同时确认 feature 分支存在: $EXISTS_FB_NAME" || warn "feature 分支状态: $EXISTS_FB_NAME exists=$EXISTS_FB_EXISTS"
+
+        EXISTS_ATTACH_RUN=$(curl -s "$BACKEND/api/v1/runs" -H "$AUTH" | python3 -c "
+import sys,json
+window_key='''$EXISTS_WINDOW_KEY'''
+iteration_key='''$EXISTS_ITER_KEY'''
+repo_id='''$R1'''
+runs=json.load(sys.stdin).get('data', [])
+for r in reversed(runs):
+    if r.get('runType') != 'ATTACH_ITERATION':
+        continue
+    for item in r.get('items', []):
+        if item.get('windowKey') == window_key and item.get('iterationKey') == iteration_key and item.get('repoId') == repo_id:
+            for step in item.get('steps', []):
+                if step.get('actionType') == 'ENSURE_RELEASE':
+                    print('{}|{}|{}'.format(r.get('id',''), step.get('result',''), step.get('message','')))
+                    raise SystemExit
+print('MISSING_RUN|MISSING_STEP|')
+" 2>/dev/null || echo "MISSING_RUN|MISSING_STEP|")
+        IFS='|' read -r EXISTS_RUN_ID EXISTS_STEP_RESULT EXISTS_STEP_MESSAGE <<< "$EXISTS_ATTACH_RUN"
+        if [ "$EXISTS_STEP_RESULT" = "BRANCH_EXISTS" ] && echo "$EXISTS_STEP_MESSAGE" | grep -q "$EXISTS_RELEASE_BRANCH"; then
+            ok "Attach RunStep 显式报告 release 分支已存在: $EXISTS_STEP_RESULT"
+        else
+            no "Attach release 已存在 RunStep 异常: $EXISTS_ATTACH_RUN"
+        fi
+    fi
+else
+    skip "跳过 release 分支已存在强证据（MOCK_MODE 或缺 GitLab PAT）"
 fi
 
 # ---- 6. 场景: Publish + Auto-Orchestration ----
