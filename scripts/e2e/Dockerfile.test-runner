@@ -2,7 +2,7 @@ FROM maven:3.9-eclipse-temurin-21-alpine
 
 WORKDIR /app
 COPY . .
-RUN chmod +x scripts/e2e/init-gitlab.sh scripts/e2e/run-vertical-slices.sh
+RUN chmod +x scripts/e2e/init-gitlab.sh scripts/e2e/reset-gitlab-seed-branches.sh scripts/e2e/run-vertical-slices.sh
 
 # Install sibling modules so test-runner can resolve dependencies without network
 RUN cd backend && mvn install -DskipTests -q

@@ -56,6 +56,7 @@
 | SA-016 发布后收尾闭环 | 已验证 | `scripts/acceptance/run-acceptance.sh` + `frontend/e2e/tests/slice-1-group-window.spec.ts` | 2026-05-15 真实 GitLab 验收 + Playwright | 关闭窗口、重复关闭幂等、关闭后挂载/版本更新拒绝、收尾 Run 可见、前端 CLOSED 窗口隐藏挂载入口 |
 | Maven surefire/failsafe 插件版本显式化 | 已验证 | `backend/pom.xml` | `mvn -pl releasehub-bootstrap -DskipTests validate` + `mvn -pl releasehub-application -Dtest=ConflictDetectionAppServiceTest test` | malformed POM 中插件版本缺失警告已关闭 |
 | acc-v0.1.10 验收报告归档 | 已完成 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 文档引用复核 | v0.1.10 已被 v0.1.11 和场景矩阵覆盖，顶层 reports 目录瘦身 |
+| 累积冲突清理脚本 | 已实现 | `scripts/e2e/reset-gitlab-seed-branches.sh` | dry-run 语法/帮助验证 | 默认 dry-run，`--execute` 才删除非种子分支，保留 main 与 seed feature 分支 |
 
 ---
 
@@ -107,7 +108,6 @@
 | P1 | SA-010/SA-011 发布计划与风险详情 | attach 和冲突阻断已有强证据，发布计划、冲突严重级别和建议处理方式已补前端观察 | 补更多真实冲突类型详情、类型分布复核和部分失败重试 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run 并复核失败步骤；分组筛选复核已补；冲突详情/部分失败仍不足 | Playwright 从窗口详情/Run 详情观察冲突详情和部分失败结果 |
 | P1 | SA-016 收尾扩展 | P0 已覆盖，重复关闭幂等已纳入验收脚本，部分失败重试和报告导出仍不足 | 补部分失败重试和发布报告导出 |
-| 可选 | 累积冲突清理脚本 | 验收幂等 + 累积真实分支冲突会影响 clean-room 复现 | 一键 reset 仓库到只剩 main + seed feature 分支 |
 
 ---
 
@@ -122,6 +122,7 @@
 | 验收脚本 | `scripts/acceptance/run-acceptance.sh` | v3.6，含服务生命周期、`--hold-services`、SA-013 干净黄金路径、SA-014 GitLab commit 校验 |
 | 本地统一启停脚本 | `scripts/dev/start-local-env.sh` | `start|hold|stop|restart|status`；推荐用 `hold` 托管前后端联调环境 |
 | 种子初始化 | `scripts/e2e/init-gitlab.sh` | 幂等，3 个种子仓库 |
+| 种子分支清理 | `scripts/e2e/reset-gitlab-seed-branches.sh` | 默认 dry-run；`--execute` 清理非种子分支，保留 main 与 seed feature 分支 |
 | 启动脚本 | `backend/scripts/run.sh` | `mvn spring-boot:run -pl releasehub-bootstrap` |
 | 本地容器 | `releasehub-postgres`(5433) + `releasehub-gitlab`(9080) | 模式 A 常驻；端口策略见 memory `feedback_mode_a_b_port_isolation.md` |
 | Flyway 最新迁移 | `V28__add_branch_creation_mode.sql` | local profile 下 flyway disabled，靠 `ddl-auto: update` |
