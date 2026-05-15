@@ -194,6 +194,11 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'releaseWindow.attachIterations',
       'releaseWindow.releasePlan.title',
       'releaseWindow.releasePlan.plannedOrder',
+      'releaseWindow.releasePlan.featureBranch',
+      'releaseWindow.releasePlan.releaseBranch',
+      'releaseWindow.releasePlan.missing',
+      'releaseWindow.releasePlan.exists',
+      'releaseWindow.releasePlan.mergeStatusText.PENDING',
       'releaseWindow.versionUpdate.execute',
       'releaseWindow.versionUpdate.title',
       'releaseWindow.versionUpdate.targetVersion',
@@ -207,8 +212,11 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'conflict.rescan',
       'conflict.resolveVersion',
       'conflict.resolveBranch',
+      'conflict.resolveInGit',
       'conflict.noConflicts',
       'conflict.types.MISMATCH',
+      'conflict.types.MERGE_CONFLICT',
+      'conflict.types.CROSS_REPO_VERSION_MISMATCH',
       'conflict.types.BRANCH_EXISTS',
       'conflict.types.BRANCH_NONCOMPLIANT',
       'conflict.severity.title',
@@ -254,6 +262,12 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     }
     await page.locator('.el-tree-node__content').filter({ hasText: code }).last().click(FORCE)
     await page.waitForTimeout(300)
+  }
+
+  async function selectConflictType(conflictPanel: Locator, conflictType: string) {
+    await conflictPanel
+      .locator(`input.el-radio-button__original-radio[value="${conflictType}"]`)
+      .evaluate((el: HTMLElement) => el.click())
   }
 
   test('SA-013 frontend path submits UI-created repo and iteration scope to orchestration', async ({ page }) => {
@@ -365,6 +379,75 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     })
     expect(orchestrateBody.repoIds).toHaveLength(1)
     createdRepoId = orchestrateBody.repoIds[0]
+  })
+
+  test('SA-012 frontend path surfaces missing feature branch in release plan', async ({ page }) => {
+    await ensureLoggedIn(page)
+    expect(windowDetailUrl).toContain('/release-windows/')
+    expect(createdRepoId).toBeTruthy()
+    expect(windowKey).toContain('RW-')
+
+    const missingFeatureBranch = `feature/${iterationKey}`
+    const releaseBranch = `release/${windowKey}`
+    await page.route('**/api/v1/release-windows/*/plan', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'OK',
+          message: 'OK',
+          data: [{
+            windowKey,
+            repoId: createdRepoId,
+            iterationKey,
+            plannedOrder: 1
+          }]
+        })
+      })
+    })
+    await page.route('**/api/v1/release-windows/*/branch-status', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'OK',
+          message: 'OK',
+          data: {
+            windowId: 'ui-journey-window',
+            windowKey,
+            repos: [{
+              repoId: createdRepoId,
+              repoName,
+              repoCloneUrl: `mock:///${repoName}.git`,
+              iterationKey,
+              featureBranch: {
+                branchName: missingFeatureBranch,
+                exists: false
+              },
+              releaseBranch: {
+                branchName: releaseBranch,
+                exists: true,
+                latestCommit: 'abc1234567890',
+                mergeStatus: 'PENDING'
+              }
+            }]
+          }
+        })
+      })
+    })
+
+    await page.goto(windowDetailUrl)
+    const releasePlanPanel = page.locator('.release-plan-panel')
+    await expect(releasePlanPanel).toContainText(L['releaseWindow.releasePlan.title'], { timeout: 10000 })
+    await expect(releasePlanPanel).toContainText(L['releaseWindow.releasePlan.featureBranch'])
+    await expect(releasePlanPanel).toContainText(L['releaseWindow.releasePlan.releaseBranch'])
+    await expect(releasePlanPanel).toContainText(repoName)
+    await expect(releasePlanPanel).toContainText(iterationKey)
+    await expect(releasePlanPanel).toContainText(missingFeatureBranch)
+    await expect(releasePlanPanel).toContainText(releaseBranch)
+    await expect(releasePlanPanel).toContainText(L['releaseWindow.releasePlan.missing'])
+    await expect(releasePlanPanel).toContainText(L['releaseWindow.releasePlan.exists'])
+    await expect(releasePlanPanel).toContainText(L['releaseWindow.releasePlan.mergeStatusText.PENDING'])
   })
 
   test('SA-015: Tester can inspect a UI-triggered failed version-update run', async ({ page }) => {
@@ -611,6 +694,157 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await expect(conflictPanel).toContainText(existingReleaseBranch)
     await expect(conflictPanel).toContainText('Delete or archive the existing branch before retrying')
     await expect(conflictPanel.getByText(L['conflict.resolveBranch'])).toBeVisible()
+    await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toHaveCount(0)
+    expect(resolveCalled).toBe(false)
+  })
+
+  test('SA-011 frontend path surfaces merge conflict details and Git handling guidance', async ({ page }) => {
+    await ensureLoggedIn(page)
+    expect(windowDetailUrl).toContain('/release-windows/')
+    expect(createdRepoId).toBeTruthy()
+    expect(windowKey).toContain('RW-')
+
+    const sourceBranch = `feature/${iterationKey}`
+    const targetBranch = `release/${windowKey}`
+    let resolveCalled = false
+    const mergeConflictReport = {
+      windowId: 'ui-journey-window',
+      checkedAt: new Date().toISOString(),
+      hasConflicts: true,
+      totalCount: 2,
+      conflicts: [
+        {
+          repoId: createdRepoId,
+          repoName,
+          iterationKey,
+          conflictType: 'MERGE_CONFLICT',
+          sourceBranch,
+          targetBranch,
+          message: `Merge conflict between ${sourceBranch} and ${targetBranch}`,
+          suggestion: 'Resolve the merge conflict in the Git platform, then rescan.'
+        },
+        {
+          repoId: createdRepoId,
+          repoName,
+          iterationKey,
+          conflictType: 'MISMATCH',
+          systemVersion: '1.4.0',
+          repoVersion: '1.4.1',
+          message: 'Version mismatch',
+          suggestion: 'Use system version'
+        }
+      ]
+    }
+
+    await page.route('**/api/v1/release-windows/*/conflicts', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: mergeConflictReport })
+      })
+    })
+    await page.route('**/api/v1/release-windows/*/conflicts/check', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: mergeConflictReport })
+      })
+    })
+    await page.route('**/api/v1/iterations/*/repos/*/resolve-conflict', async (route) => {
+      resolveCalled = true
+      await route.abort()
+    })
+
+    await page.goto(windowDetailUrl)
+    const conflictPanel = page.locator('.conflict-panel')
+    await conflictPanel.getByRole('button', { name: L['conflict.rescan'] }).click(FORCE)
+    const mergeConflictFilter = conflictPanel.locator('.el-radio-button')
+      .filter({ hasText: `${L['conflict.types.MERGE_CONFLICT']} (1)` })
+    await expect(mergeConflictFilter).toBeVisible()
+    await expect(conflictPanel.locator('.el-radio-button')
+      .filter({ hasText: `${L['conflict.types.MISMATCH']} (1)` })).toBeVisible()
+
+    await selectConflictType(conflictPanel, 'MERGE_CONFLICT')
+    await expect(conflictPanel).toContainText(L['conflict.types.MERGE_CONFLICT'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.title'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.blocker'])
+    await expect(conflictPanel).toContainText(L['conflict.recommendation'])
+    await expect(conflictPanel).toContainText(`${sourceBranch} → ${targetBranch}`)
+    await expect(conflictPanel).toContainText('Resolve the merge conflict in the Git platform, then rescan.')
+    await expect(conflictPanel.getByText(L['conflict.resolveInGit'])).toBeVisible()
+    await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toHaveCount(0)
+    expect(resolveCalled).toBe(false)
+  })
+
+  test('SA-011 frontend path surfaces cross-repo version mismatch details', async ({ page }) => {
+    await ensureLoggedIn(page)
+    expect(windowDetailUrl).toContain('/release-windows/')
+    expect(createdRepoId).toBeTruthy()
+
+    let resolveCalled = false
+    const crossRepoReport = {
+      windowId: 'ui-journey-window',
+      checkedAt: new Date().toISOString(),
+      hasConflicts: true,
+      totalCount: 2,
+      conflicts: [
+        {
+          repoId: createdRepoId,
+          repoName,
+          iterationKey,
+          conflictType: 'CROSS_REPO_VERSION_MISMATCH',
+          systemVersion: '1.4.0',
+          repoVersion: '2.0.0',
+          message: 'Cross-repository version baseline mismatch',
+          suggestion: 'Align repository versions across the release scope, then rescan.'
+        },
+        {
+          repoId: createdRepoId,
+          repoName,
+          iterationKey,
+          conflictType: 'MISMATCH',
+          systemVersion: '1.4.0',
+          repoVersion: '1.4.1',
+          message: 'Version mismatch',
+          suggestion: 'Use system version'
+        }
+      ]
+    }
+
+    await page.route('**/api/v1/release-windows/*/conflicts', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: crossRepoReport })
+      })
+    })
+    await page.route('**/api/v1/release-windows/*/conflicts/check', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: crossRepoReport })
+      })
+    })
+    await page.route('**/api/v1/iterations/*/repos/*/resolve-conflict', async (route) => {
+      resolveCalled = true
+      await route.abort()
+    })
+
+    await page.goto(windowDetailUrl)
+    const conflictPanel = page.locator('.conflict-panel')
+    await conflictPanel.getByRole('button', { name: L['conflict.rescan'] }).click(FORCE)
+    const crossRepoFilter = conflictPanel.locator('.el-radio-button')
+      .filter({ hasText: `${L['conflict.types.CROSS_REPO_VERSION_MISMATCH']} (1)` })
+    await expect(crossRepoFilter).toBeVisible()
+
+    await selectConflictType(conflictPanel, 'CROSS_REPO_VERSION_MISMATCH')
+    await expect(conflictPanel).toContainText(L['conflict.types.CROSS_REPO_VERSION_MISMATCH'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.title'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.blocker'])
+    await expect(conflictPanel).toContainText(L['conflict.recommendation'])
+    await expect(conflictPanel).toContainText('1.4.0 ≠ 2.0.0')
+    await expect(conflictPanel).toContainText('Cross-repository version baseline mismatch')
+    await expect(conflictPanel).toContainText('Align repository versions across the release scope, then rescan.')
     await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toHaveCount(0)
     expect(resolveCalled).toBe(false)
   })
