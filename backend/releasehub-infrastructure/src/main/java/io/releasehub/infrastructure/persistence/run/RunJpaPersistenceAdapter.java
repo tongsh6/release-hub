@@ -48,6 +48,17 @@ public class RunJpaPersistenceAdapter implements RunPort {
     }
 
     @Override
+    public List<Run> findByWindowKey(String windowKey) {
+        String normalizedWindowKey = normalize(windowKey);
+        if (normalizedWindowKey == null) {
+            return List.of();
+        }
+        return repository.findByWindowKey(normalizedWindowKey).stream()
+                         .map(this::toDomain)
+                         .collect(Collectors.toList());
+    }
+
+    @Override
     public PageResult<Run> findPaged(String runType, String operator, String windowKey, String repoId, String iterationKey, String status, String groupCode, int page, int size) {
         String normalizedRunType = normalize(runType);
         String normalizedOperator = normalize(operator);

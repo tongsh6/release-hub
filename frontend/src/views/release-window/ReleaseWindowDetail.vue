@@ -41,6 +41,13 @@
         
         <!-- 功能按钮 -->
         <el-button
+          v-if="form.id"
+          :icon="Download"
+          @click="handleExportReport"
+        >
+          {{ t('releaseWindow.report.export') }}
+        </el-button>
+        <el-button
           v-if="form.status === 'DRAFT'"
           v-perm.disable="'release-window:write'"
           type="primary"
@@ -186,7 +193,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft } from '@element-plus/icons-vue'
+import { ArrowLeft, Download } from '@element-plus/icons-vue'
 import { releaseWindowApi, type ConflictItemView, type ReleaseWindow } from '@/api/modules/releaseWindow'
 import { iterationApi } from '@/api/iterationApi'
 import { repositoryApi, type Repository } from '@/api/repositoryApi'
@@ -344,6 +351,15 @@ const openVersionUpdate = () => {
   if (!form.value?.id) return
   if (form.value.status === 'CLOSED') return
   versionUpdateDialogRef.value?.open(form.value.id, iterations.value.flatMap(iter => iter.repos || []))
+}
+
+const handleExportReport = () => {
+  if (!form.value?.id) return
+  if (!hasPerm('release-window:read')) {
+    ElMessage.warning(t('common.permissionDenied'))
+    return
+  }
+  window.open(`/api/v1/release-windows/${form.value.id}/report.csv`, '_blank')
 }
 
 const handleResolveConflict = async (item: ConflictItemView) => {

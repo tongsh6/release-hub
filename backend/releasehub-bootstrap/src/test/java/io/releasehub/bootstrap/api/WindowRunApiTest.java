@@ -54,11 +54,13 @@ class WindowRunApiTest {
             .andExpect(jsonPath("$.data.id").exists())
             .andReturn();
         String windowId = objectMapper.readTree(rwCreate.getResponse().getContentAsString()).get("data").get("id").asText();
+        String windowKey = objectMapper.readTree(rwCreate.getResponse().getContentAsString()).get("data").get("windowKey").asText();
+        String repo1 = createMockRepo(token, groupCode, "repo-1");
 
         var it1Result = mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"IT-1\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"repo-1\",\"repo-2\"]}"))
+                .content("{\"name\":\"IT-1\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"" + repo1 + "\"]}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.key").exists())
             .andReturn();
@@ -67,7 +69,7 @@ class WindowRunApiTest {
         var it2Result = mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"IT-2\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"repo-1\"]}"))
+                .content("{\"name\":\"IT-2\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"" + repo1 + "\"]}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.key").exists())
             .andReturn();
@@ -101,7 +103,7 @@ class WindowRunApiTest {
         MvcResult orch = mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/orchestrate")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"repoIds\":[\"repo-1\"],\"iterationKeys\":[],\"failFast\":true,\"operator\":\"tester\"}"))
+                .content("{\"repoIds\":[\"" + repo1 + "\"],\"iterationKeys\":[],\"failFast\":true,\"operator\":\"tester\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data").exists())
             .andReturn();
@@ -120,7 +122,27 @@ class WindowRunApiTest {
         JsonNode exportJson = objectMapper.readTree(exported.getResponse().getContentAsString());
         assertThat(exportJson.get("runId").asText()).isEqualTo(runId);
 
-        String itemId = "RW-UT::repo-1::" + it1Key;
+        MvcResult windowReport = mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/report.json")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.windowId").value(windowId))
+            .andExpect(jsonPath("$.windowKey").value(windowKey))
+            .andExpect(jsonPath("$.runCount").value(1))
+            .andExpect(jsonPath("$.itemCount").value(2))
+            .andExpect(jsonPath("$.runs[0].runId").value(runId))
+            .andReturn();
+        JsonNode reportJson = objectMapper.readTree(windowReport.getResponse().getContentAsString());
+        assertThat(reportJson.get("runs").get(0).get("items")).hasSize(2);
+
+        MvcResult windowReportCsv = mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/report.csv")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andReturn();
+        String csv = windowReportCsv.getResponse().getContentAsString();
+        assertThat(csv).contains("windowId,windowKey,runId,runType,runStatus,repo,iterationKey,finalResult,stepType,stepResult,stepStart,stepEnd,message");
+        assertThat(csv).contains(windowId, windowKey, runId);
+
+        String itemId = windowKey + "::" + repo1 + "::" + it1Key;
         MvcResult retry = mockMvc.perform(post("/api/v1/runs/" + runId + "/retry")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -146,5 +168,25 @@ class WindowRunApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").exists());
         return code;
+    }
+
+    private String createMockRepo(String token, String groupCode, String suffix) throws Exception {
+        String name = "UT-" + suffix + "-" + System.currentTimeMillis();
+        String req = "{" +
+                "\"name\":\"" + name + "\"," +
+                "\"cloneUrl\":\"https://git.example.com/" + name + ".git\"," +
+                "\"groupCode\":\"" + groupCode + "\"," +
+                "\"defaultBranch\":\"main\"," +
+                "\"gitProvider\":\"MOCK\"," +
+                "\"gitAccessToken\":\"mock-token\"" +
+                "}";
+        MvcResult result = mockMvc.perform(post("/api/v1/repositories")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(req))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").exists())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("data").get("id").asText();
     }
 }

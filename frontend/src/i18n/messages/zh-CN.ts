@@ -179,6 +179,9 @@ export default {
       hasConflict: '部分仓库存在冲突，请在 GitLab 中手动解决',
       hasFailed: '部分仓库合并失败，请检查错误信息'
     },
+    report: {
+      export: '导出报告'
+    },
     releasePlan: {
       title: '发布计划',
       empty: '暂无发布计划数据（窗口内无关联仓库）',

@@ -6,7 +6,17 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+
 public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
+    @Query("""
+            select distinct r from RunJpaEntity r
+            left join fetch r.items i
+            where i.windowKey = :windowKey
+            order by r.startedAt asc
+            """)
+    List<RunJpaEntity> findByWindowKey(@Param("windowKey") String windowKey);
+
     @Query(value = """
             select distinct r from RunJpaEntity r
             left join r.items i

@@ -179,6 +179,9 @@ export default {
       hasConflict: 'Some repositories have conflicts, please resolve in GitLab',
       hasFailed: 'Some repositories failed to merge, please check error messages'
     },
+    report: {
+      export: 'Export Report'
+    },
     releasePlan: {
       title: 'Release Plan',
       empty: 'No release plan data; this window has no associated repositories.',

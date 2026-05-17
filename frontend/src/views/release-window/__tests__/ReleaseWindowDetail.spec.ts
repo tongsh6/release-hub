@@ -5,6 +5,7 @@ import { releaseWindowApi } from '@/api/modules/releaseWindow'
 import { iterationApi } from '@/api/iterationApi'
 import { repositoryApi } from '@/api/repositoryApi'
 import { ElMessageBox } from 'element-plus'
+import { hasPerm } from '@/utils/perm'
 
 vi.mock('vue-i18n', () => ({
   createI18n: () => ({
@@ -74,6 +75,7 @@ const conflictPanelRefresh = vi.fn()
 
 const stubs = {
   ArrowLeft: true,
+  Download: true,
   ElButton: {
     template: '<button type="button" @click="$emit(\'click\')"><slot /></button>'
   },
@@ -130,6 +132,8 @@ const stubs = {
 }
 
 describe('ReleaseWindowDetail', () => {
+  const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
   beforeEach(() => {
     vi.mocked(releaseWindowApi.get).mockReset()
     vi.mocked(releaseWindowApi.listIterations).mockReset()
@@ -137,6 +141,8 @@ describe('ReleaseWindowDetail', () => {
     vi.mocked(iterationApi.resolveVersionConflict).mockReset()
     vi.mocked(repositoryApi.get).mockReset()
     vi.mocked(ElMessageBox.confirm).mockReset()
+    vi.mocked(hasPerm).mockReturnValue(true)
+    openSpy.mockClear()
     conflictPanelRefresh.mockReset()
 
     vi.mocked(releaseWindowApi.get).mockResolvedValue({
@@ -198,5 +204,20 @@ describe('ReleaseWindowDetail', () => {
 
     expect(iterationApi.resolveVersionConflict).toHaveBeenCalledWith('ITER-1', 'repo-1', 'USE_SYSTEM')
     expect(conflictPanelRefresh).toHaveBeenCalled()
+  })
+
+  it('exports the release window report as CSV from the detail page', async () => {
+    const wrapper = shallowMount(ReleaseWindowDetail, {
+      global: { stubs }
+    })
+    await flushPromises()
+    await flushPromises()
+
+    const exportButton = wrapper.findAll('button')
+      .find(button => button.text().includes('releaseWindow.report.export'))
+    expect(exportButton).toBeTruthy()
+    await exportButton!.trigger('click')
+
+    expect(openSpy).toHaveBeenCalledWith('/api/v1/release-windows/window-1/report.csv', '_blank')
   })
 })
