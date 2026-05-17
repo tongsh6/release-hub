@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 场景化验收证据脚本 v3.7
+# ReleaseHub 场景化验收证据脚本 v3.8
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
@@ -26,7 +26,7 @@
 #   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
 #   SA-008: 发布窗口创建、空窗口发布拒绝、windowKey
 #   SA-010: Attach 迭代、GitLab release 分支创建、runItems 细粒度断言
-#   SA-011: 冲突检测和分类统计
+#   SA-011: 冲突检测和分类统计、MERGE_CONFLICT 真实 GitLab 强证据
 #   SA-012: 冲突解决回路（USE_SYSTEM、feature 缺失、release 已存在、分支名不合规强证据）
 #   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS
 #   SA-014: 版本更新、校验、Git 远程提交验证
@@ -375,6 +375,43 @@ gitlab_create_branch() {
     encoded_ref=$(echo "$ref" | gitlab_encode)
     curl -s -o /dev/null -w "%{http_code}" -X POST -H "PRIVATE-TOKEN: $gl_token" \
         "$GITLAB/api/v4/projects/$encoded_path/repository/branches?branch=$encoded_branch&ref=$encoded_ref"
+}
+
+gitlab_commit_file() {
+    local clone_url=$1
+    local branch=$2
+    local file_path=$3
+    local content=$4
+    local message=$5
+    local gl_token="${GITLAB_PAT:-}"
+    if [ -z "$gl_token" ] || [ "$gl_token" = "null" ]; then
+        echo "MISSING_TOKEN"
+        return 1
+    fi
+
+    local project_path
+    project_path=$(gitlab_project_path_from_clone_url "$clone_url")
+    local encoded_path
+    encoded_path=$(echo "$project_path" | gitlab_encode)
+    local payload
+    payload=$(BRANCH="$branch" FILE_PATH="$file_path" CONTENT="$content" MESSAGE="$message" python3 -c '
+import json
+import os
+print(json.dumps({
+    "branch": os.environ["BRANCH"],
+    "commit_message": os.environ["MESSAGE"],
+    "actions": [{
+        "action": "update",
+        "file_path": os.environ["FILE_PATH"],
+        "content": os.environ["CONTENT"],
+    }],
+}))
+')
+    curl -s -o /dev/null -w "%{http_code}" -X POST \
+        -H "PRIVATE-TOKEN: $gl_token" \
+        -H "Content-Type: application/json" \
+        --data "$payload" \
+        "$GITLAB/api/v4/projects/$encoded_path/repository/commits"
 }
 
 auth() {
@@ -1247,6 +1284,117 @@ print('{}|{}'.format(len(matches), messages))
     fi
 else
     skip "跳过分支名不合规强证据（MOCK_MODE、缺 GitLab PAT 或缺迭代）"
+fi
+
+# ---- 5.6 合并冲突：后端 + GitLab 强证据 ----
+h2 "SA-011: 5.6 MERGE_CONFLICT 后端/GitLab 强证据"
+if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+    MERGE_TS=$(date -u +%Y%m%d-%H%M%S)
+    MERGE_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-合并冲突-$MERGE_TS\",\"description\":\"Merge conflict evidence $MERGE_TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+    MERGE_WINDOW_ID=$(echo "$MERGE_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))" 2>/dev/null)
+    MERGE_WINDOW_KEY=$(echo "$MERGE_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('windowKey', ''))" 2>/dev/null)
+    if [ -z "$MERGE_WINDOW_ID" ] || [ -z "$MERGE_WINDOW_KEY" ]; then
+        no "合并冲突证据窗口创建失败: $MERGE_WINDOW_RESP"
+    else
+        ok "合并冲突证据窗口创建: $MERGE_WINDOW_KEY"
+    fi
+
+    if [ -n "$MERGE_WINDOW_ID" ] && [ -n "$MERGE_WINDOW_KEY" ]; then
+        MERGE_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+        MERGE_FEATURE_BRANCH="feature/acceptance-merge-conflict-$MERGE_TS"
+        MERGE_RELEASE_BRANCH="release/$MERGE_WINDOW_KEY"
+        CREATE_MERGE_FEATURE=$(gitlab_create_branch "$MERGE_REPO_URL" "$MERGE_FEATURE_BRANCH" "main")
+        CREATE_MERGE_RELEASE=$(gitlab_create_branch "$MERGE_REPO_URL" "$MERGE_RELEASE_BRANCH" "main")
+        if [ "$CREATE_MERGE_FEATURE" = "201" ] || [ "$CREATE_MERGE_FEATURE" = "400" ]; then
+            ok "已预置 GitLab feature 分支: $MERGE_FEATURE_BRANCH (create=$CREATE_MERGE_FEATURE)"
+        else
+            no "预置 feature 分支失败: $CREATE_MERGE_FEATURE"
+        fi
+        if [ "$CREATE_MERGE_RELEASE" = "201" ] || [ "$CREATE_MERGE_RELEASE" = "400" ]; then
+            ok "已预置 GitLab release 分支: $MERGE_RELEASE_BRANCH (create=$CREATE_MERGE_RELEASE)"
+        else
+            no "预置 release 分支失败: $CREATE_MERGE_RELEASE"
+        fi
+
+        MERGE_FEATURE_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>merge-conflict</artifactId><version>1.2.0-feature-$MERGE_TS</version></project>"
+        MERGE_RELEASE_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>merge-conflict</artifactId><version>1.2.0-release-$MERGE_TS</version></project>"
+        COMMIT_MERGE_FEATURE=$(gitlab_commit_file "$MERGE_REPO_URL" "$MERGE_FEATURE_BRANCH" "pom.xml" "$MERGE_FEATURE_POM" "ReleaseHub acceptance: feature conflict $MERGE_TS")
+        COMMIT_MERGE_RELEASE=$(gitlab_commit_file "$MERGE_REPO_URL" "$MERGE_RELEASE_BRANCH" "pom.xml" "$MERGE_RELEASE_POM" "ReleaseHub acceptance: release conflict $MERGE_TS")
+        [ "$COMMIT_MERGE_FEATURE" = "201" ] && ok "GitLab feature 分支冲突提交已写入: pom.xml" || no "feature 分支冲突提交失败: $COMMIT_MERGE_FEATURE"
+        [ "$COMMIT_MERGE_RELEASE" = "201" ] && ok "GitLab release 分支冲突提交已写入: pom.xml" || no "release 分支冲突提交失败: $COMMIT_MERGE_RELEASE"
+
+        MERGE_FEATURE_STATE=$(gitlab_branch_state "$MERGE_REPO_URL" "$MERGE_FEATURE_BRANCH")
+        MERGE_RELEASE_STATE=$(gitlab_branch_state "$MERGE_REPO_URL" "$MERGE_RELEASE_BRANCH")
+        [ "$MERGE_FEATURE_STATE" = "FOUND" ] && ok "GitLab 直查确认 feature 冲突分支存在: $MERGE_FEATURE_BRANCH" || no "GitLab feature 冲突分支状态异常: $MERGE_FEATURE_STATE"
+        [ "$MERGE_RELEASE_STATE" = "FOUND" ] && ok "GitLab 直查确认 release 冲突分支存在: $MERGE_RELEASE_BRANCH" || no "GitLab release 冲突分支状态异常: $MERGE_RELEASE_STATE"
+
+        MERGE_RULE_SNAPSHOT=$(curl -s "$BACKEND/api/v1/branch-rules" -H "$AUTH")
+        MERGE_ENABLED_RULE_IDS=$(echo "$MERGE_RULE_SNAPSHOT" | python3 -c "
+import sys,json
+for rule in json.load(sys.stdin).get('data', []):
+    if rule.get('status') == 'ENABLED':
+        print(rule.get('id',''))
+" 2>/dev/null)
+        while IFS= read -r rule_id; do
+            [ -n "$rule_id" ] && curl -s -o /dev/null -X POST "$BACKEND/api/v1/branch-rules/$rule_id/disable" -H "$AUTH"
+        done <<< "$MERGE_ENABLED_RULE_IDS"
+
+        MERGE_ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"name\":\"验收-合并冲突-$MERGE_TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
+        MERGE_ITER_KEY=$(echo "$MERGE_ITER_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
+        if [ -z "$MERGE_ITER_KEY" ]; then
+            no "合并冲突证据迭代创建失败: $MERGE_ITER_RESP"
+        else
+            ok "合并冲突证据迭代创建: $MERGE_ITER_KEY"
+        fi
+
+        if [ -n "$MERGE_ITER_KEY" ]; then
+            MERGE_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$MERGE_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"repoIds\":[\"$R1\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"$MERGE_FEATURE_BRANCH\"}")
+            MERGE_ADD_OK=$(echo "$MERGE_ADD" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "False")
+            [ "$MERGE_ADD_OK" = "True" ] && ok "合并冲突迭代关联 EXISTING feature 分支成功" || no "合并冲突迭代关联失败: $MERGE_ADD"
+
+            MERGE_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$MERGE_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"iterationKeys\":[\"$MERGE_ITER_KEY\"]}")
+            MERGE_ATTACH_BLOCKED=$(echo "$MERGE_ATTACH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print(any(
+    'conflict' in (err.get('message','').lower())
+    for result in d.get('data', [])
+    for err in result.get('errors', [])
+))
+" 2>/dev/null || echo "False")
+            [ "$MERGE_ATTACH_BLOCKED" = "True" ] && ok "Attach 显式报告 MERGE_CONFLICT" || warn "Attach 未显式报告合并冲突，继续以冲突扫描复核"
+
+            MERGE_SCAN=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$MERGE_WINDOW_ID/conflicts/check" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
+            MERGE_CONFLICT_SUMMARY=$(echo "$MERGE_SCAN" | python3 -c "
+import sys,json
+d=json.load(sys.stdin).get('data', {})
+matches=[c for c in d.get('conflicts', []) if c.get('conflictType') == 'MERGE_CONFLICT']
+messages=' || '.join(c.get('message','') for c in matches)
+print('{}|{}'.format(len(matches), messages))
+" 2>/dev/null || echo "0|")
+            IFS='|' read -r MERGE_CONFLICT_COUNT MERGE_CONFLICT_MESSAGES <<< "$MERGE_CONFLICT_SUMMARY"
+            if [ "${MERGE_CONFLICT_COUNT:-0}" -gt 0 ] && {
+                echo "$MERGE_CONFLICT_MESSAGES" | grep -q "$MERGE_FEATURE_BRANCH" || \
+                echo "$MERGE_CONFLICT_MESSAGES" | grep -q "$MERGE_RELEASE_BRANCH"
+            }; then
+                ok "冲突扫描检出 MERGE_CONFLICT: count=$MERGE_CONFLICT_COUNT"
+            else
+                no "MERGE_CONFLICT 冲突证据异常: $MERGE_CONFLICT_SUMMARY"
+            fi
+        fi
+
+        while IFS= read -r rule_id; do
+            [ -n "$rule_id" ] && curl -s -o /dev/null -X POST "$BACKEND/api/v1/branch-rules/$rule_id/enable" -H "$AUTH"
+        done <<< "$MERGE_ENABLED_RULE_IDS"
+        ok "MERGE_CONFLICT 证据段 BranchRule 状态已复原"
+    fi
+else
+    skip "跳过 MERGE_CONFLICT 强证据（MOCK_MODE 或缺 GitLab PAT）"
 fi
 
 # ---- 6. 场景: Publish + Auto-Orchestration ----
