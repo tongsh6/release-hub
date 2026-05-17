@@ -4,7 +4,7 @@
  */
 import { PactV3, MatchersV3 } from '@pact-foundation/pact'
 
-const { like, string } = MatchersV3
+const { string } = MatchersV3
 
 const provider = new PactV3({
   consumer: 'releasehub-frontend',

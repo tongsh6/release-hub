@@ -6,7 +6,7 @@
       </template>
     </el-page-header>
 
-    <div class="content-area" v-loading="loading">
+    <div v-loading="loading" class="content-area">
       <el-descriptions v-if="detail" :column="2" border>
         <el-descriptions-item label="Run ID">{{ detail.runId }}</el-descriptions-item>
         <el-descriptions-item :label="t('versionOps.status')">
@@ -38,7 +38,7 @@
 
       <div class="logs-area">
         <h3>Logs</h3>
-        <div class="logs-content" v-if="logs.length">
+        <div v-if="logs.length" class="logs-content">
           <p v-for="(line, i) in logs" :key="i" :class="{ 'log-error': line.includes('[ERROR]') }">
             {{ line }}
           </p>
