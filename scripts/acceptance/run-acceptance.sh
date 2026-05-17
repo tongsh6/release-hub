@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 场景化验收证据脚本 v3.8
+# ReleaseHub 场景化验收证据脚本 v3.9
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
@@ -26,7 +26,7 @@
 #   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
 #   SA-008: 发布窗口创建、空窗口发布拒绝、windowKey
 #   SA-010: Attach 迭代、GitLab release 分支创建、runItems 细粒度断言
-#   SA-011: 冲突检测和分类统计、MERGE_CONFLICT 真实 GitLab 强证据
+#   SA-011: 冲突检测和分类统计、MERGE_CONFLICT / CROSS_REPO_VERSION_MISMATCH 真实 GitLab 强证据
 #   SA-012: 冲突解决回路（USE_SYSTEM、feature 缺失、release 已存在、分支名不合规强证据）
 #   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS
 #   SA-014: 版本更新、校验、Git 远程提交验证
@@ -1395,6 +1395,137 @@ print('{}|{}'.format(len(matches), messages))
     fi
 else
     skip "跳过 MERGE_CONFLICT 强证据（MOCK_MODE 或缺 GitLab PAT）"
+fi
+
+# ---- 5.7 跨仓库目标版本不一致：后端 + GitLab 强证据 ----
+h2 "SA-011: 5.7 CROSS_REPO_VERSION_MISMATCH 后端/GitLab 强证据"
+if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+    CROSS_TS=$(date -u +%Y%m%d-%H%M%S)
+    CROSS_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-跨仓版本-$CROSS_TS\",\"description\":\"Cross repo version mismatch evidence $CROSS_TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+    CROSS_WINDOW_ID=$(echo "$CROSS_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))" 2>/dev/null)
+    CROSS_WINDOW_KEY=$(echo "$CROSS_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('windowKey', ''))" 2>/dev/null)
+    if [ -z "$CROSS_WINDOW_ID" ] || [ -z "$CROSS_WINDOW_KEY" ]; then
+        no "跨仓版本证据窗口创建失败: $CROSS_WINDOW_RESP"
+    else
+        ok "跨仓版本证据窗口创建: $CROSS_WINDOW_KEY"
+    fi
+
+    if [ -n "$CROSS_WINDOW_ID" ] && [ -n "$CROSS_WINDOW_KEY" ]; then
+        CROSS_R1_ORIGINAL=$(curl -s "$BACKEND/api/v1/repositories/$R1/initial-version" -H "$AUTH" \
+            | python3 -c "import sys,json; v=json.load(sys.stdin).get('data',{}).get('version'); print(v or '')" 2>/dev/null)
+        CROSS_R2_ORIGINAL=$(curl -s "$BACKEND/api/v1/repositories/$R2/initial-version" -H "$AUTH" \
+            | python3 -c "import sys,json; v=json.load(sys.stdin).get('data',{}).get('version'); print(v or '')" 2>/dev/null)
+
+        CROSS_SET_R1=$(curl -s -X PUT "$BACKEND/api/v1/repositories/$R1/initial-version" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"version\":\"2.0.0\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        CROSS_SET_R2=$(curl -s -X PUT "$BACKEND/api/v1/repositories/$R2/initial-version" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"version\":\"3.0.0\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        if [ "$CROSS_SET_R1" = "True" ] && [ "$CROSS_SET_R2" = "True" ]; then
+            ok "已临时设置两仓库初始版本: $R1=2.0.0 $R2=3.0.0"
+        else
+            no "临时设置初始版本失败: R1=$CROSS_SET_R1 R2=$CROSS_SET_R2"
+        fi
+
+        CROSS_ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"name\":\"验收-跨仓版本-$CROSS_TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[\"$R1\",\"$R2\"]}")
+        CROSS_ITER_KEY=$(echo "$CROSS_ITER_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
+        if [ -z "$CROSS_ITER_KEY" ]; then
+            no "跨仓版本证据迭代创建失败: $CROSS_ITER_RESP"
+        else
+            ok "跨仓版本证据迭代创建: $CROSS_ITER_KEY"
+        fi
+
+        if [ -n "$CROSS_R1_ORIGINAL" ]; then
+            CROSS_RESTORE_R1=$(curl -s -X PUT "$BACKEND/api/v1/repositories/$R1/initial-version" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"version\":\"$CROSS_R1_ORIGINAL\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        else
+            CROSS_RESTORE_R1=$(curl -s -X POST "$BACKEND/api/v1/repositories/$R1/sync-version" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        fi
+        if [ -n "$CROSS_R2_ORIGINAL" ]; then
+            CROSS_RESTORE_R2=$(curl -s -X PUT "$BACKEND/api/v1/repositories/$R2/initial-version" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"version\":\"$CROSS_R2_ORIGINAL\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        else
+            CROSS_RESTORE_R2=$(curl -s -X POST "$BACKEND/api/v1/repositories/$R2/sync-version" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        fi
+        if [ "$CROSS_RESTORE_R1" = "True" ] && [ "$CROSS_RESTORE_R2" = "True" ]; then
+            ok "仓库初始版本已复原或重新同步"
+        else
+            no "仓库初始版本复原异常: R1=$CROSS_RESTORE_R1 R2=$CROSS_RESTORE_R2"
+        fi
+
+        if [ -n "$CROSS_ITER_KEY" ]; then
+            CROSS_VINFO_R1=$(curl -s "$BACKEND/api/v1/iterations/$CROSS_ITER_KEY/repos/$R1/version-info" -H "$AUTH")
+            CROSS_VINFO_R2=$(curl -s "$BACKEND/api/v1/iterations/$CROSS_ITER_KEY/repos/$R2/version-info" -H "$AUTH")
+            CROSS_VERSION_SUMMARY=$(V1="$CROSS_VINFO_R1" V2="$CROSS_VINFO_R2" python3 -c '
+import json
+import os
+r1 = json.loads(os.environ["V1"]).get("data", {})
+r2 = json.loads(os.environ["V2"]).get("data", {})
+print("{}|{}|{}|{}".format(
+    r1.get("featureBranch", ""),
+    r1.get("targetVersion", ""),
+    r2.get("featureBranch", ""),
+    r2.get("targetVersion", ""),
+))
+' 2>/dev/null || echo "|||")
+            IFS='|' read -r CROSS_R1_FEATURE CROSS_R1_TARGET CROSS_R2_FEATURE CROSS_R2_TARGET <<< "$CROSS_VERSION_SUMMARY"
+            if [ -n "$CROSS_R1_TARGET" ] && [ -n "$CROSS_R2_TARGET" ] && [ "$CROSS_R1_TARGET" != "$CROSS_R2_TARGET" ]; then
+                ok "version-info 确认跨仓目标版本不一致: $R1=$CROSS_R1_TARGET $R2=$CROSS_R2_TARGET"
+            else
+                no "version-info 跨仓目标版本证据异常: $CROSS_VERSION_SUMMARY"
+            fi
+
+            CROSS_REPO_URL_1=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+            CROSS_REPO_URL_2=$(curl -s "$BACKEND/api/v1/repositories/$R2" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+            CROSS_R1_FEATURE_STATE=$(gitlab_branch_state "$CROSS_REPO_URL_1" "$CROSS_R1_FEATURE")
+            CROSS_R2_FEATURE_STATE=$(gitlab_branch_state "$CROSS_REPO_URL_2" "$CROSS_R2_FEATURE")
+            [ "$CROSS_R1_FEATURE_STATE" = "FOUND" ] && ok "GitLab 直查确认 R1 feature 分支存在: $CROSS_R1_FEATURE" || no "R1 feature 分支状态异常: $CROSS_R1_FEATURE_STATE"
+            [ "$CROSS_R2_FEATURE_STATE" = "FOUND" ] && ok "GitLab 直查确认 R2 feature 分支存在: $CROSS_R2_FEATURE" || no "R2 feature 分支状态异常: $CROSS_R2_FEATURE_STATE"
+
+            CROSS_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$CROSS_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"iterationKeys\":[\"$CROSS_ITER_KEY\"]}")
+            CROSS_ATTACH_OK=$(echo "$CROSS_ATTACH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print(bool(d.get('success', False)) and not any(r.get('hasErrors', False) for r in d.get('data', [])))
+" 2>/dev/null || echo "False")
+            [ "$CROSS_ATTACH_OK" = "True" ] && ok "跨仓版本证据窗口 Attach 成功" || warn "跨仓版本证据窗口 Attach 返回异常: $CROSS_ATTACH"
+
+            CROSS_RELEASE_BRANCH="release/$CROSS_WINDOW_KEY"
+            CROSS_R1_RELEASE_STATE=$(gitlab_branch_state "$CROSS_REPO_URL_1" "$CROSS_RELEASE_BRANCH")
+            CROSS_R2_RELEASE_STATE=$(gitlab_branch_state "$CROSS_REPO_URL_2" "$CROSS_RELEASE_BRANCH")
+            [ "$CROSS_R1_RELEASE_STATE" = "FOUND" ] && ok "GitLab 直查确认 R1 release 分支存在: $CROSS_RELEASE_BRANCH" || warn "R1 release 分支状态: $CROSS_R1_RELEASE_STATE"
+            [ "$CROSS_R2_RELEASE_STATE" = "FOUND" ] && ok "GitLab 直查确认 R2 release 分支存在: $CROSS_RELEASE_BRANCH" || warn "R2 release 分支状态: $CROSS_R2_RELEASE_STATE"
+
+            CROSS_SCAN=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$CROSS_WINDOW_ID/conflicts/check" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
+            CROSS_CONFLICT_SUMMARY=$(echo "$CROSS_SCAN" | python3 -c "
+import sys,json
+d=json.load(sys.stdin).get('data', {})
+matches=[c for c in d.get('conflicts', []) if c.get('conflictType') == 'CROSS_REPO_VERSION_MISMATCH']
+messages=' || '.join(c.get('message','') for c in matches)
+systems=','.join(c.get('systemVersion','') for c in matches)
+repos=','.join(c.get('repoVersion','') for c in matches)
+print('{}|{}|{}|{}'.format(len(matches), systems, repos, messages))
+" 2>/dev/null || echo "0|||")
+            IFS='|' read -r CROSS_CONFLICT_COUNT CROSS_SYSTEM_VERSIONS CROSS_REPO_VERSIONS CROSS_CONFLICT_MESSAGES <<< "$CROSS_CONFLICT_SUMMARY"
+            if [ "${CROSS_CONFLICT_COUNT:-0}" -gt 0 ] && {
+                echo "$CROSS_CONFLICT_MESSAGES" | grep -q "$CROSS_R1_TARGET" || \
+                echo "$CROSS_CONFLICT_MESSAGES" | grep -q "$CROSS_R2_TARGET" || \
+                echo "$CROSS_SYSTEM_VERSIONS,$CROSS_REPO_VERSIONS" | grep -q "$CROSS_R1_TARGET"
+            }; then
+                ok "冲突扫描检出 CROSS_REPO_VERSION_MISMATCH: count=$CROSS_CONFLICT_COUNT"
+            else
+                no "CROSS_REPO_VERSION_MISMATCH 冲突证据异常: $CROSS_CONFLICT_SUMMARY"
+            fi
+        fi
+    fi
+else
+    skip "跳过 CROSS_REPO_VERSION_MISMATCH 强证据（MOCK_MODE 或缺 GitLab PAT）"
 fi
 
 # ---- 6. 场景: Publish + Auto-Orchestration ----
