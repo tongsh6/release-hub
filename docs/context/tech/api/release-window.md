@@ -62,6 +62,13 @@
 - **URL**: `GET /api/v1/release-windows`
 - **Response**: `List<ReleaseWindowView>`
 
+### 9. 导出发布窗口报告 (Export Report)
+- **URL**: `GET /api/v1/release-windows/{id}/report.json`
+- **Response**: `ReleaseWindowReportView`，包含窗口基本信息、Run、RunItem、RunStep 和结果分布。
+
+- **URL**: `GET /api/v1/release-windows/{id}/report.csv`
+- **Response**: CSV，列为 `windowId,windowKey,runId,runType,runStatus,repo,iterationKey,finalResult,stepType,stepResult,stepStart,stepEnd,message`。
+
 ## ReleaseWindowView 结构
 ```json
 {
