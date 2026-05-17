@@ -208,6 +208,8 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'run.filters.group',
       'run.filters.windowKey',
       'run.filters.status',
+      'run.task.status.COMPLETED',
+      'run.task.status.FAILED',
       'orchestration.executeFinish',
       'conflict.rescan',
       'conflict.resolveVersion',
@@ -847,6 +849,233 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await expect(conflictPanel).toContainText('Align repository versions across the release scope, then rescan.')
     await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toHaveCount(0)
     expect(resolveCalled).toBe(false)
+  })
+
+  test('SA-015: Tester can review conflict evidence from release window detail', async ({ page }) => {
+    await ensureLoggedIn(page)
+    expect(windowDetailUrl).toContain('/release-windows/')
+    expect(createdRepoId).toBeTruthy()
+    expect(windowKey).toContain('RW-')
+
+    const sourceBranch = `feature/${iterationKey}`
+    const targetBranch = `release/${windowKey}`
+    const badFeatureBranch = `topic/${iterationKey}`
+    let resolveCalled = false
+    const reviewReport = {
+      windowId: 'ui-journey-window',
+      checkedAt: new Date().toISOString(),
+      hasConflicts: true,
+      totalCount: 3,
+      conflicts: [
+        {
+          repoId: createdRepoId,
+          repoName,
+          iterationKey,
+          conflictType: 'MERGE_CONFLICT',
+          sourceBranch,
+          targetBranch,
+          message: `Merge conflict between ${sourceBranch} and ${targetBranch}`,
+          suggestion: 'Resolve the merge conflict in the Git platform, then rescan.'
+        },
+        {
+          repoId: createdRepoId,
+          repoName,
+          iterationKey,
+          conflictType: 'BRANCH_NONCOMPLIANT',
+          sourceBranch: badFeatureBranch,
+          targetBranch,
+          message: `Branch name '${badFeatureBranch}' does not comply with branch rules`,
+          suggestion: 'Rename the branch to comply with BranchRule'
+        },
+        {
+          repoId: createdRepoId,
+          repoName,
+          iterationKey,
+          conflictType: 'CROSS_REPO_VERSION_MISMATCH',
+          systemVersion: '1.4.0',
+          repoVersion: '2.0.0',
+          message: 'Cross-repository version baseline mismatch',
+          suggestion: 'Align repository versions across the release scope, then rescan.'
+        }
+      ]
+    }
+
+    await page.route('**/api/v1/release-windows/*/conflicts', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: reviewReport })
+      })
+    })
+    await page.route('**/api/v1/iterations/*/repos/*/resolve-conflict', async (route) => {
+      resolveCalled = true
+      await route.abort()
+    })
+
+    await page.goto(windowDetailUrl)
+    const conflictPanel = page.locator('.conflict-panel')
+    await expect(conflictPanel.locator('.el-radio-button')
+      .filter({ hasText: `${L['conflict.types.MERGE_CONFLICT']} (1)` })).toBeVisible()
+    await expect(conflictPanel.locator('.el-radio-button')
+      .filter({ hasText: `${L['conflict.types.BRANCH_NONCOMPLIANT']} (1)` })).toBeVisible()
+    await expect(conflictPanel.locator('.el-radio-button')
+      .filter({ hasText: `${L['conflict.types.CROSS_REPO_VERSION_MISMATCH']} (1)` })).toBeVisible()
+
+    await selectConflictType(conflictPanel, 'MERGE_CONFLICT')
+    await expect(conflictPanel).toContainText(`${sourceBranch} → ${targetBranch}`)
+    await expect(conflictPanel).toContainText('Resolve the merge conflict in the Git platform, then rescan.')
+    await expect(conflictPanel.getByText(L['conflict.resolveInGit'])).toBeVisible()
+
+    await selectConflictType(conflictPanel, 'BRANCH_NONCOMPLIANT')
+    await expect(conflictPanel).toContainText(badFeatureBranch)
+    await expect(conflictPanel).toContainText('Rename the branch to comply with BranchRule')
+    await expect(conflictPanel.getByText(L['conflict.resolveBranch'])).toBeVisible()
+
+    await selectConflictType(conflictPanel, 'CROSS_REPO_VERSION_MISMATCH')
+    await expect(conflictPanel).toContainText('1.4.0 ≠ 2.0.0')
+    await expect(conflictPanel).toContainText('Align repository versions across the release scope, then rescan.')
+    await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toHaveCount(0)
+    expect(resolveCalled).toBe(false)
+  })
+
+  test('SA-015: Tester can review a partial failure run with mixed item results', async ({ page }) => {
+    await ensureLoggedIn(page)
+    expect(windowKey).toContain('RW-')
+
+    const partialRunId = `run-partial-${suffix}`
+    const successfulRepoId = `${createdRepoId}-ok`
+    const failedRepoId = `${createdRepoId}-failed`
+    const startAt = Date.now()
+    const endAt = startAt + 3000
+    const partialRunDetail = {
+      runId: partialRunId,
+      runType: 'WINDOW_ORCHESTRATION',
+      startedAt: startAt,
+      finishedAt: endAt,
+      items: [
+        {
+          windowKey,
+          repo: successfulRepoId,
+          iterationKey,
+          plannedOrder: 1,
+          executedOrder: 1,
+          finalResult: 'SUCCESS',
+          steps: [
+            {
+              actionType: 'TRY_MERGE',
+              result: 'SUCCESS',
+              startAt,
+              endAt: startAt + 1000,
+              message: 'Merged successfully'
+            }
+          ]
+        },
+        {
+          windowKey,
+          repo: failedRepoId,
+          iterationKey,
+          plannedOrder: 2,
+          executedOrder: 2,
+          finalResult: 'MERGE_BLOCKED',
+          steps: [
+            {
+              actionType: 'TRY_MERGE',
+              result: 'MERGE_BLOCKED',
+              startAt: startAt + 1000,
+              endAt,
+              message: 'Merge blocked by conflict in pom.xml'
+            }
+          ]
+        }
+      ]
+    }
+
+    await page.route('**/api/v1/runs/paged**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'OK',
+          message: 'OK',
+          data: [{
+            id: partialRunId,
+            runType: 'WINDOW_ORCHESTRATION',
+            status: 'FAILED',
+            startedAt: new Date(startAt).toISOString(),
+            finishedAt: new Date(endAt).toISOString(),
+            operator: 'qa'
+          }],
+          page: { page: 1, size: 20, total: 1 }
+        })
+      })
+    })
+    await page.route(`**/api/v1/runs/${partialRunId}/export.json`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(partialRunDetail)
+      })
+    })
+    await page.route(`**/api/v1/runs/${partialRunId}/tasks`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'OK',
+          message: 'OK',
+          data: [
+            {
+              id: `${partialRunId}-task-ok`,
+              runId: partialRunId,
+              taskType: 'MERGE_TO_RELEASE',
+              taskOrder: 1,
+              targetType: 'REPOSITORY',
+              targetId: successfulRepoId,
+              status: 'COMPLETED',
+              retryCount: 0,
+              maxRetries: 3,
+              createdAt: new Date(startAt).toISOString()
+            },
+            {
+              id: `${partialRunId}-task-failed`,
+              runId: partialRunId,
+              taskType: 'MERGE_TO_RELEASE',
+              taskOrder: 2,
+              targetType: 'REPOSITORY',
+              targetId: failedRepoId,
+              status: 'FAILED',
+              retryCount: 1,
+              maxRetries: 3,
+              errorMessage: 'Merge blocked by conflict in pom.xml',
+              createdAt: new Date(startAt).toISOString()
+            }
+          ]
+        })
+      })
+    })
+
+    await page.goto('/runs')
+    await page.getByRole('textbox', { name: L['run.filters.windowKey'] }).fill(windowKey)
+    await page.locator('button').filter({ hasText: L['common.search'] }).click(FORCE)
+    const partialRunRow = page.locator('.el-table__body tr').filter({ hasText: partialRunId }).last()
+    await expect(partialRunRow).toBeVisible({ timeout: 10000 })
+    await expect(partialRunRow).toContainText('FAILED')
+
+    await page.goto(`/runs/${partialRunId}`)
+    await expect(page.locator('.page-title')).toContainText(partialRunId, { timeout: 10000 })
+    await expect(page.locator('.el-card').first()).toContainText('FAILED')
+    const taskTable = page.locator('.el-table').filter({ hasText: 'MERGE_TO_RELEASE' }).first()
+    await expect(taskTable).toContainText(L['run.task.status.COMPLETED'])
+    await expect(taskTable).toContainText(L['run.task.status.FAILED'])
+    await expect(taskTable).toContainText(failedRepoId)
+    await expect(taskTable).toContainText('1 / 3')
+    await expect(taskTable).toContainText('Merge blocked by conflict in pom.xml')
+
+    const itemTable = page.locator('.el-table').filter({ hasText: 'MERGE_BLOCKED' }).last()
+    await expect(itemTable).toContainText(successfulRepoId)
+    await expect(itemTable).toContainText(failedRepoId)
+    await expect(itemTable).toContainText('SUCCESS')
+    await expect(itemTable).toContainText('MERGE_BLOCKED')
   })
 
   test('SA-014 frontend path submits version update for the UI-created release window repo', async ({ page }) => {
