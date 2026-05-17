@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 场景化验收证据脚本 v3.9
+# ReleaseHub 场景化验收证据脚本 v3.10
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
@@ -30,7 +30,7 @@
 #   SA-012: 冲突解决回路（USE_SYSTEM、feature 缺失、release 已存在、分支名不合规强证据）
 #   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS
 #   SA-014: 版本更新、校验、Git 远程提交验证
-#   SA-015: Run 执行详情（RunItem/RunStep）
+#   SA-015: Run 执行详情（RunItem/RunStep）、真实部分失败重试
 #   SA-016: 窗口关闭、关闭后关键操作禁止、收尾 Run 可见
 #
 # 原则:
@@ -1526,6 +1526,182 @@ print('{}|{}|{}|{}'.format(len(matches), systems, repos, messages))
     fi
 else
     skip "跳过 CROSS_REPO_VERSION_MISMATCH 强证据（MOCK_MODE 或缺 GitLab PAT）"
+fi
+
+# ---- 5.8 部分失败重试：后端 + GitLab 强证据 ----
+h2 "SA-015/SA-016: 5.8 真实部分失败重试后端/GitLab 强证据"
+if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+    PARTIAL_TS=$(date -u +%Y%m%d-%H%M%S)
+    PARTIAL_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-部分失败重试-$PARTIAL_TS\",\"description\":\"Partial retry evidence $PARTIAL_TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+    PARTIAL_WINDOW_ID=$(echo "$PARTIAL_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))" 2>/dev/null)
+    PARTIAL_WINDOW_KEY=$(echo "$PARTIAL_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('windowKey', ''))" 2>/dev/null)
+    if [ -z "$PARTIAL_WINDOW_ID" ] || [ -z "$PARTIAL_WINDOW_KEY" ]; then
+        no "部分失败重试证据窗口创建失败: $PARTIAL_WINDOW_RESP"
+    else
+        ok "部分失败重试证据窗口创建: $PARTIAL_WINDOW_KEY"
+    fi
+
+    if [ -n "$PARTIAL_WINDOW_ID" ] && [ -n "$PARTIAL_WINDOW_KEY" ]; then
+        PARTIAL_REPO_OK_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+        PARTIAL_REPO_BLOCKED_URL=$(curl -s "$BACKEND/api/v1/repositories/$R2" -H "$AUTH" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+        PARTIAL_OK_FEATURE="feature/acceptance-partial-ok-$PARTIAL_TS"
+        PARTIAL_BLOCKED_FEATURE="feature/acceptance-partial-conflict-$PARTIAL_TS"
+        PARTIAL_RELEASE_BRANCH="release/$PARTIAL_WINDOW_KEY"
+
+        CREATE_PARTIAL_OK=$(gitlab_create_branch "$PARTIAL_REPO_OK_URL" "$PARTIAL_OK_FEATURE" "main")
+        CREATE_PARTIAL_BLOCKED_FEATURE=$(gitlab_create_branch "$PARTIAL_REPO_BLOCKED_URL" "$PARTIAL_BLOCKED_FEATURE" "main")
+        CREATE_PARTIAL_BLOCKED_RELEASE=$(gitlab_create_branch "$PARTIAL_REPO_BLOCKED_URL" "$PARTIAL_RELEASE_BRANCH" "main")
+        if [ "$CREATE_PARTIAL_OK" = "201" ] || [ "$CREATE_PARTIAL_OK" = "400" ]; then
+            ok "已预置部分成功仓库 feature 分支: $PARTIAL_OK_FEATURE (create=$CREATE_PARTIAL_OK)"
+        else
+            no "预置部分成功仓库 feature 分支失败: $CREATE_PARTIAL_OK"
+        fi
+        if [ "$CREATE_PARTIAL_BLOCKED_FEATURE" = "201" ] || [ "$CREATE_PARTIAL_BLOCKED_FEATURE" = "400" ]; then
+            ok "已预置部分失败仓库 feature 分支: $PARTIAL_BLOCKED_FEATURE (create=$CREATE_PARTIAL_BLOCKED_FEATURE)"
+        else
+            no "预置部分失败仓库 feature 分支失败: $CREATE_PARTIAL_BLOCKED_FEATURE"
+        fi
+        if [ "$CREATE_PARTIAL_BLOCKED_RELEASE" = "201" ] || [ "$CREATE_PARTIAL_BLOCKED_RELEASE" = "400" ]; then
+            ok "已预置部分失败仓库 release 分支: $PARTIAL_RELEASE_BRANCH (create=$CREATE_PARTIAL_BLOCKED_RELEASE)"
+        else
+            no "预置部分失败仓库 release 分支失败: $CREATE_PARTIAL_BLOCKED_RELEASE"
+        fi
+
+        PARTIAL_OK_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>partial-ok</artifactId><version>1.0.0-ok-$PARTIAL_TS</version></project>"
+        PARTIAL_BLOCKED_FEATURE_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>partial-blocked</artifactId><version>1.0.0-feature-$PARTIAL_TS</version></project>"
+        PARTIAL_BLOCKED_RELEASE_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>partial-blocked</artifactId><version>1.0.0-release-$PARTIAL_TS</version></project>"
+        COMMIT_PARTIAL_OK=$(gitlab_commit_file "$PARTIAL_REPO_OK_URL" "$PARTIAL_OK_FEATURE" "pom.xml" "$PARTIAL_OK_POM" "ReleaseHub acceptance: partial retry ok $PARTIAL_TS")
+        COMMIT_PARTIAL_BLOCKED_FEATURE=$(gitlab_commit_file "$PARTIAL_REPO_BLOCKED_URL" "$PARTIAL_BLOCKED_FEATURE" "pom.xml" "$PARTIAL_BLOCKED_FEATURE_POM" "ReleaseHub acceptance: partial retry feature conflict $PARTIAL_TS")
+        COMMIT_PARTIAL_BLOCKED_RELEASE=$(gitlab_commit_file "$PARTIAL_REPO_BLOCKED_URL" "$PARTIAL_RELEASE_BRANCH" "pom.xml" "$PARTIAL_BLOCKED_RELEASE_POM" "ReleaseHub acceptance: partial retry release conflict $PARTIAL_TS")
+        [ "$COMMIT_PARTIAL_OK" = "201" ] && ok "部分成功仓库 feature 提交已写入" || no "部分成功仓库 feature 提交失败: $COMMIT_PARTIAL_OK"
+        [ "$COMMIT_PARTIAL_BLOCKED_FEATURE" = "201" ] && ok "部分失败仓库 feature 冲突提交已写入" || no "部分失败仓库 feature 冲突提交失败: $COMMIT_PARTIAL_BLOCKED_FEATURE"
+        [ "$COMMIT_PARTIAL_BLOCKED_RELEASE" = "201" ] && ok "部分失败仓库 release 冲突提交已写入" || no "部分失败仓库 release 冲突提交失败: $COMMIT_PARTIAL_BLOCKED_RELEASE"
+
+        PARTIAL_RULE_SNAPSHOT=$(curl -s "$BACKEND/api/v1/branch-rules" -H "$AUTH")
+        PARTIAL_ENABLED_RULE_IDS=$(echo "$PARTIAL_RULE_SNAPSHOT" | python3 -c "
+import sys,json
+for rule in json.load(sys.stdin).get('data', []):
+    if rule.get('status') == 'ENABLED':
+        print(rule.get('id',''))
+" 2>/dev/null)
+        while IFS= read -r rule_id; do
+            [ -n "$rule_id" ] && curl -s -o /dev/null -X POST "$BACKEND/api/v1/branch-rules/$rule_id/disable" -H "$AUTH"
+        done <<< "$PARTIAL_ENABLED_RULE_IDS"
+
+        PARTIAL_ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"name\":\"验收-部分失败重试-$PARTIAL_TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
+        PARTIAL_ITER_KEY=$(echo "$PARTIAL_ITER_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
+        if [ -z "$PARTIAL_ITER_KEY" ]; then
+            no "部分失败重试证据迭代创建失败: $PARTIAL_ITER_RESP"
+        else
+            ok "部分失败重试证据迭代创建: $PARTIAL_ITER_KEY"
+        fi
+
+        if [ -n "$PARTIAL_ITER_KEY" ]; then
+            PARTIAL_ADD_OK=$(curl -s -X POST "$BACKEND/api/v1/iterations/$PARTIAL_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"repoIds\":[\"$R1\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"$PARTIAL_OK_FEATURE\"}")
+            PARTIAL_ADD_BLOCKED=$(curl -s -X POST "$BACKEND/api/v1/iterations/$PARTIAL_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"repoIds\":[\"$R2\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"$PARTIAL_BLOCKED_FEATURE\"}")
+            PARTIAL_ADD_OK_SUCCESS=$(echo "$PARTIAL_ADD_OK" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "False")
+            PARTIAL_ADD_BLOCKED_SUCCESS=$(echo "$PARTIAL_ADD_BLOCKED" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "False")
+            [ "$PARTIAL_ADD_OK_SUCCESS" = "True" ] && [ "$PARTIAL_ADD_BLOCKED_SUCCESS" = "True" ] \
+                && ok "部分失败重试迭代已关联一个成功仓库和一个冲突仓库" \
+                || no "部分失败重试迭代关联失败: ok=$PARTIAL_ADD_OK_SUCCESS blocked=$PARTIAL_ADD_BLOCKED_SUCCESS"
+
+            PARTIAL_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$PARTIAL_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"iterationKeys\":[\"$PARTIAL_ITER_KEY\"]}")
+            PARTIAL_ATTACH_HAS_ERRORS=$(echo "$PARTIAL_ATTACH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print(any(r.get('hasErrors', False) for r in d.get('data', [])))
+" 2>/dev/null || echo "False")
+            if [ "$PARTIAL_ATTACH_HAS_ERRORS" = "True" ]; then
+                ok "Attach 响应报告部分失败（继续保留成功项）"
+            else
+                info "Attach 响应无 errors 字段失败；部分失败以 RunItem 复核"
+            fi
+
+            PARTIAL_ATTACH_RUN=$(curl -s "$BACKEND/api/v1/runs" -H "$AUTH" | python3 -c "
+import sys,json
+window_key='''$PARTIAL_WINDOW_KEY'''
+iteration_key='''$PARTIAL_ITER_KEY'''
+ok_repo='''$R1'''
+blocked_repo='''$R2'''
+runs=json.load(sys.stdin).get('data', [])
+for r in reversed(runs):
+    if r.get('runType') != 'ATTACH_ITERATION':
+        continue
+    items=[
+        item for item in r.get('items', [])
+        if item.get('windowKey') == window_key and item.get('iterationKey') == iteration_key
+    ]
+    if not items:
+        continue
+    ok_items=[item for item in items if item.get('repoId') == ok_repo and item.get('finalResult') == 'MERGED']
+    blocked_items=[item for item in items if item.get('repoId') == blocked_repo and item.get('finalResult') == 'MERGE_BLOCKED']
+    if ok_items and blocked_items:
+        key='{}::{}::{}'.format(window_key, blocked_repo, iteration_key)
+        print('{}|{}|{}|{}'.format(r.get('id',''), len(items), len(ok_items), key))
+        raise SystemExit
+print('MISSING_RUN|0|0|')
+" 2>/dev/null || echo "MISSING_RUN|0|0|")
+            IFS='|' read -r PARTIAL_ATTACH_RUN_ID PARTIAL_ATTACH_ITEM_COUNT PARTIAL_ATTACH_OK_COUNT PARTIAL_RETRY_KEY <<< "$PARTIAL_ATTACH_RUN"
+            if [ "$PARTIAL_ATTACH_RUN_ID" != "MISSING_RUN" ] && [ -n "$PARTIAL_RETRY_KEY" ]; then
+                ok "Attach Run 同时包含成功项和 MERGE_BLOCKED 项: run=$PARTIAL_ATTACH_RUN_ID items=$PARTIAL_ATTACH_ITEM_COUNT"
+            else
+                no "Attach 部分失败 Run 证据异常: $PARTIAL_ATTACH_RUN"
+            fi
+
+            if [ "$PARTIAL_ATTACH_RUN_ID" != "MISSING_RUN" ] && [ -n "$PARTIAL_RETRY_KEY" ]; then
+                PARTIAL_RETRY_RESP=$(curl -s -X POST "$BACKEND/api/v1/runs/$PARTIAL_ATTACH_RUN_ID/retry" -H "$AUTH" -H "Content-Type: application/json" \
+                    -d "{\"items\":[\"$PARTIAL_RETRY_KEY\"],\"operator\":\"acceptance-partial-retry-$PARTIAL_TS\"}")
+                PARTIAL_RETRY_RUN_ID=$(echo "$PARTIAL_RETRY_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',''))" 2>/dev/null)
+                if [ -n "$PARTIAL_RETRY_RUN_ID" ]; then
+                    ok "Run retry 已创建新 Run: $PARTIAL_RETRY_RUN_ID"
+                    PARTIAL_RETRY_FINAL=$(wait_for_run "$PARTIAL_RETRY_RUN_ID" 60)
+                    PARTIAL_RETRY_DETAIL=$(curl -s "$BACKEND/api/v1/runs/$PARTIAL_RETRY_RUN_ID" -H "$AUTH")
+                    PARTIAL_RETRY_SUMMARY=$(echo "$PARTIAL_RETRY_DETAIL" | python3 -c "
+import sys,json
+d=json.load(sys.stdin).get('data', {})
+items=d.get('items', [])
+blocked_repo='''$R2'''
+ok_repo='''$R1'''
+retry_key='''$PARTIAL_RETRY_KEY'''
+selected=[
+    item for item in items
+    if '{}::{}::{}'.format(item.get('windowKey'), item.get('repoId'), item.get('iterationKey')) == retry_key
+]
+has_ok_repo=any(item.get('repoId') == ok_repo for item in items)
+has_try_merge=any(
+    step.get('actionType') == 'TRY_MERGE' and step.get('result') in ('MERGE_BLOCKED', 'MERGED', 'FAILED')
+    for item in items
+    for step in item.get('steps', [])
+)
+results=','.join(item.get('finalResult','') for item in items)
+print('{}|{}|{}|{}|{}'.format(len(items), len(selected), str(has_ok_repo), str(has_try_merge), results))
+" 2>/dev/null || echo "0|0|True|False|")
+                    IFS='|' read -r PARTIAL_RETRY_ITEM_COUNT PARTIAL_RETRY_SELECTED_COUNT PARTIAL_RETRY_HAS_OK PARTIAL_RETRY_HAS_TRY_MERGE PARTIAL_RETRY_RESULTS <<< "$PARTIAL_RETRY_SUMMARY"
+                    if [ "$PARTIAL_RETRY_ITEM_COUNT" = "1" ] && [ "$PARTIAL_RETRY_SELECTED_COUNT" = "1" ] && [ "$PARTIAL_RETRY_HAS_OK" = "False" ] && [ "$PARTIAL_RETRY_HAS_TRY_MERGE" = "True" ]; then
+                        ok "Run retry 只重试失败项，未重复执行成功项: status=$PARTIAL_RETRY_FINAL results=$PARTIAL_RETRY_RESULTS"
+                    else
+                        no "Run retry 失败项选择证据异常: $PARTIAL_RETRY_SUMMARY"
+                    fi
+                else
+                    no "Run retry 创建失败: $PARTIAL_RETRY_RESP"
+                fi
+            fi
+        fi
+
+        while IFS= read -r rule_id; do
+            [ -n "$rule_id" ] && curl -s -o /dev/null -X POST "$BACKEND/api/v1/branch-rules/$rule_id/enable" -H "$AUTH"
+        done <<< "$PARTIAL_ENABLED_RULE_IDS"
+        ok "部分失败重试证据段 BranchRule 状态已复原"
+    fi
+else
+    skip "跳过真实部分失败重试强证据（MOCK_MODE 或缺 GitLab PAT）"
 fi
 
 # ---- 6. 场景: Publish + Auto-Orchestration ----
