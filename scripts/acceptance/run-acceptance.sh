@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 场景化验收证据脚本 v3.6
+# ReleaseHub 场景化验收证据脚本 v3.7
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
@@ -27,7 +27,7 @@
 #   SA-008: 发布窗口创建、空窗口发布拒绝、windowKey
 #   SA-010: Attach 迭代、GitLab release 分支创建、runItems 细粒度断言
 #   SA-011: 冲突检测和分类统计
-#   SA-012: 冲突解决回路（USE_SYSTEM）
+#   SA-012: 冲突解决回路（USE_SYSTEM、feature 缺失、release 已存在、分支名不合规强证据）
 #   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS
 #   SA-014: 版本更新、校验、Git 远程提交验证
 #   SA-015: Run 执行详情（RunItem/RunStep）
@@ -1150,6 +1150,103 @@ print('MISSING_RUN|MISSING_STEP|')
     fi
 else
     skip "跳过 release 分支已存在强证据（MOCK_MODE 或缺 GitLab PAT）"
+fi
+
+# ---- 5.5 分支名不合规：后端 + GitLab 强证据 ----
+h2 "SA-012: 5.5 分支名不合规后端/GitLab 强证据"
+if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ] && [ -n "$ITER_KEY" ]; then
+    NONCOMPLIANT_TS=$(date -u +%Y%m%d-%H%M%S)
+    NONCOMPLIANT_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-分支不合规-$NONCOMPLIANT_TS\",\"description\":\"Branch noncompliant evidence $NONCOMPLIANT_TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+    NONCOMPLIANT_WINDOW_ID=$(echo "$NONCOMPLIANT_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))" 2>/dev/null)
+    NONCOMPLIANT_WINDOW_KEY=$(echo "$NONCOMPLIANT_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('windowKey', ''))" 2>/dev/null)
+    if [ -z "$NONCOMPLIANT_WINDOW_ID" ] || [ -z "$NONCOMPLIANT_WINDOW_KEY" ]; then
+        no "分支名不合规证据窗口创建失败: $NONCOMPLIANT_WINDOW_RESP"
+    else
+        ok "分支名不合规证据窗口创建: $NONCOMPLIANT_WINDOW_KEY"
+    fi
+
+    if [ -n "$NONCOMPLIANT_WINDOW_ID" ] && [ -n "$NONCOMPLIANT_WINDOW_KEY" ]; then
+        NONCOMPLIANT_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$NONCOMPLIANT_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"iterationKeys\":[\"$ITER_KEY\"]}")
+        NONCOMPLIANT_ATTACH_OK=$(echo "$NONCOMPLIANT_ATTACH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print(bool(d.get('success', False)) and not any(r.get('hasErrors', False) for r in d.get('data', [])))
+" 2>/dev/null || echo "False")
+        [ "$NONCOMPLIANT_ATTACH_OK" = "True" ] && ok "分支名不合规证据窗口 Attach 成功" || warn "分支名不合规证据窗口 Attach 返回异常: $NONCOMPLIANT_ATTACH"
+
+        NONCOMPLIANT_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+        NONCOMPLIANT_FEATURE_BRANCH="feature/$ITER_KEY"
+        NONCOMPLIANT_RELEASE_BRANCH="release/$NONCOMPLIANT_WINDOW_KEY"
+        NONCOMPLIANT_FEATURE_STATE=$(gitlab_branch_state "$NONCOMPLIANT_REPO_URL" "$NONCOMPLIANT_FEATURE_BRANCH")
+        NONCOMPLIANT_RELEASE_STATE=$(gitlab_branch_state "$NONCOMPLIANT_REPO_URL" "$NONCOMPLIANT_RELEASE_BRANCH")
+        [ "$NONCOMPLIANT_FEATURE_STATE" = "FOUND" ] && ok "GitLab 直查确认待检 feature 分支存在: $NONCOMPLIANT_FEATURE_BRANCH" || no "GitLab feature 分支状态异常: $NONCOMPLIANT_FEATURE_STATE"
+        [ "$NONCOMPLIANT_RELEASE_STATE" = "FOUND" ] && ok "GitLab 直查确认待检 release 分支存在: $NONCOMPLIANT_RELEASE_BRANCH" || no "GitLab release 分支状态异常: $NONCOMPLIANT_RELEASE_STATE"
+
+        BRANCH_RULE_SNAPSHOT=$(curl -s "$BACKEND/api/v1/branch-rules" -H "$AUTH")
+        ENABLED_BRANCH_RULE_IDS=$(echo "$BRANCH_RULE_SNAPSHOT" | python3 -c "
+import sys,json
+for rule in json.load(sys.stdin).get('data', []):
+    if rule.get('status') == 'ENABLED':
+        print(rule.get('id',''))
+" 2>/dev/null)
+        ENABLED_BRANCH_RULE_COUNT=$(echo "$ENABLED_BRANCH_RULE_IDS" | sed '/^$/d' | wc -l | tr -d ' ')
+        info "临时收紧 BranchRule 前启用规则数: ${ENABLED_BRANCH_RULE_COUNT:-0}"
+
+        while IFS= read -r rule_id; do
+            [ -n "$rule_id" ] && curl -s -o /dev/null -X POST "$BACKEND/api/v1/branch-rules/$rule_id/disable" -H "$AUTH"
+        done <<< "$ENABLED_BRANCH_RULE_IDS"
+
+        STRICT_PATTERN="^release/acceptance-compliant-only-${NONCOMPLIANT_TS}$"
+        STRICT_RULE_RESP=$(curl -s -X POST "$BACKEND/api/v1/branch-rules" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"name\":\"验收-分支不合规-$NONCOMPLIANT_TS\",\"pattern\":\"$STRICT_PATTERN\",\"type\":\"REGEX\",\"description\":\"Acceptance-only strict rule for branch noncompliant evidence\",\"scopeLevel\":\"GLOBAL\",\"scopeProjectId\":null,\"scopeSubProjectId\":null}")
+        STRICT_RULE_ID=$(echo "$STRICT_RULE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('id',''))" 2>/dev/null)
+        if [ -n "$STRICT_RULE_ID" ]; then
+            ok "已启用本轮严格 BranchRule: $STRICT_PATTERN"
+        else
+            no "严格 BranchRule 创建失败: $STRICT_RULE_RESP"
+        fi
+
+        if [ -n "$STRICT_RULE_ID" ]; then
+            NONCOMPLIANT_FEATURE_ENCODED=$(echo "$NONCOMPLIANT_FEATURE_BRANCH" | gitlab_encode)
+            NONCOMPLIANT_RELEASE_ENCODED=$(echo "$NONCOMPLIANT_RELEASE_BRANCH" | gitlab_encode)
+            FEATURE_COMPLIANT=$(curl -s "$BACKEND/api/v1/branch-rules/check?branchName=$NONCOMPLIANT_FEATURE_ENCODED" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('compliant'))" 2>/dev/null)
+            RELEASE_COMPLIANT=$(curl -s "$BACKEND/api/v1/branch-rules/check?branchName=$NONCOMPLIANT_RELEASE_ENCODED" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('compliant'))" 2>/dev/null)
+            [ "$FEATURE_COMPLIANT" = "False" ] && ok "BranchRule check 确认 feature 分支不合规: $NONCOMPLIANT_FEATURE_BRANCH" || no "feature 分支合规性异常: compliant=$FEATURE_COMPLIANT"
+            [ "$RELEASE_COMPLIANT" = "False" ] && ok "BranchRule check 确认 release 分支不合规: $NONCOMPLIANT_RELEASE_BRANCH" || no "release 分支合规性异常: compliant=$RELEASE_COMPLIANT"
+
+            NONCOMPLIANT_SCAN=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$NONCOMPLIANT_WINDOW_ID/conflicts/check" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
+            NONCOMPLIANT_CONFLICT_SUMMARY=$(echo "$NONCOMPLIANT_SCAN" | python3 -c "
+import sys,json
+d=json.load(sys.stdin).get('data', {})
+conflicts=d.get('conflicts', [])
+matches=[c for c in conflicts if c.get('conflictType') == 'BRANCH_NONCOMPLIANT']
+messages=' || '.join(c.get('message','') for c in matches)
+print('{}|{}'.format(len(matches), messages))
+" 2>/dev/null || echo "0|")
+            IFS='|' read -r NONCOMPLIANT_COUNT NONCOMPLIANT_MESSAGES <<< "$NONCOMPLIANT_CONFLICT_SUMMARY"
+            if [ "${NONCOMPLIANT_COUNT:-0}" -gt 0 ] && {
+                echo "$NONCOMPLIANT_MESSAGES" | grep -q "$NONCOMPLIANT_FEATURE_BRANCH" || \
+                echo "$NONCOMPLIANT_MESSAGES" | grep -q "$NONCOMPLIANT_RELEASE_BRANCH"
+            }; then
+                ok "冲突扫描检出 BRANCH_NONCOMPLIANT: count=$NONCOMPLIANT_COUNT"
+            else
+                no "BRANCH_NONCOMPLIANT 冲突证据异常: $NONCOMPLIANT_CONFLICT_SUMMARY"
+            fi
+        fi
+
+        [ -n "$STRICT_RULE_ID" ] && curl -s -o /dev/null -X DELETE "$BACKEND/api/v1/branch-rules/$STRICT_RULE_ID" -H "$AUTH"
+        while IFS= read -r rule_id; do
+            [ -n "$rule_id" ] && curl -s -o /dev/null -X POST "$BACKEND/api/v1/branch-rules/$rule_id/enable" -H "$AUTH"
+        done <<< "$ENABLED_BRANCH_RULE_IDS"
+        ok "BranchRule 临时收紧已复原"
+    fi
+else
+    skip "跳过分支名不合规强证据（MOCK_MODE、缺 GitLab PAT 或缺迭代）"
 fi
 
 # ---- 6. 场景: Publish + Auto-Orchestration ----
