@@ -41,7 +41,8 @@ vi.mock('@/api/modules/releaseWindow', () => ({
     freeze: vi.fn(),
     unfreeze: vi.fn(),
     publish: vi.fn(),
-    close: vi.fn()
+    close: vi.fn(),
+    detach: vi.fn()
   }
 }))
 
@@ -77,7 +78,8 @@ const stubs = {
   ArrowLeft: true,
   Download: true,
   ElButton: {
-    template: '<button type="button" @click="$emit(\'click\')"><slot /></button>'
+    emits: ['click'],
+    template: '<button type="button" @click="$emit(\'click\', $event)"><slot /></button>'
   },
   ElDivider: true,
   ElDescriptions: {
@@ -137,6 +139,7 @@ describe('ReleaseWindowDetail', () => {
   beforeEach(() => {
     vi.mocked(releaseWindowApi.get).mockReset()
     vi.mocked(releaseWindowApi.listIterations).mockReset()
+    vi.mocked(releaseWindowApi.detach).mockReset()
     vi.mocked(iterationApi.get).mockReset()
     vi.mocked(iterationApi.resolveVersionConflict).mockReset()
     vi.mocked(repositoryApi.get).mockReset()
@@ -190,6 +193,7 @@ describe('ReleaseWindowDetail', () => {
       targetVersion: '1.0.0',
       versionSource: 'SYSTEM'
     })
+    vi.mocked(releaseWindowApi.detach).mockResolvedValue(true)
   })
 
   it('resolves a version conflict with USE_SYSTEM and refreshes the conflict panel', async () => {
@@ -219,5 +223,27 @@ describe('ReleaseWindowDetail', () => {
     await exportButton!.trigger('click')
 
     expect(openSpy).toHaveBeenCalledWith('/api/v1/release-windows/window-1/report.csv', '_blank')
+  })
+
+  it('detaches an associated iteration from the detail page and refreshes the list', async () => {
+    const wrapper = shallowMount(ReleaseWindowDetail, {
+      global: { stubs }
+    })
+    await flushPromises()
+    await flushPromises()
+
+    const detachButton = wrapper.findAll('button')
+      .find(button => button.text().includes('common.remove'))
+    expect(detachButton).toBeTruthy()
+    await detachButton!.trigger('click')
+    await flushPromises()
+
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      'releaseWindow.confirmDetach',
+      'common.warning',
+      { type: 'warning' }
+    )
+    expect(releaseWindowApi.detach).toHaveBeenCalledWith('window-1', 'ITER-1')
+    expect(releaseWindowApi.listIterations).toHaveBeenCalledTimes(2)
   })
 })

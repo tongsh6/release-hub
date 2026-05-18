@@ -48,7 +48,7 @@
           {{ t('releaseWindow.report.export') }}
         </el-button>
         <el-button
-          v-if="form.status === 'DRAFT'"
+          v-if="canChangeIterations"
           v-perm.disable="'release-window:write'"
           type="primary"
           @click="goAttach"
@@ -118,6 +118,18 @@
                   {{ t('iteration.columns.expectedReleaseAt') }}: {{ formatDate(iter.expectedReleaseAt) }}
                 </span>
                 <span class="repo-count">{{ t('iteration.columns.repos') }}: {{ iter.repos?.length || 0 }}</span>
+                <el-button
+                  v-if="canChangeIterations"
+                  v-perm.disable="'release-window:write'"
+                  class="detach-iteration-button"
+                  :icon="Delete"
+                  size="small"
+                  text
+                  type="danger"
+                  @click.stop="handleDetachIteration(iter.key)"
+                >
+                  {{ t('common.remove') }}
+                </el-button>
               </div>
             </template>
             
@@ -193,7 +205,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, Download } from '@element-plus/icons-vue'
+import { ArrowLeft, Delete, Download } from '@element-plus/icons-vue'
 import { releaseWindowApi, type ConflictItemView, type ReleaseWindow } from '@/api/modules/releaseWindow'
 import { iterationApi } from '@/api/iterationApi'
 import { repositoryApi, type Repository } from '@/api/repositoryApi'
@@ -307,6 +319,10 @@ onMounted(() => {
 
 const title = computed(() => form.value.name || t('releaseWindow.details'))
 
+const canChangeIterations = computed(() => {
+  return Boolean(form.value.id) && form.value.status !== 'CLOSED' && !form.value.frozen
+})
+
 const totalRepoCount = computed(() => {
   return iterations.value.reduce((sum, iter) => sum + (iter.repos?.length || 0), 0)
 })
@@ -336,6 +352,22 @@ const handleAttachSuccess = () => {
   const id = route.params.id as string
   if (id) {
     loadIterations(id)
+  }
+}
+
+const handleDetachIteration = async (iterationKey: string) => {
+  if (!form.value?.id) return
+  if (!hasPerm('release-window:write')) {
+    ElMessage.warning(t('common.permissionDenied'))
+    return
+  }
+  try {
+    await ElMessageBox.confirm(t('releaseWindow.confirmDetach'), t('common.warning'), { type: 'warning' })
+    await releaseWindowApi.detach(form.value.id, iterationKey)
+    ElMessage.success(t('common.success'))
+    await loadIterations(form.value.id)
+  } catch (error) {
+    if (error !== 'cancel') handleError(error)
   }
 }
 
@@ -486,6 +518,10 @@ const handleClose = async () => {
   margin-left: auto;
   color: #606266;
   font-size: 13px;
+}
+
+.detach-iteration-button {
+  flex: 0 0 auto;
 }
 
 .iteration-content {
