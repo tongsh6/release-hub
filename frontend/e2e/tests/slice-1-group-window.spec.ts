@@ -27,6 +27,7 @@ test.describe.serial('Slice-1: Group + Window', () => {
       'releaseWindow.freeze', 'releaseWindow.unfreeze',
       'releaseWindow.publish', 'releaseWindow.view',
       'releaseWindow.attachIterations', 'releaseWindow.close', 'releaseWindow.statusText.CLOSED',
+      'releaseWindow.noIterations', 'common.remove',
     ])
     await page.close()
   })
@@ -67,6 +68,41 @@ test.describe.serial('Slice-1: Group + Window', () => {
     await page.locator('button').filter({ hasText: L['common.search'] }).click(FORCE)
     await page.locator('.el-loading-mask').last().waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
     await page.locator('.el-loading-mask').last().waitFor({ state: 'detached', timeout: 3000 }).catch(() => {})
+  }
+
+  async function createIteration(page: Page, iterationName: string) {
+    await page.goto('/iterations')
+    await page.waitForTimeout(1000)
+
+    await page.getByRole('button', { name: L['iteration.new'] }).click(FORCE)
+    await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 5000 })
+    const iterationDialog = page.locator('.el-dialog:visible').last()
+    await iterationDialog.getByRole('textbox', { name: L['iteration.columns.name'] }).fill(iterationName)
+    await selectGroupInDialog(page, iterationDialog, selectableLeaf)
+    await confirmDialog(page)
+
+    await searchIteration(page, iterationName)
+    const iterationRow = page.locator('.el-table__body tr').filter({ hasText: iterationName }).last()
+    await expect(iterationRow).toBeVisible({ timeout: 5000 })
+    return (await iterationRow.locator('td').first().innerText()).trim()
+  }
+
+  async function attachIterationToWindow(page: Page, iterationKey: string) {
+    await page.goto('/release-windows')
+    await page.waitForTimeout(1000)
+    await searchWindow(page)
+
+    await windowRow(page).locator('button').filter({ hasText: L['releaseWindow.attachIterations'] }).click(FORCE)
+    await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 5000 })
+    const attachDialog = page.locator('.el-dialog').last()
+    await attachDialog.getByPlaceholder(L['common.keyword']).fill(iterationKey)
+    await attachDialog.locator('button').filter({ hasText: L['common.search'] }).click(FORCE)
+    const attachRow = attachDialog.locator('.el-table__body tr').filter({ hasText: iterationKey }).last()
+    await expect(attachRow).toBeVisible({ timeout: 5000 })
+    await attachRow.locator('input.el-checkbox__original').evaluate((el: HTMLElement) => el.click())
+    await expect(attachRow.locator('.el-checkbox__input')).toHaveClass(/is-checked/)
+    await attachDialog.locator('.el-button--primary').filter({ hasText: L['common.confirm'] }).click(FORCE)
+    await expect(attachDialog).toBeHidden({ timeout: 10000 })
   }
 
   // ══════════════ Group Tree ══════════════
@@ -268,40 +304,45 @@ test.describe.serial('Slice-1: Group + Window', () => {
     await expect(page.locator('.el-descriptions').last()).toContainText(windowName, { timeout: 3000 })
   })
 
-  test('10 — close published window after attaching iteration', async ({ page }) => {
+  test('10 — detach iteration from window detail via UI', async ({ page }) => {
+    const iterationName = tcName('IT-DETACH')
+
+    await ensureLoggedIn(page)
+    const iterationKey = await createIteration(page, iterationName)
+    await attachIterationToWindow(page, iterationKey)
+
+    await searchWindow(page)
+    await windowRow(page).locator('button').filter({ hasText: L['releaseWindow.view'] }).click(FORCE)
+    await expect(page).toHaveURL(/\/release-windows\//, { timeout: 5000 })
+    await expect(page.locator('.iterations-list')).toContainText(iterationKey, { timeout: 10000 })
+
+    const detachResponse = page.waitForResponse(response =>
+      response.request().method() === 'POST' &&
+      response.url().includes('/api/v1/release-windows/') &&
+      response.url().endsWith('/detach')
+    )
+    await page
+      .locator('.el-collapse-item')
+      .filter({ hasText: iterationKey })
+      .locator('button.detach-iteration-button')
+      .filter({ hasText: L['common.remove'] })
+      .click(FORCE)
+    await confirmMessageBox(page)
+    expect((await detachResponse).ok()).toBeTruthy()
+    await page.locator('.el-loading-mask').last().waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+    await page.locator('.el-loading-mask').last().waitFor({ state: 'detached', timeout: 3000 }).catch(() => {})
+
+    await expect(page.locator('.empty-tip')).toContainText(L['releaseWindow.noIterations'], { timeout: 10000 })
+    await expect(page.locator('.iterations-list')).toHaveCount(0)
+    await expect(page.locator('.release-plan-panel')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: L['releaseWindow.attachIterations'] })).toBeVisible()
+  })
+
+  test('11 — close published window after attaching iteration', async ({ page }) => {
     const iterationName = tcName('IT-CLOSE')
 
     await ensureLoggedIn(page)
-    await page.goto('/iterations')
-    await page.waitForTimeout(1000)
-
-    await page.getByRole('button', { name: L['iteration.new'] }).click(FORCE)
-    await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 5000 })
-    const iterationDialog = page.locator('.el-dialog:visible').last()
-    await iterationDialog.getByRole('textbox', { name: L['iteration.columns.name'] }).fill(iterationName)
-    await selectGroupInDialog(page, iterationDialog, selectableLeaf)
-    await confirmDialog(page)
-
-    await searchIteration(page, iterationName)
-    const iterationRow = page.locator('.el-table__body tr').filter({ hasText: iterationName }).last()
-    await expect(iterationRow).toBeVisible({ timeout: 5000 })
-    const iterationKey = (await iterationRow.locator('td').first().innerText()).trim()
-
-    await page.goto('/release-windows')
-    await page.waitForTimeout(1000)
-    await searchWindow(page)
-
-    await windowRow(page).locator('button').filter({ hasText: L['releaseWindow.attachIterations'] }).click(FORCE)
-    await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 5000 })
-    const attachDialog = page.locator('.el-dialog').last()
-    await attachDialog.getByPlaceholder(L['common.keyword']).fill(iterationKey)
-    await attachDialog.locator('button').filter({ hasText: L['common.search'] }).click(FORCE)
-    const attachRow = attachDialog.locator('.el-table__body tr').filter({ hasText: iterationKey }).last()
-    await expect(attachRow).toBeVisible({ timeout: 5000 })
-    await attachRow.locator('input.el-checkbox__original').evaluate((el: HTMLElement) => el.click())
-    await expect(attachRow.locator('.el-checkbox__input')).toHaveClass(/is-checked/)
-    await attachDialog.locator('.el-button--primary').filter({ hasText: L['common.confirm'] }).click(FORCE)
-    await expect(attachDialog).toBeHidden({ timeout: 10000 })
+    await attachIterationToWindow(page, await createIteration(page, iterationName))
 
     await searchWindow(page)
     await windowRow(page).locator('button').filter({ hasText: L['releaseWindow.publish'] }).click(FORCE)
