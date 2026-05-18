@@ -8,6 +8,7 @@ import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.version.VersionDeriverUseCase;
 import io.releasehub.application.version.VersionExtractorUseCase;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.domain.conflict.ConflictReport;
@@ -52,6 +53,7 @@ class ConflictDetectionAppServiceTest {
     @Mock private CodeRepositoryPort codeRepositoryPort;
     @Mock private GitBranchAdapterFactory gitBranchAdapterFactory;
     @Mock private VersionExtractorUseCase versionExtractorUseCase;
+    @Mock private VersionDeriverUseCase versionDeriverUseCase;
     @Mock private BranchRuleUseCase branchRuleUseCase;
     @Mock private ConflictDetectionPort conflictDetectionPort;
     @Mock private GitBranchPort gitBranchPort;
@@ -66,7 +68,7 @@ class ConflictDetectionAppServiceTest {
         service = new ConflictDetectionAppService(
                 releaseWindowPort, windowIterationPort, iterationPort,
                 iterationRepoPort, codeRepositoryPort, gitBranchAdapterFactory,
-                versionExtractorUseCase, branchRuleUseCase, conflictDetectionPort);
+                versionExtractorUseCase, versionDeriverUseCase, branchRuleUseCase, conflictDetectionPort);
         when(gitBranchAdapterFactory.getAdapter(any())).thenReturn(gitBranchPort);
         when(branchRuleUseCase.isCompliant(anyString())).thenReturn(true);
     }
@@ -79,6 +81,7 @@ class ConflictDetectionAppServiceTest {
         setupVersionInfo("1.0.0");
         when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
                 .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.1.0", null)));
+        when(versionDeriverUseCase.compareVersions("1.0.0", "1.1.0")).thenReturn(0);
         when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
                 .thenReturn(GitBranchPort.BranchStatus.missing());
 
@@ -89,6 +92,44 @@ class ConflictDetectionAppServiceTest {
         assertThat(report.hasConflicts()).isTrue();
         assertThat(report.getConflicts().stream().anyMatch(
                 c -> c.getConflictType() == ConflictType.MISMATCH)).isTrue();
+    }
+
+    @Test
+    void shouldDetectRepoAheadWhenExtractedVersionIsGreaterThanSystemVersion() {
+        setupWindowWithIteration();
+        setupRepo("R001", "test-repo", "master");
+        setupVersionInfo("1.1.0-SNAPSHOT");
+        when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
+                .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.2.0-SNAPSHOT", null)));
+        when(versionDeriverUseCase.compareVersions("1.1.0-SNAPSHOT", "1.2.0-SNAPSHOT")).thenReturn(-1);
+        when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
+                .thenReturn(GitBranchPort.BranchStatus.missing());
+
+        ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
+
+        assertThat(report.getConflicts()).anyMatch(c ->
+                c.getConflictType() == ConflictType.REPO_AHEAD
+                        && c.getSystemVersion().equals("1.1.0-SNAPSHOT")
+                        && c.getRepoVersion().equals("1.2.0-SNAPSHOT"));
+    }
+
+    @Test
+    void shouldDetectSystemAheadWhenSystemVersionIsGreaterThanExtractedVersion() {
+        setupWindowWithIteration();
+        setupRepo("R001", "test-repo", "master");
+        setupVersionInfo("1.1.0-SNAPSHOT");
+        when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
+                .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0-SNAPSHOT", null)));
+        when(versionDeriverUseCase.compareVersions("1.1.0-SNAPSHOT", "1.0.0-SNAPSHOT")).thenReturn(1);
+        when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
+                .thenReturn(GitBranchPort.BranchStatus.missing());
+
+        ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
+
+        assertThat(report.getConflicts()).anyMatch(c ->
+                c.getConflictType() == ConflictType.SYSTEM_AHEAD
+                        && c.getSystemVersion().equals("1.1.0-SNAPSHOT")
+                        && c.getRepoVersion().equals("1.0.0-SNAPSHOT"));
     }
 
     @Test

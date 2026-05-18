@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 场景化验收证据脚本 v3.10
+# ReleaseHub 场景化验收证据脚本 v3.11
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
@@ -26,7 +26,7 @@
 #   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
 #   SA-008: 发布窗口创建、空窗口发布拒绝、windowKey
 #   SA-010: Attach 迭代、GitLab release 分支创建、runItems 细粒度断言
-#   SA-011: 冲突检测和分类统计、MERGE_CONFLICT / CROSS_REPO_VERSION_MISMATCH 真实 GitLab 强证据
+#   SA-011: 冲突检测和分类统计、MERGE_CONFLICT / CROSS_REPO_VERSION_MISMATCH / REPO_AHEAD / SYSTEM_AHEAD 真实 GitLab 强证据
 #   SA-012: 冲突解决回路（USE_SYSTEM、feature 缺失、release 已存在、分支名不合规强证据）
 #   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS
 #   SA-014: 版本更新、校验、Git 远程提交验证
@@ -893,7 +893,7 @@ print(','.join(f'{t}={n}' for t,n in sorted(types.items())))
             RESOLVE_CANDIDATES=$(echo "$CLEAN_CONFLICT" | python3 -c '
 import sys,json
 for c in json.load(sys.stdin).get("data",{}).get("conflicts",[]):
-    if c.get("conflictType") in ("MISMATCH", "CROSS_REPO_VERSION_MISMATCH"):
+    if c.get("conflictType") in ("MISMATCH", "REPO_AHEAD", "SYSTEM_AHEAD", "CROSS_REPO_VERSION_MISMATCH"):
         print("{}|{}".format(c.get("iterationKey",""), c.get("repoId","")))
 ' 2>/dev/null)
             if [ -n "$RESOLVE_CANDIDATES" ]; then
@@ -1528,8 +1528,145 @@ else
     skip "跳过 CROSS_REPO_VERSION_MISMATCH 强证据（MOCK_MODE 或缺 GitLab PAT）"
 fi
 
-# ---- 5.8 部分失败重试：后端 + GitLab 强证据 ----
-h2 "SA-015/SA-016: 5.8 真实部分失败重试后端/GitLab 强证据"
+# ---- 5.8 仓库/系统版本领先：后端 + GitLab 强证据 ----
+h2 "SA-011: 5.8 REPO_AHEAD / SYSTEM_AHEAD 后端/GitLab 强证据"
+if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+    VERSION_CLASS_TS=$(date -u +%Y%m%d-%H%M%S)
+    VERSION_CLASS_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-版本领先-$VERSION_CLASS_TS\",\"description\":\"Repo/system ahead evidence $VERSION_CLASS_TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+    VERSION_CLASS_WINDOW_ID=$(echo "$VERSION_CLASS_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))" 2>/dev/null)
+    VERSION_CLASS_WINDOW_KEY=$(echo "$VERSION_CLASS_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('windowKey', ''))" 2>/dev/null)
+    if [ -z "$VERSION_CLASS_WINDOW_ID" ] || [ -z "$VERSION_CLASS_WINDOW_KEY" ]; then
+        no "版本领先证据窗口创建失败: $VERSION_CLASS_WINDOW_RESP"
+    else
+        ok "版本领先证据窗口创建: $VERSION_CLASS_WINDOW_KEY"
+    fi
+
+    if [ -n "$VERSION_CLASS_WINDOW_ID" ] && [ -n "$VERSION_CLASS_WINDOW_KEY" ]; then
+        VERSION_CLASS_R1_ORIGINAL=$(curl -s "$BACKEND/api/v1/repositories/$R1/initial-version" -H "$AUTH" \
+            | python3 -c "import sys,json; v=json.load(sys.stdin).get('data',{}).get('version'); print(v or '')" 2>/dev/null)
+        VERSION_CLASS_R2_ORIGINAL=$(curl -s "$BACKEND/api/v1/repositories/$R2/initial-version" -H "$AUTH" \
+            | python3 -c "import sys,json; v=json.load(sys.stdin).get('data',{}).get('version'); print(v or '')" 2>/dev/null)
+
+        VERSION_CLASS_SET_R1=$(curl -s -X PUT "$BACKEND/api/v1/repositories/$R1/initial-version" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"version\":\"1.0.0\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        VERSION_CLASS_SET_R2=$(curl -s -X PUT "$BACKEND/api/v1/repositories/$R2/initial-version" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"version\":\"1.0.0\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        if [ "$VERSION_CLASS_SET_R1" = "True" ] && [ "$VERSION_CLASS_SET_R2" = "True" ]; then
+            ok "已临时设置版本领先证据仓库初始版本: $R1/$R2=1.0.0"
+        else
+            no "版本领先证据初始版本设置失败: R1=$VERSION_CLASS_SET_R1 R2=$VERSION_CLASS_SET_R2"
+        fi
+
+        VERSION_CLASS_ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"name\":\"验收-版本领先-$VERSION_CLASS_TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[\"$R1\",\"$R2\"]}")
+        VERSION_CLASS_ITER_KEY=$(echo "$VERSION_CLASS_ITER_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
+        if [ -z "$VERSION_CLASS_ITER_KEY" ]; then
+            no "版本领先证据迭代创建失败: $VERSION_CLASS_ITER_RESP"
+        else
+            ok "版本领先证据迭代创建: $VERSION_CLASS_ITER_KEY"
+        fi
+
+        if [ -n "$VERSION_CLASS_R1_ORIGINAL" ]; then
+            VERSION_CLASS_RESTORE_R1=$(curl -s -X PUT "$BACKEND/api/v1/repositories/$R1/initial-version" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"version\":\"$VERSION_CLASS_R1_ORIGINAL\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        else
+            VERSION_CLASS_RESTORE_R1=$(curl -s -X POST "$BACKEND/api/v1/repositories/$R1/sync-version" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        fi
+        if [ -n "$VERSION_CLASS_R2_ORIGINAL" ]; then
+            VERSION_CLASS_RESTORE_R2=$(curl -s -X PUT "$BACKEND/api/v1/repositories/$R2/initial-version" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"version\":\"$VERSION_CLASS_R2_ORIGINAL\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        else
+            VERSION_CLASS_RESTORE_R2=$(curl -s -X POST "$BACKEND/api/v1/repositories/$R2/sync-version" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        fi
+        if [ "$VERSION_CLASS_RESTORE_R1" = "True" ] && [ "$VERSION_CLASS_RESTORE_R2" = "True" ]; then
+            ok "版本领先证据仓库初始版本已复原或重新同步"
+        else
+            no "版本领先证据仓库初始版本复原异常: R1=$VERSION_CLASS_RESTORE_R1 R2=$VERSION_CLASS_RESTORE_R2"
+        fi
+
+        if [ -n "$VERSION_CLASS_ITER_KEY" ]; then
+            VERSION_CLASS_VINFO_R1=$(curl -s "$BACKEND/api/v1/iterations/$VERSION_CLASS_ITER_KEY/repos/$R1/version-info" -H "$AUTH")
+            VERSION_CLASS_VINFO_R2=$(curl -s "$BACKEND/api/v1/iterations/$VERSION_CLASS_ITER_KEY/repos/$R2/version-info" -H "$AUTH")
+            VERSION_CLASS_SUMMARY=$(V1="$VERSION_CLASS_VINFO_R1" V2="$VERSION_CLASS_VINFO_R2" python3 -c '
+import json
+import os
+r1 = json.loads(os.environ["V1"]).get("data", {})
+r2 = json.loads(os.environ["V2"]).get("data", {})
+print("{}|{}|{}|{}".format(
+    r1.get("featureBranch", ""),
+    r1.get("devVersion", ""),
+    r2.get("featureBranch", ""),
+    r2.get("devVersion", ""),
+))
+' 2>/dev/null || echo "|||")
+            IFS='|' read -r VERSION_CLASS_R1_FEATURE VERSION_CLASS_R1_SYSTEM VERSION_CLASS_R2_FEATURE VERSION_CLASS_R2_SYSTEM <<< "$VERSION_CLASS_SUMMARY"
+            if [ "$VERSION_CLASS_R1_SYSTEM" = "1.1.0-SNAPSHOT" ] && [ "$VERSION_CLASS_R2_SYSTEM" = "1.1.0-SNAPSHOT" ]; then
+                ok "version-info 确认系统开发版本: $R1=$VERSION_CLASS_R1_SYSTEM $R2=$VERSION_CLASS_R2_SYSTEM"
+            else
+                no "版本领先证据 version-info 异常: $VERSION_CLASS_SUMMARY"
+            fi
+
+            VERSION_CLASS_REPO_URL_1=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+            VERSION_CLASS_REPO_URL_2=$(curl -s "$BACKEND/api/v1/repositories/$R2" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+            VERSION_CLASS_R1_FEATURE_STATE=$(gitlab_branch_state "$VERSION_CLASS_REPO_URL_1" "$VERSION_CLASS_R1_FEATURE")
+            VERSION_CLASS_R2_FEATURE_STATE=$(gitlab_branch_state "$VERSION_CLASS_REPO_URL_2" "$VERSION_CLASS_R2_FEATURE")
+            [ "$VERSION_CLASS_R1_FEATURE_STATE" = "FOUND" ] && ok "GitLab 直查确认 REPO_AHEAD feature 分支存在: $VERSION_CLASS_R1_FEATURE" || no "REPO_AHEAD feature 分支状态异常: $VERSION_CLASS_R1_FEATURE_STATE"
+            [ "$VERSION_CLASS_R2_FEATURE_STATE" = "FOUND" ] && ok "GitLab 直查确认 SYSTEM_AHEAD feature 分支存在: $VERSION_CLASS_R2_FEATURE" || no "SYSTEM_AHEAD feature 分支状态异常: $VERSION_CLASS_R2_FEATURE_STATE"
+
+            VERSION_CLASS_REPO_AHEAD_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>repo-ahead</artifactId><version>1.2.0-SNAPSHOT</version></project>"
+            VERSION_CLASS_SYSTEM_AHEAD_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>system-ahead</artifactId><version>1.0.0-SNAPSHOT</version></project>"
+            VERSION_CLASS_COMMIT_R1=$(gitlab_commit_file "$VERSION_CLASS_REPO_URL_1" "$VERSION_CLASS_R1_FEATURE" "pom.xml" "$VERSION_CLASS_REPO_AHEAD_POM" "ReleaseHub acceptance: repo ahead $VERSION_CLASS_TS")
+            VERSION_CLASS_COMMIT_R2=$(gitlab_commit_file "$VERSION_CLASS_REPO_URL_2" "$VERSION_CLASS_R2_FEATURE" "pom.xml" "$VERSION_CLASS_SYSTEM_AHEAD_POM" "ReleaseHub acceptance: system ahead $VERSION_CLASS_TS")
+            [ "$VERSION_CLASS_COMMIT_R1" = "201" ] && ok "GitLab 已写入 REPO_AHEAD feature 版本: 1.2.0-SNAPSHOT" || no "REPO_AHEAD feature 版本提交失败: $VERSION_CLASS_COMMIT_R1"
+            [ "$VERSION_CLASS_COMMIT_R2" = "201" ] && ok "GitLab 已写入 SYSTEM_AHEAD feature 版本: 1.0.0-SNAPSHOT" || no "SYSTEM_AHEAD feature 版本提交失败: $VERSION_CLASS_COMMIT_R2"
+
+            VERSION_CLASS_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$VERSION_CLASS_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"iterationKeys\":[\"$VERSION_CLASS_ITER_KEY\"]}")
+            VERSION_CLASS_ATTACH_OK=$(echo "$VERSION_CLASS_ATTACH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print(bool(d.get('success', False)) and not any(r.get('hasErrors', False) for r in d.get('data', [])))
+" 2>/dev/null || echo "False")
+            [ "$VERSION_CLASS_ATTACH_OK" = "True" ] && ok "版本领先证据窗口 Attach 成功" || warn "版本领先证据窗口 Attach 返回异常: $VERSION_CLASS_ATTACH"
+
+            VERSION_CLASS_RELEASE_BRANCH="release/$VERSION_CLASS_WINDOW_KEY"
+            VERSION_CLASS_R1_RELEASE_STATE=$(gitlab_branch_state "$VERSION_CLASS_REPO_URL_1" "$VERSION_CLASS_RELEASE_BRANCH")
+            VERSION_CLASS_R2_RELEASE_STATE=$(gitlab_branch_state "$VERSION_CLASS_REPO_URL_2" "$VERSION_CLASS_RELEASE_BRANCH")
+            [ "$VERSION_CLASS_R1_RELEASE_STATE" = "FOUND" ] && ok "GitLab 直查确认 R1 release 分支存在: $VERSION_CLASS_RELEASE_BRANCH" || warn "R1 release 分支状态: $VERSION_CLASS_R1_RELEASE_STATE"
+            [ "$VERSION_CLASS_R2_RELEASE_STATE" = "FOUND" ] && ok "GitLab 直查确认 R2 release 分支存在: $VERSION_CLASS_RELEASE_BRANCH" || warn "R2 release 分支状态: $VERSION_CLASS_R2_RELEASE_STATE"
+
+            VERSION_CLASS_SCAN=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$VERSION_CLASS_WINDOW_ID/conflicts/check" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
+            VERSION_CLASS_CONFLICT_SUMMARY=$(echo "$VERSION_CLASS_SCAN" | python3 -c "
+import sys,json
+d=json.load(sys.stdin).get('data', {})
+conflicts=d.get('conflicts', [])
+repo_ahead=[c for c in conflicts if c.get('conflictType') == 'REPO_AHEAD']
+system_ahead=[c for c in conflicts if c.get('conflictType') == 'SYSTEM_AHEAD']
+repo_versions=','.join(c.get('repoVersion','') for c in repo_ahead)
+system_repo_versions=','.join(c.get('repoVersion','') for c in system_ahead)
+system_versions=','.join(c.get('systemVersion','') for c in repo_ahead + system_ahead)
+print('{}|{}|{}|{}'.format(len(repo_ahead), len(system_ahead), system_versions, repo_versions + ',' + system_repo_versions))
+" 2>/dev/null || echo "0|0||")
+            IFS='|' read -r VERSION_CLASS_REPO_AHEAD_COUNT VERSION_CLASS_SYSTEM_AHEAD_COUNT VERSION_CLASS_SYSTEM_VERSIONS VERSION_CLASS_REPO_VERSIONS <<< "$VERSION_CLASS_CONFLICT_SUMMARY"
+            [ "${VERSION_CLASS_REPO_AHEAD_COUNT:-0}" -gt 0 ] && echo "$VERSION_CLASS_REPO_VERSIONS" | grep -q "1.2.0-SNAPSHOT" \
+                && ok "冲突扫描检出 REPO_AHEAD: count=$VERSION_CLASS_REPO_AHEAD_COUNT" \
+                || no "REPO_AHEAD 冲突证据异常: $VERSION_CLASS_CONFLICT_SUMMARY"
+            [ "${VERSION_CLASS_SYSTEM_AHEAD_COUNT:-0}" -gt 0 ] && echo "$VERSION_CLASS_REPO_VERSIONS" | grep -q "1.0.0-SNAPSHOT" \
+                && ok "冲突扫描检出 SYSTEM_AHEAD: count=$VERSION_CLASS_SYSTEM_AHEAD_COUNT" \
+                || no "SYSTEM_AHEAD 冲突证据异常: $VERSION_CLASS_CONFLICT_SUMMARY"
+        fi
+    fi
+else
+    skip "跳过 REPO_AHEAD / SYSTEM_AHEAD 强证据（MOCK_MODE 或缺 GitLab PAT）"
+fi
+
+# ---- 5.9 部分失败重试：后端 + GitLab 强证据 ----
+h2 "SA-015/SA-016: 5.9 真实部分失败重试后端/GitLab 强证据"
 if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
     PARTIAL_TS=$(date -u +%Y%m%d-%H%M%S)
     PARTIAL_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \

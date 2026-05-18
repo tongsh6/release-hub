@@ -8,6 +8,7 @@ import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.version.VersionDeriverUseCase;
 import io.releasehub.application.version.VersionExtractorUseCase;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.domain.conflict.ConflictItem;
@@ -40,6 +41,7 @@ public class ConflictDetectionAppService {
     private final CodeRepositoryPort codeRepositoryPort;
     private final GitBranchAdapterFactory gitBranchAdapterFactory;
     private final VersionExtractorUseCase versionExtractorUseCase;
+    private final VersionDeriverUseCase versionDeriverUseCase;
     private final BranchRuleUseCase branchRuleUseCase;
     private final ConflictDetectionPort conflictDetectionPort;
 
@@ -125,8 +127,20 @@ public class ConflictDetectionAppService {
         String repoVersion = extractedOpt.get().version();
         if (systemVersion.equals(repoVersion)) return results;
 
-        results.add(ConflictItem.versionMismatch(repoId, repoName, iterationKey, systemVersion, repoVersion));
+        results.add(buildVersionConflict(repoId, repoName, iterationKey, systemVersion, repoVersion));
         return results;
+    }
+
+    private ConflictItem buildVersionConflict(String repoId, String repoName, String iterationKey,
+                                              String systemVersion, String repoVersion) {
+        int comparison = versionDeriverUseCase.compareVersions(systemVersion, repoVersion);
+        if (comparison < 0) {
+            return ConflictItem.repoAhead(repoId, repoName, iterationKey, systemVersion, repoVersion);
+        }
+        if (comparison > 0) {
+            return ConflictItem.systemAhead(repoId, repoName, iterationKey, systemVersion, repoVersion);
+        }
+        return ConflictItem.versionMismatch(repoId, repoName, iterationKey, systemVersion, repoVersion);
     }
 
     private List<ConflictItem> detectBranchConflicts(CodeRepository repo, String featureBranch,
