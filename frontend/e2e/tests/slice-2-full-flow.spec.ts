@@ -217,6 +217,8 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'conflict.resolveInGit',
       'conflict.noConflicts',
       'conflict.types.MISMATCH',
+      'conflict.types.REPO_AHEAD',
+      'conflict.types.SYSTEM_AHEAD',
       'conflict.types.MERGE_CONFLICT',
       'conflict.types.CROSS_REPO_VERSION_MISMATCH',
       'conflict.types.BRANCH_EXISTS',
@@ -849,6 +851,118 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await expect(conflictPanel).toContainText('Align repository versions across the release scope, then rescan.')
     await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toHaveCount(0)
     expect(resolveCalled).toBe(false)
+  })
+
+  test('SA-011 frontend path surfaces repo/system version-ahead details', async ({ page }) => {
+    await ensureLoggedIn(page)
+    expect(windowDetailUrl).toContain('/release-windows/')
+    expect(createdRepoId).toBeTruthy()
+
+    let resolveBody: any
+    const versionAheadReport = {
+      windowId: 'ui-journey-window',
+      checkedAt: new Date().toISOString(),
+      hasConflicts: true,
+      totalCount: 3,
+      conflicts: [
+        {
+          repoId: createdRepoId,
+          repoName,
+          iterationKey,
+          conflictType: 'REPO_AHEAD',
+          systemVersion: '1.4.0',
+          repoVersion: '1.5.0',
+          message: 'Repository version is ahead of the ReleaseHub recorded version',
+          suggestion: 'Sync the ReleaseHub version before continuing the release.'
+        },
+        {
+          repoId: createdRepoId,
+          repoName,
+          iterationKey,
+          conflictType: 'SYSTEM_AHEAD',
+          systemVersion: '1.6.0',
+          repoVersion: '1.5.0',
+          message: 'ReleaseHub recorded version is ahead of the repository version',
+          suggestion: 'Sync the repository version before continuing the release.'
+        },
+        {
+          repoId: createdRepoId,
+          repoName,
+          iterationKey,
+          conflictType: 'MISMATCH',
+          systemVersion: '1.4.0',
+          repoVersion: '1.4.1',
+          message: 'Version mismatch',
+          suggestion: 'Use system version'
+        }
+      ]
+    }
+
+    await page.route('**/api/v1/release-windows/*/conflicts', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: versionAheadReport })
+      })
+    })
+    await page.route('**/api/v1/release-windows/*/conflicts/check', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: versionAheadReport })
+      })
+    })
+    await page.route('**/api/v1/iterations/*/repos/*/resolve-conflict', async (route) => {
+      resolveBody = route.request().postDataJSON()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'OK',
+          message: 'OK',
+          data: {
+            repoId: createdRepoId,
+            repoName,
+            targetVersion: '1.4.0',
+            versionSource: 'SYSTEM'
+          }
+        })
+      })
+    })
+
+    await page.goto(windowDetailUrl)
+    const conflictPanel = page.locator('.conflict-panel')
+    await conflictPanel.getByRole('button', { name: L['conflict.rescan'] }).click(FORCE)
+    await expect(conflictPanel.locator('.el-radio-button')
+      .filter({ hasText: `${L['conflict.types.REPO_AHEAD']} (1)` })).toBeVisible()
+    await expect(conflictPanel.locator('.el-radio-button')
+      .filter({ hasText: `${L['conflict.types.SYSTEM_AHEAD']} (1)` })).toBeVisible()
+    await expect(conflictPanel.locator('.el-radio-button')
+      .filter({ hasText: `${L['conflict.types.MISMATCH']} (1)` })).toBeVisible()
+
+    await selectConflictType(conflictPanel, 'REPO_AHEAD')
+    await expect(conflictPanel).toContainText(L['conflict.types.REPO_AHEAD'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.title'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.blocker'])
+    await expect(conflictPanel).toContainText(L['conflict.recommendation'])
+    await expect(conflictPanel).toContainText('1.4.0 ≠ 1.5.0')
+    await expect(conflictPanel).toContainText('Repository version is ahead of the ReleaseHub recorded version')
+    await expect(conflictPanel).toContainText('Sync the ReleaseHub version before continuing the release.')
+    await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toBeVisible()
+
+    await selectConflictType(conflictPanel, 'SYSTEM_AHEAD')
+    await expect(conflictPanel).toContainText(L['conflict.types.SYSTEM_AHEAD'])
+    await expect(conflictPanel).toContainText('1.6.0 ≠ 1.5.0')
+    await expect(conflictPanel).toContainText('ReleaseHub recorded version is ahead of the repository version')
+    await expect(conflictPanel).toContainText('Sync the repository version before continuing the release.')
+    await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toBeVisible()
+
+    await conflictPanel
+      .getByRole('button', { name: L['conflict.resolveVersion'] })
+      .evaluate((el: HTMLElement) => el.click())
+    await expect(page.locator('.el-message-box').last()).toBeVisible({ timeout: 5000 })
+    await confirmMessageBox(page)
+    expect(resolveBody).toMatchObject({ resolution: 'USE_SYSTEM' })
   })
 
   test('SA-015: Tester can review conflict evidence from release window detail', async ({ page }) => {
