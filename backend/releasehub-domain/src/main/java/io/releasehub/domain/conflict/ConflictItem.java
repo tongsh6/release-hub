@@ -113,6 +113,35 @@ public class ConflictItem {
                 .build();
     }
 
+    public static ConflictItem gitPermissionDenied(String repoId, String repoName, String iterationKey,
+                                                    String sourceBranch, String targetBranch, String detail) {
+        return gitAccessIssue(repoId, repoName, iterationKey, ConflictType.GIT_PERMISSION_DENIED,
+                sourceBranch, targetBranch, detail,
+                "Git platform access was denied",
+                "Check repository token permissions and Git platform access, then rescan");
+    }
+
+    public static ConflictItem gitUnavailable(String repoId, String repoName, String iterationKey,
+                                               String sourceBranch, String targetBranch, String detail) {
+        return gitAccessIssue(repoId, repoName, iterationKey, ConflictType.GIT_UNAVAILABLE,
+                sourceBranch, targetBranch, detail,
+                "Git platform is unavailable or the risk check failed",
+                "Restore Git platform connectivity and retry the scan");
+    }
+
+    private static ConflictItem gitAccessIssue(String repoId, String repoName, String iterationKey,
+                                                ConflictType conflictType, String sourceBranch, String targetBranch,
+                                                String detail, String message, String suggestion) {
+        return new Builder(repoId, conflictType)
+                .repoName(repoName)
+                .iterationKey(iterationKey)
+                .sourceBranch(sourceBranch)
+                .targetBranch(targetBranch)
+                .message(detail == null || detail.isBlank() ? message : message + ": " + detail)
+                .suggestion(suggestion)
+                .build();
+    }
+
     // Getters
     public String getRepoId() { return repoId; }
     public String getRepoName() { return repoName; }

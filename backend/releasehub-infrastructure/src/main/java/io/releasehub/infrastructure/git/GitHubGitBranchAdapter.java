@@ -181,12 +181,15 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
             return MergeabilityResult.mergeable();
         } catch (HttpClientErrorException e) {
             String body = e.getResponseBodyAsString();
+            if (e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403) {
+                return MergeabilityResult.permissionDenied(body);
+            }
             if (e.getStatusCode().value() == 422 || e.getStatusCode().value() == 404) {
                 return MergeabilityResult.conflict("branch not found or no commits in common: " + body);
             }
             return MergeabilityResult.error(body);
         } catch (Exception e) {
-            return MergeabilityResult.error(e.getMessage());
+            return MergeabilityResult.unavailable(e.getMessage());
         }
     }
 

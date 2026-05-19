@@ -43,17 +43,33 @@ public interface GitBranchPort {
         }
     }
 
-    record MergeabilityResult(boolean canMerge, String detail) {
+    enum MergeabilityFailure {
+        NONE,
+        CONFLICT,
+        PERMISSION_DENIED,
+        UNAVAILABLE,
+        UNKNOWN
+    }
+
+    record MergeabilityResult(boolean canMerge, String detail, MergeabilityFailure failure) {
         public static MergeabilityResult mergeable() {
-            return new MergeabilityResult(true, null);
+            return new MergeabilityResult(true, null, MergeabilityFailure.NONE);
         }
 
         public static MergeabilityResult conflict(String detail) {
-            return new MergeabilityResult(false, detail);
+            return new MergeabilityResult(false, detail, MergeabilityFailure.CONFLICT);
+        }
+
+        public static MergeabilityResult permissionDenied(String detail) {
+            return new MergeabilityResult(false, detail, MergeabilityFailure.PERMISSION_DENIED);
+        }
+
+        public static MergeabilityResult unavailable(String detail) {
+            return new MergeabilityResult(false, detail, MergeabilityFailure.UNAVAILABLE);
         }
 
         public static MergeabilityResult error(String detail) {
-            return new MergeabilityResult(false, detail);
+            return new MergeabilityResult(false, detail, MergeabilityFailure.UNKNOWN);
         }
     }
 

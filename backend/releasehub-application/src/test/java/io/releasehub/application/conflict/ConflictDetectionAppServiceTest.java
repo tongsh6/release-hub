@@ -204,6 +204,80 @@ class ConflictDetectionAppServiceTest {
     }
 
     @Test
+    void shouldReportPermissionDeniedWhenBranchStatusCannotBeRead() {
+        setupWindowWithIteration();
+        setupRepo("R001", "test-repo", "master");
+        setupVersionInfo("1.0.0");
+        when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
+                .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0", null)));
+        when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
+                .thenThrow(new RuntimeException("403 Forbidden"));
+
+        ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
+
+        assertThat(report.getConflicts()).anyMatch(c ->
+                c.getConflictType() == ConflictType.GIT_PERMISSION_DENIED
+                        && c.getSourceBranch().equals("feature/" + ITERATION_KEY));
+    }
+
+    @Test
+    void shouldReportGitUnavailableWhenBranchStatusCannotReachRemote() {
+        setupWindowWithIteration();
+        setupRepo("R001", "test-repo", "master");
+        setupVersionInfo("1.0.0");
+        when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
+                .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0", null)));
+        when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
+                .thenThrow(new RuntimeException("Connection refused"));
+
+        ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
+
+        assertThat(report.getConflicts()).anyMatch(c ->
+                c.getConflictType() == ConflictType.GIT_UNAVAILABLE
+                        && c.getSourceBranch().equals("feature/" + ITERATION_KEY));
+    }
+
+    @Test
+    void shouldReportPermissionDeniedWhenMergeabilityCheckFailsWithPermissionDenied() {
+        setupWindowWithIteration();
+        setupRepo("R001", "test-repo", "master");
+        setupVersionInfo("1.0.0");
+        when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
+                .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0", null)));
+        when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
+                .thenReturn(GitBranchPort.BranchStatus.present("abc"));
+        when(gitBranchPort.checkMergeability(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(GitBranchPort.MergeabilityResult.permissionDenied("403 Forbidden"));
+
+        ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
+
+        assertThat(report.getConflicts()).anyMatch(c ->
+                c.getConflictType() == ConflictType.GIT_PERMISSION_DENIED
+                        && c.getSourceBranch().equals("feature/" + ITERATION_KEY)
+                        && c.getTargetBranch().equals("release/rel-1.0"));
+    }
+
+    @Test
+    void shouldReportGitUnavailableWhenMergeabilityCheckThrows() {
+        setupWindowWithIteration();
+        setupRepo("R001", "test-repo", "master");
+        setupVersionInfo("1.0.0");
+        when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
+                .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0", null)));
+        when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
+                .thenReturn(GitBranchPort.BranchStatus.present("abc"));
+        when(gitBranchPort.checkMergeability(anyString(), anyString(), anyString(), anyString()))
+                .thenThrow(new RuntimeException("Connection refused"));
+
+        ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
+
+        assertThat(report.getConflicts()).anyMatch(c ->
+                c.getConflictType() == ConflictType.GIT_UNAVAILABLE
+                        && c.getSourceBranch().equals("feature/" + ITERATION_KEY)
+                        && c.getTargetBranch().equals("release/rel-1.0"));
+    }
+
+    @Test
     void shouldReturnNoConflictsWhenEverythingClean() {
         // Given
         setupWindowWithIteration();

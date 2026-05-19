@@ -44,6 +44,31 @@ class ConflictReportTest {
     }
 
     @Test
+    void shouldCreateGitPermissionDeniedConflictItem() {
+        ConflictItem item = ConflictItem.gitPermissionDenied(
+                "R001", "repo-a", "ITER-001",
+                "feature/ITER-001", "release/v1.2.0",
+                "403 Forbidden");
+
+        assertThat(item.getConflictType()).isEqualTo(ConflictType.GIT_PERMISSION_DENIED);
+        assertThat(item.getSourceBranch()).isEqualTo("feature/ITER-001");
+        assertThat(item.getTargetBranch()).isEqualTo("release/v1.2.0");
+        assertThat(item.getSuggestion()).contains("Git");
+    }
+
+    @Test
+    void shouldCreateGitUnavailableConflictItem() {
+        ConflictItem item = ConflictItem.gitUnavailable(
+                "R001", "repo-a", "ITER-001",
+                "feature/ITER-001", null,
+                "Connection refused");
+
+        assertThat(item.getConflictType()).isEqualTo(ConflictType.GIT_UNAVAILABLE);
+        assertThat(item.getSourceBranch()).isEqualTo("feature/ITER-001");
+        assertThat(item.getMessage()).contains("unavailable");
+    }
+
+    @Test
     void emptyReportShouldHaveNoConflicts() {
         ConflictReport report = ConflictReport.empty("W001");
 

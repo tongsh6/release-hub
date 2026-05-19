@@ -300,6 +300,9 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             if (isNoCommitsBetweenResponse(body)) {
                 return MergeabilityResult.mergeable();
             }
+            if (e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403) {
+                return MergeabilityResult.permissionDenied(body);
+            }
             if (e.getStatusCode().value() == 400 || e.getStatusCode().value() == 404) {
                 return MergeabilityResult.conflict("branch not found or invalid: " + body);
             }
@@ -312,7 +315,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
         } catch (Exception e) {
             log.warn("GitLab mergeability check failed for {} -> {}: {}",
                     sourceBranch, targetBranch, e.getMessage());
-            return MergeabilityResult.error(e.getMessage());
+            return MergeabilityResult.unavailable(e.getMessage());
         }
     }
 

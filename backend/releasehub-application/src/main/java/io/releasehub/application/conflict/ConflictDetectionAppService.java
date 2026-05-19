@@ -162,33 +162,101 @@ public class ConflictDetectionAppService {
     private List<ConflictItem> detectMergeConflicts(CodeRepository repo, String featureBranch,
                                                      String releaseBranch, String iterationKey) {
         List<ConflictItem> results = new ArrayList<>();
-        String repoId = repo.getId().value();
-        String repoName = repo.getName();
         GitBranchPort gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-        String token = repo.getGitAccessToken();
-        String cloneUrl = repo.getCloneUrl();
 
-        if (gitPort.getBranchStatus(cloneUrl, token, featureBranch).exists()
-                && gitPort.getBranchStatus(cloneUrl, token, releaseBranch).exists()) {
-            GitBranchPort.MergeabilityResult mrCheck = gitPort.checkMergeability(
-                    cloneUrl, token, featureBranch, releaseBranch);
-            if (!mrCheck.canMerge()) {
-                results.add(ConflictItem.mergeConflict(repoId, repoName, iterationKey,
-                        featureBranch, releaseBranch, mrCheck.detail()));
-            }
+        BranchStatusProbe featureStatus = readBranchStatus(gitPort, repo, featureBranch, null, iterationKey);
+        BranchStatusProbe releaseStatus = readBranchStatus(gitPort, repo, releaseBranch, null, iterationKey);
+        featureStatus.conflict().ifPresent(results::add);
+        releaseStatus.conflict().ifPresent(results::add);
+        if (!results.isEmpty()) {
+            return results;
         }
 
         String masterBranch = repo.getDefaultBranch();
-        if (gitPort.getBranchStatus(cloneUrl, token, releaseBranch).exists()) {
-            GitBranchPort.MergeabilityResult mrCheck = gitPort.checkMergeability(
-                    cloneUrl, token, releaseBranch, masterBranch);
-            if (!mrCheck.canMerge()) {
-                results.add(ConflictItem.mergeConflict(repoId, repoName, iterationKey,
-                        releaseBranch, masterBranch, mrCheck.detail()));
-            }
+        if (featureStatus.status().exists() && releaseStatus.status().exists()) {
+            checkMergeability(gitPort, repo, featureBranch, releaseBranch, iterationKey)
+                    .ifPresent(results::add);
+        }
+
+        if (releaseStatus.status().exists()) {
+            checkMergeability(gitPort, repo, releaseBranch, masterBranch, iterationKey)
+                    .ifPresent(results::add);
         }
 
         return results;
+    }
+
+    private BranchStatusProbe readBranchStatus(GitBranchPort gitPort, CodeRepository repo, String sourceBranch,
+                                               String targetBranch, String iterationKey) {
+        try {
+            return new BranchStatusProbe(
+                    gitPort.getBranchStatus(repo.getCloneUrl(), repo.getGitAccessToken(), sourceBranch),
+                    Optional.empty());
+        } catch (RuntimeException e) {
+            log.warn("Git branch status check failed for repo {} branch {}: {}",
+                    repo.getId().value(), sourceBranch, e.getMessage());
+            return new BranchStatusProbe(GitBranchPort.BranchStatus.missing(),
+                    Optional.of(buildGitAccessConflict(repo, iterationKey, sourceBranch, targetBranch, e)));
+        }
+    }
+
+    private Optional<ConflictItem> checkMergeability(GitBranchPort gitPort, CodeRepository repo,
+                                                     String sourceBranch, String targetBranch, String iterationKey) {
+        GitBranchPort.MergeabilityResult mrCheck;
+        try {
+            mrCheck = gitPort.checkMergeability(
+                    repo.getCloneUrl(), repo.getGitAccessToken(), sourceBranch, targetBranch);
+        } catch (RuntimeException e) {
+            log.warn("Git mergeability check failed for repo {} {} -> {}: {}",
+                    repo.getId().value(), sourceBranch, targetBranch, e.getMessage());
+            return Optional.of(buildGitAccessConflict(repo, iterationKey, sourceBranch, targetBranch, e));
+        }
+        if (mrCheck.canMerge()) {
+            return Optional.empty();
+        }
+        String repoId = repo.getId().value();
+        String repoName = repo.getName();
+        return Optional.of(switch (mrCheck.failure()) {
+            case CONFLICT -> ConflictItem.mergeConflict(repoId, repoName, iterationKey,
+                    sourceBranch, targetBranch, mrCheck.detail());
+            case PERMISSION_DENIED -> ConflictItem.gitPermissionDenied(repoId, repoName, iterationKey,
+                    sourceBranch, targetBranch, mrCheck.detail());
+            case UNAVAILABLE, UNKNOWN -> ConflictItem.gitUnavailable(repoId, repoName, iterationKey,
+                    sourceBranch, targetBranch, mrCheck.detail());
+            case NONE -> ConflictItem.gitUnavailable(repoId, repoName, iterationKey,
+                    sourceBranch, targetBranch, "Mergeability check returned non-mergeable without a failure reason");
+        });
+    }
+
+    private ConflictItem buildGitAccessConflict(CodeRepository repo, String iterationKey,
+                                                 String sourceBranch, String targetBranch, RuntimeException e) {
+        String repoId = repo.getId().value();
+        String repoName = repo.getName();
+        String detail = e.getMessage();
+        if (isPermissionDenied(e)) {
+            return ConflictItem.gitPermissionDenied(repoId, repoName, iterationKey,
+                    sourceBranch, targetBranch, detail);
+        }
+        return ConflictItem.gitUnavailable(repoId, repoName, iterationKey,
+                sourceBranch, targetBranch, detail);
+    }
+
+    private boolean isPermissionDenied(RuntimeException e) {
+        String message = e.getMessage();
+        if (message == null) {
+            return false;
+        }
+        String normalized = message.toLowerCase();
+        return message.contains("401")
+                || message.contains("403")
+                || normalized.contains("forbidden")
+                || normalized.contains("unauthorized");
+    }
+
+    private record BranchStatusProbe(
+            GitBranchPort.BranchStatus status,
+            Optional<ConflictItem> conflict
+    ) {
     }
 
     private List<ConflictItem> detectCrossRepoConflicts(Iteration iteration) {

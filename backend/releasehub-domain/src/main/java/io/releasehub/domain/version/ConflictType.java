@@ -17,5 +17,9 @@ public enum ConflictType {
     CROSS_REPO_VERSION_MISMATCH, // 跨仓库版本不一致
 
     // 新增：合并冲突
-    MERGE_CONFLICT              // Git 合并冲突
+    MERGE_CONFLICT,             // Git 合并冲突
+
+    // 新增：外部 Git 访问风险
+    GIT_PERMISSION_DENIED,      // Git 平台权限不足
+    GIT_UNAVAILABLE             // Git 平台不可达或检查失败
 }
