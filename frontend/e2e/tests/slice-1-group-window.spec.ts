@@ -1,7 +1,7 @@
 /**
  * Slice 1 E2E: Group Hierarchy + Release Window Lifecycle
  *
- * Covers 10 scenarios across Admin / Release Manager / Tester roles.
+ * Covers 11 scenarios across Admin / Release Manager / Tester roles.
  * All UI labels resolved at runtime from Vue I18n — no hardcoded text.
  */
 import { test, expect } from '@playwright/test'
@@ -23,6 +23,7 @@ test.describe.serial('Slice-1: Group + Window', () => {
       'group.createTop', 'group.createChild', 'group.name', 'group.code', 'group.parentCode', 'group.hasChildren',
       'common.search', 'common.delete', 'common.keyword', 'common.confirm', 'common.cancel',
       'iteration.new', 'iteration.columns.name',
+      'repository.addOrSync',
       'releaseWindow.create', 'releaseWindow.name',
       'releaseWindow.freeze', 'releaseWindow.unfreeze',
       'releaseWindow.publish', 'releaseWindow.view',
@@ -61,6 +62,29 @@ test.describe.serial('Slice-1: Group + Window', () => {
     await expect(option).toBeVisible({ timeout: 5000 })
     await option.click(FORCE)
     await page.waitForTimeout(500)
+  }
+
+  async function assertNonLeafGroupDisabled(page: Page, dialog: ReturnType<Page['locator']>, groupCode: string) {
+    const groupSelect = dialog.locator('.el-tree-select, .el-select').first()
+    await groupSelect.click(FORCE)
+    await page.waitForTimeout(800)
+    const popper = page.locator('.el-popper:visible').last()
+    const nonLeafNode = popper.getByRole('treeitem')
+      .filter({ hasText: groupCode })
+      .filter({ hasText: L['group.hasChildren'] })
+      .first()
+    await expect(nonLeafNode).toBeVisible({ timeout: 5000 })
+    await expect(nonLeafNode).toHaveAttribute('aria-disabled', 'true')
+    await nonLeafNode.click(FORCE)
+    await expect(groupSelect).not.toContainText(groupCode)
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeVisible()
+  }
+
+  async function closeVisibleDialog(page: Page) {
+    const dialog = page.locator('.el-dialog:visible').last()
+    await dialog.locator('.el-dialog__headerbtn').click(FORCE)
+    await expect(dialog).toBeHidden({ timeout: 5000 })
   }
 
   async function searchIteration(page: Page, iterationName: string) {
@@ -180,7 +204,23 @@ test.describe.serial('Slice-1: Group + Window', () => {
     await expect(page.getByRole('treeitem').filter({ hasText: p }).last()).toContainText(c)
   })
 
-  test('4 — reject release window creation on non-leaf group', async ({ page }) => {
+  test('4 — resource creation only allows leaf groups', async ({ page }) => {
+    await ensureLoggedIn(page)
+
+    await page.goto('/repositories')
+    await page.waitForTimeout(1000)
+    await page.getByRole('button', { name: L['repository.addOrSync'] }).click(FORCE)
+    await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 5000 })
+    await assertNonLeafGroupDisabled(page, page.locator('.el-dialog:visible').last(), p)
+    await closeVisibleDialog(page)
+
+    await page.goto('/iterations')
+    await page.waitForTimeout(1000)
+    await page.getByRole('button', { name: L['iteration.new'] }).click(FORCE)
+    await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 5000 })
+    await assertNonLeafGroupDisabled(page, page.locator('.el-dialog:visible').last(), p)
+    await closeVisibleDialog(page)
+
     await ensureLoggedIn(page)
     await page.goto('/release-windows')
     await page.waitForTimeout(1000)
@@ -189,18 +229,8 @@ test.describe.serial('Slice-1: Group + Window', () => {
     await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 5000 })
     const d = page.locator('.el-dialog:visible').last()
     await d.getByRole('textbox', { name: L['releaseWindow.name'] }).fill(tcName('RW-NONLEAF'))
-
-    await d.locator('.el-select, .el-tree-select').last().click(FORCE)
-    await page.waitForTimeout(800)
-    const popper = page.getByRole('tooltip').last()
-    const nonLeafNode = popper.getByRole('treeitem').filter({ hasText: L['group.hasChildren'] }).first()
-    await expect(nonLeafNode).toBeVisible({ timeout: 5000 })
-    await expect(nonLeafNode).toHaveAttribute('aria-disabled', 'true')
-    await nonLeafNode.click(FORCE)
-    await page.keyboard.press('Escape')
-    await expect(d).toBeVisible()
-    await d.locator('.el-dialog__headerbtn').click(FORCE)
-    await expect(d).toBeHidden({ timeout: 5000 })
+    await assertNonLeafGroupDisabled(page, d, p)
+    await closeVisibleDialog(page)
   })
 
   // ══════════════ Window Lifecycle ══════════════
