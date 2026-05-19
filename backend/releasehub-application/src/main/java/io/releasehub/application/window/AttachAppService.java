@@ -64,6 +64,7 @@ public class AttachAppService {
                 .map(IterationKey::of)
                 .map(iterationKey -> {
                     Iteration iteration = iterationPort.findByKey(iterationKey).orElseThrow();
+                    ensureIterationInWindowGroup(releaseWindow, iteration);
 
                     WindowIteration wi = windowIterationPort.attach(ReleaseWindowId.of(windowId), iterationKey, now);
 
@@ -269,6 +270,15 @@ public class AttachAppService {
         }
         if (releaseWindow.isFrozen()) {
             throw BusinessException.rwAlreadyFrozen();
+        }
+    }
+
+    private void ensureIterationInWindowGroup(ReleaseWindow releaseWindow, Iteration iteration) {
+        if (!releaseWindow.getGroupCode().equals(iteration.getGroupCode())) {
+            throw BusinessException.rwIterationGroupMismatch(
+                    iteration.getId().value(),
+                    releaseWindow.getGroupCode(),
+                    iteration.getGroupCode());
         }
     }
 

@@ -39,6 +39,7 @@ public enum ErrorCode {
     RW_NOT_CONFIGURED("RW_010", "error.rw.not_configured", 400),
     RW_ID_INVALID("RW_011", "error.rw.id_invalid", 400),
     RW_NO_ITERATIONS("RW_012", "error.rw.no_iterations", 400),
+    RW_ITERATION_GROUP_MISMATCH("RW_013", "error.rw.iteration_group_mismatch", 400),
 
     // ========== 代码仓库 (REPO) ==========
     REPO_NOT_FOUND("REPO_001", "error.repo.not_found", 404),

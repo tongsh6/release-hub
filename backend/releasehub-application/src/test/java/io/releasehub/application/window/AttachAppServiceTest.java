@@ -175,6 +175,25 @@ class AttachAppServiceTest {
     }
 
     @Test
+    @DisplayName("不同分组的迭代禁止挂载到发布窗口")
+    void shouldRejectAttachWhenIterationGroupMismatch() {
+        Instant now = Instant.now();
+        ReleaseWindow window = ReleaseWindow.rehydrate(
+                ReleaseWindowId.of("window-1"), "RW-1", "Window", null,
+                now, "G001", ReleaseWindowStatus.DRAFT, now, now, false, null);
+        Iteration iteration = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", null, null, "G002",
+                Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
+
+        when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(iteration));
+
+        assertThatThrownBy(() -> attachAppService.attach("window-1", List.of("ITER-1")))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("RW_013"));
+    }
+
+    @Test
     @DisplayName("冻结窗口时禁止 detach")
     void shouldRejectDetachWhenWindowFrozen() {
         Instant now = Instant.now();

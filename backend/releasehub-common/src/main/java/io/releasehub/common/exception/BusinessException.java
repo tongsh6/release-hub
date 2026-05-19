@@ -43,6 +43,10 @@ public class BusinessException extends BaseException {
         return of(ErrorCode.RW_NO_ITERATIONS, windowId);
     }
 
+    public static BusinessException rwIterationGroupMismatch(Object iterationKey, Object windowGroup, Object iterationGroup) {
+        return of(ErrorCode.RW_ITERATION_GROUP_MISMATCH, iterationKey, windowGroup, iterationGroup);
+    }
+
     // ========== Group ==========
 
     public static BusinessException groupCodeExists(Object code) {
