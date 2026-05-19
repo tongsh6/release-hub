@@ -49,7 +49,7 @@
 | WindowLifecycleListener AFTER_COMMIT + 异常隔离 | 已实现 | commit `e1c5a31` + 本会话 commit | acc-v0.1.10 #13 + acc-v0.1.11 终轮 0 次 UnexpectedRollback | 闭环 |
 | 验收脚本 v3.2（含 ensure-settings + token 刷新 + 冲突识别） | 已实现 | commit `9eb5444` + `68381b1` + 本会话 | acc-v0.1.11 第 3 轮 25/26 PASS | 闭环 |
 | GitLabGitBranchAdapter URL 双重 encode 修复 | 已实现 | 本会话（uri(...) 包装 + ENC 测试同步） | acc-v0.1.11 终轮 release 分支 3/3、listBranches 18 个 | 闭环 |
-| 场景化验收矩阵基线 | 已验证 | `docs/reports/scenario-acceptance-matrix.md` + `scripts/acceptance/run-acceptance.sh` | 2026-05-20 真实 GitLab 验收 | PASS=134 / FAIL=0 / SKIP=0；SA-011 MERGE_CONFLICT、CROSS_REPO_VERSION_MISMATCH、REPO_AHEAD、SYSTEM_AHEAD、GIT_PERMISSION_DENIED、GIT_UNAVAILABLE 后端/GitLab 强证据已补；SA-015/SA-016 真实部分失败重试强证据已补 |
+| 场景化验收矩阵基线 | 已验证 | `docs/reports/scenario-acceptance-matrix.md` + `scripts/acceptance/run-acceptance.sh` | 2026-05-20 真实 GitLab 验收 | PASS=142 / FAIL=0 / SKIP=0；SA-010 detach 后 release 分支归档真实 GitLab 强证据已补；SA-011 MERGE_CONFLICT、CROSS_REPO_VERSION_MISMATCH、REPO_AHEAD、SYSTEM_AHEAD、GIT_PERMISSION_DENIED、GIT_UNAVAILABLE 后端/GitLab 强证据已补；SA-015/SA-016 真实部分失败重试强证据已补 |
 | SA-011 版本领先风险前端观察 | 已验证 | `frontend/e2e/tests/slice-2-full-flow.spec.ts` | 2026-05-18 Slice-2 Playwright | `REPO_AHEAD` / `SYSTEM_AHEAD` 类型分布、版本差异、阻断级别、建议处理方式和 `USE_SYSTEM` 同步请求语义已覆盖 |
 | SA-011 Git 访问异常风险闭环 | 已验证 | `ConflictType` + `ConflictDetectionAppService` + `ConflictPanel.vue` + `run-acceptance.sh` 5.9 + Slice-2 Playwright | 后端单测 + adapter 单测 + Vitest + typecheck/i18n + 真实 GitLab 验收 + Playwright | 新增 `GIT_PERMISSION_DENIED` / `GIT_UNAVAILABLE`，避免权限/不可达被吞掉、冒泡或误判为普通合并冲突；真实 GitLab 权限不足/不可达和前端用户旅程证据已补 |
 | 前端 SA-012/SA-013/SA-014 用户触发旅程 | 已验证 | `frontend/e2e/tests/slice-2-full-flow.spec.ts` | 2026-05-14/15 真实前后端联调 + 前端请求证据 | UI 创建业务数据后完成版本冲突解决、分支名不合规和 release 分支已存在外部处理观察、编排和版本更新触发；最终请求体断言作用域正确 |
@@ -58,6 +58,7 @@
 | SA-016 发布后收尾闭环 | 已验证 | `scripts/acceptance/run-acceptance.sh` + `frontend/e2e/tests/slice-1-group-window.spec.ts` | 2026-05-15 真实 GitLab 验收 + Playwright | 关闭窗口、重复关闭幂等、关闭后挂载/版本更新拒绝、收尾 Run 可见、前端 CLOSED 窗口隐藏挂载入口 |
 | SA-016 发布窗口报告导出 | 已实现 | `ReleaseWindowReportController` + `ExportAppService` + `ReleaseWindowDetail.vue` | MockMvc + Vitest + typecheck/i18n | 窗口维度 JSON/CSV 汇总 window、Run、RunItem、RunStep、结果分布；详情页可导出 CSV 报告 |
 | SA-010 解除挂载 UI E2E 复核 | 已验证 | `frontend/e2e/tests/slice-1-group-window.spec.ts` | 2026-05-19 Slice-1 Playwright | UI 创建迭代、挂载到窗口、详情页解除挂载、`detach` 请求成功、关联列表为空和发布计划隐藏 |
+| SA-010 解除挂载 GitLab 分支归档复核 | 已验证 | `scripts/acceptance/run-acceptance.sh` 4.2 | 2026-05-20 真实 GitLab 验收 | 独立窗口/迭代 attach 后 `release/<windowKey>` 存在；detach 后 `WindowIteration` 为空、原 release 分支删除、`archive/unpublished/release-<windowKey>` 存在 |
 | Maven surefire/failsafe 插件版本显式化 | 已验证 | `backend/pom.xml` | `mvn -pl releasehub-bootstrap -DskipTests validate` + `mvn -pl releasehub-application -Dtest=ConflictDetectionAppServiceTest test` | malformed POM 中插件版本缺失警告已关闭 |
 | acc-v0.1.10 验收报告归档 | 已完成 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 文档引用复核 | v0.1.10 已被 v0.1.11 和场景矩阵覆盖，顶层 reports 目录瘦身 |
 | 累积冲突清理脚本 | 已实现 | `scripts/e2e/reset-gitlab-seed-branches.sh` | dry-run 语法/帮助验证 | 默认 dry-run，`--execute` 才删除非种子分支，保留 main 与 seed feature 分支 |
@@ -70,7 +71,8 @@
 |---|---|---|---|
 | 全链路核心闭环 | 真实 GitLab 验收 v0.1.10 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS |
 | v0.1.11 全链路 + 三层关联 + 多 Provider + 设置持久化 | 真实 GitLab 验收 v0.1.11 终轮 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | **25 PASS / 0 FAIL / 1 SKIP**（SKIP 为业务正确拒绝） |
-| 场景化验收矩阵基线复验 | `bash scripts/acceptance/run-acceptance.sh` | `docs/reports/scenario-acceptance-matrix.md` | **134 PASS / 0 FAIL / 0 SKIP**；新增 SA-011 Git 访问异常真实 GitLab 强证据 |
+| 场景化验收矩阵基线复验 | `bash scripts/acceptance/run-acceptance.sh` | `docs/reports/scenario-acceptance-matrix.md` | **142 PASS / 0 FAIL / 0 SKIP**；新增 SA-010 解除挂载 GitLab 分支归档强证据和 SA-011 Git 访问异常真实 GitLab 强证据 |
+| SA-010 解除挂载 GitLab 分支归档复核 | `bash scripts/acceptance/run-acceptance.sh` | `tasks/records/2026-05-20-sa-010-detach-gitlab-archive.md` | **142 PASS / 0 FAIL / 0 SKIP**；新增 4.2 证据段验证 attach 后 release 分支存在、detach 后原分支删除且归档分支存在 |
 | SA-010 解除挂载 UI E2E 复核 | `cd frontend && pnpm run test:e2e:slice-1` | `tasks/records/2026-05-19-sa-010-detach-ui-e2e.md` | **11 PASS / 0 FAIL / 0 SKIP**；新增详情页解除挂载用户旅程 |
 | SA-011 Git 访问异常前端旅程 | `pnpm exec playwright test e2e/tests/slice-2-full-flow.spec.ts` | `tasks/records/2026-05-20-sa-011-git-access-evidence.md` | **23 PASS / 0 FAIL / 0 SKIP**；新增 `GIT_PERMISSION_DENIED` / `GIT_UNAVAILABLE` 类型分布、阻断级别、建议处理方式和外部 Git 访问处理入口 |
 | SA-011 版本领先风险前端观察 | `pnpm exec playwright test e2e/tests/slice-2-full-flow.spec.ts` | `docs/reports/scenario-acceptance-matrix.md` | **22 PASS / 0 FAIL / 0 SKIP**；新增 `REPO_AHEAD` / `SYSTEM_AHEAD` 详情观察和同步请求语义断言 |
@@ -89,8 +91,8 @@
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| 场景矩阵驱动推进 | 2026-05-20 已补 SA-011 Git 访问异常真实 GitLab/Playwright 证据，`run-acceptance.sh` 5.9 可稳定制造权限不足和 Git 不可达探针仓库并检出 `GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE`，Slice-2 已补对应前端用户旅程；2026-05-19 已补 SA-010 窗口详情解除挂载入口和 Slice-1 UI E2E 复核；2026-05-18 已把 SA-012/SA-013/SA-014/SA-015/SA-016 P0 收口；最新脚本矩阵验收 134/0/0，Slice-2 前端回归 23/0/0；SA-015 已补分组筛选复核、窗口详情冲突证据复核、Run 详情部分失败复核和真实部分失败重试后端/GitLab 证据；SA-016 已补发布窗口报告导出 API 和详情页 CSV 导出入口；分组相关窄域文案已去特征化为“分组/叶子分组”；SA-010 发布计划和 SA-011 冲突严重级别/建议处理方式已补前端观察；SA-011 已补 `MERGE_CONFLICT`、`CROSS_REPO_VERSION_MISMATCH`、`REPO_AHEAD`、`SYSTEM_AHEAD`、`GIT_PERMISSION_DENIED`、`GIT_UNAVAILABLE` 类型后端/GitLab 强证据和前端详情观察，且版本类冲突解决候选已覆盖细分类型；SA-012 已补 feature 缺失发布计划观察、feature 缺失后端/GitLab 强证据、release 分支已存在后端/GitLab 强证据、分支名不合规外部处理前端观察和后端/GitLab 强证据 | 按矩阵当前推进队列继续补带仓库解除挂载真实 GitLab 分支归档复核与更完整发布计划限制 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
-| 前端用户旅程自动化验证 | 2026-05-20 SA-011 已补 Git 访问异常 Playwright 用户旅程，冲突面板展示 `GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布、阻断级别、建议处理方式和外部 Git 访问处理入口，且不会误触发版本同步；2026-05-19 SA-010 窗口详情已补解除挂载按钮、确认、调用 `detach` API 与刷新关联迭代列表的 Vitest 证据，并补 Slice-1 Playwright 旅程：UI 创建迭代、挂载到窗口、详情页解除挂载、断言关联列表为空且发布计划隐藏；2026-05-20 Slice-2 回归 23/0/0，已覆盖 SA-011 `REPO_AHEAD` / `SYSTEM_AHEAD` 和 Git 访问异常前端专项观察；2026-05-15 完整 Playwright 回归 30/0/0，CLOSED 窗口隐藏挂载入口已覆盖；SA-016 详情页已提供发布报告 CSV 导出入口；SA-015 已由 UI 真实生成失败 Run，并可按 `windowKey` + 分组 + `FAILED` 复核 Run 抽屉证据，也可在窗口详情复核 `MERGE_CONFLICT`、`BRANCH_NONCOMPLIANT`、`CROSS_REPO_VERSION_MISMATCH` 冲突类型分布、分支/版本详情和建议处理方式，并可在 Run 详情复核一个 Run 内成功项与失败项并存、失败任务重试次数和错误信息；SA-015/SA-016 已补真实 GitLab 部分失败重试后端证据，确认 retry 只选择失败项且不重复执行成功项；SA-012 冲突面板已展示版本冲突同步路径、分支名不合规和 release 分支已存在外部处理路径、阻断级别和建议处理方式，发布计划已展示 feature 分支缺失状态；SA-012 feature 缺失已有 GitLab 直查、`branch-status` 和 Orchestrate RunStep 强证据；SA-012 release 分支已存在已有 GitLab 预置/直查、`branch-status` 和 Attach RunStep 强证据；SA-012 分支名不合规已有 GitLab 分支直查、BranchRule check 和 `BRANCH_NONCOMPLIANT` 冲突扫描强证据；SA-011 `MERGE_CONFLICT` 已有 GitLab 分支直查、冲突提交、Attach Run `MERGE_BLOCKED` 和冲突扫描强证据，`CROSS_REPO_VERSION_MISMATCH` 已有两仓 targetVersion 差异、GitLab feature/release 分支直查和冲突扫描强证据，`REPO_AHEAD`/`SYSTEM_AHEAD` 已有真实 feature 分支版本差异和冲突扫描强证据；SA-010 发布计划面板已展示计划顺序、迭代、仓库和分支状态 | 继续补带仓库解除挂载真实 GitLab 分支归档复核与更完整发布计划限制 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
+| 场景矩阵驱动推进 | 2026-05-20 已补 SA-010 解除挂载真实 GitLab 分支归档证据，`run-acceptance.sh` 4.2 可验证 attach 后 release 分支存在、detach 后原 release 分支删除且归档分支存在；同日已补 SA-011 Git 访问异常真实 GitLab/Playwright 证据，`run-acceptance.sh` 5.9 可稳定制造权限不足和 Git 不可达探针仓库并检出 `GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE`，Slice-2 已补对应前端用户旅程；2026-05-19 已补 SA-010 窗口详情解除挂载入口和 Slice-1 UI E2E 复核；2026-05-18 已把 SA-012/SA-013/SA-014/SA-015/SA-016 P0 收口；最新脚本矩阵验收 142/0/0，Slice-2 前端回归 23/0/0；SA-015 已补分组筛选复核、窗口详情冲突证据复核、Run 详情部分失败复核和真实部分失败重试后端/GitLab 证据；SA-016 已补发布窗口报告导出 API 和详情页 CSV 导出入口；分组相关窄域文案已去特征化为“分组/叶子分组”；SA-010 发布计划和 SA-011 冲突严重级别/建议处理方式已补前端观察；SA-011 已补 `MERGE_CONFLICT`、`CROSS_REPO_VERSION_MISMATCH`、`REPO_AHEAD`、`SYSTEM_AHEAD`、`GIT_PERMISSION_DENIED`、`GIT_UNAVAILABLE` 类型后端/GitLab 强证据和前端详情观察，且版本类冲突解决候选已覆盖细分类型；SA-012 已补 feature 缺失发布计划观察、feature 缺失后端/GitLab 强证据、release 分支已存在后端/GitLab 强证据、分支名不合规外部处理前端观察和后端/GitLab 强证据 | 按矩阵当前推进队列继续补更完整发布计划限制 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
+| 前端用户旅程自动化验证 | 2026-05-20 SA-011 已补 Git 访问异常 Playwright 用户旅程，冲突面板展示 `GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布、阻断级别、建议处理方式和外部 Git 访问处理入口，且不会误触发版本同步；2026-05-19 SA-010 窗口详情已补解除挂载按钮、确认、调用 `detach` API 与刷新关联迭代列表的 Vitest 证据，并补 Slice-1 Playwright 旅程：UI 创建迭代、挂载到窗口、详情页解除挂载、断言关联列表为空且发布计划隐藏；2026-05-20 Slice-2 回归 23/0/0，已覆盖 SA-011 `REPO_AHEAD` / `SYSTEM_AHEAD` 和 Git 访问异常前端专项观察；2026-05-15 完整 Playwright 回归 30/0/0，CLOSED 窗口隐藏挂载入口已覆盖；SA-016 详情页已提供发布报告 CSV 导出入口；SA-015 已由 UI 真实生成失败 Run，并可按 `windowKey` + 分组 + `FAILED` 复核 Run 抽屉证据，也可在窗口详情复核 `MERGE_CONFLICT`、`BRANCH_NONCOMPLIANT`、`CROSS_REPO_VERSION_MISMATCH` 冲突类型分布、分支/版本详情和建议处理方式，并可在 Run 详情复核一个 Run 内成功项与失败项并存、失败任务重试次数和错误信息；SA-015/SA-016 已补真实 GitLab 部分失败重试后端证据，确认 retry 只选择失败项且不重复执行成功项；SA-012 冲突面板已展示版本冲突同步路径、分支名不合规和 release 分支已存在外部处理路径、阻断级别和建议处理方式，发布计划已展示 feature 分支缺失状态；SA-012 feature 缺失已有 GitLab 直查、`branch-status` 和 Orchestrate RunStep 强证据；SA-012 release 分支已存在已有 GitLab 预置/直查、`branch-status` 和 Attach RunStep 强证据；SA-012 分支名不合规已有 GitLab 分支直查、BranchRule check 和 `BRANCH_NONCOMPLIANT` 冲突扫描强证据；SA-011 `MERGE_CONFLICT` 已有 GitLab 分支直查、冲突提交、Attach Run `MERGE_BLOCKED` 和冲突扫描强证据，`CROSS_REPO_VERSION_MISMATCH` 已有两仓 targetVersion 差异、GitLab feature/release 分支直查和冲突扫描强证据，`REPO_AHEAD`/`SYSTEM_AHEAD` 已有真实 feature 分支版本差异和冲突扫描强证据；SA-010 发布计划面板已展示计划顺序、迭代、仓库和分支状态，解除挂载真实 GitLab 分支归档证据已由验收脚本补齐 | 继续补更完整发布计划限制 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
 
 ---
 
@@ -112,7 +114,7 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| P1 | SA-010 发布计划与解除挂载收口 | attach 和冲突阻断已有强证据，发布计划、解除挂载入口、解除挂载 Slice-1 UI E2E、冲突严重级别、建议处理方式以及 SA-011 六类风险详情均已补前端观察；`MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 已补真实 GitLab 后端强证据 | 补带仓库解除挂载真实 GitLab 分支归档复核与更完整发布计划限制 |
+| P1 | SA-010 发布计划与解除挂载收口 | attach 和冲突阻断已有强证据，发布计划、解除挂载入口、解除挂载 Slice-1 UI E2E、解除挂载真实 GitLab release 分支归档、冲突严重级别、建议处理方式以及 SA-011 六类风险详情均已补前端观察；`MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 已补真实 GitLab 后端强证据 | 补更完整发布计划限制 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run 并复核失败步骤；分组筛选、窗口详情冲突证据复核、Run 详情部分失败复核、真实部分失败重试后端/GitLab 证据和发布报告导出已补 | 后续保持回归 |
 | P1 | SA-016 收尾扩展 | P0 已覆盖，重复关闭幂等、真实部分失败重试和发布报告导出已补 | 后续转入 CI pipeline 触发等 P2 扩展 |
 | P1/P2 | SA-012 更多冲突解决路径 | 版本冲突 `USE_SYSTEM`、feature 缺失、release 分支已存在和分支名不合规均已有对应证据 | 后续仅保留更多冲突类型解决路径扩展 |
@@ -123,11 +125,11 @@
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-20 SA-011 Git 访问异常真实 GitLab/Playwright 证据；真实 GitLab 验收基线：134 PASS / 0 FAIL / 0 SKIP；当前推进队列在第七节 |
+| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-20 SA-010 解除挂载 GitLab 分支归档证据 + SA-011 Git 访问异常真实 GitLab/Playwright 证据；真实 GitLab 验收基线：142 PASS / 0 FAIL / 0 SKIP；当前推进队列在第七节 |
 | 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-19 Slice-1 回归：11 PASS / 0 FAIL / 0 SKIP；新增 SA-010 解除挂载 UI 旅程。2026-05-20 Slice-2 回归：23 PASS / 0 FAIL / 0 SKIP；新增 SA-011 Git 访问异常前端旅程；入口 `cd frontend && pnpm run test:e2e` |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
-| 验收脚本 | `scripts/acceptance/run-acceptance.sh` | v3.12，含服务生命周期、`--hold-services`、SA-011 MERGE_CONFLICT、CROSS_REPO_VERSION_MISMATCH、REPO_AHEAD、SYSTEM_AHEAD、GIT_PERMISSION_DENIED、GIT_UNAVAILABLE 强证据、SA-015/SA-016 真实部分失败重试、SA-012 分支名不合规强证据、SA-013 干净黄金路径、SA-014 GitLab commit 校验 |
+| 验收脚本 | `scripts/acceptance/run-acceptance.sh` | v3.13，含服务生命周期、`--hold-services`、SA-010 解除挂载 release 分支归档强证据、SA-011 MERGE_CONFLICT、CROSS_REPO_VERSION_MISMATCH、REPO_AHEAD、SYSTEM_AHEAD、GIT_PERMISSION_DENIED、GIT_UNAVAILABLE 强证据、SA-015/SA-016 真实部分失败重试、SA-012 分支名不合规强证据、SA-013 干净黄金路径、SA-014 GitLab commit 校验 |
 | 本地统一启停脚本 | `scripts/dev/start-local-env.sh` | `start|hold|stop|restart|status`；推荐用 `hold` 托管前后端联调环境 |
 | 种子初始化 | `scripts/e2e/init-gitlab.sh` | 幂等，3 个种子仓库 |
 | 种子分支清理 | `scripts/e2e/reset-gitlab-seed-branches.sh` | 默认 dry-run；`--execute` 清理非种子分支，保留 main 与 seed feature 分支 |

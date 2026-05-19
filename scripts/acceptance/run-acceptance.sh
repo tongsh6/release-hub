@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 场景化验收证据脚本 v3.12
+# ReleaseHub 场景化验收证据脚本 v3.13
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
@@ -25,7 +25,7 @@
 #   SA-005: 分组仓库纳管、真实 GitLab cloneUrl、token 安全审计
 #   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
 #   SA-008: 发布窗口创建、空窗口发布拒绝、windowKey
-#   SA-010: Attach 迭代、GitLab release 分支创建、runItems 细粒度断言
+#   SA-010: Attach 迭代、GitLab release 分支创建、解除挂载后 release 分支归档、runItems 细粒度断言
 #   SA-011: 冲突检测和分类统计、MERGE_CONFLICT / CROSS_REPO_VERSION_MISMATCH / REPO_AHEAD / SYSTEM_AHEAD / GIT_PERMISSION_DENIED / GIT_UNAVAILABLE 真实 GitLab 强证据
 #   SA-012: 冲突解决回路（USE_SYSTEM、feature 缺失、release 已存在、分支名不合规强证据）
 #   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS
@@ -806,6 +806,54 @@ for wi in json.load(sys.stdin).get('data',[]):
     print(f\"branchCreated={wi['branchCreated']} releaseBranch={wi['releaseBranch']}\")
 ")
 echo "$WI_STATE" | while read l; do info "  $l"; done
+
+# 4.2 解除挂载真实 GitLab release 分支归档复核（独立窗口，避免影响后续主线场景）
+h2 "SA-010: 4.2 场景: Detach 迭代 & GitLab release 分支归档"
+if [ "$GITLAB_READY" = "true" ]; then
+    DETACH_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-解除挂载-$TS\",\"description\":\"SA-010 detach archive evidence $TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+    DETACH_WINDOW_ID=$(echo "$DETACH_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))" 2>/dev/null)
+    [ -n "$DETACH_WINDOW_ID" ] && ok "解除挂载窗口创建: $DETACH_WINDOW_ID" || no "解除挂载窗口创建失败: $DETACH_WINDOW_RESP"
+
+    DETACH_ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-解除挂载迭代-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[\"$R1\"]}")
+    DETACH_ITER_KEY=$(echo "$DETACH_ITER_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
+    [ -n "$DETACH_ITER_KEY" ] && ok "解除挂载迭代创建: $DETACH_ITER_KEY" || no "解除挂载迭代创建失败: $DETACH_ITER_RESP"
+
+    if [ -n "$DETACH_WINDOW_ID" ] && [ -n "$DETACH_ITER_KEY" ]; then
+        DETACH_WINDOW_KEY=$(curl -s "$BACKEND/api/v1/release-windows/$DETACH_WINDOW_ID" -H "$AUTH" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))" 2>/dev/null)
+        DETACH_RELEASE_BRANCH="release/$DETACH_WINDOW_KEY"
+        DETACH_ARCHIVE_BRANCH="archive/unpublished/${DETACH_RELEASE_BRANCH//\//-}"
+        DETACH_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+
+        DETACH_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$DETACH_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"iterationKeys\":[\"$DETACH_ITER_KEY\"]}")
+        DETACH_ATTACH_OK=$(echo "$DETACH_ATTACH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        DETACH_ATTACH_HAS_ERR=$(echo "$DETACH_ATTACH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(any(r.get('hasErrors', False) for r in d.get('data', [])))" 2>/dev/null)
+        [ "$DETACH_ATTACH_OK" = "True" ] && [ "$DETACH_ATTACH_HAS_ERR" != "True" ] && ok "解除挂载证据 attach 成功" || no "解除挂载证据 attach 失败: $DETACH_ATTACH"
+
+        DETACH_RELEASE_BEFORE=$(gitlab_branch_state "$DETACH_REPO_URL" "$DETACH_RELEASE_BRANCH")
+        [ "$DETACH_RELEASE_BEFORE" = "FOUND" ] && ok "GitLab attach 后 release 分支存在: $DETACH_RELEASE_BRANCH" || no "GitLab attach 后 release 分支状态异常: $DETACH_RELEASE_BEFORE ($DETACH_RELEASE_BRANCH)"
+
+        DETACH_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$DETACH_WINDOW_ID/detach" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"iterationKey\":\"$DETACH_ITER_KEY\"}")
+        DETACH_OK=$(echo "$DETACH_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        [ "$DETACH_OK" = "True" ] && ok "解除挂载 API 成功" || no "解除挂载 API 失败: $DETACH_RESP"
+
+        DETACH_ITER_COUNT=$(curl -s "$BACKEND/api/v1/release-windows/$DETACH_WINDOW_ID/iterations" -H "$AUTH" \
+            | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo "UNKNOWN")
+        [ "$DETACH_ITER_COUNT" = "0" ] && ok "解除挂载后 WindowIteration 为空" || no "解除挂载后 WindowIteration 异常: $DETACH_ITER_COUNT"
+
+        DETACH_RELEASE_AFTER=$(gitlab_branch_state "$DETACH_REPO_URL" "$DETACH_RELEASE_BRANCH")
+        DETACH_ARCHIVE_AFTER=$(gitlab_branch_state "$DETACH_REPO_URL" "$DETACH_ARCHIVE_BRANCH")
+        [ "$DETACH_RELEASE_AFTER" = "NOT_FOUND" ] && ok "GitLab detach 后原 release 分支已删除: $DETACH_RELEASE_BRANCH" || no "GitLab detach 后原 release 分支仍异常: $DETACH_RELEASE_AFTER ($DETACH_RELEASE_BRANCH)"
+        [ "$DETACH_ARCHIVE_AFTER" = "FOUND" ] && ok "GitLab detach 后归档分支存在: $DETACH_ARCHIVE_BRANCH" || no "GitLab detach 后归档分支状态异常: $DETACH_ARCHIVE_AFTER ($DETACH_ARCHIVE_BRANCH)"
+    fi
+else
+    skip "跳过解除挂载 GitLab 分支归档复核 (MOCK_MODE)"
+fi
 
 # ---- 5. 场景: 冲突检测 ----
 h2 "SA-011: 5. 场景: 冲突检测"
