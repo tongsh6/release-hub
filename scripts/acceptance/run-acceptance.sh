@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 场景化验收证据脚本 v3.11
+# ReleaseHub 场景化验收证据脚本 v3.12
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
@@ -26,7 +26,7 @@
 #   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
 #   SA-008: 发布窗口创建、空窗口发布拒绝、windowKey
 #   SA-010: Attach 迭代、GitLab release 分支创建、runItems 细粒度断言
-#   SA-011: 冲突检测和分类统计、MERGE_CONFLICT / CROSS_REPO_VERSION_MISMATCH / REPO_AHEAD / SYSTEM_AHEAD 真实 GitLab 强证据
+#   SA-011: 冲突检测和分类统计、MERGE_CONFLICT / CROSS_REPO_VERSION_MISMATCH / REPO_AHEAD / SYSTEM_AHEAD / GIT_PERMISSION_DENIED / GIT_UNAVAILABLE 真实 GitLab 强证据
 #   SA-012: 冲突解决回路（USE_SYSTEM、feature 缺失、release 已存在、分支名不合规强证据）
 #   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS
 #   SA-014: 版本更新、校验、Git 远程提交验证
@@ -1665,8 +1665,88 @@ else
     skip "跳过 REPO_AHEAD / SYSTEM_AHEAD 强证据（MOCK_MODE 或缺 GitLab PAT）"
 fi
 
-# ---- 5.9 部分失败重试：后端 + GitLab 强证据 ----
-h2 "SA-015/SA-016: 5.9 真实部分失败重试后端/GitLab 强证据"
+# ---- 5.9 Git 访问异常：后端 + GitLab 强证据 ----
+h2 "SA-011: 5.9 GIT_PERMISSION_DENIED / GIT_UNAVAILABLE 后端/GitLab 强证据"
+if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+    GIT_ACCESS_TS=$(date -u +%Y%m%d-%H%M%S)
+    GIT_ACCESS_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-Git访问异常-$GIT_ACCESS_TS\",\"description\":\"Git access risk evidence $GIT_ACCESS_TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+    GIT_ACCESS_WINDOW_ID=$(echo "$GIT_ACCESS_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))" 2>/dev/null)
+    GIT_ACCESS_WINDOW_KEY=$(echo "$GIT_ACCESS_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('windowKey', ''))" 2>/dev/null)
+    if [ -z "$GIT_ACCESS_WINDOW_ID" ] || [ -z "$GIT_ACCESS_WINDOW_KEY" ]; then
+        no "Git 访问异常证据窗口创建失败: $GIT_ACCESS_WINDOW_RESP"
+    else
+        ok "Git 访问异常证据窗口创建: $GIT_ACCESS_WINDOW_KEY"
+    fi
+
+    if [ -n "$GIT_ACCESS_WINDOW_ID" ] && [ -n "$GIT_ACCESS_WINDOW_KEY" ]; then
+        GIT_ACCESS_EXISTING_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+        GIT_ACCESS_BAD_TOKEN="invalid-token-$GIT_ACCESS_TS"
+        GIT_ACCESS_UNAVAILABLE_URL="http://localhost:65535/e2e-user/git-unavailable-$GIT_ACCESS_TS.git"
+
+        GIT_ACCESS_PERMISSION_REPO_RESP=$(curl -s -X POST "$BACKEND/api/v1/repositories" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"name\":\"验收-Git权限不足-$GIT_ACCESS_TS\",\"cloneUrl\":\"$GIT_ACCESS_EXISTING_REPO_URL\",\"defaultBranch\":\"main\",\"groupCode\":\"$GROUP_CODE\",\"gitProvider\":\"GITLAB\",\"gitAccessToken\":\"$GIT_ACCESS_BAD_TOKEN\",\"initialVersion\":\"1.0.0\"}")
+        GIT_ACCESS_PERMISSION_REPO_ID=$(echo "$GIT_ACCESS_PERMISSION_REPO_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('id',''))" 2>/dev/null)
+        [ -n "$GIT_ACCESS_PERMISSION_REPO_ID" ] && ok "已注册权限不足探针仓库: ${GIT_ACCESS_PERMISSION_REPO_ID:0:8}..." || no "权限不足探针仓库注册失败: $GIT_ACCESS_PERMISSION_REPO_RESP"
+
+        GIT_ACCESS_UNAVAILABLE_REPO_RESP=$(curl -s -X POST "$BACKEND/api/v1/repositories" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"name\":\"验收-Git不可达-$GIT_ACCESS_TS\",\"cloneUrl\":\"$GIT_ACCESS_UNAVAILABLE_URL\",\"defaultBranch\":\"main\",\"groupCode\":\"$GROUP_CODE\",\"gitProvider\":\"GITLAB\",\"gitAccessToken\":\"$GITLAB_PAT\",\"initialVersion\":\"1.0.0\"}")
+        GIT_ACCESS_UNAVAILABLE_REPO_ID=$(echo "$GIT_ACCESS_UNAVAILABLE_REPO_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('id',''))" 2>/dev/null)
+        [ -n "$GIT_ACCESS_UNAVAILABLE_REPO_ID" ] && ok "已注册不可达探针仓库: ${GIT_ACCESS_UNAVAILABLE_REPO_ID:0:8}..." || no "不可达探针仓库注册失败: $GIT_ACCESS_UNAVAILABLE_REPO_RESP"
+
+        if [ -n "$GIT_ACCESS_PERMISSION_REPO_ID" ] && [ -n "$GIT_ACCESS_UNAVAILABLE_REPO_ID" ]; then
+            GIT_ACCESS_REPO_JSON="[\"$GIT_ACCESS_PERMISSION_REPO_ID\",\"$GIT_ACCESS_UNAVAILABLE_REPO_ID\"]"
+            GIT_ACCESS_ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"name\":\"验收-Git访问异常-$GIT_ACCESS_TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":$GIT_ACCESS_REPO_JSON}")
+            GIT_ACCESS_ITER_KEY=$(echo "$GIT_ACCESS_ITER_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
+            [ -n "$GIT_ACCESS_ITER_KEY" ] && ok "Git 访问异常证据迭代创建: $GIT_ACCESS_ITER_KEY" || no "Git 访问异常证据迭代创建失败: $GIT_ACCESS_ITER_RESP"
+        fi
+
+        if [ -n "$GIT_ACCESS_ITER_KEY" ]; then
+            GIT_ACCESS_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$GIT_ACCESS_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"iterationKeys\":[\"$GIT_ACCESS_ITER_KEY\"]}")
+            GIT_ACCESS_ATTACH_HAS_ERRORS=$(echo "$GIT_ACCESS_ATTACH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print(any(r.get('hasErrors', False) for r in d.get('data', [])))
+" 2>/dev/null || echo "False")
+            if [ "$GIT_ACCESS_ATTACH_HAS_ERRORS" = "True" ]; then
+                ok "Attach 可追踪 Git 不可达类外部失败"
+            else
+                info "Attach 未产生异常返回，继续以冲突扫描复核 Git 访问风险"
+            fi
+
+            GIT_ACCESS_SCAN=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$GIT_ACCESS_WINDOW_ID/conflicts/check" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
+            GIT_ACCESS_CONFLICT_SUMMARY=$(echo "$GIT_ACCESS_SCAN" | python3 -c "
+import sys,json
+d=json.load(sys.stdin).get('data', {})
+conflicts=d.get('conflicts', [])
+permission=[c for c in conflicts if c.get('conflictType') == 'GIT_PERMISSION_DENIED']
+unavailable=[c for c in conflicts if c.get('conflictType') == 'GIT_UNAVAILABLE']
+messages=' || '.join(c.get('message','') for c in permission + unavailable)
+repos=','.join(c.get('repoName','') for c in permission + unavailable)
+print('{}|{}|{}|{}'.format(len(permission), len(unavailable), repos, messages))
+" 2>/dev/null || echo "0|0||")
+            IFS='|' read -r GIT_ACCESS_PERMISSION_COUNT GIT_ACCESS_UNAVAILABLE_COUNT GIT_ACCESS_REPOS GIT_ACCESS_MESSAGES <<< "$GIT_ACCESS_CONFLICT_SUMMARY"
+            [ "${GIT_ACCESS_PERMISSION_COUNT:-0}" -gt 0 ] \
+                && ok "冲突扫描检出 GIT_PERMISSION_DENIED: count=$GIT_ACCESS_PERMISSION_COUNT" \
+                || no "GIT_PERMISSION_DENIED 冲突证据异常: $GIT_ACCESS_CONFLICT_SUMMARY"
+            [ "${GIT_ACCESS_UNAVAILABLE_COUNT:-0}" -gt 0 ] \
+                && ok "冲突扫描检出 GIT_UNAVAILABLE: count=$GIT_ACCESS_UNAVAILABLE_COUNT" \
+                || no "GIT_UNAVAILABLE 冲突证据异常: $GIT_ACCESS_CONFLICT_SUMMARY"
+            echo "$GIT_ACCESS_REPOS" | grep -q "验收-Git权限不足" \
+                && echo "$GIT_ACCESS_REPOS" | grep -q "验收-Git不可达" \
+                && ok "Git 访问异常冲突可追溯到对应探针仓库" \
+                || no "Git 访问异常仓库追溯异常: repos=$GIT_ACCESS_REPOS messages=$GIT_ACCESS_MESSAGES"
+        fi
+    fi
+else
+    skip "跳过 GIT_PERMISSION_DENIED / GIT_UNAVAILABLE 强证据（MOCK_MODE 或缺 GitLab PAT）"
+fi
+
+# ---- 5.10 部分失败重试：后端 + GitLab 强证据 ----
+h2 "SA-015/SA-016: 5.10 真实部分失败重试后端/GitLab 强证据"
 if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
     PARTIAL_TS=$(date -u +%Y%m%d-%H%M%S)
     PARTIAL_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \

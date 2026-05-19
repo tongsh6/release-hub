@@ -215,11 +215,14 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'conflict.resolveVersion',
       'conflict.resolveBranch',
       'conflict.resolveInGit',
+      'conflict.resolveGitAccess',
       'conflict.noConflicts',
       'conflict.types.MISMATCH',
       'conflict.types.REPO_AHEAD',
       'conflict.types.SYSTEM_AHEAD',
       'conflict.types.MERGE_CONFLICT',
+      'conflict.types.GIT_PERMISSION_DENIED',
+      'conflict.types.GIT_UNAVAILABLE',
       'conflict.types.CROSS_REPO_VERSION_MISMATCH',
       'conflict.types.BRANCH_EXISTS',
       'conflict.types.BRANCH_NONCOMPLIANT',
@@ -963,6 +966,91 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await expect(page.locator('.el-message-box').last()).toBeVisible({ timeout: 5000 })
     await confirmMessageBox(page)
     expect(resolveBody).toMatchObject({ resolution: 'USE_SYSTEM' })
+  })
+
+  test('SA-011 frontend path surfaces Git access risks as blocking external work', async ({ page }) => {
+    await ensureLoggedIn(page)
+    expect(windowDetailUrl).toContain('/release-windows/')
+    expect(createdRepoId).toBeTruthy()
+    expect(windowKey).toContain('RW-')
+
+    const sourceBranch = `feature/${iterationKey}`
+    const targetBranch = `release/${windowKey}`
+    let resolveCalled = false
+    const gitAccessReport = {
+      windowId: 'ui-journey-window',
+      checkedAt: new Date().toISOString(),
+      hasConflicts: true,
+      totalCount: 2,
+      conflicts: [
+        {
+          repoId: createdRepoId,
+          repoName,
+          iterationKey,
+          conflictType: 'GIT_PERMISSION_DENIED',
+          sourceBranch,
+          targetBranch,
+          message: 'Git platform returned 401 Unauthorized while reading branch status.',
+          suggestion: 'Check repository token permissions and Git platform access, then rescan.'
+        },
+        {
+          repoId: createdRepoId,
+          repoName,
+          iterationKey,
+          conflictType: 'GIT_UNAVAILABLE',
+          sourceBranch,
+          targetBranch,
+          message: 'Git platform is unavailable while checking mergeability.',
+          suggestion: 'Restore Git platform connectivity, then rescan.'
+        }
+      ]
+    }
+
+    await page.route('**/api/v1/release-windows/*/conflicts', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: gitAccessReport })
+      })
+    })
+    await page.route('**/api/v1/release-windows/*/conflicts/check', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'OK', message: 'OK', data: gitAccessReport })
+      })
+    })
+    await page.route('**/api/v1/iterations/*/repos/*/resolve-conflict', async (route) => {
+      resolveCalled = true
+      await route.abort()
+    })
+
+    await page.goto(windowDetailUrl)
+    const conflictPanel = page.locator('.conflict-panel')
+    await conflictPanel.getByRole('button', { name: L['conflict.rescan'] }).click(FORCE)
+    await expect(conflictPanel.locator('.el-radio-button')
+      .filter({ hasText: `${L['conflict.types.GIT_PERMISSION_DENIED']} (1)` })).toBeVisible()
+    await expect(conflictPanel.locator('.el-radio-button')
+      .filter({ hasText: `${L['conflict.types.GIT_UNAVAILABLE']} (1)` })).toBeVisible()
+
+    await selectConflictType(conflictPanel, 'GIT_PERMISSION_DENIED')
+    await expect(conflictPanel).toContainText(L['conflict.types.GIT_PERMISSION_DENIED'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.title'])
+    await expect(conflictPanel).toContainText(L['conflict.severity.blocker'])
+    await expect(conflictPanel).toContainText(L['conflict.recommendation'])
+    await expect(conflictPanel).toContainText(`${sourceBranch} → ${targetBranch}`)
+    await expect(conflictPanel).toContainText('Git platform returned 401 Unauthorized while reading branch status.')
+    await expect(conflictPanel).toContainText('Check repository token permissions and Git platform access, then rescan.')
+    await expect(conflictPanel.getByText(L['conflict.resolveGitAccess'])).toBeVisible()
+    await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toHaveCount(0)
+
+    await selectConflictType(conflictPanel, 'GIT_UNAVAILABLE')
+    await expect(conflictPanel).toContainText(L['conflict.types.GIT_UNAVAILABLE'])
+    await expect(conflictPanel).toContainText('Git platform is unavailable while checking mergeability.')
+    await expect(conflictPanel).toContainText('Restore Git platform connectivity, then rescan.')
+    await expect(conflictPanel.getByText(L['conflict.resolveGitAccess'])).toBeVisible()
+    await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toHaveCount(0)
+    expect(resolveCalled).toBe(false)
   })
 
   test('SA-015: Tester can review conflict evidence from release window detail', async ({ page }) => {
