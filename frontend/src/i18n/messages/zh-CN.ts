@@ -618,6 +618,7 @@ export default {
     resolveSuccess: '冲突已解决',
     resolveInGit: '请到 Git 平台解决',
     resolveBranch: '请处理此分支',
+    resolveGitAccess: '检查 Git 访问',
     severity: {
       title: '严重级别',
       blocker: '阻断',
@@ -627,6 +628,8 @@ export default {
     recommendations: {
       syncVersion: '同步 ReleaseHub 记录的版本后重新扫描。',
       resolveMerge: '在 Git 平台解决合并冲突后重新扫描。',
+      checkGitPermission: '检查仓库 Token 权限和 Git 平台访问范围后重新扫描。',
+      restoreGitAccess: '恢复 Git 平台连接后重新扫描。',
       reviewExistingBranch: '复核已存在的 release 分支，并按发布计划归档或复用。',
       renameBranch: '调整分支名称使其符合分支规则后重新扫描。',
       alignVersions: '对齐发布范围内的仓库版本后重新扫描。'
@@ -638,7 +641,9 @@ export default {
       BRANCH_EXISTS: '分支已存在',
       BRANCH_NONCOMPLIANT: '分支名不合规',
       CROSS_REPO_VERSION_MISMATCH: '跨仓库版本不一致',
-      MERGE_CONFLICT: '合并冲突'
+      MERGE_CONFLICT: '合并冲突',
+      GIT_PERMISSION_DENIED: 'Git 权限不足',
+      GIT_UNAVAILABLE: 'Git 不可达'
     }
   },
   orchestration: {

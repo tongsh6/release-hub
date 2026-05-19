@@ -591,6 +591,7 @@ export default {
     resolveSuccess: 'Conflict resolved',
     resolveInGit: 'Resolve in Git',
     resolveBranch: 'Resolve Branch',
+    resolveGitAccess: 'Check Git Access',
     severity: {
       title: 'Severity',
       blocker: 'Blocking',
@@ -600,6 +601,8 @@ export default {
     recommendations: {
       syncVersion: 'Sync the version recorded by ReleaseHub, then rescan.',
       resolveMerge: 'Resolve the merge conflict in the Git platform, then rescan.',
+      checkGitPermission: 'Check repository token permissions and Git platform access, then rescan.',
+      restoreGitAccess: 'Restore Git platform connectivity and retry the scan.',
       reviewExistingBranch: 'Review the existing release branch and archive or reuse it according to the release plan.',
       renameBranch: 'Adjust the branch name to match the configured branch rule, then rescan.',
       alignVersions: 'Align repository versions across the release scope, then rescan.'
@@ -611,7 +614,9 @@ export default {
       BRANCH_EXISTS: 'Branch Exists',
       BRANCH_NONCOMPLIANT: 'Noncompliant Name',
       CROSS_REPO_VERSION_MISMATCH: 'Cross-repo Mismatch',
-      MERGE_CONFLICT: 'Merge Conflict'
+      MERGE_CONFLICT: 'Merge Conflict',
+      GIT_PERMISSION_DENIED: 'Git Permission Denied',
+      GIT_UNAVAILABLE: 'Git Unavailable'
     }
   },
   orchestration: {

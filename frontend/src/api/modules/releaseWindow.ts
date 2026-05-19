@@ -199,7 +199,7 @@ export interface ConflictItemView {
   repoId: string
   repoName: string
   iterationKey: string
-  conflictType: 'MISMATCH' | 'REPO_AHEAD' | 'SYSTEM_AHEAD' | 'BRANCH_EXISTS' | 'BRANCH_NONCOMPLIANT' | 'CROSS_REPO_VERSION_MISMATCH' | 'MERGE_CONFLICT'
+  conflictType: 'MISMATCH' | 'REPO_AHEAD' | 'SYSTEM_AHEAD' | 'BRANCH_EXISTS' | 'BRANCH_NONCOMPLIANT' | 'CROSS_REPO_VERSION_MISMATCH' | 'MERGE_CONFLICT' | 'GIT_PERMISSION_DENIED' | 'GIT_UNAVAILABLE'
   sourceBranch?: string
   targetBranch?: string
   systemVersion?: string

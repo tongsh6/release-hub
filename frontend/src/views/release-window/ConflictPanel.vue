@@ -131,7 +131,17 @@ const report = ref<ConflictReportView | null>(null)
 const scanning = ref(false)
 const activeFilter = ref<string>('ALL')
 
-const conflictTypes = ['MISMATCH', 'MERGE_CONFLICT', 'BRANCH_EXISTS', 'BRANCH_NONCOMPLIANT', 'CROSS_REPO_VERSION_MISMATCH', 'REPO_AHEAD', 'SYSTEM_AHEAD']
+const conflictTypes = [
+  'MISMATCH',
+  'MERGE_CONFLICT',
+  'GIT_PERMISSION_DENIED',
+  'GIT_UNAVAILABLE',
+  'BRANCH_EXISTS',
+  'BRANCH_NONCOMPLIANT',
+  'CROSS_REPO_VERSION_MISMATCH',
+  'REPO_AHEAD',
+  'SYSTEM_AHEAD'
+]
 type ConflictType = ConflictItemView['conflictType']
 type ConflictSeverity = 'blocker'
 
@@ -159,6 +169,8 @@ const getTagType = (type: string) => {
   switch (type) {
     case 'MISMATCH':
     case 'MERGE_CONFLICT':
+    case 'GIT_PERMISSION_DENIED':
+    case 'GIT_UNAVAILABLE':
       return 'danger'
     case 'BRANCH_EXISTS':
     case 'BRANCH_NONCOMPLIANT':
@@ -183,6 +195,7 @@ const emitResolve = (item: ConflictItemView) => {
 
 const getExternalHint = (type: string) => {
   if (type === 'MERGE_CONFLICT') return t('conflict.resolveInGit')
+  if (type === 'GIT_PERMISSION_DENIED' || type === 'GIT_UNAVAILABLE') return t('conflict.resolveGitAccess')
   if (type === 'BRANCH_EXISTS' || type === 'BRANCH_NONCOMPLIANT') return t('conflict.resolveBranch')
   return ''
 }
@@ -191,6 +204,8 @@ const getRecommendation = (item: ConflictItemView) => {
   if (item.suggestion) return item.suggestion
   if (isResolvableInApp(item.conflictType)) return t('conflict.recommendations.syncVersion')
   if (item.conflictType === 'MERGE_CONFLICT') return t('conflict.recommendations.resolveMerge')
+  if (item.conflictType === 'GIT_PERMISSION_DENIED') return t('conflict.recommendations.checkGitPermission')
+  if (item.conflictType === 'GIT_UNAVAILABLE') return t('conflict.recommendations.restoreGitAccess')
   if (item.conflictType === 'BRANCH_EXISTS') return t('conflict.recommendations.reviewExistingBranch')
   if (item.conflictType === 'BRANCH_NONCOMPLIANT') return t('conflict.recommendations.renameBranch')
   return t('conflict.recommendations.alignVersions')
