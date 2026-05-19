@@ -20,6 +20,7 @@ export interface IterationRaw {
   name: string
   description: string
   expectedReleaseAt: string | null
+  groupCode: string
   repoIds: string[]
   createdAt: string
   updatedAt: string
@@ -31,6 +32,7 @@ export interface Iteration {
   name: string
   description: string
   expectedReleaseAt: string | null
+  groupCode: string
   repoIds: string[]
   repoCount: number
   mountedWindows: string  // 暂时使用空字符串
@@ -70,6 +72,7 @@ function transformIteration(raw: IterationRaw): Iteration {
     name: raw.name || '',
     description: raw.description || '',
     expectedReleaseAt: raw.expectedReleaseAt,
+    groupCode: raw.groupCode || '',
     repoIds: raw.repoIds || [],
     repoCount: raw.repoIds?.length || 0,
     mountedWindows: '',  // 后端暂未提供此字段

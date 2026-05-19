@@ -27,8 +27,9 @@
         style="width: 100%; margin-top: 12px;"
         @selection-change="onSelectionChange"
       >
-        <el-table-column type="selection" width="55" />
+        <el-table-column type="selection" width="55" :selectable="isSelectable" />
         <el-table-column prop="iterationKey" :label="t('iteration.columns.key')" min-width="160" />
+        <el-table-column prop="groupCode" :label="t('group.code')" min-width="120" />
         <el-table-column prop="repoCount" :label="t('iteration.columns.repos')" width="100" />
         <el-table-column prop="mountedWindows" :label="t('iteration.columns.mountedWindows')" width="160" />
         <el-table-column :label="t('iteration.columns.attachAt')" width="180">
@@ -60,8 +61,9 @@ import { ElMessage } from 'element-plus'
 import EntityDialog from '@/components/common/EntityDialog.vue'
 import { useListPage } from '@/composables/crud/useListPage'
 import { iterationApi, type Iteration } from '@/api/iterationApi'
-import { releaseWindowApi } from '@/api/modules/releaseWindow'
+import { releaseWindowApi, type ReleaseWindow } from '@/api/modules/releaseWindow'
 import { hasPerm } from '@/utils/perm'
+import { handleError } from '@/utils/error'
 import { formatDateTime } from '@/utils/date'
 
 const { t } = useI18n()
@@ -70,6 +72,7 @@ const emit = defineEmits<{ (e: 'success'): void }>()
 const entityRef = ref<InstanceType<typeof EntityDialog>>()
 const tableRef = ref()
 const windowIdRef = ref<string>('')
+const windowGroupCode = ref<string>('')
 const keyword = ref('')
 const selected = ref<Iteration[]>([])
 
@@ -77,15 +80,23 @@ const { query, loading, list, total, fetch, onPageChange, onPageSizeChange } = u
   fetcher: iterationApi.list as any,
   defaultQuery: {
     keyword: ''
-  }
+  },
+  immediate: false
 })
 
-const open = (windowId: string) => {
+const open = async (windowId: string) => {
   windowIdRef.value = windowId
+  windowGroupCode.value = ''
   keyword.value = ''
   selected.value = []
   entityRef.value?.open()
-  fetch()
+  try {
+    const window = await releaseWindowApi.get(windowId) as ReleaseWindow
+    windowGroupCode.value = window.groupCode || ''
+    await fetch()
+  } catch (error) {
+    handleError(error)
+  }
 }
 
 const doSearch = () => {
@@ -100,7 +111,11 @@ const clearSelection = () => {
 }
 
 const onSelectionChange = (rows: Iteration[]) => {
-  selected.value = rows
+  selected.value = rows.filter(isSelectable)
+}
+
+const isSelectable = (row: Iteration) => {
+  return Boolean(!windowGroupCode.value || row.groupCode === windowGroupCode.value)
 }
 
 const submit = async () => {

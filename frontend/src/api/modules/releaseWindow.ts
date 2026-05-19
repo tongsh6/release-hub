@@ -15,6 +15,7 @@ export interface ReleaseWindowView {
   name: string
   description?: string
   plannedReleaseAt?: string
+  groupCode: string
   status: ReleaseWindowStatus
   createdAt: string
   updatedAt: string
