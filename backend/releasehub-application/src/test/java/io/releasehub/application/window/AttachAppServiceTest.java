@@ -175,6 +175,21 @@ class AttachAppServiceTest {
     }
 
     @Test
+    @DisplayName("已发布窗口时禁止 attach")
+    void shouldRejectAttachWhenWindowPublished() {
+        Instant now = Instant.now();
+        ReleaseWindow window = ReleaseWindow.rehydrate(
+                ReleaseWindowId.of("window-1"), "RW-1", "Window", null,
+                now, "G001", ReleaseWindowStatus.PUBLISHED, now, now, false, now);
+
+        when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
+
+        assertThatThrownBy(() -> attachAppService.attach("window-1", List.of("ITER-1")))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("RW_009"));
+    }
+
+    @Test
     @DisplayName("不同分组的迭代禁止挂载到发布窗口")
     void shouldRejectAttachWhenIterationGroupMismatch() {
         Instant now = Instant.now();
@@ -216,6 +231,21 @@ class AttachAppServiceTest {
         ReleaseWindow window = ReleaseWindow.rehydrate(
                 ReleaseWindowId.of("window-1"), "RW-1", "Window", null,
                 now, "G001", ReleaseWindowStatus.CLOSED, now, now, false, now);
+
+        when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
+
+        assertThatThrownBy(() -> attachAppService.detach("window-1", "ITER-1"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("RW_009"));
+    }
+
+    @Test
+    @DisplayName("已发布窗口时禁止 detach")
+    void shouldRejectDetachWhenWindowPublished() {
+        Instant now = Instant.now();
+        ReleaseWindow window = ReleaseWindow.rehydrate(
+                ReleaseWindowId.of("window-1"), "RW-1", "Window", null,
+                now, "G001", ReleaseWindowStatus.PUBLISHED, now, now, false, now);
 
         when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
 

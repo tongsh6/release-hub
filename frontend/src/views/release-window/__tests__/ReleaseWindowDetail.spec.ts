@@ -225,7 +225,27 @@ describe('ReleaseWindowDetail', () => {
     expect(openSpy).toHaveBeenCalledWith('/api/v1/release-windows/window-1/report.csv', '_blank')
   })
 
+  it('hides release plan mutation controls after publish', async () => {
+    const wrapper = shallowMount(ReleaseWindowDetail, {
+      global: { stubs }
+    })
+    await flushPromises()
+    await flushPromises()
+
+    const buttonTexts = wrapper.findAll('button').map(button => button.text())
+    expect(buttonTexts.some(text => text.includes('releaseWindow.attachIterations'))).toBe(false)
+    expect(buttonTexts.some(text => text.includes('common.remove'))).toBe(false)
+  })
+
   it('detaches an associated iteration from the detail page and refreshes the list', async () => {
+    vi.mocked(releaseWindowApi.get).mockResolvedValue({
+      id: 'window-1',
+      windowKey: 'RW-1',
+      name: 'Window 1',
+      status: 'DRAFT',
+      frozen: false
+    } as any)
+
     const wrapper = shallowMount(ReleaseWindowDetail, {
       global: { stubs }
     })

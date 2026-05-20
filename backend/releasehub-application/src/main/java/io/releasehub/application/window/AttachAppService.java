@@ -265,11 +265,11 @@ public class AttachAppService {
     }
 
     private void ensureWindowCanChangeIterations(ReleaseWindow releaseWindow) {
-        if (releaseWindow.getStatus() == ReleaseWindowStatus.CLOSED) {
-            throw BusinessException.rwInvalidState(releaseWindow.getStatus());
-        }
         if (releaseWindow.isFrozen()) {
             throw BusinessException.rwAlreadyFrozen();
+        }
+        if (releaseWindow.getStatus() != ReleaseWindowStatus.DRAFT) {
+            throw BusinessException.rwInvalidState(releaseWindow.getStatus());
         }
     }
 

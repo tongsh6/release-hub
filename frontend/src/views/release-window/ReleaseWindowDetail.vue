@@ -320,7 +320,7 @@ onMounted(() => {
 const title = computed(() => form.value.name || t('releaseWindow.details'))
 
 const canChangeIterations = computed(() => {
-  return Boolean(form.value.id) && form.value.status !== 'CLOSED' && !form.value.frozen
+  return Boolean(form.value.id) && form.value.status === 'DRAFT' && !form.value.frozen
 })
 
 const totalRepoCount = computed(() => {
