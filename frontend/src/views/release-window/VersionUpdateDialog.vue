@@ -12,13 +12,39 @@
       :rules="rules"
       label-width="120px"
     >
+      <el-form-item
+        v-if="repositories.length > 1"
+        :label="t('releaseWindow.versionUpdate.scope')"
+      >
+        <el-radio-group v-model="updateScope">
+          <el-radio label="SINGLE">{{ t('releaseWindow.versionUpdate.scopeSingle') }}</el-radio>
+          <el-radio label="BATCH">{{ t('releaseWindow.versionUpdate.scopeBatch') }}</el-radio>
+        </el-radio-group>
+      </el-form-item>
+
       <el-form-item :label="t('releaseWindow.versionUpdate.repoId')" prop="repoId">
         <el-select
+          v-if="updateScope === 'SINGLE'"
           v-model="form.repoId"
           :placeholder="t('releaseWindow.versionUpdate.selectRepo')"
           filterable
           style="width: 100%"
           @change="handleRepoChange"
+        >
+          <el-option
+            v-for="repo in repositories"
+            :key="repo.id"
+            :label="repo.name"
+            :value="repo.id"
+          />
+        </el-select>
+        <el-select
+          v-else
+          v-model="selectedRepoIds"
+          :placeholder="t('releaseWindow.versionUpdate.selectRepos')"
+          filterable
+          multiple
+          style="width: 100%"
         >
           <el-option
             v-for="repo in repositories"
@@ -98,7 +124,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { releaseWindowApi, getConflicts, type VersionUpdateRequest } from '@/api/modules/releaseWindow'
@@ -118,6 +144,8 @@ const conflictBlocked = ref(false)
 const formRef = ref<FormInstance>()
 const repositories = ref<Repository[]>([])
 const scopedRepositories = ref(false)
+const updateScope = ref<'SINGLE' | 'BATCH'>('SINGLE')
+const selectedRepoIds = ref<string[]>([])
 
 const form = reactive<VersionUpdateRequest & { buildTool: BuildTool }>({
   repoId: '',
@@ -145,6 +173,8 @@ const resetForm = () => {
   form.repoPath = ''
   form.pomPath = ''
   form.gradlePropertiesPath = ''
+  updateScope.value = 'SINGLE'
+  selectedRepoIds.value = []
 }
 
 const loadRepositories = async () => {
@@ -163,10 +193,21 @@ const handleRepoChange = (repoId: string) => {
   if (repo) {
     // 根据仓库信息自动填充路径
     if (!form.repoPath) {
-      form.repoPath = repo.cloneUrl.replace(/\.git$/, '').split('/').pop() || ''
+      form.repoPath = deriveRepoPath(repo)
     }
   }
 }
+
+watch(updateScope, (scope) => {
+  if (scope === 'BATCH') {
+    if (selectedRepoIds.value.length === 0) {
+      selectedRepoIds.value = form.repoId ? [form.repoId] : repositories.value.map(repo => repo.id)
+    }
+  } else if (!form.repoId && selectedRepoIds.value.length > 0) {
+    form.repoId = selectedRepoIds.value[0]
+    handleRepoChange(form.repoId)
+  }
+})
 
 const handleClose = () => {
   visible.value = false
@@ -181,6 +222,11 @@ const handleSubmit = async () => {
   await formRef.value.validate(async (valid) => {
     if (!valid) {
       ElMessage.warning(t('releaseWindow.versionUpdate.validationFailed'))
+      return
+    }
+
+    if (updateScope.value === 'BATCH' && selectedRepoIds.value.length === 0) {
+      ElMessage.warning(t('releaseWindow.versionUpdate.repoIdRequired'))
       return
     }
 
@@ -203,7 +249,21 @@ const handleSubmit = async () => {
       }
 
       ElMessage.info(t('releaseWindow.versionUpdate.executing'))
-      const response = await releaseWindowApi.executeVersionUpdate(windowId, request)
+      const response = updateScope.value === 'BATCH'
+        ? await releaseWindowApi.executeBatchVersionUpdate(windowId, {
+          targetVersion: form.targetVersion,
+          repositories: selectedRepoIds.value.map(repoId => {
+            const repo = repositories.value.find(item => item.id === repoId)
+            return {
+              repoId,
+              buildTool: form.buildTool,
+              repoPath: repo ? deriveRepoPath(repo) : form.repoPath,
+              pomPath: form.pomPath || undefined,
+              gradlePropertiesPath: form.gradlePropertiesPath || undefined
+            }
+          })
+        })
+        : await releaseWindowApi.executeVersionUpdate(windowId, request)
       ElMessage.success(t('releaseWindow.versionUpdate.success', { runId: response.runId }))
       emit('success')
       handleClose()
@@ -223,6 +283,10 @@ const open = async (id: string, windowRepositories: Repository[] = []) => {
   if (windowRepositories.length === 1) {
     form.repoId = windowRepositories[0].id
     handleRepoChange(windowRepositories[0].id)
+  } else if (windowRepositories.length > 1) {
+    form.repoId = windowRepositories[0].id
+    handleRepoChange(windowRepositories[0].id)
+    selectedRepoIds.value = windowRepositories.map(repo => repo.id)
   }
   visible.value = true
   conflictBlocked.value = false
@@ -241,6 +305,10 @@ const open = async (id: string, windowRepositories: Repository[] = []) => {
 defineExpose({
   open
 })
+
+function deriveRepoPath(repo: Repository): string {
+  return repo.cloneUrl.replace(/\.git$/, '').split('/').pop() || ''
+}
 </script>
 
 <style scoped>

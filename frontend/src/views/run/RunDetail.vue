@@ -79,6 +79,16 @@
       <template #header>
         <div class="card-header">
           <span>{{ t('run.detail.triplesTitle') }}</span>
+          <el-button
+            v-if="failedItemKeys.length > 0"
+            v-perm.disable="'run:write'"
+            size="small"
+            type="warning"
+            :loading="retryingItems"
+            @click="handleRetryFailedItems"
+          >
+            {{ t('run.retryFailedItems') }}
+          </el-button>
         </div>
       </template>
       <el-table :data="detail?.items || []" default-expand-all style="width: 100%">
@@ -123,25 +133,37 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { runApi, type RunDetail, type RunTask } from '@/api/runApi'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { runApi, type RunDetail, type RunItem, type RunTask } from '@/api/runApi'
 import MRFirstTimeline from '@/components/run/MRFirstTimeline.vue'
 import DiffViewer from '@/components/run/DiffViewer.vue'
 import { handleError } from '@/utils/error'
+import { hasPerm } from '@/utils/perm'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
 const router = useRouter()
-const runId = route.params.runId as string
+const currentRunId = ref(route.params.runId as string)
 const { t } = useI18n()
+const userStore = useUserStore()
 const loading = ref(false)
 const tasksLoading = ref(false)
 const detail = ref<RunDetail>()
 const tasks = ref<RunTask[]>([])
 const retryingTasks = reactive<Record<string, boolean>>({})
+const retryingItems = ref(false)
+
+const runId = computed(() => currentRunId.value)
+
+const failedItemKeys = computed(() => {
+  return (detail.value?.items || [])
+    .filter(isRetryableItem)
+    .map(item => `${item.windowKey}::${item.repoId}::${item.iterationKey}`)
+})
 
 const goBack = () => {
   router.push({ name: 'Runs' })
@@ -150,7 +172,7 @@ const goBack = () => {
 async function fetchDetail() {
   loading.value = true
   try {
-    detail.value = await runApi.getRunById(runId)
+    detail.value = await runApi.getRunById(currentRunId.value)
   } finally {
     loading.value = false
   }
@@ -159,7 +181,7 @@ async function fetchDetail() {
 async function fetchTasks() {
   tasksLoading.value = true
   try {
-    tasks.value = await runApi.getTasks(runId)
+    tasks.value = await runApi.getTasks(currentRunId.value)
   } catch (err) {
     handleError(err)
   } finally {
@@ -170,7 +192,7 @@ async function fetchTasks() {
 async function handleRetryTask(taskId: string) {
   retryingTasks[taskId] = true
   try {
-    await runApi.retryTask(runId, taskId)
+    await runApi.retryTask(currentRunId.value, taskId)
     ElMessage.success(t('common.success'))
     await fetchTasks()
   } catch (err) {
@@ -178,6 +200,44 @@ async function handleRetryTask(taskId: string) {
   } finally {
     retryingTasks[taskId] = false
   }
+}
+
+async function handleRetryFailedItems() {
+  if (!hasPerm('run:write')) {
+    ElMessage.warning(t('common.permissionDenied'))
+    return
+  }
+  if (failedItemKeys.value.length === 0) {
+    ElMessage.info(t('run.noFailedItems'))
+    return
+  }
+  if (!userStore.profile?.username) {
+    ElMessage.warning(t('common.loginRequired'))
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(t('run.retryConfirm'), t('common.warning'), {
+      type: 'warning'
+    })
+    retryingItems.value = true
+    const retryRunId = await runApi.retry(currentRunId.value, failedItemKeys.value, userStore.profile.username)
+    ElMessage.success(t('run.retrySuccess'))
+    currentRunId.value = retryRunId
+    await router.push({ name: 'RunDetail', params: { runId: retryRunId } })
+    await fetchDetail()
+    await fetchTasks()
+  } catch (err) {
+    if (err !== 'cancel') {
+      handleError(err)
+    }
+  } finally {
+    retryingItems.value = false
+  }
+}
+
+function isRetryableItem(item: RunItem): boolean {
+  return Boolean(item.finalResult?.includes('FAILED') || item.finalResult === 'MERGE_BLOCKED')
 }
 
 function getTaskStatusType(status: string): string {
@@ -199,7 +259,7 @@ function formatTaskType(taskType: string): string {
 }
 
 function handleExport() {
-  window.open(`/api/v1/runs/${runId}/export.json`, '_blank')
+  window.open(`/api/v1/runs/${currentRunId.value}/export.json`, '_blank')
 }
 
 function getStepType(result: string): string {

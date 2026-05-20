@@ -46,6 +46,17 @@ export interface VersionUpdateRequest {
   gradlePropertiesPath?: string
 }
 
+export interface BatchVersionUpdateRequest {
+  targetVersion: string
+  repositories: Array<{
+    repoId: string
+    buildTool: BuildTool
+    repoPath: string
+    pomPath?: string
+    gradlePropertiesPath?: string
+  }>
+}
+
 export interface VersionUpdateResponse {
   runId: string
   status: string
@@ -132,6 +143,10 @@ export function getDryPlan(id: string): Promise<any> {
 
 export function executeVersionUpdate(id: string, req: VersionUpdateRequest): Promise<VersionUpdateResponse> {
   return apiPost<VersionUpdateResponse>(`${BASE}/release-windows/${id}/execute/version-update`, req)
+}
+
+export function executeBatchVersionUpdate(id: string, req: BatchVersionUpdateRequest): Promise<VersionUpdateResponse> {
+  return apiPost<VersionUpdateResponse>(`${BASE}/release-windows/${id}/execute/batch-version-update`, req)
 }
 
 // --- 代码合并相关 ---
@@ -241,6 +256,7 @@ export const releaseWindowApi = {
   getPlan,
   getDryPlan,
   executeVersionUpdate,
+  executeBatchVersionUpdate,
   mergeIteration,
   mergeAll,
   getBranchStatus,
