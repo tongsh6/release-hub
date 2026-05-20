@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 场景化验收证据脚本 v3.13
+# ReleaseHub 场景化验收证据脚本 v3.15
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
@@ -29,7 +29,7 @@
 #   SA-011: 冲突检测和分类统计、MERGE_CONFLICT / CROSS_REPO_VERSION_MISMATCH / REPO_AHEAD / SYSTEM_AHEAD / GIT_PERMISSION_DENIED / GIT_UNAVAILABLE 真实 GitLab 强证据
 #   SA-012: 冲突解决回路（USE_SYSTEM、feature 缺失、release 已存在、分支名不合规强证据）
 #   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS
-#   SA-014: 版本更新、校验、Git 远程提交验证
+#   SA-014: 版本更新、校验、Maven 单模块/多模块、Gradle Git 远程提交验证、批量部分失败证据
 #   SA-015: Run 执行详情（RunItem/RunStep）、真实部分失败重试
 #   SA-016: 窗口关闭、关闭后关键操作禁止、收尾 Run 可见
 #
@@ -383,6 +383,7 @@ gitlab_commit_file() {
     local file_path=$3
     local content=$4
     local message=$5
+    local action=${6:-update}
     local gl_token="${GITLAB_PAT:-}"
     if [ -z "$gl_token" ] || [ "$gl_token" = "null" ]; then
         echo "MISSING_TOKEN"
@@ -394,14 +395,14 @@ gitlab_commit_file() {
     local encoded_path
     encoded_path=$(echo "$project_path" | gitlab_encode)
     local payload
-    payload=$(BRANCH="$branch" FILE_PATH="$file_path" CONTENT="$content" MESSAGE="$message" python3 -c '
+    payload=$(BRANCH="$branch" FILE_PATH="$file_path" CONTENT="$content" MESSAGE="$message" ACTION="$action" python3 -c '
 import json
 import os
 print(json.dumps({
     "branch": os.environ["BRANCH"],
     "commit_message": os.environ["MESSAGE"],
     "actions": [{
-        "action": "update",
+        "action": os.environ["ACTION"],
         "file_path": os.environ["FILE_PATH"],
         "content": os.environ["CONTENT"],
     }],
@@ -412,6 +413,50 @@ print(json.dumps({
         -H "Content-Type: application/json" \
         --data "$payload" \
         "$GITLAB/api/v4/projects/$encoded_path/repository/commits"
+}
+
+gitlab_upsert_file() {
+    local clone_url=$1
+    local branch=$2
+    local file_path=$3
+    local content=$4
+    local message=$5
+    local status
+    status=$(gitlab_commit_file "$clone_url" "$branch" "$file_path" "$content" "$message" "create")
+    if [ "$status" != "201" ]; then
+        status=$(gitlab_commit_file "$clone_url" "$branch" "$file_path" "$content" "$message" "update")
+    fi
+    echo "$status"
+}
+
+gitlab_file_contains() {
+    local clone_url=$1
+    local branch=$2
+    local file_path=$3
+    local expected=$4
+    local gl_token="${GITLAB_PAT:-}"
+    if [ -z "$gl_token" ] || [ "$gl_token" = "null" ]; then
+        echo "MISSING_TOKEN"
+        return 1
+    fi
+
+    local project_path
+    project_path=$(gitlab_project_path_from_clone_url "$clone_url")
+    local encoded_path
+    encoded_path=$(echo "$project_path" | gitlab_encode)
+    local encoded_file
+    encoded_file=$(echo "$file_path" | gitlab_encode)
+    local encoded_ref
+    encoded_ref=$(echo "$branch" | gitlab_encode)
+    local content
+    content=$(curl -s -H "PRIVATE-TOKEN: $gl_token" \
+        "$GITLAB/api/v4/projects/$encoded_path/repository/files/$encoded_file/raw?ref=$encoded_ref")
+
+    if echo "$content" | grep -Fq "$expected"; then
+        echo "FOUND"
+    else
+        echo "NOT_FOUND"
+    fi
 }
 
 auth() {
@@ -2112,8 +2157,240 @@ else
     fi
 fi
 
-# ---- 8.5 场景: 发布后关闭与收尾闭环 ----
-h2 "SA-016: 8.5 场景: 关闭窗口后禁止关键操作 & 收尾 Run"
+# 8.3 Maven 多模块真实写回（独立窗口，避免污染 SA-013/SA-016 主线窗口）
+if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+    h2 "SA-014: 8.3 Maven 多模块真实写回"
+    SA14_MULTI_TS=$(date -u +%Y%m%d-%H%M%S)
+    SA14_MULTI_BRANCH="feature/acceptance-multi-$SA14_MULTI_TS"
+    SA14_MULTI_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-Maven多模块-$SA14_MULTI_TS\",\"description\":\"SA-014 Maven multi-module probe $SA14_MULTI_TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+    SA14_MULTI_WINDOW_ID=$(echo "$SA14_MULTI_WINDOW_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('id',''))" 2>/dev/null)
+    if [ -z "$SA14_MULTI_WINDOW_ID" ]; then
+        no "SA-014 Maven 多模块窗口创建失败: $SA14_MULTI_WINDOW_RESP"
+    else
+        SA14_MULTI_ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"name\":\"验收-Maven多模块-$SA14_MULTI_TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
+        SA14_MULTI_ITER_KEY=$(echo "$SA14_MULTI_ITER_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('key',''))" 2>/dev/null)
+        SA14_MULTI_ORIGINAL=$(curl -s "$BACKEND/api/v1/repositories/$R2/initial-version" -H "$AUTH" \
+            | python3 -c "import sys,json; v=json.load(sys.stdin).get('data',{}).get('version'); print(v or '')" 2>/dev/null)
+        SA14_MULTI_SET=$(curl -s -X PUT "$BACKEND/api/v1/repositories/$R2/initial-version" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"version\":\"2.1.0\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        [ "$SA14_MULTI_SET" = "True" ] && ok "SA-014 Maven 多模块临时初始版本已设置: 2.1.0" || no "SA-014 Maven 多模块临时初始版本设置失败: $SA14_MULTI_SET"
+        SA14_MULTI_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$SA14_MULTI_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"repoIds\":[\"$R2\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"$SA14_MULTI_BRANCH\"}")
+        SA14_MULTI_ADD_OK=$(echo "$SA14_MULTI_ADD" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        if [ -n "$SA14_MULTI_ORIGINAL" ]; then
+            SA14_MULTI_RESTORE=$(curl -s -X PUT "$BACKEND/api/v1/repositories/$R2/initial-version" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"version\":\"$SA14_MULTI_ORIGINAL\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        else
+            SA14_MULTI_RESTORE=$(curl -s -X POST "$BACKEND/api/v1/repositories/$R2/sync-version" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        fi
+        [ "$SA14_MULTI_RESTORE" = "True" ] && ok "SA-014 Maven 多模块仓库初始版本已复原" || no "SA-014 Maven 多模块仓库初始版本复原失败: $SA14_MULTI_RESTORE"
+        if [ "$SA14_MULTI_ADD_OK" != "True" ]; then
+            no "SA-014 Maven 多模块 addRepos 失败: $SA14_MULTI_ADD"
+        else
+            SA14_MULTI_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R2" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))")
+            SA14_MULTI_PARENT_POM='<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-2-parent</artifactId><version>2.2.0-SNAPSHOT</version><packaging>pom</packaging><modules><module>module-a</module><module>module-b</module></modules></project>'
+            SA14_MULTI_MODULE_A_POM='<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><parent><groupId>com.e2e</groupId><artifactId>seed-repo-2-parent</artifactId><version>2.2.0-SNAPSHOT</version></parent><artifactId>module-a</artifactId></project>'
+            SA14_MULTI_MODULE_B_POM='<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><parent><groupId>com.e2e</groupId><artifactId>seed-repo-2-parent</artifactId><version>2.2.0-SNAPSHOT</version></parent><artifactId>module-b</artifactId><version>2.2.0-SNAPSHOT</version></project>'
+            MULTI_ROOT_STATUS=$(gitlab_commit_file "$SA14_MULTI_REPO_URL" "$SA14_MULTI_BRANCH" "pom.xml" "$SA14_MULTI_PARENT_POM" "ReleaseHub acceptance: prepare multi parent $SA14_MULTI_TS" "update")
+            MULTI_A_STATUS=$(gitlab_upsert_file "$SA14_MULTI_REPO_URL" "$SA14_MULTI_BRANCH" "module-a/pom.xml" "$SA14_MULTI_MODULE_A_POM" "ReleaseHub acceptance: upsert module-a $SA14_MULTI_TS")
+            MULTI_B_STATUS=$(gitlab_upsert_file "$SA14_MULTI_REPO_URL" "$SA14_MULTI_BRANCH" "module-b/pom.xml" "$SA14_MULTI_MODULE_B_POM" "ReleaseHub acceptance: upsert module-b $SA14_MULTI_TS")
+            if [ "$MULTI_ROOT_STATUS" = "201" ] && [ "$MULTI_A_STATUS" = "201" ] && [ "$MULTI_B_STATUS" = "201" ]; then
+                ok "SA-014 Maven 多模块 feature fixture 已提交"
+            else
+                no "SA-014 Maven 多模块 fixture 提交异常: root=$MULTI_ROOT_STATUS module-a=$MULTI_A_STATUS module-b=$MULTI_B_STATUS"
+            fi
+
+            SA14_MULTI_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA14_MULTI_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"iterationKeys\":[\"$SA14_MULTI_ITER_KEY\"]}")
+            SA14_MULTI_ATTACH_OK=$(echo "$SA14_MULTI_ATTACH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+            if [ "$SA14_MULTI_ATTACH_OK" != "True" ]; then
+                no "SA-014 Maven 多模块 Attach 失败: $SA14_MULTI_ATTACH"
+            else
+                SA14_MULTI_WINDOW_KEY=$(curl -s "$BACKEND/api/v1/release-windows/$SA14_MULTI_WINDOW_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))" 2>/dev/null)
+                SA14_MULTI_RELEASE_BRANCH="release/$SA14_MULTI_WINDOW_KEY"
+                MULTI_RELEASE_ROOT_STATUS=$(gitlab_upsert_file "$SA14_MULTI_REPO_URL" "$SA14_MULTI_RELEASE_BRANCH" "pom.xml" "$SA14_MULTI_PARENT_POM" "ReleaseHub acceptance: prepare multi parent release $SA14_MULTI_TS")
+                MULTI_RELEASE_A_STATUS=$(gitlab_upsert_file "$SA14_MULTI_REPO_URL" "$SA14_MULTI_RELEASE_BRANCH" "module-a/pom.xml" "$SA14_MULTI_MODULE_A_POM" "ReleaseHub acceptance: upsert module-a release $SA14_MULTI_TS")
+                MULTI_RELEASE_B_STATUS=$(gitlab_upsert_file "$SA14_MULTI_REPO_URL" "$SA14_MULTI_RELEASE_BRANCH" "module-b/pom.xml" "$SA14_MULTI_MODULE_B_POM" "ReleaseHub acceptance: upsert module-b release $SA14_MULTI_TS")
+                if [ "$MULTI_RELEASE_ROOT_STATUS" = "201" ] && [ "$MULTI_RELEASE_A_STATUS" = "201" ] && [ "$MULTI_RELEASE_B_STATUS" = "201" ]; then
+                    ok "SA-014 Maven 多模块 release fixture 已就绪: $SA14_MULTI_RELEASE_BRANCH"
+                else
+                    no "SA-014 Maven 多模块 release fixture 提交异常: root=$MULTI_RELEASE_ROOT_STATUS module-a=$MULTI_RELEASE_A_STATUS module-b=$MULTI_RELEASE_B_STATUS"
+                fi
+
+                SA14_MULTI_UPDATE=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA14_MULTI_WINDOW_ID/execute/version-update" -H "$AUTH" -H "Content-Type: application/json" \
+                    -d "{\"repoId\":\"$R2\",\"targetVersion\":\"2.3.0\",\"buildTool\":\"MAVEN\",\"repoPath\":\".\",\"pomPath\":\"pom.xml\"}")
+                SA14_MULTI_UPDATE_OK=$(echo "$SA14_MULTI_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+                if [ "$SA14_MULTI_UPDATE_OK" = "True" ]; then
+                    SA14_MULTI_RUN_ID=$(echo "$SA14_MULTI_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('runId',''))" 2>/dev/null)
+                    SA14_MULTI_STATUS=$(wait_for_run "$SA14_MULTI_RUN_ID" 45)
+                    if is_run_success "$SA14_MULTI_STATUS"; then
+                        ok "SA-014 Maven 多模块版本更新 Run 成功: $SA14_MULTI_STATUS"
+                        MULTI_COMMIT=$(verify_gitlab_commit "$SA14_MULTI_REPO_URL" "$SA14_MULTI_RELEASE_BRANCH" "ReleaseHub: Update")
+                        [ "$MULTI_COMMIT" = "FOUND" ] && ok "SA-014 Maven 多模块 Git commit 可验证" || no "SA-014 Maven 多模块 Git commit 未找到: $MULTI_COMMIT"
+                        MULTI_ROOT_VERSION=$(gitlab_file_contains "$SA14_MULTI_REPO_URL" "$SA14_MULTI_RELEASE_BRANCH" "pom.xml" "<version>2.3.0</version>")
+                        MULTI_A_VERSION=$(gitlab_file_contains "$SA14_MULTI_REPO_URL" "$SA14_MULTI_RELEASE_BRANCH" "module-a/pom.xml" "<version>2.3.0</version>")
+                        MULTI_B_VERSION=$(gitlab_file_contains "$SA14_MULTI_REPO_URL" "$SA14_MULTI_RELEASE_BRANCH" "module-b/pom.xml" "<version>2.3.0</version>")
+                        if [ "$MULTI_ROOT_VERSION" = "FOUND" ] && [ "$MULTI_A_VERSION" = "FOUND" ] && [ "$MULTI_B_VERSION" = "FOUND" ]; then
+                            ok "SA-014 Maven 多模块 release 分支 root/module 版本均已写回 2.3.0"
+                        else
+                            no "SA-014 Maven 多模块文件内容校验失败: root=$MULTI_ROOT_VERSION module-a=$MULTI_A_VERSION module-b=$MULTI_B_VERSION"
+                        fi
+                    else
+                        no "SA-014 Maven 多模块版本更新 Run 失败: $SA14_MULTI_STATUS"
+                    fi
+                else
+                    no "SA-014 Maven 多模块版本更新启动失败: $SA14_MULTI_UPDATE"
+                fi
+            fi
+        fi
+    fi
+
+    h2 "SA-014: 8.4 Gradle gradle.properties 真实写回"
+    SA14_GRADLE_TS=$(date -u +%Y%m%d-%H%M%S)
+    SA14_GRADLE_BRANCH="feature/acceptance-gradle-$SA14_GRADLE_TS"
+    SA14_GRADLE_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-Gradle-$SA14_GRADLE_TS\",\"description\":\"SA-014 Gradle probe $SA14_GRADLE_TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+    SA14_GRADLE_WINDOW_ID=$(echo "$SA14_GRADLE_WINDOW_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('id',''))" 2>/dev/null)
+    if [ -z "$SA14_GRADLE_WINDOW_ID" ]; then
+        no "SA-014 Gradle 窗口创建失败: $SA14_GRADLE_WINDOW_RESP"
+    else
+        SA14_GRADLE_ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"name\":\"验收-Gradle-$SA14_GRADLE_TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
+        SA14_GRADLE_ITER_KEY=$(echo "$SA14_GRADLE_ITER_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('key',''))" 2>/dev/null)
+        SA14_GRADLE_ORIGINAL=$(curl -s "$BACKEND/api/v1/repositories/$R3/initial-version" -H "$AUTH" \
+            | python3 -c "import sys,json; v=json.load(sys.stdin).get('data',{}).get('version'); print(v or '')" 2>/dev/null)
+        SA14_GRADLE_SET=$(curl -s -X PUT "$BACKEND/api/v1/repositories/$R3/initial-version" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"version\":\"3.0.0\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        [ "$SA14_GRADLE_SET" = "True" ] && ok "SA-014 Gradle 临时初始版本已设置: 3.0.0" || no "SA-014 Gradle 临时初始版本设置失败: $SA14_GRADLE_SET"
+        SA14_GRADLE_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$SA14_GRADLE_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"repoIds\":[\"$R3\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"$SA14_GRADLE_BRANCH\"}")
+        SA14_GRADLE_ADD_OK=$(echo "$SA14_GRADLE_ADD" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        if [ -n "$SA14_GRADLE_ORIGINAL" ]; then
+            SA14_GRADLE_RESTORE=$(curl -s -X PUT "$BACKEND/api/v1/repositories/$R3/initial-version" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"version\":\"$SA14_GRADLE_ORIGINAL\"}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        else
+            SA14_GRADLE_RESTORE=$(curl -s -X POST "$BACKEND/api/v1/repositories/$R3/sync-version" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        fi
+        [ "$SA14_GRADLE_RESTORE" = "True" ] && ok "SA-014 Gradle 仓库初始版本已复原" || no "SA-014 Gradle 仓库初始版本复原失败: $SA14_GRADLE_RESTORE"
+        if [ "$SA14_GRADLE_ADD_OK" != "True" ]; then
+            no "SA-014 Gradle addRepos 失败: $SA14_GRADLE_ADD"
+        else
+            SA14_GRADLE_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R3" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))")
+            SA14_GRADLE_PROPERTIES=$'version=3.1.0-SNAPSHOT\ngroup=com.e2e\n'
+            GRADLE_PROPS_STATUS=$(gitlab_upsert_file "$SA14_GRADLE_REPO_URL" "$SA14_GRADLE_BRANCH" "gradle.properties" "$SA14_GRADLE_PROPERTIES" "ReleaseHub acceptance: upsert gradle properties $SA14_GRADLE_TS")
+            [ "$GRADLE_PROPS_STATUS" = "201" ] && ok "SA-014 Gradle feature fixture 已提交" || no "SA-014 Gradle fixture 提交异常: $GRADLE_PROPS_STATUS"
+
+            SA14_GRADLE_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA14_GRADLE_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
+                -d "{\"iterationKeys\":[\"$SA14_GRADLE_ITER_KEY\"]}")
+            SA14_GRADLE_ATTACH_OK=$(echo "$SA14_GRADLE_ATTACH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+            if [ "$SA14_GRADLE_ATTACH_OK" != "True" ]; then
+                no "SA-014 Gradle Attach 失败: $SA14_GRADLE_ATTACH"
+            else
+                SA14_GRADLE_UPDATE=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA14_GRADLE_WINDOW_ID/execute/version-update" -H "$AUTH" -H "Content-Type: application/json" \
+                    -d "{\"repoId\":\"$R3\",\"targetVersion\":\"3.2.0\",\"buildTool\":\"GRADLE\",\"repoPath\":\".\",\"gradlePropertiesPath\":\"gradle.properties\"}")
+                SA14_GRADLE_UPDATE_OK=$(echo "$SA14_GRADLE_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+                if [ "$SA14_GRADLE_UPDATE_OK" = "True" ]; then
+                    SA14_GRADLE_RUN_ID=$(echo "$SA14_GRADLE_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('runId',''))" 2>/dev/null)
+                    SA14_GRADLE_STATUS=$(wait_for_run "$SA14_GRADLE_RUN_ID" 45)
+                    if is_run_success "$SA14_GRADLE_STATUS"; then
+                        ok "SA-014 Gradle 版本更新 Run 成功: $SA14_GRADLE_STATUS"
+                        SA14_GRADLE_WINDOW_KEY=$(curl -s "$BACKEND/api/v1/release-windows/$SA14_GRADLE_WINDOW_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))" 2>/dev/null)
+                        SA14_GRADLE_RELEASE_BRANCH="release/$SA14_GRADLE_WINDOW_KEY"
+                        GRADLE_COMMIT=$(verify_gitlab_commit "$SA14_GRADLE_REPO_URL" "$SA14_GRADLE_RELEASE_BRANCH" "ReleaseHub: Update")
+                        [ "$GRADLE_COMMIT" = "FOUND" ] && ok "SA-014 Gradle Git commit 可验证" || no "SA-014 Gradle Git commit 未找到: $GRADLE_COMMIT"
+                        GRADLE_VERSION=$(gitlab_file_contains "$SA14_GRADLE_REPO_URL" "$SA14_GRADLE_RELEASE_BRANCH" "gradle.properties" "version=3.2.0")
+                        [ "$GRADLE_VERSION" = "FOUND" ] && ok "SA-014 Gradle release 分支 gradle.properties 已写回 3.2.0" || no "SA-014 Gradle 文件内容校验失败: $GRADLE_VERSION"
+                    else
+                        no "SA-014 Gradle 版本更新 Run 失败: $SA14_GRADLE_STATUS"
+                    fi
+                else
+                    no "SA-014 Gradle 版本更新启动失败: $SA14_GRADLE_UPDATE"
+                fi
+            fi
+        fi
+    fi
+else
+    skip "SA-014 Maven 多模块/Gradle 真实写回跳过：GitLab 或 PAT 不可用"
+fi
+
+# 8.5 批量版本更新多仓部分失败（独立窗口，验证成功项不被失败项回滚）
+if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+    h2 "SA-014: 8.5 批量版本更新多仓部分失败"
+    SA14_BATCH_TS=$(date -u +%Y%m%d-%H%M%S)
+    SA14_BATCH_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"验收-批量版本部分失败-$SA14_BATCH_TS\",\"description\":\"SA-014 batch partial failure probe $SA14_BATCH_TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+    SA14_BATCH_WINDOW_ID=$(echo "$SA14_BATCH_WINDOW_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('id',''))" 2>/dev/null)
+    SA14_BATCH_WINDOW_KEY=$(echo "$SA14_BATCH_WINDOW_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))" 2>/dev/null)
+    if [ -z "$SA14_BATCH_WINDOW_ID" ] || [ -z "$SA14_BATCH_WINDOW_KEY" ]; then
+        no "SA-014 批量部分失败窗口创建失败: $SA14_BATCH_WINDOW_RESP"
+    else
+        SA14_BATCH_RELEASE_BRANCH="release/$SA14_BATCH_WINDOW_KEY"
+        SA14_BATCH_REPO_URL_OK=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))")
+        SA14_BATCH_REPO_URL_FAIL=$(curl -s "$BACKEND/api/v1/repositories/$R2" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))")
+        SA14_BATCH_OK_BRANCH=$(gitlab_create_branch "$SA14_BATCH_REPO_URL_OK" "$SA14_BATCH_RELEASE_BRANCH" "main")
+        SA14_BATCH_FAIL_BRANCH=$(gitlab_create_branch "$SA14_BATCH_REPO_URL_FAIL" "$SA14_BATCH_RELEASE_BRANCH" "main")
+        if { [ "$SA14_BATCH_OK_BRANCH" = "201" ] || [ "$SA14_BATCH_OK_BRANCH" = "400" ]; } \
+            && { [ "$SA14_BATCH_FAIL_BRANCH" = "201" ] || [ "$SA14_BATCH_FAIL_BRANCH" = "400" ]; }; then
+            ok "SA-014 批量部分失败 release 分支已就绪: $SA14_BATCH_RELEASE_BRANCH"
+        else
+            no "SA-014 批量部分失败 release 分支准备异常: ok=$SA14_BATCH_OK_BRANCH fail=$SA14_BATCH_FAIL_BRANCH"
+        fi
+
+        SA14_BATCH_UPDATE=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA14_BATCH_WINDOW_ID/execute/batch-version-update" -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"targetVersion\":\"1.6.0\",\"repositories\":[{\"repoId\":\"$R1\",\"buildTool\":\"MAVEN\",\"repoPath\":\".\",\"pomPath\":\"pom.xml\"},{\"repoId\":\"$R2\",\"buildTool\":\"MAVEN\",\"repoPath\":\".\",\"pomPath\":\"missing-pom.xml\"}]}")
+        SA14_BATCH_UPDATE_OK=$(echo "$SA14_BATCH_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
+        if [ "$SA14_BATCH_UPDATE_OK" = "True" ]; then
+            SA14_BATCH_RUN_ID=$(echo "$SA14_BATCH_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('runId',''))" 2>/dev/null)
+            SA14_BATCH_STATUS=$(wait_for_run "$SA14_BATCH_RUN_ID" 45)
+            if [ "$SA14_BATCH_STATUS" = "FAILED" ]; then
+                ok "SA-014 批量部分失败 Run 状态正确: FAILED"
+            else
+                no "SA-014 批量部分失败 Run 状态异常: $SA14_BATCH_STATUS"
+            fi
+
+            SA14_BATCH_DETAIL=$(curl -s "$BACKEND/api/v1/runs/$SA14_BATCH_RUN_ID" -H "$AUTH")
+            SA14_BATCH_RESULT=$(echo "$SA14_BATCH_DETAIL" | R1_ID="$R1" R2_ID="$R2" python3 -c '
+import os
+import sys
+import json
+d = json.load(sys.stdin).get("data", {})
+items = d.get("items", [])
+results = {item.get("repoId"): item.get("finalResult") for item in items}
+messages = {
+    item.get("repoId"): " ".join(step.get("message", "") for step in item.get("steps", []))
+    for item in items
+}
+ok = results.get(os.environ["R1_ID"]) == "VERSION_UPDATE_SUCCESS"
+failed = results.get(os.environ["R2_ID"]) == "VERSION_UPDATE_FAILED"
+has_path = "missing-pom.xml" in messages.get(os.environ["R2_ID"], "")
+print(f"items={len(items)} ok={ok} failed={failed} hasPath={has_path} results={results}")
+' 2>/dev/null)
+            info "SA-014 批量部分失败 RunItem: $SA14_BATCH_RESULT"
+            if echo "$SA14_BATCH_RESULT" | grep -Fq "ok=True failed=True hasPath=True"; then
+                ok "SA-014 批量部分失败 RunItem 同时包含成功项和失败项，且失败原因可见"
+            else
+                no "SA-014 批量部分失败 RunItem 证据异常: $SA14_BATCH_RESULT"
+            fi
+
+            SA14_BATCH_COMMIT=$(verify_gitlab_commit "$SA14_BATCH_REPO_URL_OK" "$SA14_BATCH_RELEASE_BRANCH" "ReleaseHub: Update")
+            SA14_BATCH_FILE=$(gitlab_file_contains "$SA14_BATCH_REPO_URL_OK" "$SA14_BATCH_RELEASE_BRANCH" "pom.xml" "<version>1.6.0</version>")
+            [ "$SA14_BATCH_COMMIT" = "FOUND" ] && [ "$SA14_BATCH_FILE" = "FOUND" ] \
+                && ok "SA-014 批量部分失败成功项已真实写回 GitLab" \
+                || no "SA-014 批量部分失败成功项 GitLab 校验失败: commit=$SA14_BATCH_COMMIT file=$SA14_BATCH_FILE"
+        else
+            no "SA-014 批量部分失败版本更新启动失败: $SA14_BATCH_UPDATE"
+        fi
+    fi
+else
+    skip "SA-014 批量部分失败跳过：GitLab 或 PAT 不可用"
+fi
+
+# ---- 8.6 场景: 发布后关闭与收尾闭环 ----
+h2 "SA-016: 8.6 场景: 关闭窗口后禁止关键操作 & 收尾 Run"
 SA16_WINDOW_ID="$VU_WINDOW_ID"
 SA16_WINDOW_KEY=$(curl -s "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))" 2>/dev/null)
 
