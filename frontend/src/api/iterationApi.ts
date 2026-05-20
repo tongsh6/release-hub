@@ -22,6 +22,8 @@ export interface IterationRaw {
   expectedReleaseAt: string | null
   groupCode: string
   repoIds: string[]
+  attachedToWindow?: boolean
+  attachedWindowIds?: string[]
   createdAt: string
   updatedAt: string
 }
@@ -35,6 +37,8 @@ export interface Iteration {
   groupCode: string
   repoIds: string[]
   repoCount: number
+  attachedToWindow: boolean
+  attachedWindowIds: string[]
   mountedWindows: string  // 暂时使用空字符串
   attachAt: string
   createdAt: string
@@ -75,7 +79,9 @@ function transformIteration(raw: IterationRaw): Iteration {
     groupCode: raw.groupCode || '',
     repoIds: raw.repoIds || [],
     repoCount: raw.repoIds?.length || 0,
-    mountedWindows: '',  // 后端暂未提供此字段
+    attachedToWindow: Boolean(raw.attachedToWindow),
+    attachedWindowIds: raw.attachedWindowIds || [],
+    mountedWindows: String(raw.attachedWindowIds?.length || ''),  // 兼容旧列表字段
     attachAt: '',  // 后端暂未提供此字段
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt

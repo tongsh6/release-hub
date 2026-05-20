@@ -173,6 +173,51 @@ class IterationAppServiceTest {
     }
 
     @Test
+    @DisplayName("addRepos 时拒绝跨分组仓库且不创建分支或版本记录")
+    void shouldRejectAddReposWhenRepositoryBelongsToDifferentGroup() {
+        Instant now = Instant.now();
+        Iteration existing = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.<RepoId>of(), IterationStatus.ACTIVE, now, now);
+        CodeRepository repo = CodeRepository.rehydrate(
+                RepoId.of("repo-2"), "Repo", "git@gitlab.com:test/repo.git",
+                "master", "G002", RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
+        when(codeRepositoryPort.findById(RepoId.of("repo-2"))).thenReturn(Optional.of(repo));
+
+        assertThatThrownBy(() -> iterationAppService.addRepos("ITER-1", Set.of("repo-2"), BranchCreationMode.AUTO, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("ITER_005"));
+        verify(gitBranchAdapterFactory, never()).getAdapter(any());
+        verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString(), any());
+        verify(iterationPort, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("addRepos 时已挂载发布窗口则拒绝修改仓库集合")
+    void shouldRejectAddReposWhenIterationAttachedToWindow() {
+        Instant now = Instant.now();
+        Iteration existing = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.<RepoId>of(), IterationStatus.ACTIVE, now, now);
+        ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
+        WindowIteration wi = WindowIteration.attach(ReleaseWindowId.of(window.getId().value()), IterationKey.of("ITER-1"), now, now);
+
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
+        when(releaseWindowPort.findAll()).thenReturn(List.of(window));
+        when(windowIterationPort.listByWindow(ReleaseWindowId.of(window.getId().value()))).thenReturn(List.of(wi));
+
+        assertThatThrownBy(() -> iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.AUTO, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("ITER_002"));
+        verify(codeRepositoryPort, never()).findById(any());
+        verify(gitBranchAdapterFactory, never()).getAdapter(any());
+        verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString(), any());
+        verify(iterationPort, never()).save(any());
+    }
+
+    @Test
     @DisplayName("removeRepos 时归档 feature 分支，原因 unpublished")
     void shouldArchiveFeatureBranchWithReasonUnpublishedWhenRemoveRepos() {
         Instant now = Instant.now();
@@ -196,6 +241,49 @@ class IterationAppServiceTest {
 
         verify(gitBranchPort).archiveBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/ITER-1", "unpublished");
         verify(iterationPort).save(any(Iteration.class));
+    }
+
+    @Test
+    @DisplayName("removeRepos 时已挂载发布窗口则拒绝修改仓库集合")
+    void shouldRejectRemoveReposWhenIterationAttachedToWindow() {
+        Instant now = Instant.now();
+        Iteration existing = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
+        ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
+        WindowIteration wi = WindowIteration.attach(ReleaseWindowId.of(window.getId().value()), IterationKey.of("ITER-1"), now, now);
+
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
+        when(releaseWindowPort.findAll()).thenReturn(List.of(window));
+        when(windowIterationPort.listByWindow(ReleaseWindowId.of(window.getId().value()))).thenReturn(List.of(wi));
+
+        assertThatThrownBy(() -> iterationAppService.removeRepos("ITER-1", Set.of("repo-1")))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("ITER_002"));
+        verify(gitBranchAdapterFactory, never()).getAdapter(any());
+        verify(iterationPort, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("update 时已挂载发布窗口则拒绝修改仓库集合")
+    void shouldRejectUpdateRepoScopeWhenIterationAttachedToWindow() {
+        Instant now = Instant.now();
+        Iteration existing = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
+        ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
+        WindowIteration wi = WindowIteration.attach(ReleaseWindowId.of(window.getId().value()), IterationKey.of("ITER-1"), now, now);
+
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
+        when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, now, now, 0L)));
+        when(groupPort.countChildren("G001")).thenReturn(0L);
+        when(releaseWindowPort.findAll()).thenReturn(List.of(window));
+        when(windowIterationPort.listByWindow(ReleaseWindowId.of(window.getId().value()))).thenReturn(List.of(wi));
+
+        assertThatThrownBy(() -> iterationAppService.update("ITER-1", "Iter", "Desc", null, "G001", Set.of("repo-1", "repo-2"), null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("ITER_002"));
+        verify(codeRepositoryPort, never()).findById(any());
+        verify(gitBranchAdapterFactory, never()).getAdapter(any());
+        verify(iterationPort, never()).save(any());
     }
 
     @Test

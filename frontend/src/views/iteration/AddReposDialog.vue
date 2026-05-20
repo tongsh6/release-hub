@@ -135,6 +135,7 @@ const entityRef = ref<InstanceType<typeof EntityDialog>>()
 
 const repos = ref<Repository[]>([])
 const iterationKeyRef = ref<string>('')
+const iterationGroupCodeRef = ref<string>('')
 const existingRepoIds = ref<Set<string>>(new Set())
 const selectedRepoIds = ref<string[]>([])
 const searchKeyword = ref('')
@@ -161,8 +162,9 @@ const newSelectedCount = computed(() => {
   return selectedRepoIds.value.filter(id => !existingRepoIds.value.has(id)).length
 })
 
-const open = async (iterationKey: string, currentRepoIds: string[] = []) => {
+const open = async (iterationKey: string, currentRepoIds: string[] = [], iterationGroupCode = '') => {
   iterationKeyRef.value = iterationKey
+  iterationGroupCodeRef.value = iterationGroupCode
   existingRepoIds.value = new Set(currentRepoIds)
   selectedRepoIds.value = [...currentRepoIds]
   searchKeyword.value = ''
@@ -178,7 +180,10 @@ const loadRepos = async () => {
   loading.value = true
   try {
     const result = await repositoryApi.list({ page: 1, pageSize: 500 })
-    repos.value = result.list || []
+    const allRepos = result.list || []
+    repos.value = iterationGroupCodeRef.value
+      ? allRepos.filter(repo => repo.groupCode === iterationGroupCodeRef.value)
+      : allRepos
   } catch (err) {
     handleError(err)
   } finally {

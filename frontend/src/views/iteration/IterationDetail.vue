@@ -44,10 +44,26 @@
         <div class="card-header">
           <span class="title">{{ t('iteration.detail.associatedRepos') }} ({{ repos.length }})</span>
           <div class="actions">
-            <el-button v-perm.disable="'iteration:write'" type="primary" size="small" @click="openAddRepos">{{ t('iteration.detail.addRepos') }}</el-button>
+            <el-button
+              v-if="canChangeRepos"
+              v-perm.disable="'iteration:write'"
+              type="primary"
+              size="small"
+              @click="openAddRepos"
+            >
+              {{ t('iteration.detail.addRepos') }}
+            </el-button>
           </div>
         </div>
       </template>
+      <el-alert
+        v-if="iteration?.attachedToWindow"
+        class="scope-lock-alert"
+        type="info"
+        :closable="false"
+        show-icon
+        :title="t('iteration.detail.repoScopeLocked')"
+      />
       <el-table v-if="repos.length > 0" v-loading="reposLoading" :data="repos" stripe>
         <el-table-column prop="name" :label="t('repository.columns.name')" min-width="140">
           <template #default="{ row }">
@@ -97,6 +113,7 @@
               {{ t('iteration.version.sync') }}
             </el-button>
             <el-button 
+              v-if="canChangeRepos"
               v-perm.disable="'iteration:write'" 
               link 
               type="danger" 
@@ -131,7 +148,7 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { iterationApi, type Iteration, type IterationRepoVersionInfo } from '@/api/iterationApi'
 import { repositoryApi, type Repository } from '@/api/repositoryApi'
@@ -161,6 +178,7 @@ const syncingRepos = reactive<Record<string, boolean>>({})
 const attachRef = ref<InstanceType<typeof AttachWindowDialog>>()
 const addReposRef = ref<InstanceType<typeof AddReposDialog>>()
 const conflictDialogRef = ref<InstanceType<typeof VersionConflictDialog>>()
+const canChangeRepos = computed(() => !iteration.value?.attachedToWindow)
 
 const fetchDetail = async () => {
   loading.value = true
@@ -244,7 +262,7 @@ const openAttachWindow = () => {
 const openAddRepos = () => {
   // 打开添加仓库对话框，传入当前已关联的仓库 ID
   const currentRepoIds = iteration.value?.repoIds || []
-  addReposRef.value?.open(iterationKey, currentRepoIds)
+  addReposRef.value?.open(iterationKey, currentRepoIds, iteration.value?.groupCode || '')
 }
 
 const handleRemoveRepo = async (repoId: string) => {
@@ -283,6 +301,10 @@ const handleRemoveRepo = async (repoId: string) => {
 .card-header .actions {
   display: flex;
   gap: 8px;
+}
+
+.scope-lock-alert {
+  margin-bottom: 12px;
 }
 
 .operations {

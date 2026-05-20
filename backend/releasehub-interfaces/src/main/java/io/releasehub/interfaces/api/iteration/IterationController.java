@@ -54,7 +54,7 @@ public class IterationController {
     @Operation(summary = "Get iteration")
     public ApiResponse<IterationView> get(@PathVariable("key") String key) {
         var it = iterationAppService.get(key);
-        return ApiResponse.success(IterationView.fromDomain(it));
+        return ApiResponse.success(toViewWithAttachedWindows(it));
     }
 
     @GetMapping
@@ -79,7 +79,7 @@ public class IterationController {
     public ApiResponse<IterationView> update(@PathVariable("key") String key, @RequestBody UpdateIterationRequest request) {
         List<RepoBranchConfig> configs = toRepoBranchConfigs(request.getRepoConfigs());
         var it = iterationAppService.update(key, request.getName(), request.getDescription(), request.getExpectedReleaseAt(), request.getGroupCode(), request.getRepoIds(), configs);
-        return ApiResponse.success(IterationView.fromDomain(it));
+        return ApiResponse.success(toViewWithAttachedWindows(it));
     }
 
     @PostMapping("/{key}/repos/add")
@@ -87,7 +87,7 @@ public class IterationController {
     public ApiResponse<IterationView> addRepos(@PathVariable("key") String key, @RequestBody RepoChangeRequest request) {
         BranchCreationMode mode = request.getBranchCreationMode() != null ? request.getBranchCreationMode() : BranchCreationMode.AUTO;
         var it = iterationAppService.addRepos(key, request.getRepoIds(), mode, request.getCustomBranchName());
-        return ApiResponse.success(IterationView.fromDomain(it));
+        return ApiResponse.success(toViewWithAttachedWindows(it));
     }
 
     private List<RepoBranchConfig> toRepoBranchConfigs(List<CreateIterationRequest.RepoBranchConfigDto> dtos) {
@@ -107,7 +107,11 @@ public class IterationController {
     @Operation(summary = "Remove repos from iteration")
     public ApiResponse<IterationView> removeRepos(@PathVariable("key") String key, @RequestBody RepoChangeRequest request) {
         var it = iterationAppService.removeRepos(key, request.getRepoIds());
-        return ApiResponse.success(IterationView.fromDomain(it));
+        return ApiResponse.success(toViewWithAttachedWindows(it));
+    }
+
+    private IterationView toViewWithAttachedWindows(io.releasehub.domain.iteration.Iteration iteration) {
+        return IterationView.fromDomain(iteration, iterationAppService.listAttachedWindowIds(iteration.getId()));
     }
 
     @GetMapping("/{key}/repos")

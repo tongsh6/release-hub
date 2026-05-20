@@ -38,6 +38,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -78,6 +79,7 @@ public class IterationAppService {
         Set<String> safeRepoIds = repoIds == null ? java.util.Set.of() : repoIds;
         Set<RepoId> repos = safeRepoIds.stream().map(RepoId::new).collect(java.util.stream.Collectors.toSet());
         ensureLeafGroup(groupCode);
+        ensureReposBelongToGroup(iterationKey, repos, groupCode);
         Iteration it = Iteration.create(IterationKey.of(iterationKey), name, description, expectedReleaseAt, groupCode, repos, Instant.now(clock));
         iterationPort.save(it);
 
@@ -119,6 +121,8 @@ public class IterationAppService {
         Set<RepoId> newRepos = safeRepoIds.stream().map(RepoId::new).collect(java.util.stream.Collectors.toSet());
         Instant now = Instant.now(clock);
         ensureLeafGroup(groupCode);
+        ensureRepoScopeEditable(existing, newRepos, groupCode);
+        ensureReposBelongToGroup(key, newRepos, groupCode);
 
         // 检测新增的仓库：执行分支创建/映射
         var configs = resolveRepoConfigs(newRepos, repoConfigs);
@@ -161,6 +165,10 @@ public class IterationAppService {
         java.util.Set<RepoId> merged = new java.util.LinkedHashSet<>(existing.getRepos());
         Instant now = Instant.now(clock);
         BranchCreationMode mode = branchCreationMode != null ? branchCreationMode : BranchCreationMode.AUTO;
+        if (!toAdd.isEmpty()) {
+            ensureIterationNotAttached(existing);
+        }
+        ensureReposBelongToGroup(key, toAdd, existing.getGroupCode());
 
         for (RepoId repoId : toAdd) {
             if (!merged.contains(repoId)) {
@@ -240,6 +248,30 @@ public class IterationAppService {
                 repoId.value(), iterationKey.value(), mode, featureBranch, baseVersion, devVersion, targetVersion);
     }
 
+    private void ensureReposBelongToGroup(String iterationKey, Set<RepoId> repoIds, String iterationGroupCode) {
+        for (RepoId repoId : repoIds) {
+            CodeRepository repo = codeRepositoryPort.findById(repoId)
+                    .orElseThrow(() -> NotFoundException.repository(repoId.value()));
+            if (!Objects.equals(iterationGroupCode, repo.getGroupCode())) {
+                throw BusinessException.iterationRepoGroupMismatch(iterationKey, repoId.value(), iterationGroupCode, repo.getGroupCode());
+            }
+        }
+    }
+
+    private void ensureRepoScopeEditable(Iteration existing, Set<RepoId> newRepos, String groupCode) {
+        boolean groupChanged = !Objects.equals(existing.getGroupCode(), groupCode);
+        boolean reposChanged = !Objects.equals(existing.getRepos(), newRepos);
+        if (groupChanged || reposChanged) {
+            ensureIterationNotAttached(existing);
+        }
+    }
+
+    private void ensureIterationNotAttached(Iteration existing) {
+        if (isAttachedToWindow(existing.getId())) {
+            throw BusinessException.iterationAttached(existing.getId().value());
+        }
+    }
+
     private void validateFeaturePrefix(String branchName) {
         if (branchName == null || !branchName.startsWith("feature/")) {
             throw ValidationException.invalidParameter("分支必须在 feature/ 路径下");
@@ -301,6 +333,10 @@ public class IterationAppService {
     public Iteration removeRepos(String key, Set<String> repoIds) {
         Iteration existing = get(key);
         java.util.Set<String> toRemove = repoIds == null ? java.util.Set.of() : repoIds;
+        boolean removingExistingRepo = existing.getRepos().stream().anyMatch(r -> toRemove.contains(r.value()));
+        if (removingExistingRepo) {
+            ensureIterationNotAttached(existing);
+        }
         java.util.Set<RepoId> filtered = existing.getRepos().stream()
                                                  .filter(r -> !toRemove.contains(r.value()))
                                                  .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
@@ -339,16 +375,31 @@ public class IterationAppService {
         if (!existing.getRepos().isEmpty()) {
             throw BusinessException.iterationAttached(key);
         }
-        List<ReleaseWindow> windows = releaseWindowPort.findAll();
-        boolean attached = windows.stream()
-                                  .map(w -> windowIterationPort.listByWindow(ReleaseWindowId.of(w.getId().value())))
-                                  .flatMap(List::stream)
-                                  .map(WindowIteration::getIterationKey)
-                                  .anyMatch(k -> k.equals(existing.getId()));
-        if (attached) {
+        if (isAttachedToWindow(existing.getId())) {
             throw BusinessException.iterationAttached(key);
         }
         iterationPort.deleteByKey(existing.getId());
+    }
+
+    public Set<String> listAttachedWindowIds(String key) {
+        return listAttachedWindowIds(IterationKey.of(key));
+    }
+
+    public Set<String> listAttachedWindowIds(IterationKey key) {
+        return attachedWindowIds(key);
+    }
+
+    private boolean isAttachedToWindow(IterationKey iterationKey) {
+        return !attachedWindowIds(iterationKey).isEmpty();
+    }
+
+    private Set<String> attachedWindowIds(IterationKey iterationKey) {
+        return releaseWindowPort.findAll().stream()
+                .filter(window -> windowIterationPort.listByWindow(ReleaseWindowId.of(window.getId().value())).stream()
+                        .map(WindowIteration::getIterationKey)
+                        .anyMatch(iterationKey::equals))
+                .map(window -> window.getId().value())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     // ==== 版本管理方法 ====
