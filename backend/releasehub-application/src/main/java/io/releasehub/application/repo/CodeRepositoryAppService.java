@@ -200,6 +200,17 @@ public class CodeRepositoryAppService {
     }
 
     /**
+     * 获取仓库初始版本和来源，用于前端呈现版本解析状态。
+     */
+    public InitialVersionInfo getInitialVersionInfo(String repoId) {
+        get(repoId);
+        return new InitialVersionInfo(
+                codeRepositoryPort.getInitialVersion(repoId).orElse(null),
+                codeRepositoryPort.getInitialVersionSource(repoId).orElse(null)
+        );
+    }
+
+    /**
      * 从仓库同步初始版本号
      */
     @Transactional
@@ -244,5 +255,8 @@ public class CodeRepositoryAppService {
 
     public record BranchSummary(int totalBranches, int activeBranches, int nonCompliantBranches, int activeMrs,
                                 int mergedMrs, int closedMrs) {
+    }
+
+    public record InitialVersionInfo(String version, String versionSource) {
     }
 }

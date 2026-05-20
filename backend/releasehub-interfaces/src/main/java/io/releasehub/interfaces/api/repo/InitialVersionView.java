@@ -10,4 +10,5 @@ import lombok.NoArgsConstructor;
 public class InitialVersionView {
     private String repoId;
     private String version;
+    private String versionSource;
 }

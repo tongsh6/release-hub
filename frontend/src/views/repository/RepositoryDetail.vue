@@ -10,6 +10,16 @@
       </div>
     </div>
     <el-card>
+      <el-descriptions :column="2" border>
+        <el-descriptions-item :label="t('repository.columns.defaultBranch')">{{ detail?.defaultBranch || '-' }}</el-descriptions-item>
+        <el-descriptions-item :label="t('repository.columns.groupPath')">{{ groupPath || detail?.groupCode || '-' }}</el-descriptions-item>
+        <el-descriptions-item :label="t('repository.columns.versionStatus')">
+          <span>{{ initialVersion?.version || '-' }}</span>
+          <el-tag class="version-source-tag" :type="versionSourceTagType" size="small">{{ versionSourceLabel }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item :label="t('repository.columns.cloneUrl')">{{ detail?.cloneUrl || '-' }}</el-descriptions-item>
+      </el-descriptions>
+
       <div class="mb-2">{{ t('repository.gateSummary') }}</div>
       <el-descriptions :column="2" border>
         <el-descriptions-item :label="t('repository.gateSummaryLabels.protectedBranch')">
@@ -64,7 +74,9 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { repositoryApi, type Repository, type GateSummary, type BranchSummary } from '@/api/repositoryApi'
+import { repositoryApi, type Repository, type GateSummary, type BranchSummary, type InitialVersionView } from '@/api/repositoryApi'
+import { groupApi } from '@/api/modules/group'
+import { resolveGroupPath } from '@/utils/groupPath'
 import { ElMessage } from 'element-plus'
 import { ApiError } from '@/api/http'
 import { handleError } from '@/utils/error'
@@ -81,7 +93,25 @@ const goBack = () => {
 const detail = ref<Repository>()
 const gateSummary = ref<GateSummary>()
 const branchSummary = ref<BranchSummary>()
+const initialVersion = ref<InitialVersionView>()
+const groupPath = ref('')
 const syncing = ref(false)
+
+const versionSourceLabel = computed(() => {
+  const source = initialVersion.value?.versionSource
+  if (!source) {
+    return t('repository.versionSources.NOT_SET')
+  }
+  return t(`repository.versionSources.${source}`)
+})
+
+const versionSourceTagType = computed(() => {
+  const source = initialVersion.value?.versionSource
+  if (source === 'VERSION_UNRESOLVED') {
+    return 'danger'
+  }
+  return source ? 'success' : 'info'
+})
 
 /**
  * 从 cloneUrl 解析出 GitLab Web URL
@@ -141,14 +171,18 @@ async function handleSync() {
 async function refresh() {
   if (!repoId) return
   try {
-    const [d, g, b] = await Promise.all([
+    const [d, g, b, v, tree] = await Promise.all([
       repositoryApi.get(repoId),
       repositoryApi.getGateSummary(repoId),
-      repositoryApi.getBranchSummary(repoId)
+      repositoryApi.getBranchSummary(repoId),
+      repositoryApi.getInitialVersion(repoId),
+      groupApi.listTree().catch(() => [])
     ])
     detail.value = d
     gateSummary.value = g
     branchSummary.value = b
+    initialVersion.value = v
+    groupPath.value = resolveGroupPath(d.groupCode, tree) || d.groupCode || ''
   } catch (e) {
     handleError(e)
   }
@@ -161,4 +195,7 @@ onMounted(() => {
 
 <style scoped>
 /* 页面特定样式 - 通用样式已移至 index.css */
+.version-source-tag {
+  margin-left: 8px;
+}
 </style>

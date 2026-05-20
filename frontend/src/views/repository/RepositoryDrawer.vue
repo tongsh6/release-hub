@@ -19,6 +19,11 @@
         
         <el-descriptions :column="1" border>
             <el-descriptions-item :label="t('repository.columns.defaultBranch')">{{ detail?.defaultBranch }}</el-descriptions-item>
+            <el-descriptions-item :label="t('repository.columns.groupPath')">{{ groupPath || detail?.groupCode || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="t('repository.columns.versionStatus')">
+              <span>{{ initialVersion?.version || '-' }}</span>
+              <el-tag class="version-source-tag" :type="versionSourceTagType" size="small">{{ versionSourceLabel }}</el-tag>
+            </el-descriptions-item>
             <el-descriptions-item :label="t('repository.columns.cloneUrl')">{{ detail?.cloneUrl }}</el-descriptions-item>
             <el-descriptions-item :label="t('repository.columns.repoType')">
               <el-tag :type="detail?.repoType === 'LIBRARY' ? 'warning' : 'primary'" size="small">{{ t(`repository.repoTypes.${detail?.repoType || 'SERVICE'}`) }}</el-tag>
@@ -69,9 +74,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { repositoryApi, type Repository, type GateSummary, type BranchSummary } from '@/api/repositoryApi'
+import { repositoryApi, type Repository, type GateSummary, type BranchSummary, type InitialVersionView } from '@/api/repositoryApi'
+import { groupApi } from '@/api/modules/group'
+import { resolveGroupPath } from '@/utils/groupPath'
 
 const { t } = useI18n()
 
@@ -80,6 +87,24 @@ const repoId = ref('')
 const detail = ref<Repository>()
 const gateSummary = ref<GateSummary>()
 const branchSummary = ref<BranchSummary>()
+const initialVersion = ref<InitialVersionView>()
+const groupPath = ref('')
+
+const versionSourceLabel = computed(() => {
+  const source = initialVersion.value?.versionSource
+  if (!source) {
+    return t('repository.versionSources.NOT_SET')
+  }
+  return t(`repository.versionSources.${source}`)
+})
+
+const versionSourceTagType = computed(() => {
+  const source = initialVersion.value?.versionSource
+  if (source === 'VERSION_UNRESOLVED') {
+    return 'danger'
+  }
+  return source ? 'success' : 'info'
+})
 
 const open = async (id: string) => {
   repoId.value = id
@@ -90,14 +115,18 @@ const open = async (id: string) => {
 const refresh = async () => {
   if (!repoId.value) return
   try {
-    const [d, g, b] = await Promise.all([
+    const [d, g, b, v, tree] = await Promise.all([
       repositoryApi.get(repoId.value),
       repositoryApi.getGateSummary(repoId.value),
-      repositoryApi.getBranchSummary(repoId.value)
+      repositoryApi.getBranchSummary(repoId.value),
+      repositoryApi.getInitialVersion(repoId.value),
+      groupApi.listTree().catch(() => [])
     ])
     detail.value = d
     gateSummary.value = g
     branchSummary.value = b
+    initialVersion.value = v
+    groupPath.value = resolveGroupPath(d.groupCode, tree) || d.groupCode || ''
   } catch (e) {
     console.error(e)
   }
@@ -118,4 +147,7 @@ defineExpose({
 
 <style scoped>
 /* 页面特定样式 - 通用样式已移至 index.css */
+.version-source-tag {
+  margin-left: 8px;
+}
 </style>

@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -75,6 +76,36 @@ class RepositorySyncApiTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("GITLAB_001"));
+    }
+
+    @Test
+    void shouldExposeInitialVersionSourceForRepositoryDetail() throws Exception {
+        String token = loginAndGetToken();
+        String groupCode = createGroupAndGetCode(token);
+
+        CreateRepoRequest request = new CreateRepoRequest();
+        request.setName("Version Source Repo");
+        request.setCloneUrl("git@gitlab.com:test/version-source-repo.git");
+        request.setMonoRepo(false);
+        request.setGroupCode(groupCode);
+        request.setInitialVersion("1.2.3");
+
+        MvcResult created = mockMvc.perform(post("/api/v1/repositories")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").exists())
+                .andReturn();
+
+        String repoId = objectMapper.readTree(created.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+
+        mockMvc.perform(get("/api/v1/repositories/" + repoId + "/initial-version")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value("1.2.3"))
+                .andExpect(jsonPath("$.data.versionSource").value("MANUAL"));
     }
 
     private String createGroupAndGetCode(String token) throws Exception {

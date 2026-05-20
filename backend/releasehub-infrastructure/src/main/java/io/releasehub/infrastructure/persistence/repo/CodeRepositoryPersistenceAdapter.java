@@ -157,4 +157,10 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
         return repository.findById(repoId)
                 .map(CodeRepositoryJpaEntity::getInitialVersion);
     }
+
+    @Override
+    public Optional<String> getInitialVersionSource(String repoId) {
+        return repository.findById(repoId)
+                .map(CodeRepositoryJpaEntity::getVersionSource);
+    }
 }

@@ -130,22 +130,23 @@ public class CodeRepositoryController {
     @GetMapping("/{id}/initial-version")
     @Operation(summary = "Get repository initial version")
     public ApiResponse<InitialVersionView> getInitialVersion(@PathVariable("id") String id) {
-        String version = appService.getInitialVersion(id);
-        return ApiResponse.success(new InitialVersionView(id, version));
+        var info = appService.getInitialVersionInfo(id);
+        return ApiResponse.success(new InitialVersionView(id, info.version(), info.versionSource()));
     }
 
     @PutMapping("/{id}/initial-version")
     @Operation(summary = "Set repository initial version manually")
     public ApiResponse<InitialVersionView> setInitialVersion(@PathVariable("id") String id, @RequestBody @Valid SetInitialVersionRequest request) {
         appService.setInitialVersion(id, request.getVersion());
-        return ApiResponse.success(new InitialVersionView(id, request.getVersion()));
+        return ApiResponse.success(new InitialVersionView(id, request.getVersion(), "MANUAL"));
     }
 
     @PostMapping("/{id}/sync-version")
     @Operation(summary = "Sync initial version from repository")
     public ApiResponse<InitialVersionView> syncInitialVersion(@PathVariable("id") String id) {
         String version = appService.syncInitialVersionFromRepo(id);
-        return ApiResponse.success(new InitialVersionView(id, version));
+        var info = appService.getInitialVersionInfo(id);
+        return ApiResponse.success(new InitialVersionView(id, version, info.versionSource()));
     }
 
     @PostMapping("/{id}/sync")

@@ -34,7 +34,7 @@ class RepositoryE2ETest extends AbstractE2ETest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(String.format(
-                                "{\"name\":\"%s\",\"cloneUrl\":\"https://git.example.com/%s.git\",\"groupCode\":\"%s\",\"defaultBranch\":\"main\"}",
+                                "{\"name\":\"%s\",\"cloneUrl\":\"https://git.example.com/%s.git\",\"groupCode\":\"%s\",\"defaultBranch\":\"main\",\"initialVersion\":\"1.2.3\"}",
                                 repoName, repoName, groupCode)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").isNotEmpty())
@@ -102,7 +102,9 @@ class RepositoryE2ETest extends AbstractE2ETest {
     void initialVersion() throws Exception {
         mockMvc.perform(get("/api/v1/repositories/" + repoId + "/initial-version")
                         .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value("1.2.3"))
+                .andExpect(jsonPath("$.data.versionSource").value("MANUAL"));
     }
 
     @Test

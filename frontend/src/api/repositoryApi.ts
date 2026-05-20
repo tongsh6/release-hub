@@ -9,6 +9,7 @@ export interface Repository {
   name: string
   cloneUrl: string
   defaultBranch: string
+  groupCode: string
   repoType: string
   monoRepo: boolean
   gitProvider?: GitProvider
@@ -44,6 +45,7 @@ export interface BranchSummary {
 export interface InitialVersionView {
   repoId: string
   version: string | null
+  versionSource?: string | null
 }
 
 export interface CreateRepoReq {

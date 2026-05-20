@@ -32,4 +32,11 @@ public interface CodeRepositoryPort {
      * 获取仓库的初始版本号
      */
     Optional<String> getInitialVersion(String repoId);
+
+    /**
+     * 获取仓库初始版本来源。
+     */
+    default Optional<String> getInitialVersionSource(String repoId) {
+        return Optional.empty();
+    }
 }
