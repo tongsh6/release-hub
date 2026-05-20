@@ -75,6 +75,10 @@ public class BusinessException extends BaseException {
         return of(ErrorCode.ITERATION_ATTACHED, key);
     }
 
+    public static BusinessException iterationRepoGroupMismatch(Object iterationKey, Object repoId, Object iterationGroup, Object repoGroup) {
+        return of(ErrorCode.ITERATION_REPO_GROUP_MISMATCH, iterationKey, repoId, iterationGroup, repoGroup);
+    }
+
     // ========== Version Policy ==========
 
     public static BusinessException vpCustomNotSupported() {
@@ -89,6 +93,10 @@ public class BusinessException extends BaseException {
 
     public static BusinessException gitlabSettingsMissing() {
         return of(ErrorCode.GITLAB_SETTINGS_MISSING);
+    }
+
+    public static BusinessException gitlabConnectionFailed(Object reason) {
+        return of(ErrorCode.GITLAB_CONNECTION_FAILED, reason);
     }
 
     // ========== Repository ==========

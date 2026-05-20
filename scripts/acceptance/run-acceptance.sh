@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 场景化验收证据脚本 v3.15
+# ReleaseHub 场景化验收证据脚本 v3.16
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
@@ -20,7 +20,7 @@
 #
 # 能力清单（SA-001..SA-016 的后端/GitLab/数据证据）:
 #   SA-001/SA-004: GitLab Settings 自动配置、复用、重启持久化
-#   SA-002: 存量数据审计（BranchCreationMode、featureBranch、cloneUrl、token 安全）
+#   SA-002: 存量数据审计（BranchCreationMode、featureBranch、cloneUrl、仓库/Settings token 安全）
 #   SA-003: 三层分组，非叶子资源挂载拒绝
 #   SA-005: 分组仓库纳管、真实 GitLab cloneUrl、token 安全审计
 #   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
@@ -513,19 +513,33 @@ FLYWAY_V=$(docker exec releasehub-postgres psql -U postgres -d release_hub -t -c
 [ -n "$FLYWAY_V" ] && ok "Flyway 最新迁移: $FLYWAY_V" || warn "Flyway 历史为空"
 
 # 1.3 Token 加密状态
-TOKEN_CHECK=$(docker exec releasehub-postgres psql -U postgres -d release_hub -t -A -F, -c \
+REPO_TOKEN_CHECK=$(docker exec releasehub-postgres psql -U postgres -d release_hub -t -A -F, -c \
     "SELECT COUNT(*) FILTER (WHERE git_token IS NOT NULL AND git_token != '') AS with_token,
             COUNT(*) FILTER (WHERE git_token ~ '^glpat-') AS plaintext,
             COUNT(*) FILTER (WHERE git_token IS NOT NULL AND git_token != '' AND git_token !~ '^glpat-') AS encrypted
      FROM code_repository;" 2>/dev/null)
-PLAINTEXT_COUNT=$(echo "$TOKEN_CHECK" | cut -d, -f2 | tr -d ' ')
-ENCRYPTED_COUNT=$(echo "$TOKEN_CHECK" | cut -d, -f3 | tr -d ' ')
-PLAINTEXT_COUNT=${PLAINTEXT_COUNT:-0}
-ENCRYPTED_COUNT=${ENCRYPTED_COUNT:-0}
-if [ "$PLAINTEXT_COUNT" != "0" ] && [ -n "$PLAINTEXT_COUNT" ]; then
-    no "Token 明文存储: $PLAINTEXT_COUNT 个仓库"
+SETTINGS_TOKEN_CHECK=$(docker exec releasehub-postgres psql -U postgres -d release_hub -t -A -F, -c \
+    "SELECT COUNT(*) FILTER (WHERE gitlab_token IS NOT NULL AND gitlab_token != '') AS with_token,
+            COUNT(*) FILTER (WHERE gitlab_token ~ '^glpat-') AS plaintext,
+            COUNT(*) FILTER (WHERE gitlab_token IS NOT NULL AND gitlab_token != '' AND gitlab_token !~ '^glpat-') AS encrypted
+     FROM system_settings;" 2>/dev/null)
+REPO_PLAINTEXT_COUNT=$(echo "$REPO_TOKEN_CHECK" | cut -d, -f2 | tr -d ' ')
+REPO_ENCRYPTED_COUNT=$(echo "$REPO_TOKEN_CHECK" | cut -d, -f3 | tr -d ' ')
+SETTINGS_PLAINTEXT_COUNT=$(echo "$SETTINGS_TOKEN_CHECK" | cut -d, -f2 | tr -d ' ')
+SETTINGS_ENCRYPTED_COUNT=$(echo "$SETTINGS_TOKEN_CHECK" | cut -d, -f3 | tr -d ' ')
+REPO_PLAINTEXT_COUNT=${REPO_PLAINTEXT_COUNT:-0}
+REPO_ENCRYPTED_COUNT=${REPO_ENCRYPTED_COUNT:-0}
+SETTINGS_PLAINTEXT_COUNT=${SETTINGS_PLAINTEXT_COUNT:-0}
+SETTINGS_ENCRYPTED_COUNT=${SETTINGS_ENCRYPTED_COUNT:-0}
+if [ "$REPO_PLAINTEXT_COUNT" != "0" ] && [ -n "$REPO_PLAINTEXT_COUNT" ]; then
+    no "仓库 Token 明文存储: $REPO_PLAINTEXT_COUNT 个仓库"
 else
-    ok "Token 已全部加密: $ENCRYPTED_COUNT 个仓库"
+    ok "仓库 Token 已全部加密: $REPO_ENCRYPTED_COUNT 个仓库"
+fi
+if [ "$SETTINGS_PLAINTEXT_COUNT" != "0" ] && [ -n "$SETTINGS_PLAINTEXT_COUNT" ]; then
+    no "GitLab Settings Token 明文存储: $SETTINGS_PLAINTEXT_COUNT 条配置"
+else
+    ok "GitLab Settings Token 已全部加密: $SETTINGS_ENCRYPTED_COUNT 条配置"
 fi
 
 # 1.3.1 BranchCreationMode 分布

@@ -1,5 +1,6 @@
 package io.releasehub.interfaces.api.settings;
 
+import io.releasehub.application.gitlab.GitLabPort;
 import io.releasehub.application.settings.SettingsPort;
 import io.releasehub.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "系统设置 - gitlab 设置")
 public class SettingsController {
     private final SettingsPort settingsPort;
+    private final GitLabPort gitLabPort;
 
     @GetMapping("/gitlab")
     @Operation(summary = "Get GitLab settings")
@@ -48,7 +50,7 @@ public class SettingsController {
     @GetMapping("/gitlab/test")
     @Operation(summary = "Test GitLab settings")
     public ApiResponse<Boolean> testGitLab() {
-        return ApiResponse.success(true);
+        return ApiResponse.success(gitLabPort.testConnection());
     }
 
     @GetMapping("/naming")

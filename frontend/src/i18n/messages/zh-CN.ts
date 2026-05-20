@@ -313,7 +313,8 @@ export default {
       searchRepos: '搜索仓库名称',
       alreadyAdded: '已添加',
       selectedCount: '已选择 {count} 个新仓库',
-      noNewRepos: '请至少选择一个新仓库'
+      noNewRepos: '请至少选择一个新仓库',
+      repoScopeLocked: '迭代已挂载发布窗口，仓库集合不可修改'
     },
     branchCreationMode: {
       label: 'Feature 分支创建方式',
@@ -354,10 +355,21 @@ export default {
       name: '仓库名称',
       cloneUrl: '仓库地址',
       defaultBranch: '默认分支',
+      groupPath: '组织路径',
       repoType: '仓库类型',
       initialVersion: '初始版本号',
+      versionStatus: '版本解析状态',
       monoRepo: '单仓',
       writable: '可写？'
+    },
+    versionSources: {
+      MANUAL: '手动设置',
+      POM: 'Maven POM',
+      GRADLE: 'Gradle',
+      SYSTEM: '系统记录',
+      REPO: '仓库读取',
+      VERSION_UNRESOLVED: '解析失败',
+      NOT_SET: '未设置'
     },
     repoTypes: {
       SERVICE: '服务',
@@ -503,6 +515,9 @@ export default {
     },
     buttons: {
       testConnection: '测试连接'
+    },
+    messages: {
+      connectionSuccess: 'GitLab 连接测试通过'
     },
     policy: {
       failFast: 'FAIL_FAST（默认）',

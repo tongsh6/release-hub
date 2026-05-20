@@ -73,6 +73,7 @@ public enum ErrorCode {
     ITERATION_ATTACHED("ITER_002", "error.iter.attached", 400),
     ITERATION_KEY_INVALID("ITER_003", "error.iter.key_invalid", 400),
     ITERATION_REPO_NOT_FOUND("ITER_004", "error.iter.repo_not_found", 404),
+    ITERATION_REPO_GROUP_MISMATCH("ITER_005", "error.iter.repo_group_mismatch", 400),
 
     // ========== 版本策略 (VP) ==========
     VERSION_POLICY_NOT_FOUND("VP_001", "error.vp.not_found", 404),
@@ -95,6 +96,7 @@ public enum ErrorCode {
     // ========== GitLab (GITLAB) ==========
     GITLAB_SETTINGS_MISSING("GITLAB_001", "error.gitlab.settings_missing", 400),
     GITLAB_PROJECT_NOT_FOUND("GITLAB_002", "error.gitlab.project_not_found", 404),
+    GITLAB_CONNECTION_FAILED("GITLAB_003", "error.gitlab.connection_failed", 400),
 
     // ========== 分支规则 (BR) ==========
     BRANCH_RULE_NOT_FOUND("BR_001", "error.br.not_found", 404),

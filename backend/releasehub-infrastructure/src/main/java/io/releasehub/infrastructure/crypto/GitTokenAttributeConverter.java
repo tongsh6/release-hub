@@ -13,11 +13,13 @@ import java.util.Optional;
  * 数据库存储密文（Base64），Java 对象持有明文。
  * 当加密未启用时，退化为透传——数据库存储明文。
  * <p>
- * 兼容旧数据：解密失败时原样返回，支持渐进式迁移。
+ * 兼容旧数据：读取时同时支持历史无前缀密文；解密失败时原样返回，支持渐进式迁移。
  */
 @Component
 @Converter(autoApply = false)
 public class GitTokenAttributeConverter implements AttributeConverter<String, String> {
+
+    private static final String CIPHERTEXT_PREFIX = "enc:v1:";
 
     private final GitTokenCrypto crypto;
 
@@ -30,10 +32,10 @@ public class GitTokenAttributeConverter implements AttributeConverter<String, St
         if (plaintext == null || plaintext.isEmpty() || crypto == null) {
             return plaintext;
         }
-        if (looksEncrypted(plaintext)) {
+        if (isEncryptedValue(plaintext)) {
             return plaintext;
         }
-        return crypto.encrypt(plaintext);
+        return CIPHERTEXT_PREFIX + crypto.encrypt(plaintext);
     }
 
     @Override
@@ -41,18 +43,30 @@ public class GitTokenAttributeConverter implements AttributeConverter<String, St
         if (dbData == null || dbData.isEmpty() || crypto == null) {
             return dbData;
         }
+        String ciphertext = dbData;
+        if (dbData.startsWith(CIPHERTEXT_PREFIX)) {
+            ciphertext = dbData.substring(CIPHERTEXT_PREFIX.length());
+        }
         try {
-            return crypto.decrypt(dbData);
+            return crypto.decrypt(ciphertext);
         } catch (GitTokenCrypto.CryptoException e) {
             return dbData;
         }
     }
 
-    /**
-     * heuristic: GCM 加密后的 Base64 密文长度远超原始 token
-     * token 格式如 "glpat-xxxxxxxx" (20 chars) → 加密后 Base64 ~88 chars
-     */
-    private boolean looksEncrypted(String value) {
-        return value.length() > 60;
+    private boolean isEncryptedValue(String value) {
+        if (value.startsWith(CIPHERTEXT_PREFIX)) {
+            return canDecrypt(value.substring(CIPHERTEXT_PREFIX.length()));
+        }
+        return canDecrypt(value);
+    }
+
+    private boolean canDecrypt(String value) {
+        try {
+            crypto.decrypt(value);
+            return true;
+        } catch (GitTokenCrypto.CryptoException e) {
+            return false;
+        }
     }
 }

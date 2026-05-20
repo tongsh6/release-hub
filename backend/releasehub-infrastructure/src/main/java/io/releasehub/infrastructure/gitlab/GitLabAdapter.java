@@ -13,6 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -31,6 +32,43 @@ public class GitLabAdapter implements GitLabPort {
 
     private final SettingsPort settingsPort;
     private final RestTemplate restTemplate = new RestTemplate();
+
+    @Override
+    public boolean testConnection() {
+        var settings = settingsPort.getGitLab();
+        if (settings.isEmpty()) {
+            throw BusinessException.gitlabSettingsMissing();
+        }
+        String baseUrl = normalizeBaseUrl(settings.get().baseUrl());
+        String token = settings.get().token();
+        if (baseUrl.isBlank() || token == null || token.isBlank()) {
+            throw BusinessException.gitlabConnectionFailed("baseUrl or token is blank");
+        }
+
+        String url = String.format("%s/api/v4/user", baseUrl);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("PRIVATE-TOKEN", token);
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        try {
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    new ParameterizedTypeReference<>() {
+                    }
+            );
+            Map<String, Object> body = response.getBody();
+            if (!response.getStatusCode().is2xxSuccessful() || body == null || body.get("id") == null) {
+                throw BusinessException.gitlabConnectionFailed("unexpected GitLab /user response");
+            }
+            return true;
+        } catch (HttpStatusCodeException e) {
+            throw BusinessException.gitlabConnectionFailed("GitLab API returned " + e.getStatusCode().value());
+        } catch (RestClientException | IllegalArgumentException e) {
+            throw BusinessException.gitlabConnectionFailed("GitLab API is unreachable");
+        }
+    }
 
     @Override
     public long resolveProjectId(String repoCloneUrl) {

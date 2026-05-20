@@ -99,7 +99,7 @@ const testGitLab = async () => {
   testing.value = true
   try {
     await settingsApi.testGitLab()
-    ElMessage.success(t('common.success'))
+    ElMessage.success(t('settings.messages.connectionSuccess'))
   } catch (error) {
     handleError(error)
   } finally {

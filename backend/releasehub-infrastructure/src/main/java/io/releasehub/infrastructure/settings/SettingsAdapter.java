@@ -18,14 +18,15 @@ public class SettingsAdapter implements SettingsPort {
     @Transactional
     public void saveGitLab(SettingsGitLab v) {
         SystemSettingsJpaEntity entity = getOrCreate();
-        entity.setGitlabBaseUrl(v.baseUrl());
-        entity.setGitlabToken(v.token());
+        entity.setGitlabBaseUrl(v != null ? v.baseUrl() : null);
+        entity.setGitlabToken(v != null ? v.token() : null);
         repository.save(entity);
     }
 
     @Override
     public Optional<SettingsGitLab> getGitLab() {
         return repository.findById("GLOBAL")
+                .filter(e -> hasText(e.getGitlabBaseUrl()) || hasText(e.getGitlabToken()))
                 .map(e -> new SettingsGitLab(e.getGitlabBaseUrl(), e.getGitlabToken()));
     }
 
@@ -74,5 +75,9 @@ public class SettingsAdapter implements SettingsPort {
             entity.setId("GLOBAL");
             return entity;
         });
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }

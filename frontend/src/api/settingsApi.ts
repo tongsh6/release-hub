@@ -21,7 +21,7 @@ const extractData = <T>(res: any): T => res.data.data
 export const settingsApi = {
   getGitLab: () => http.get('/v1/settings/gitlab').then(extractData<GitLabSettings>),
   saveGitLab: (data: GitLabSettings) => http.post('/v1/settings/gitlab', data),
-  testGitLab: () => http.get('/v1/settings/gitlab/test'),
+  testGitLab: () => http.get('/v1/settings/gitlab/test').then(extractData<boolean>),
 
   getNaming: () => http.get('/v1/settings/naming').then(extractData<NamingSettings>),
   saveNaming: (data: NamingSettings) => http.post('/v1/settings/naming', data),

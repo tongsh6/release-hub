@@ -313,7 +313,8 @@ export default {
       searchRepos: 'Search repository name',
       alreadyAdded: 'Already Added',
       selectedCount: '{count} new repositories selected',
-      noNewRepos: 'Please select at least one new repository'
+      noNewRepos: 'Please select at least one new repository',
+      repoScopeLocked: 'This iteration is attached to a release window, so its repository scope is locked'
     },
     branchCreationMode: {
       label: 'Feature Branch Creation Mode',
@@ -354,10 +355,21 @@ export default {
       name: 'Repository Name',
       cloneUrl: 'Clone URL',
       defaultBranch: 'Default Branch',
+      groupPath: 'Group Path',
       repoType: 'Repo Type',
       initialVersion: 'Initial Version',
+      versionStatus: 'Version Status',
       monoRepo: 'Mono Repo',
       writable: 'Writable?'
+    },
+    versionSources: {
+      MANUAL: 'Manual',
+      POM: 'Maven POM',
+      GRADLE: 'Gradle',
+      SYSTEM: 'System',
+      REPO: 'Repository',
+      VERSION_UNRESOLVED: 'Unresolved',
+      NOT_SET: 'Not Set'
     },
     repoTypes: {
       SERVICE: 'Service',
@@ -476,6 +488,9 @@ export default {
     },
     buttons: {
       testConnection: 'Test Connection'
+    },
+    messages: {
+      connectionSuccess: 'GitLab connection test passed'
     },
     policy: {
       failFast: 'FAIL_FAST (default)',
