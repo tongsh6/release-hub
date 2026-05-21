@@ -62,6 +62,27 @@
         </el-radio-group>
       </el-form-item>
 
+      <el-form-item :label="t('releaseWindow.versionUpdate.policy')">
+        <el-select
+          v-model="selectedPolicyId"
+          :placeholder="t('releaseWindow.versionUpdate.selectPolicy')"
+          :loading="policyLoading"
+          filterable
+          style="width: 100%"
+          @change="handlePolicyChange"
+        >
+          <el-option
+            v-for="policy in versionPolicies"
+            :key="policy.id"
+            :label="policyLabel(policy)"
+            :value="policy.id"
+          />
+        </el-select>
+        <div class="form-item-tip">
+          {{ policyTip }}
+        </div>
+      </el-form-item>
+
       <el-form-item :label="t('releaseWindow.versionUpdate.targetVersion')" prop="targetVersion">
         <el-input
           v-model="form.targetVersion"
@@ -124,11 +145,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { computed, ref, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { releaseWindowApi, getConflicts, type VersionUpdateRequest } from '@/api/modules/releaseWindow'
 import { repositoryApi, type Repository } from '@/api/repositoryApi'
+import { versionPolicyApi, type VersionPolicyDisplay } from '@/api/versionPolicyApi'
 import { handleError } from '@/utils/error'
 import type { BuildTool } from '@/types/dto'
 
@@ -146,6 +168,10 @@ const repositories = ref<Repository[]>([])
 const scopedRepositories = ref(false)
 const updateScope = ref<'SINGLE' | 'BATCH'>('SINGLE')
 const selectedRepoIds = ref<string[]>([])
+const versionPolicies = ref<VersionPolicyDisplay[]>([])
+const selectedPolicyId = ref('')
+const currentVersion = ref('')
+const policyLoading = ref(false)
 
 const form = reactive<VersionUpdateRequest & { buildTool: BuildTool }>({
   repoId: '',
@@ -173,6 +199,9 @@ const resetForm = () => {
   form.repoPath = ''
   form.pomPath = ''
   form.gradlePropertiesPath = ''
+  versionPolicies.value = []
+  selectedPolicyId.value = ''
+  currentVersion.value = ''
   updateScope.value = 'SINGLE'
   selectedRepoIds.value = []
 }
@@ -188,14 +217,38 @@ const loadRepositories = async () => {
   }
 }
 
-const handleRepoChange = (repoId: string) => {
+const selectedPolicy = computed(() => {
+  return versionPolicies.value.find(policy => policy.id === selectedPolicyId.value)
+})
+
+const policyTip = computed(() => {
+  if (!form.repoId) return t('releaseWindow.versionUpdate.policySelectRepoTip')
+  if (!selectedPolicy.value) return t('releaseWindow.versionUpdate.policyNotFound')
+  const version = currentVersion.value || '-'
+  return t('releaseWindow.versionUpdate.policyTip', {
+    policy: selectedPolicy.value.name,
+    scope: policyScopeLabel(selectedPolicy.value),
+    currentVersion: version
+  })
+})
+
+const handleRepoChange = async (repoId: string) => {
   const repo = repositories.value.find(r => r.id === repoId)
   if (repo) {
     // 根据仓库信息自动填充路径
     if (!form.repoPath) {
       form.repoPath = deriveRepoPath(repo)
     }
+    await loadApplicablePolicies(repo)
+  } else {
+    versionPolicies.value = []
+    selectedPolicyId.value = ''
+    currentVersion.value = ''
   }
+}
+
+const handlePolicyChange = async () => {
+  await deriveTargetVersion()
 }
 
 watch(updateScope, (scope) => {
@@ -205,7 +258,16 @@ watch(updateScope, (scope) => {
     }
   } else if (!form.repoId && selectedRepoIds.value.length > 0) {
     form.repoId = selectedRepoIds.value[0]
-    handleRepoChange(form.repoId)
+    void handleRepoChange(form.repoId)
+  }
+})
+
+watch(selectedRepoIds, (repoIds) => {
+  if (updateScope.value !== 'BATCH') return
+  const firstRepoId = repoIds[0] || ''
+  if (firstRepoId && firstRepoId !== form.repoId) {
+    form.repoId = firstRepoId
+    void handleRepoChange(firstRepoId)
   }
 })
 
@@ -282,11 +344,11 @@ const open = async (id: string, windowRepositories: Repository[] = []) => {
   repositories.value = [...windowRepositories]
   if (windowRepositories.length === 1) {
     form.repoId = windowRepositories[0].id
-    handleRepoChange(windowRepositories[0].id)
+    await handleRepoChange(windowRepositories[0].id)
   } else if (windowRepositories.length > 1) {
     form.repoId = windowRepositories[0].id
-    handleRepoChange(windowRepositories[0].id)
     selectedRepoIds.value = windowRepositories.map(repo => repo.id)
+    await handleRepoChange(windowRepositories[0].id)
   }
   visible.value = true
   conflictBlocked.value = false
@@ -308,6 +370,57 @@ defineExpose({
 
 function deriveRepoPath(repo: Repository): string {
   return repo.cloneUrl.replace(/\.git$/, '').split('/').pop() || ''
+}
+
+async function loadApplicablePolicies(repo: Repository) {
+  policyLoading.value = true
+  try {
+    const [policies, initialVersion] = await Promise.all([
+      versionPolicyApi.applicable({ projectId: repo.groupCode, subProjectId: repo.id }),
+      repositoryApi.getInitialVersion(repo.id)
+    ])
+    versionPolicies.value = policies
+    selectedPolicyId.value = policies[0]?.id || ''
+    currentVersion.value = initialVersion.version || ''
+    await deriveTargetVersion()
+  } catch (err) {
+    versionPolicies.value = []
+    selectedPolicyId.value = ''
+    currentVersion.value = ''
+    handleError(err)
+  } finally {
+    policyLoading.value = false
+  }
+}
+
+async function deriveTargetVersion() {
+  if (!selectedPolicyId.value || !currentVersion.value) return
+  try {
+    const result = await releaseWindowApi.validateVersion(windowId, {
+      policyId: selectedPolicyId.value,
+      currentVersion: currentVersion.value
+    })
+    if (result.valid && result.derivedVersion) {
+      form.targetVersion = result.derivedVersion
+    }
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+function policyLabel(policy: VersionPolicyDisplay): string {
+  return `${policy.name} - ${policy.strategy} - ${policyScopeLabel(policy)}`
+}
+
+function policyScopeLabel(policy: VersionPolicyDisplay): string {
+  const level = policy.scope?.level || 'GLOBAL'
+  if (level === 'SUB_PROJECT') {
+    return `${t('versionPolicy.scopeSubProject')} ${policy.scope?.projectId || ''}/${policy.scope?.subProjectId || ''}`.trim()
+  }
+  if (level === 'PROJECT') {
+    return `${t('versionPolicy.scopeProject')} ${policy.scope?.projectId || ''}`.trim()
+  }
+  return t('versionPolicy.scopeGlobal')
 }
 </script>
 

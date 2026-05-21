@@ -5,6 +5,7 @@ import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.version.BumpRule;
 import io.releasehub.domain.version.VersionPolicy;
 import io.releasehub.domain.version.VersionPolicyId;
+import io.releasehub.domain.version.VersionPolicyScope;
 import io.releasehub.domain.version.VersionScheme;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -65,6 +66,9 @@ public class VersionPolicyPersistenceAdapter implements VersionPolicyPort {
                 domain.getName(),
                 domain.getScheme().name(),
                 domain.getBumpRule().name(),
+                domain.getScope().getLevel().name(),
+                domain.getScope().getProjectId(),
+                domain.getScope().getSubProjectId(),
                 domain.getCreatedAt(),
                 domain.getUpdatedAt(),
                 domain.getVersion()
@@ -77,10 +81,28 @@ public class VersionPolicyPersistenceAdapter implements VersionPolicyPort {
                 entity.getName(),
                 VersionScheme.valueOf(entity.getScheme()),
                 BumpRule.valueOf(entity.getBumpRule()),
+                buildScope(entity),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt(),
                 entity.getVersion()
         );
+    }
+
+    private VersionPolicyScope buildScope(VersionPolicyJpaEntity entity) {
+        String level = entity.getScopeLevel();
+        if (level == null) {
+            return VersionPolicyScope.global();
+        }
+        try {
+            VersionPolicyScope.ScopeLevel scopeLevel = VersionPolicyScope.ScopeLevel.valueOf(level);
+            return switch (scopeLevel) {
+                case GLOBAL -> VersionPolicyScope.global();
+                case PROJECT -> VersionPolicyScope.project(entity.getScopeProjectId());
+                case SUB_PROJECT -> VersionPolicyScope.subProject(entity.getScopeProjectId(), entity.getScopeSubProjectId());
+            };
+        } catch (IllegalArgumentException e) {
+            return VersionPolicyScope.global();
+        }
     }
 
     private String normalize(String value) {

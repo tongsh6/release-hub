@@ -4,6 +4,7 @@ import { nextTick } from 'vue'
 import VersionUpdateDialog from '../VersionUpdateDialog.vue'
 import { releaseWindowApi, getConflicts } from '@/api/modules/releaseWindow'
 import { repositoryApi, type Repository } from '@/api/repositoryApi'
+import { versionPolicyApi } from '@/api/versionPolicyApi'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -22,14 +23,22 @@ vi.mock('element-plus', () => ({
 vi.mock('@/api/modules/releaseWindow', () => ({
   releaseWindowApi: {
     executeVersionUpdate: vi.fn(),
-    executeBatchVersionUpdate: vi.fn()
+    executeBatchVersionUpdate: vi.fn(),
+    validateVersion: vi.fn()
   },
   getConflicts: vi.fn().mockResolvedValue({ hasConflicts: false })
 }))
 
 vi.mock('@/api/repositoryApi', () => ({
   repositoryApi: {
-    list: vi.fn()
+    list: vi.fn(),
+    getInitialVersion: vi.fn()
+  }
+}))
+
+vi.mock('@/api/versionPolicyApi', () => ({
+  versionPolicyApi: {
+    applicable: vi.fn()
   }
 }))
 
@@ -77,11 +86,12 @@ const stubs = {
 const repo = (id: string, name: string): Repository => ({
   id,
   name,
-  cloneUrl: `mock:///${name}.git`,
+  cloneUrl: `https://gitlab.example.com/customer/${name}.git`,
   defaultBranch: 'main',
+  groupCode: 'G001001',
   repoType: 'application',
   monoRepo: false,
-  gitProvider: 'MOCK',
+  gitProvider: 'GITLAB',
   branchCount: 0,
   activeBranchCount: 0,
   nonCompliantBranchCount: 0,
@@ -97,12 +107,42 @@ const repo = (id: string, name: string): Repository => ({
 describe('VersionUpdateDialog', () => {
   beforeEach(() => {
     vi.mocked(repositoryApi.list).mockReset()
+    vi.mocked(repositoryApi.getInitialVersion).mockReset()
+    vi.mocked(versionPolicyApi.applicable).mockReset()
     vi.mocked(releaseWindowApi.executeVersionUpdate).mockReset()
     vi.mocked(releaseWindowApi.executeBatchVersionUpdate).mockReset()
+    vi.mocked(releaseWindowApi.validateVersion).mockReset()
     vi.mocked(getConflicts).mockReset()
     vi.mocked(repositoryApi.list).mockResolvedValue({
       list: [repo('global-repo', 'global-repo')],
       total: 1
+    })
+    vi.mocked(repositoryApi.getInitialVersion).mockResolvedValue({
+      repoId: 'scoped-repo',
+      version: '1.2.3',
+      versionSource: 'POM'
+    })
+    vi.mocked(versionPolicyApi.applicable).mockResolvedValue([
+      {
+        id: 'policy-sub',
+        name: 'Repo Minor',
+        strategy: 'SEMVER (MINOR)',
+        scheme: 'SEMVER',
+        bumpRule: 'MINOR',
+        scope: { level: 'SUB_PROJECT', projectId: 'G001001', subProjectId: 'scoped-repo' }
+      },
+      {
+        id: 'policy-global',
+        name: 'Global Patch',
+        strategy: 'SEMVER (PATCH)',
+        scheme: 'SEMVER',
+        bumpRule: 'PATCH',
+        scope: { level: 'GLOBAL' }
+      }
+    ])
+    vi.mocked(releaseWindowApi.validateVersion).mockResolvedValue({
+      valid: true,
+      derivedVersion: '1.3.0'
     })
     vi.mocked(releaseWindowApi.executeVersionUpdate).mockResolvedValue({ runId: 'run-1', status: 'COMPLETED' })
     vi.mocked(releaseWindowApi.executeBatchVersionUpdate).mockResolvedValue({ runId: 'run-batch-1', status: 'COMPLETED' })
@@ -120,6 +160,49 @@ describe('VersionUpdateDialog', () => {
     expect(repositoryApi.list).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('scoped-repo')
     expect(wrapper.text()).not.toContain('global-repo')
+  })
+
+  it('loads inherited policy for the selected repository and derives target version', async () => {
+    const wrapper = mount(VersionUpdateDialog, {
+      global: { stubs }
+    })
+
+    await (wrapper.vm as any).open('window-1', [repo('scoped-repo', 'scoped-repo')])
+    await nextTick()
+
+    expect(versionPolicyApi.applicable).toHaveBeenCalledWith({
+      projectId: 'G001001',
+      subProjectId: 'scoped-repo'
+    })
+    expect(repositoryApi.getInitialVersion).toHaveBeenCalledWith('scoped-repo')
+    expect(releaseWindowApi.validateVersion).toHaveBeenCalledWith('window-1', {
+      policyId: 'policy-sub',
+      currentVersion: '1.2.3'
+    })
+    expect((wrapper.vm as any).selectedPolicyId).toBe('policy-sub')
+    expect((wrapper.vm as any).form.targetVersion).toBe('1.3.0')
+    expect(wrapper.text()).toContain('Repo Minor')
+  })
+
+  it('re-derives the target version when policy selection changes', async () => {
+    const wrapper = mount(VersionUpdateDialog, {
+      global: { stubs }
+    })
+
+    await (wrapper.vm as any).open('window-1', [repo('scoped-repo', 'scoped-repo')])
+    vi.mocked(releaseWindowApi.validateVersion).mockResolvedValueOnce({
+      valid: true,
+      derivedVersion: '1.2.4'
+    })
+    ;(wrapper.vm as any).selectedPolicyId = 'policy-global'
+
+    await (wrapper.vm as any).handlePolicyChange()
+
+    expect(releaseWindowApi.validateVersion).toHaveBeenLastCalledWith('window-1', {
+      policyId: 'policy-global',
+      currentVersion: '1.2.3'
+    })
+    expect((wrapper.vm as any).form.targetVersion).toBe('1.2.4')
   })
 
   it('submits selected window repositories to the batch version-update API', async () => {

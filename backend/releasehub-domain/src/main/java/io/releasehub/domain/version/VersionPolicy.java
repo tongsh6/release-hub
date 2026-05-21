@@ -18,21 +18,32 @@ public class VersionPolicy extends BaseEntity<VersionPolicyId> {
     private final String name;
     private final VersionScheme scheme;
     private final BumpRule bumpRule;
+    private final VersionPolicyScope scope;
 
     private VersionPolicy(VersionPolicyId id, String name, VersionScheme scheme, BumpRule bumpRule, Instant createdAt, Instant updatedAt, long version) {
+        this(id, name, scheme, bumpRule, VersionPolicyScope.global(), createdAt, updatedAt, version);
+    }
+
+    private VersionPolicy(VersionPolicyId id, String name, VersionScheme scheme, BumpRule bumpRule, VersionPolicyScope scope, Instant createdAt, Instant updatedAt, long version) {
         super(id, createdAt, updatedAt, version);
         this.name = name;
         this.scheme = scheme;
         this.bumpRule = bumpRule;
+        this.scope = scope == null ? VersionPolicyScope.global() : scope;
     }
 
     public static VersionPolicy create(String name, VersionScheme scheme, BumpRule bumpRule, Instant now) {
+        return create(name, scheme, bumpRule, VersionPolicyScope.global(), now);
+    }
+
+    public static VersionPolicy create(String name, VersionScheme scheme, BumpRule bumpRule, VersionPolicyScope scope, Instant now) {
         validateName(name);
         return new VersionPolicy(
                 VersionPolicyId.newId(),
                 name,
                 scheme,
                 bumpRule,
+                scope,
                 now,
                 now,
                 0L
@@ -41,6 +52,24 @@ public class VersionPolicy extends BaseEntity<VersionPolicyId> {
 
     public static VersionPolicy rehydrate(VersionPolicyId id, String name, VersionScheme scheme, BumpRule bumpRule, Instant createdAt, Instant updatedAt, long version) {
         return new VersionPolicy(id, name, scheme, bumpRule, createdAt, updatedAt, version);
+    }
+
+    public static VersionPolicy rehydrate(VersionPolicyId id, String name, VersionScheme scheme, BumpRule bumpRule, VersionPolicyScope scope, Instant createdAt, Instant updatedAt, long version) {
+        return new VersionPolicy(id, name, scheme, bumpRule, scope, createdAt, updatedAt, version);
+    }
+
+    public VersionPolicy update(String name, VersionScheme scheme, BumpRule bumpRule, VersionPolicyScope scope, Instant now) {
+        validateName(name);
+        return new VersionPolicy(
+                getId(),
+                name,
+                scheme,
+                bumpRule,
+                scope,
+                getCreatedAt(),
+                now,
+                getVersion() + 1
+        );
     }
 
     private static void validateName(String name) {

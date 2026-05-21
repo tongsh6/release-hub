@@ -33,6 +33,15 @@ public class VersionPolicyJpaEntity {
     @Column(name = "bump_rule", nullable = false)
     private String bumpRule;
 
+    @Column(name = "scope_level", nullable = false)
+    private String scopeLevel;
+
+    @Column(name = "scope_project_id")
+    private String scopeProjectId;
+
+    @Column(name = "scope_sub_project_id")
+    private String scopeSubProjectId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

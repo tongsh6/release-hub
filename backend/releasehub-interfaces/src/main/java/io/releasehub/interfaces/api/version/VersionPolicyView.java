@@ -14,6 +14,7 @@ public class VersionPolicyView {
     private String name;
     private String scheme;
     private String bumpRule;
+    private ScopeView scope;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -23,8 +24,14 @@ public class VersionPolicyView {
         view.setName(policy.getName());
         view.setScheme(policy.getScheme().name());
         view.setBumpRule(policy.getBumpRule().name());
+        view.setScope(new ScopeView(
+                policy.getScope().getLevel().name(),
+                policy.getScope().getProjectId(),
+                policy.getScope().getSubProjectId()));
         view.setCreatedAt(policy.getCreatedAt());
         view.setUpdatedAt(policy.getUpdatedAt());
         return view;
     }
+
+    public record ScopeView(String level, String projectId, String subProjectId) {}
 }
