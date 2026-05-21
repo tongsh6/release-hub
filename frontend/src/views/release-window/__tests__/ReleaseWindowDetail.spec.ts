@@ -210,6 +210,48 @@ describe('ReleaseWindowDetail', () => {
     expect(conflictPanelRefresh).toHaveBeenCalled()
   })
 
+  it('resolves a repo-ahead conflict with USE_REPO and refreshes the conflict panel', async () => {
+    const repoAheadStubs = {
+      ...stubs,
+      ConflictPanel: {
+        props: ['windowId'],
+        setup(_props: unknown, { expose }: { expose: (exposed: unknown) => void }) {
+          expose({ refresh: conflictPanelRefresh })
+          return {
+            item: {
+              repoId: 'repo-1',
+              repoName: 'repo-1',
+              iterationKey: 'ITER-1',
+              conflictType: 'REPO_AHEAD',
+              systemVersion: '1.0.0',
+              repoVersion: '1.1.0',
+              message: 'repo ahead',
+              suggestion: 'accept repo version'
+            }
+          }
+        },
+        template: '<button type="button" class="emit-resolve-repo" @click="$emit(\'resolve\', item, \'USE_REPO\')">resolve repo</button>'
+      }
+    }
+
+    const wrapper = shallowMount(ReleaseWindowDetail, {
+      global: { stubs: repoAheadStubs }
+    })
+    await flushPromises()
+    await flushPromises()
+
+    await wrapper.find('.emit-resolve-repo').trigger('click')
+    await flushPromises()
+
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      'conflict.confirmUseRepo',
+      'common.confirm',
+      { type: 'warning' }
+    )
+    expect(iterationApi.resolveVersionConflict).toHaveBeenCalledWith('ITER-1', 'repo-1', 'USE_REPO')
+    expect(conflictPanelRefresh).toHaveBeenCalled()
+  })
+
   it('exports the release window report as CSV from the detail page', async () => {
     const wrapper = shallowMount(ReleaseWindowDetail, {
       global: { stubs }

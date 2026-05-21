@@ -612,7 +612,9 @@ export default {
     filterAll: 'All',
     action: 'Action',
     resolveVersion: 'Sync Version',
+    acceptRepoVersion: 'Accept Repo Version',
     confirmUseSystem: 'Use the system recorded version to resolve this conflict?',
+    confirmUseRepo: 'Accept the version in the repository and update the system record?',
     resolveSuccess: 'Conflict resolved',
     resolveInGit: 'Resolve in Git',
     resolveBranch: 'Resolve Branch',
@@ -625,6 +627,7 @@ export default {
     },
     recommendations: {
       syncVersion: 'Sync the version recorded by ReleaseHub, then rescan.',
+      acceptRepoVersion: 'Accept the newer repository version, update the ReleaseHub record, then rescan.',
       resolveMerge: 'Resolve the merge conflict in the Git platform, then rescan.',
       checkGitPermission: 'Check repository token permissions and Git platform access, then rescan.',
       restoreGitAccess: 'Restore Git platform connectivity and retry the scan.',

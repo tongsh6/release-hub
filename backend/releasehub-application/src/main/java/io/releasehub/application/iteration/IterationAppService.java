@@ -517,13 +517,16 @@ public class IterationAppService {
     @Transactional
     public IterationRepoVersionInfo syncVersionFromRepo(IterationKey iterationKey, RepoId repoId) {
         IterationRepoVersionInfo versionInfo = getIterationRepoVersionInfo(iterationKey, repoId);
+        if (versionInfo.getFeatureBranch() == null || versionInfo.getFeatureBranch().isBlank()) {
+            throw ValidationException.invalidParameter("featureBranch");
+        }
 
         CodeRepository repo = codeRepositoryPort.findById(repoId)
                                                 .orElseThrow(() -> NotFoundException.repository(repoId.value()));
 
         String repoVersion = versionExtractorUseCase.extractVersion(repo.getCloneUrl(), versionInfo.getFeatureBranch())
                                              .map(VersionExtractorUseCase.VersionInfo::version)
-                                             .orElse(versionInfo.getDevVersion());
+                                             .orElseThrow(BusinessException::versionNotFoundInFile);
 
         Instant now = Instant.now(clock);
 
@@ -531,7 +534,7 @@ public class IterationAppService {
                 iterationKey.value(),
                 repoId.value(),
                 repoVersion,
-                VersionSource.POM.name(),  // 假设从 POM 同步
+                VersionSource.REPO.name(),
                 now
         );
 

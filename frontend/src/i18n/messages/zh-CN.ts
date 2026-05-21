@@ -639,7 +639,9 @@ export default {
     filterAll: '全部',
     action: '操作',
     resolveVersion: '同步版本',
+    acceptRepoVersion: '接受仓库版本',
     confirmUseSystem: '确认使用系统记录版本解决该冲突？',
+    confirmUseRepo: '确认接受仓库中的版本并更新系统记录？',
     resolveSuccess: '冲突已解决',
     resolveInGit: '请到 Git 平台解决',
     resolveBranch: '请处理此分支',
@@ -652,6 +654,7 @@ export default {
     },
     recommendations: {
       syncVersion: '同步 ReleaseHub 记录的版本后重新扫描。',
+      acceptRepoVersion: '接受仓库中的较新版本并更新 ReleaseHub 记录后重新扫描。',
       resolveMerge: '在 Git 平台解决合并冲突后重新扫描。',
       checkGitPermission: '检查仓库 Token 权限和 Git 平台访问范围后重新扫描。',
       restoreGitAccess: '恢复 Git 平台连接后重新扫描。',

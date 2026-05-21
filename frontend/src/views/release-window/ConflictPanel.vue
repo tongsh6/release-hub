@@ -101,7 +101,7 @@
               :title="row.suggestion"
               @click.stop="emitResolve(row)"
             >
-              {{ t('conflict.resolveVersion') }}
+              {{ getResolutionLabel(row.conflictType) }}
             </el-button>
             <el-tooltip v-else :content="row.suggestion" placement="top">
               <span class="external-hint">
@@ -119,11 +119,12 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { checkConflicts, getConflicts, type ConflictReportView, type ConflictItemView } from '@/api/modules/releaseWindow'
+import type { ConflictResolution } from '@/api/iterationApi'
 import dayjs from 'dayjs'
 
 const props = defineProps<{ windowId: string }>()
 const emit = defineEmits<{
-  resolve: [item: ConflictItemView]
+  resolve: [item: ConflictItemView, resolution: ConflictResolution]
 }>()
 const { t } = useI18n()
 
@@ -190,8 +191,16 @@ const isResolvableInApp = (type: string) =>
   type === 'MISMATCH' || type === 'REPO_AHEAD' || type === 'SYSTEM_AHEAD'
 
 const emitResolve = (item: ConflictItemView) => {
-  emit('resolve', item)
+  emit('resolve', item, getResolution(item.conflictType))
 }
+
+const getResolution = (type: string): ConflictResolution =>
+  type === 'REPO_AHEAD' ? 'USE_REPO' : 'USE_SYSTEM'
+
+const getResolutionLabel = (type: string) =>
+  getResolution(type) === 'USE_REPO'
+    ? t('conflict.acceptRepoVersion')
+    : t('conflict.resolveVersion')
 
 const getExternalHint = (type: string) => {
   if (type === 'MERGE_CONFLICT') return t('conflict.resolveInGit')
@@ -202,6 +211,7 @@ const getExternalHint = (type: string) => {
 
 const getRecommendation = (item: ConflictItemView) => {
   if (item.suggestion) return item.suggestion
+  if (item.conflictType === 'REPO_AHEAD') return t('conflict.recommendations.acceptRepoVersion')
   if (isResolvableInApp(item.conflictType)) return t('conflict.recommendations.syncVersion')
   if (item.conflictType === 'MERGE_CONFLICT') return t('conflict.recommendations.resolveMerge')
   if (item.conflictType === 'GIT_PERMISSION_DENIED') return t('conflict.recommendations.checkGitPermission')

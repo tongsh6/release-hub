@@ -207,7 +207,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, Delete, Download } from '@element-plus/icons-vue'
 import { releaseWindowApi, type ConflictItemView, type ReleaseWindow } from '@/api/modules/releaseWindow'
-import { iterationApi } from '@/api/iterationApi'
+import { iterationApi, type ConflictResolution } from '@/api/iterationApi'
 import { repositoryApi, type Repository } from '@/api/repositoryApi'
 import { handleError } from '@/utils/error'
 import { hasPerm } from '@/utils/perm'
@@ -394,10 +394,11 @@ const handleExportReport = () => {
   window.open(`/api/v1/release-windows/${form.value.id}/report.csv`, '_blank')
 }
 
-const handleResolveConflict = async (item: ConflictItemView) => {
+const handleResolveConflict = async (item: ConflictItemView, resolution: ConflictResolution = 'USE_SYSTEM') => {
   try {
-    await ElMessageBox.confirm(t('conflict.confirmUseSystem'), t('common.confirm'), { type: 'warning' })
-    await iterationApi.resolveVersionConflict(item.iterationKey, item.repoId, 'USE_SYSTEM')
+    const confirmKey = resolution === 'USE_REPO' ? 'conflict.confirmUseRepo' : 'conflict.confirmUseSystem'
+    await ElMessageBox.confirm(t(confirmKey), t('common.confirm'), { type: 'warning' })
+    await iterationApi.resolveVersionConflict(item.iterationKey, item.repoId, resolution)
     ElMessage.success(t('conflict.resolveSuccess'))
     await conflictPanelRef.value?.refresh?.()
   } catch (error) {

@@ -1,5 +1,6 @@
 import { shallowMount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h, inject, provide } from 'vue'
 import ConflictPanel from '../ConflictPanel.vue'
 import { getConflicts } from '@/api/modules/releaseWindow'
 
@@ -30,10 +31,19 @@ const stubs = {
     props: ['value'],
     template: '<span><slot /></span>'
   },
-  ElTable: {
-    template: '<table><slot /></table>'
-  },
-  ElTableColumn: true,
+  ElTable: defineComponent({
+    props: ['data'],
+    setup(props, { slots }) {
+      provide('tableRows', props.data)
+      return () => h('table', slots.default?.())
+    }
+  }),
+  ElTableColumn: defineComponent({
+    setup(_props, { slots }) {
+      const rows = inject<any[]>('tableRows', [])
+      return () => h('tbody', rows.map(row => h('tr', slots.default?.({ row }))))
+    }
+  }),
   ElTag: {
     template: '<span><slot /></span>'
   },
@@ -87,5 +97,42 @@ describe('ConflictPanel', () => {
 
     expect(wrapper.text()).toContain('conflict.types.GIT_PERMISSION_DENIED')
     expect(wrapper.text()).toContain('conflict.types.GIT_UNAVAILABLE')
+  })
+
+  it('emits USE_REPO for repo-ahead conflicts', async () => {
+    vi.mocked(getConflicts).mockResolvedValue({
+      windowId: 'window-1',
+      checkedAt: '2026-05-21T00:00:00Z',
+      hasConflicts: true,
+      totalCount: 1,
+      conflicts: [
+        {
+          repoId: 'repo-1',
+          repoName: 'repo-1',
+          iterationKey: 'ITER-1',
+          conflictType: 'REPO_AHEAD',
+          systemVersion: '1.3.0-SNAPSHOT',
+          repoVersion: '1.4.0-SNAPSHOT',
+          message: 'repo version is newer'
+        }
+      ]
+    })
+
+    const wrapper = shallowMount(ConflictPanel, {
+      props: { windowId: 'window-1' },
+      global: {
+        directives: { loading: {} },
+        stubs
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('conflict.acceptRepoVersion')
+    const button = wrapper.findAll('button')
+      .find(item => item.text().includes('conflict.acceptRepoVersion'))
+    expect(button).toBeTruthy()
+    await button!.trigger('click')
+
+    expect(wrapper.emitted('resolve')?.[0]?.[1]).toBe('USE_REPO')
   })
 })

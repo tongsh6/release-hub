@@ -381,6 +381,47 @@ class IterationAppServiceTest {
     }
 
     @Test
+    @DisplayName("resolveVersionConflict USE_REPO 时接受仓库版本并更新系统记录")
+    void shouldAcceptRepoVersionWhenResolvingRepoAheadConflict() {
+        IterationRepoVersionInfo versionInfo = IterationRepoVersionInfo.builder()
+                .repoId("repo-1")
+                .baseVersion("1.2.0")
+                .devVersion("1.3.0-SNAPSHOT")
+                .targetVersion("1.3.0")
+                .featureBranch("feature/ITER-1")
+                .versionSource(VersionSource.SYSTEM)
+                .build();
+        IterationRepoVersionInfo syncedInfo = IterationRepoVersionInfo.builder()
+                .repoId("repo-1")
+                .baseVersion("1.2.0")
+                .devVersion("1.4.0-SNAPSHOT")
+                .targetVersion("1.3.0")
+                .featureBranch("feature/ITER-1")
+                .versionSource(VersionSource.REPO)
+                .build();
+        CodeRepository repo = CodeRepository.rehydrate(
+                RepoId.of("repo-1"), "Repo", "http://localhost/group/repo.git",
+                "master", "G001", RepoType.SERVICE, GitProvider.GITLAB, "token",
+                false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+
+        when(iterationRepoPort.getVersionInfo("ITER-1", "repo-1"))
+                .thenReturn(Optional.of(versionInfo))
+                .thenReturn(Optional.of(syncedInfo));
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+        when(versionExtractorUseCase.extractVersion(repo.getCloneUrl(), "feature/ITER-1"))
+                .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.4.0-SNAPSHOT", VersionSource.POM)));
+
+        IterationRepoVersionInfo result = iterationAppService.resolveVersionConflict(
+                IterationKey.of("ITER-1"), RepoId.of("repo-1"), ConflictResolution.USE_REPO);
+
+        assertThat(result.getDevVersion()).isEqualTo("1.4.0-SNAPSHOT");
+        assertThat(result.getVersionSource()).isEqualTo(VersionSource.REPO);
+        verify(iterationRepoPort).updateVersion(
+                eq("ITER-1"), eq("repo-1"), eq("1.4.0-SNAPSHOT"), eq("REPO"), any(Instant.class));
+        verify(versionUpdateAppService, never()).updateVersion(any(VersionUpdateRequest.class));
+    }
+
+    @Test
     @DisplayName("delete 时无关联且无仓库则成功")
     void shouldDeleteWhenNoReposAndNotAttached() {
         Instant now = Instant.now();
