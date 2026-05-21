@@ -2,7 +2,7 @@ import { http } from '@/api/http'
 import type { PageResult, PageQuery, Id } from '@/types/crud'
 import type { ApiResponse } from '@/types/dto'
 
-export type GitProvider = 'GITHUB' | 'GITLAB' | 'MOCK'
+export type GitProvider = 'GITHUB' | 'GITLAB'
 
 export interface Repository {
   id: string

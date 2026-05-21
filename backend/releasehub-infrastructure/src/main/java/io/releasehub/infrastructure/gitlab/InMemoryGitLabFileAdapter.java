@@ -9,92 +9,59 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * 模拟 GitLab 文件读取适配器，用于开发和测试环境。
- *
- * <p>当设置 {@code releasehub.gitlab.real-adapter=true} 时自动禁用，
- * 由 {@link RealGitLabFileAdapter} 接管。
- */
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "releasehub.gitlab.real-adapter", havingValue = "false", matchIfMissing = true)
-public class MockGitLabFileAdapter implements GitLabFilePort {
+@ConditionalOnProperty(name = "releasehub.gitlab.in-memory-file-adapter", havingValue = "true")
+public class InMemoryGitLabFileAdapter implements GitLabFilePort {
     
-    // 模拟文件存储: key = "repoUrl:branch:filePath", value = content
-    private final Map<String, String> mockFiles = new ConcurrentHashMap<>();
-    
-    public MockGitLabFileAdapter() {
-        // 预置一些模拟数据
-        initMockData();
-    }
-    
-    private void initMockData() {
-        // 模拟一个 Maven 项目的 pom.xml
-        String mockPom = """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <project>
-                <modelVersion>4.0.0</modelVersion>
-                <groupId>com.example</groupId>
-                <artifactId>demo-project</artifactId>
-                <version>1.0.0</version>
-            </project>
-            """;
-        
-        // 默认情况下，所有仓库的 master 分支都返回这个模拟版本
-        // 实际使用时可以通过 setMockFile 方法设置具体仓库的文件内容
-    }
+    private final Map<String, String> files = new ConcurrentHashMap<>();
     
     @Override
     public Optional<String> readFile(String repoCloneUrl, String branch, String filePath) {
         String key = buildKey(repoCloneUrl, branch, filePath);
-        String content = mockFiles.get(key);
+        String content = files.get(key);
         
         if (content != null) {
-            log.debug("Mock read file: {} - found", key);
+            log.debug("In-memory read file: {} - found", key);
             return Optional.of(content);
         }
         
-        // 如果没有找到具体的模拟文件，返回默认的 pom.xml
         if ("pom.xml".equals(filePath)) {
-            log.debug("Mock read file: {} - returning default pom.xml", key);
+            log.debug("In-memory read file: {} - returning default pom.xml", key);
             return Optional.of(generateDefaultPom(repoCloneUrl));
         }
         
-        log.debug("Mock read file: {} - not found", key);
+        log.debug("In-memory read file: {} - not found", key);
         return Optional.empty();
     }
     
     @Override
     public boolean fileExists(String repoCloneUrl, String branch, String filePath) {
         String key = buildKey(repoCloneUrl, branch, filePath);
-        if (mockFiles.containsKey(key)) {
+        if (files.containsKey(key)) {
             return true;
         }
-        // 默认 pom.xml 存在
         return "pom.xml".equals(filePath);
     }
 
     @Override
     public boolean updateFile(String repoCloneUrl, String branch, String filePath, String content, String commitMessage) {
         String key = buildKey(repoCloneUrl, branch, filePath);
-        mockFiles.put(key, content);
-        log.info("Mock update file: {} - success, commitMessage: {}", key, commitMessage);
+        files.put(key, content);
+        log.info("In-memory update file: {} - success, commitMessage: {}", key, commitMessage);
         return true;
     }
     
     /**
-     * 设置模拟文件内容（用于测试）
+     * 设置文件内容。
      */
-    public void setMockFile(String repoCloneUrl, String branch, String filePath, String content) {
+    public void setFile(String repoCloneUrl, String branch, String filePath, String content) {
         String key = buildKey(repoCloneUrl, branch, filePath);
-        mockFiles.put(key, content);
+        files.put(key, content);
     }
     
-    /**
-     * 清除模拟数据（用于测试）
-     */
-    public void clearMockData() {
-        mockFiles.clear();
+    public void clearFiles() {
+        files.clear();
     }
     
     private String buildKey(String repoCloneUrl, String branch, String filePath) {
@@ -102,7 +69,6 @@ public class MockGitLabFileAdapter implements GitLabFilePort {
     }
     
     private String generateDefaultPom(String repoCloneUrl) {
-        // 根据仓库 URL 生成一个随机但确定的版本号
         int hash = Math.abs(repoCloneUrl.hashCode() % 10);
         return """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -118,7 +84,6 @@ public class MockGitLabFileAdapter implements GitLabFilePort {
     }
     
     private String extractArtifactId(String repoCloneUrl) {
-        // 从 URL 提取项目名作为 artifactId
         String name = repoCloneUrl;
         if (name.endsWith(".git")) {
             name = name.substring(0, name.length() - 4);

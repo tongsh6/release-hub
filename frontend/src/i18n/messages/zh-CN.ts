@@ -71,6 +71,7 @@ export default {
     loginRequired: '请先登录',
     close: '关闭',
     maxLength: '最多输入 {max} 个字符',
+    deleteConfirm: '确认删除该项？此操作不可恢复',
     all: '全部'
   },
   dashboard: {
@@ -103,10 +104,13 @@ export default {
     publishedAt: '发布时间',
     publish: '发布',
     close: '关闭',
+    groupPath: '组织路径',
     configureTime: '配置时间',
     confirmFreeze: '确认冻结此发布窗口？',
     confirmPublish: '确认发布此发布窗口？',
     confirmClose: '确认关闭此发布窗口？',
+    confirmDelete: '确认删除发布窗口 "{key}"？此操作不可恢复',
+    deleteBlocked: '仅空草稿发布窗口可以删除',
     placeholder: {
       name: '按名称搜索',
       status: '选择状态',
@@ -140,6 +144,7 @@ export default {
       execute: '执行版本更新',
       repoId: '仓库',
       buildTool: '构建工具',
+      policy: '版本策略',
       targetVersion: '目标版本号',
       repoPath: '仓库路径',
       pomPath: 'POM 文件路径',
@@ -149,6 +154,7 @@ export default {
       scopeBatch: '已选仓库',
       selectRepo: '请选择仓库',
       selectRepos: '请选择仓库',
+      selectPolicy: '请选择版本策略',
       targetVersionPlaceholder: '例如: 1.2.3',
       repoPathPlaceholder: '本地仓库路径，例如: /path/to/repo',
       pomPathPlaceholder: 'POM 文件路径，留空则使用默认 pom.xml',
@@ -158,6 +164,9 @@ export default {
       buildToolRequired: '请选择构建工具',
       repoPathRequired: '请输入仓库路径',
       targetVersionTip: '格式示例：1.2.3（SemVer）或 2024.01.27（日期版本）',
+      policySelectRepoTip: '选择仓库后加载可继承策略',
+      policyNotFound: '当前仓库没有可用版本策略',
+      policyTip: '{policy} 来自 {scope}，当前版本：{currentVersion}',
       repoPathTip: '本地文件系统路径，例如：/path/to/repository 或 C:\\path\\to\\repository',
       validationFailed: '请检查表单填写是否正确',
       executing: '正在执行版本更新，请稍候...',
@@ -184,7 +193,10 @@ export default {
       hasFailed: '部分仓库合并失败，请检查错误信息'
     },
     report: {
-      export: '导出报告'
+      export: '导出报告',
+      csv: 'CSV',
+      json: 'JSON',
+      markdown: 'Markdown'
     },
     releasePlan: {
       title: '发布计划',
@@ -195,6 +207,12 @@ export default {
       mergeStatus: '合并状态',
       exists: '存在',
       missing: '不存在',
+      totalRepos: '仓库数',
+      featureMissing: 'Feature 缺失',
+      releaseMissing: 'Release 缺失',
+      mergedCount: '已合并',
+      conflictCount: '冲突数',
+      branchRisk: '{featureMissing} 个 Feature 分支缺失，{releaseMissing} 个 Release 分支缺失，{conflict} 个冲突',
       mergeStatusText: {
         MERGED: '已合并',
         CONFLICT: '冲突',
@@ -238,6 +256,8 @@ export default {
     nameRequired: '规则名称不能为空',
     patternRequired: '分支模式不能为空',
     typeRequired: '请选择规则类型',
+    scopeProjectRequired: '项目级规则必须填写项目 ID',
+    scopeSubProjectRequired: '子项目级规则必须填写子项目 ID',
   },
   versionPolicy: {
     name: '策略名称',
@@ -245,7 +265,16 @@ export default {
     scheme: '版本方案',
     bumpRule: '递增规则',
     create: '新增策略',
-    builtInNote: '版本策略为系统内置，支持 SemVer（语义化版本）和 DATE（日期版本）两种方案'
+    builtInNote: '版本策略支持 SemVer 和 DATE，并支持全局、项目、子项目作用域继承',
+    scope: '作用域',
+    scopeGlobal: '全局',
+    scopeProject: '项目',
+    scopeSubProject: '子项目',
+    scopeProjectId: '项目 ID',
+    scopeSubProjectId: '子项目 ID',
+    nameRequired: '策略名称不能为空',
+    scopeProjectRequired: '项目级策略必须填写项目 ID',
+    scopeSubProjectRequired: '子项目级策略必须填写子项目 ID'
   },
   versionOps: {
     scanConfig: '扫描配置',
@@ -289,6 +318,7 @@ export default {
   iteration: {
     new: '新建迭代',
     confirmDelete: '确认删除迭代 "{key}"？此操作不可恢复',
+    deleteBlocked: '迭代仍关联仓库或已挂载发布窗口，无法删除',
     columns: {
       key: '迭代标识',
       name: '迭代名称',
@@ -337,6 +367,8 @@ export default {
       featureBranch: 'Feature 分支',
       sync: '同步',
       syncSuccess: '版本同步成功',
+      source: '来源',
+      syncedAt: '同步时间',
       conflictDetected: '检测到版本冲突',
       resolveConflict: '解决冲突',
       useSystem: '使用系统版本',
@@ -392,7 +424,6 @@ export default {
       tokenPlaceholder: 'Personal Access Token',
       currentToken: '当前 Token: {token}',
       providers: {
-        MOCK: 'Mock（测试用）',
         GITHUB: 'GitHub',
         GITLAB: 'GitLab'
       }
@@ -458,7 +489,13 @@ export default {
       title: '运行',
       triplesTitle: '三元组（executedOrder）',
       exportJson: '导出 JSON',
-      tasksTitle: '运行任务'
+      tasksTitle: '运行任务',
+      totalItems: '执行项',
+      successItems: '成功',
+      failedItems: '失败',
+      retryableItems: '可重试',
+      partialFailure: '{success} 个执行项成功，{failed} 个执行项失败',
+      taskSummary: '{total} 个任务，{failed} 个失败，{retryable} 个可重试'
     },
     steps: '执行步骤',
     task: {

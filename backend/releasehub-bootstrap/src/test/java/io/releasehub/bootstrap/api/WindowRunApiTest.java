@@ -55,7 +55,7 @@ class WindowRunApiTest {
             .andReturn();
         String windowId = objectMapper.readTree(rwCreate.getResponse().getContentAsString()).get("data").get("id").asText();
         String windowKey = objectMapper.readTree(rwCreate.getResponse().getContentAsString()).get("data").get("windowKey").asText();
-        String repo1 = createMockRepo(token, groupCode, "repo-1");
+        String repo1 = createRepo(token, groupCode, "repo-1");
 
         var it1Result = mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
@@ -142,6 +142,17 @@ class WindowRunApiTest {
         assertThat(csv).contains("windowId,windowKey,runId,runType,runStatus,repo,iterationKey,finalResult,stepType,stepResult,stepStart,stepEnd,message");
         assertThat(csv).contains(windowId, windowKey, runId);
 
+        MvcResult windowReportMarkdown = mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/report.md")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andReturn();
+        String markdown = windowReportMarkdown.getResponse().getContentAsString();
+        assertThat(markdown)
+                .contains("# Release Window Report: " + windowKey)
+                .contains("| Window ID | " + windowId + " |")
+                .contains("## Runs")
+                .contains(runId);
+
         String itemId = windowKey + "::" + repo1 + "::" + it1Key;
         MvcResult retry = mockMvc.perform(post("/api/v1/runs/" + runId + "/retry")
                 .header("Authorization", "Bearer " + token)
@@ -170,15 +181,15 @@ class WindowRunApiTest {
         return code;
     }
 
-    private String createMockRepo(String token, String groupCode, String suffix) throws Exception {
+    private String createRepo(String token, String groupCode, String suffix) throws Exception {
         String name = "UT-" + suffix + "-" + System.currentTimeMillis();
         String req = "{" +
                 "\"name\":\"" + name + "\"," +
                 "\"cloneUrl\":\"https://git.example.com/" + name + ".git\"," +
                 "\"groupCode\":\"" + groupCode + "\"," +
                 "\"defaultBranch\":\"main\"," +
-                "\"gitProvider\":\"MOCK\"," +
-                "\"gitAccessToken\":\"mock-token\"" +
+                "\"gitProvider\":\"GITLAB\"," +
+                "\"gitAccessToken\":\"test-token\"" +
                 "}";
         MvcResult result = mockMvc.perform(post("/api/v1/repositories")
                         .header("Authorization", "Bearer " + token)

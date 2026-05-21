@@ -3,6 +3,7 @@ package io.releasehub.infrastructure.git;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.domain.repo.GitProvider;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -12,14 +13,15 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
-public class MockGitBranchAdapter implements GitBranchPort {
+@ConditionalOnProperty(name = "releasehub.gitlab.in-memory-branch-adapter", havingValue = "true")
+public class InMemoryGitLabBranchAdapter implements GitBranchPort {
 
     private final Map<String, Set<String>> branches = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> tags = new ConcurrentHashMap<>();
 
     @Override
     public boolean supports(GitProvider provider) {
-        return provider == null || provider == GitProvider.MOCK;
+        return provider == GitProvider.GITLAB;
     }
 
     @Override
@@ -81,8 +83,8 @@ public class MockGitBranchAdapter implements GitBranchPort {
 
     @Override
     public String triggerPipeline(String repoCloneUrl, String token, String ref) {
-        log.info("Mock: triggering pipeline for ref '{}' in repo {}", ref, repoCloneUrl);
-        return "mock-pipeline-" + System.currentTimeMillis();
+        log.info("In-memory GitLab: triggering pipeline for ref '{}' in repo {}", ref, repoCloneUrl);
+        return "in-memory-pipeline-" + System.currentTimeMillis();
     }
 
     @Override
@@ -98,6 +100,6 @@ public class MockGitBranchAdapter implements GitBranchPort {
         if (!exists && ("main".equals(branchName) || "master".equals(branchName))) {
             exists = true;
         }
-        return exists ? BranchStatus.present("mock-latest") : BranchStatus.missing();
+        return exists ? BranchStatus.present("in-memory-latest") : BranchStatus.missing();
     }
 }

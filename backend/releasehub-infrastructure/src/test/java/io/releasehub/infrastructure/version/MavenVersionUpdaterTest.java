@@ -117,16 +117,16 @@ class MavenVersionUpdaterTest {
     }
 
     @Test
-    void should_use_local_file_operator_for_mock_repo_even_when_branch_is_present() {
+    void should_use_local_file_operator_for_non_gitlab_repo_even_when_branch_is_present() {
         RepoId repoId = RepoId.newId();
         CodeRepository repo = CodeRepository.rehydrate(
                 repoId,
-                "mock-repo",
-                "mock:///mock-repo.git",
+                "github-repo",
+                "https://github.com/acme/github-repo.git",
                 "main",
                 "G001",
                 RepoType.SERVICE,
-                GitProvider.MOCK,
+                GitProvider.GITHUB,
                 null,
                 false,
                 0, 0, 0, 0, 0, 0, 0,
@@ -149,7 +149,7 @@ class MavenVersionUpdaterTest {
 
         assertFalse(result.success());
         assertTrue(result.errorMessage().contains("不存在") || result.errorMessage().contains("not found"));
-        verify(gitLabFilePort, never()).fileExists("mock:///mock-repo.git", "release/RW-1", request.pomPath());
+        verify(gitLabFilePort, never()).fileExists("https://github.com/acme/github-repo.git", "release/RW-1", request.pomPath());
     }
 
     @Test

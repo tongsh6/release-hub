@@ -133,7 +133,7 @@ public class MavenVersionUpdaterAdapter implements VersionUpdaterPort {
     private FileOperator getOperator(VersionUpdateRequest request) {
         if (request.branchName() != null) {
             CodeRepository repo = codeRepositoryPort.findById(request.repoId()).orElse(null);
-            if (repo != null && repo.getGitProvider() != GitProvider.MOCK && repo.getCloneUrl() != null) {
+            if (repo != null && repo.getGitProvider() == GitProvider.GITLAB && repo.getCloneUrl() != null) {
                 log.info("Using RemoteFileOperator for repo {} on branch {}", repo.getName(), request.branchName());
                 return new RemoteFileOperator(gitLabFilePort, repo.getCloneUrl(), request.branchName());
             }

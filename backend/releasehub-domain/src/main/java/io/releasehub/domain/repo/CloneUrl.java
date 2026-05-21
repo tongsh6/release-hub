@@ -33,9 +33,6 @@ public record CloneUrl(String value, String canonicalKey) {
                 throw ValidationException.repoUrlInvalid();
             }
             String normalizedScheme = scheme.toLowerCase(Locale.ROOT);
-            if ("mock".equals(normalizedScheme)) {
-                return new CloneUrl(value, canonicalize("mock", path));
-            }
             if (!("http".equals(normalizedScheme) || "https".equals(normalizedScheme) || "ssh".equals(normalizedScheme))) {
                 throw ValidationException.repoUrlInvalid();
             }

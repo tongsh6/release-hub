@@ -14,13 +14,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-class ReleaseWorkflowWithMockProviderE2ETest extends AbstractE2ETest {
+class ReleaseWorkflowWithInMemoryGitProviderE2ETest extends AbstractE2ETest {
 
     @Test
-    void shouldPublishWindowWithMockProviderAndExposeBranchStatus() throws Exception {
+    void shouldPublishWindowWithInMemoryGitProviderAndExposeBranchStatus() throws Exception {
         String token = loginAndGetToken();
         String groupCode = createGroup(token);
-        String repoId = createMockRepo(token, groupCode);
+        String repoId = createInMemoryRepo(token, groupCode);
         String iterationKey = createIterationWithRepo(token, groupCode, repoId);
         String windowId = createReleaseWindow(token, groupCode);
 
@@ -58,15 +58,15 @@ class ReleaseWorkflowWithMockProviderE2ETest extends AbstractE2ETest {
                 .andExpect(jsonPath("$.data.repos[0].releaseBranch.mergeStatus").value("MERGED"));
     }
 
-    private String createMockRepo(String token, String groupCode) throws Exception {
-        String name = "TC-MockRepo-" + System.currentTimeMillis();
+    private String createInMemoryRepo(String token, String groupCode) throws Exception {
+        String name = "TC-Repo-" + System.currentTimeMillis();
         String req = "{" +
                 "\"name\":\"" + name + "\"," +
-                "\"cloneUrl\":\"https://github.com/acme/" + name + ".git\"," +
+                "\"cloneUrl\":\"https://gitlab.example.com/acme/" + name + ".git\"," +
                 "\"groupCode\":\"" + groupCode + "\"," +
                 "\"defaultBranch\":\"main\"," +
-                "\"gitProvider\":\"MOCK\"," +
-                "\"gitAccessToken\":\"mock-token\"" +
+                "\"gitProvider\":\"GITLAB\"," +
+                "\"gitAccessToken\":\"test-token\"" +
                 "}";
 
         MvcResult result = mockMvc.perform(post("/api/v1/repositories")

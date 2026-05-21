@@ -1,5 +1,5 @@
 const SCP_LIKE = /^git@([^:]+):(.+)$/
-const SUPPORTED_SCHEMES = new Set(['http:', 'https:', 'ssh:', 'mock:'])
+const SUPPORTED_SCHEMES = new Set(['http:', 'https:', 'ssh:'])
 
 export function isSupportedCloneUrl(value: string): boolean {
   const trimmed = value.trim()
@@ -13,7 +13,7 @@ export function isSupportedCloneUrl(value: string): boolean {
   try {
     const url = new URL(trimmed)
     if (!SUPPORTED_SCHEMES.has(url.protocol)) return false
-    if (url.protocol !== 'mock:' && !url.hostname) return false
+    if (!url.hostname) return false
     return hasRepoPath(url.pathname)
   } catch {
     return false

@@ -1,6 +1,9 @@
 releasehub:
   seed:
     enabled: true
+  gitlab:
+    in-memory-branch-adapter: true
+    in-memory-file-adapter: true
   crypto:
     enabled: true
     secret-key: "dGVzdC1yZWxlYXNlaHViLWNyeXB0by1rZXktMzIhISE="

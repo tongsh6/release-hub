@@ -34,7 +34,7 @@ class ReleaseLifecycleE2ETest extends AbstractE2ETest {
             String token = loginAndGetToken();
             String groupCode = createGroup(token);
 
-            // Step 1: 创建仓库（不显式指定 gitProvider，走默认 MOCK）
+            // Step 1: 创建仓库
             String repoId = createRepo(token, groupCode);
 
             // Step 2: 创建迭代并关联仓库

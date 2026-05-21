@@ -17,29 +17,27 @@ class GitBranchAdapterFactoryImplTest {
 
     @Test
     void shouldReturnMatchedAdapter() {
-        GitBranchPort mock = new MockGitBranchAdapter();
+        GitBranchPort inMemoryGitLab = new InMemoryGitLabBranchAdapter();
         GitBranchPort github = new GitHubGitBranchAdapter(builder);
-        GitBranchPort gitlab = new GitLabGitBranchAdapter(builder);
 
-        GitBranchAdapterFactoryImpl factory = new GitBranchAdapterFactoryImpl(List.of(mock, github, gitlab));
+        GitBranchAdapterFactoryImpl factory = new GitBranchAdapterFactoryImpl(List.of(github, inMemoryGitLab));
 
         assertSame(github, factory.getAdapter(GitProvider.GITHUB));
-        assertSame(gitlab, factory.getAdapter(GitProvider.GITLAB));
-        assertSame(mock, factory.getAdapter(GitProvider.MOCK));
+        assertSame(inMemoryGitLab, factory.getAdapter(GitProvider.GITLAB));
     }
 
     @Test
-    void shouldFallbackToMockWhenProviderIsNull() {
-        GitBranchPort mock = new MockGitBranchAdapter();
-        GitBranchAdapterFactoryImpl factory = new GitBranchAdapterFactoryImpl(List.of(mock));
+    void shouldRejectNullProvider() {
+        GitBranchPort inMemoryGitLab = new InMemoryGitLabBranchAdapter();
+        GitBranchAdapterFactoryImpl factory = new GitBranchAdapterFactoryImpl(List.of(inMemoryGitLab));
 
-        assertSame(mock, factory.getAdapter(null));
+        assertThrows(ValidationException.class, () -> factory.getAdapter(null));
     }
 
     @Test
     void shouldThrowWhenNoAdapterSupportsProvider() {
-        GitBranchPort mockOnly = new MockGitBranchAdapter();
-        GitBranchAdapterFactoryImpl factory = new GitBranchAdapterFactoryImpl(List.of(mockOnly));
+        GitBranchPort inMemoryGitLab = new InMemoryGitLabBranchAdapter();
+        GitBranchAdapterFactoryImpl factory = new GitBranchAdapterFactoryImpl(List.of(inMemoryGitLab));
 
         assertThrows(ValidationException.class, () -> factory.getAdapter(GitProvider.GITHUB));
     }

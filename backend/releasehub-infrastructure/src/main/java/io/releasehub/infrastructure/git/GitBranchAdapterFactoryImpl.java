@@ -19,9 +19,11 @@ public class GitBranchAdapterFactoryImpl implements GitBranchAdapterFactory {
 
     @Override
     public GitBranchPort getAdapter(GitProvider provider) {
-        GitProvider effectiveProvider = provider == null ? GitProvider.MOCK : provider;
+        if (provider == null) {
+            throw ValidationException.invalidParameter("gitProvider");
+        }
         return adapters.stream()
-                .filter(adapter -> adapter.supports(effectiveProvider))
+                .filter(adapter -> adapter.supports(provider))
                 .findFirst()
                 .orElseThrow(() -> ValidationException.invalidParameter("gitProvider"));
     }

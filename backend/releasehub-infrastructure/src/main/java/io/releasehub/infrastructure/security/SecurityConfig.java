@@ -32,10 +32,6 @@ public class SecurityConfig {
     @Value("${cors.allowedOrigins:http://localhost:5173}")
     private String allowedOrigins;
 
-    /**
-     * Set to true for Pact provider verification tests, which send
-     * unauthenticated HTTP requests defined by consumer contracts.
-     */
     @Value("${security.pact-verification:false}")
     private boolean pactVerification;
 

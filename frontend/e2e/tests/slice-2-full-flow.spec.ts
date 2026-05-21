@@ -6,7 +6,7 @@
  */
 import { test, expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
-import { ensureLoggedIn, loadLabels, confirmDialog, confirmMessageBox, tcName, FORCE } from './helpers'
+import { ensureLoggedIn, loadLabels, confirmDialog, confirmMessageBox, tcName, FORCE } from './helpers.js'
 
 test.describe('Slice-2: Full Release Flow', () => {
   const windowName = tcName('Win')
@@ -293,7 +293,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     const repoDialog = page.locator('.el-dialog').last()
     const repoInputs = repoDialog.locator('.el-input__inner')
     await repoInputs.nth(0).fill(repoName)
-    await repoInputs.nth(1).fill(`mock:///${repoName}.git`)
+    await repoInputs.nth(1).fill(`https://gitlab.example.com/customer/${repoName}.git`)
     await repoInputs.nth(2).fill('main')
     await repoInputs.nth(3).fill('1.4.0')
     await selectLeafGroup(page, repoDialog)
@@ -425,7 +425,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
             repos: [{
               repoId: createdRepoId,
               repoName,
-              repoCloneUrl: `mock:///${repoName}.git`,
+              repoCloneUrl: `https://gitlab.example.com/customer/${repoName}.git`,
               iterationKey,
               featureBranch: {
                 branchName: missingFeatureBranch,

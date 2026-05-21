@@ -1,6 +1,7 @@
 package io.releasehub.infrastructure.persistence.repo;
 
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.GitProvider;
@@ -132,7 +133,7 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
         try {
             gitProvider = GitProvider.valueOf(entity.getGitProvider());
         } catch (Exception e) {
-            gitProvider = GitProvider.MOCK;
+            throw ValidationException.invalidParameter("gitProvider");
         }
         return CodeRepository.rehydrate(
                 RepoId.of(entity.getId()),

@@ -40,16 +40,17 @@ public class CodeRepositoryAppService {
 
     @Transactional
     public CodeRepository create(String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode) {
-        return create(name, cloneUrl, defaultBranch, repoType, monoRepo, initialVersion, groupCode, GitProvider.MOCK, null);
+        return create(name, cloneUrl, defaultBranch, repoType, monoRepo, initialVersion, groupCode, GitProvider.GITLAB, null);
     }
 
     @Transactional
     public CodeRepository create(String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode, GitProvider gitProvider, String gitAccessToken) {
         CloneUrl parsedCloneUrl = CloneUrl.parse(cloneUrl);
         String normalizedBranch = normalizeBranch(parsedCloneUrl.value(), defaultBranch);
+        GitProvider effectiveProvider = gitProvider != null ? gitProvider : GitProvider.GITLAB;
         ensureLeafGroup(groupCode);
         ensureCloneUrlUnique(parsedCloneUrl, null);
-        CodeRepository repo = CodeRepository.create(name, parsedCloneUrl.value(), normalizedBranch, groupCode, repoType, gitProvider, gitAccessToken, monoRepo, Instant.now(clock));
+        CodeRepository repo = CodeRepository.create(name, parsedCloneUrl.value(), normalizedBranch, groupCode, repoType, effectiveProvider, gitAccessToken, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
 
         if (initialVersion != null && !initialVersion.isBlank()) {
@@ -99,7 +100,7 @@ public class CodeRepositoryAppService {
 
     @Transactional
     public CodeRepository update(String repoId, String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode) {
-        return update(repoId, name, cloneUrl, defaultBranch, repoType, monoRepo, initialVersion, groupCode, GitProvider.MOCK, null);
+        return update(repoId, name, cloneUrl, defaultBranch, repoType, monoRepo, initialVersion, groupCode, null, null);
     }
 
     @Transactional

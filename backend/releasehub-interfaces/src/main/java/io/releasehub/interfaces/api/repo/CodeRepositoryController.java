@@ -3,6 +3,7 @@ package io.releasehub.interfaces.api.repo;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.repo.CodeRepositoryAppService;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
@@ -188,7 +189,7 @@ public class CodeRepositoryController {
         try {
             return GitProvider.valueOf(gitProvider.toUpperCase());
         } catch (IllegalArgumentException e) {
-            return null;
+            throw ValidationException.invalidParameter("gitProvider");
         }
     }
 }

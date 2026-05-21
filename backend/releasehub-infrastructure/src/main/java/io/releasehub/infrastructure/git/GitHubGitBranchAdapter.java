@@ -32,7 +32,6 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
         this.restTemplate = builder.build();
     }
 
-    /** Exposed for testability — allows WireMock-backed RestTemplate injection. */
     void setRestTemplate(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
     }

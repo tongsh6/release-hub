@@ -36,7 +36,7 @@ class BranchStatusApiTest {
     void shouldGetBranchStatusForWindow() throws Exception {
         String token = loginAndGetToken();
         String groupCode = createGroupAndGetCode(token);
-        String repoId = createMockRepoAndGetId(token, groupCode);
+        String repoId = createRepoAndGetId(token, groupCode);
         String iterationKey = createIterationWithRepo(token, groupCode, repoId);
         String windowId = createWindowAndGetId(token, groupCode);
 
@@ -91,14 +91,14 @@ class BranchStatusApiTest {
         return code;
     }
 
-    private String createMockRepoAndGetId(String token, String groupCode) throws Exception {
+    private String createRepoAndGetId(String token, String groupCode) throws Exception {
         String req = "{" +
                 "\"name\":\"repo-" + System.currentTimeMillis() + "\"," +
                 "\"cloneUrl\":\"https://github.com/acme/releasehub.git\"," +
                 "\"groupCode\":\"" + groupCode + "\"," +
                 "\"defaultBranch\":\"main\"," +
-                "\"gitProvider\":\"MOCK\"," +
-                "\"gitAccessToken\":\"mock-token\"" +
+                "\"gitProvider\":\"GITLAB\"," +
+                "\"gitAccessToken\":\"test-token\"" +
                 "}";
 
         MvcResult result = mockMvc.perform(post("/api/v1/repositories")

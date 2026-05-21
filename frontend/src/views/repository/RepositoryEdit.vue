@@ -44,7 +44,6 @@
       <el-divider content-position="left">{{ t('repository.git.title') }}</el-divider>
       <el-form-item :label="t('repository.git.provider')" prop="gitProvider">
         <el-select v-model="form.gitProvider" :placeholder="t('repository.git.providerPlaceholder')" style="width: 100%;">
-          <el-option :label="t('repository.git.providers.MOCK')" value="MOCK" />
           <el-option :label="t('repository.git.providers.GITHUB')" value="GITHUB" />
           <el-option :label="t('repository.git.providers.GITLAB')" value="GITLAB" />
         </el-select>
@@ -105,7 +104,7 @@ const form = reactive<RepoForm>({
   monoRepo: false,
   initialVersion: '',
   groupCode: '',
-  gitProvider: 'MOCK',
+  gitProvider: 'GITLAB',
   gitAccessToken: ''
 })
 
@@ -153,7 +152,7 @@ const open = (repo?: any) => {
   form.monoRepo = repo?.monoRepo ?? false
   form.initialVersion = ''
   form.groupCode = repo?.groupCode || ''
-  form.gitProvider = repo?.gitProvider || 'MOCK'
+  form.gitProvider = repo?.gitProvider || 'GITLAB'
   form.gitAccessToken = ''
   originalToken.value = repo?.gitAccessTokenMasked || null
   mode.value = repo ? 'edit' : 'create'

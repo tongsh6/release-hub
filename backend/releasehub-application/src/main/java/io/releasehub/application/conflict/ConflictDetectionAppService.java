@@ -18,7 +18,6 @@ import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.repo.CodeRepository;
-import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.window.WindowIteration;
 import lombok.RequiredArgsConstructor;
@@ -108,11 +107,6 @@ public class ConflictDetectionAppService {
         String repoId = repo.getId().value();
         String repoName = repo.getName();
 
-        if (repo.getGitProvider() == GitProvider.MOCK) {
-            log.debug("Skip version conflict detection for mock repo {} on branch {}", repoId, branch);
-            return results;
-        }
-
         Optional<VersionExtractorUseCase.VersionInfo> extractedOpt;
         try {
             extractedOpt = versionExtractorUseCase.extractVersion(repo.getCloneUrl(), branch);
@@ -149,14 +143,18 @@ public class ConflictDetectionAppService {
         String repoId = repo.getId().value();
         String repoName = repo.getName();
 
-        if (!branchRuleUseCase.isCompliant(featureBranch)) {
+        if (!isBranchCompliantForRepo(featureBranch, repo)) {
             results.add(ConflictItem.branchNoncompliant(repoId, repoName, iterationKey, featureBranch));
         }
-        if (!branchRuleUseCase.isCompliant(releaseBranch)) {
+        if (!isBranchCompliantForRepo(releaseBranch, repo)) {
             results.add(ConflictItem.branchNoncompliant(repoId, repoName, iterationKey, releaseBranch));
         }
 
         return results;
+    }
+
+    private boolean isBranchCompliantForRepo(String branchName, CodeRepository repo) {
+        return branchRuleUseCase.isCompliant(branchName, repo.getGroupCode(), repo.getId().value());
     }
 
     private List<ConflictItem> detectMergeConflicts(CodeRepository repo, String featureBranch,

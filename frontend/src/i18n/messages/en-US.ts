@@ -71,6 +71,7 @@ export default {
     loginRequired: 'Please login first',
     close: 'Close',
     maxLength: 'Maximum {max} characters',
+    deleteConfirm: 'Confirm delete this item? This action cannot be undone.',
     all: 'All'
   },
   dashboard: {
@@ -103,10 +104,13 @@ export default {
     publishedAt: 'Published At',
     publish: 'Publish',
     close: 'Close',
+    groupPath: 'Group Path',
     configureTime: 'Configure Time',
     confirmFreeze: 'Confirm to freeze this release window?',
     confirmPublish: 'Confirm to publish this release window?',
     confirmClose: 'Confirm to close this release window?',
+    confirmDelete: 'Are you sure to delete release window "{key}"? This action cannot be undone',
+    deleteBlocked: 'Only empty draft release windows can be deleted',
     placeholder: {
       name: 'Search by name',
       status: 'Select status',
@@ -140,6 +144,7 @@ export default {
       execute: 'Execute Version Update',
       repoId: 'Repository',
       buildTool: 'Build Tool',
+      policy: 'Version Policy',
       targetVersion: 'Target Version',
       repoPath: 'Repository Path',
       pomPath: 'POM File Path',
@@ -149,6 +154,7 @@ export default {
       scopeBatch: 'Selected repositories',
       selectRepo: 'Please select a repository',
       selectRepos: 'Please select repositories',
+      selectPolicy: 'Please select a version policy',
       targetVersionPlaceholder: 'e.g., 1.2.3',
       repoPathPlaceholder: 'Local repository path, e.g., /path/to/repo',
       pomPathPlaceholder: 'POM file path, leave empty for default pom.xml',
@@ -158,6 +164,9 @@ export default {
       buildToolRequired: 'Please select build tool',
       repoPathRequired: 'Please enter repository path',
       targetVersionTip: 'Format examples: 1.2.3 (SemVer) or 2024.01.27 (Date version)',
+      policySelectRepoTip: 'Select a repository to load inherited policies',
+      policyNotFound: 'No applicable version policy for this repository',
+      policyTip: '{policy} applies from {scope}; current version: {currentVersion}',
       repoPathTip: 'Local file system path, e.g., /path/to/repository or C:\\path\\to\\repository',
       validationFailed: 'Please check if the form is filled correctly',
       executing: 'Executing version update, please wait...',
@@ -184,7 +193,10 @@ export default {
       hasFailed: 'Some repositories failed to merge, please check error messages'
     },
     report: {
-      export: 'Export Report'
+      export: 'Export Report',
+      csv: 'CSV',
+      json: 'JSON',
+      markdown: 'Markdown'
     },
     releasePlan: {
       title: 'Release Plan',
@@ -195,6 +207,12 @@ export default {
       mergeStatus: 'Merge Status',
       exists: 'Exists',
       missing: 'Missing',
+      totalRepos: 'Repositories',
+      featureMissing: 'Feature Missing',
+      releaseMissing: 'Release Missing',
+      mergedCount: 'Merged',
+      conflictCount: 'Conflicts',
+      branchRisk: '{featureMissing} feature branches missing, {releaseMissing} release branches missing, {conflict} conflicts',
       mergeStatusText: {
         MERGED: 'Merged',
         CONFLICT: 'Conflict',
@@ -238,6 +256,8 @@ export default {
     nameRequired: 'Rule name is required',
     patternRequired: 'Branch pattern is required',
     typeRequired: 'Please select rule type',
+    scopeProjectRequired: 'Project scope requires a project ID',
+    scopeSubProjectRequired: 'Sub-project scope requires a sub-project ID',
   },
   versionPolicy: {
     name: 'Policy Name',
@@ -245,7 +265,16 @@ export default {
     scheme: 'Version Scheme',
     bumpRule: 'Bump Rule',
     create: 'Add Policy',
-    builtInNote: 'Version policies are built-in. Supports SemVer (Semantic Versioning) and DATE (Date-based) schemes.',
+    builtInNote: 'Version policies support SemVer and DATE schemes, with global, project, and sub-project scope inheritance.',
+    scope: 'Scope',
+    scopeGlobal: 'Global',
+    scopeProject: 'Project',
+    scopeSubProject: 'Sub-project',
+    scopeProjectId: 'Project ID',
+    scopeSubProjectId: 'Sub-project ID',
+    nameRequired: 'Policy name is required',
+    scopeProjectRequired: 'Project scope requires a project ID',
+    scopeSubProjectRequired: 'Sub-project scope requires a sub-project ID',
   },
   versionOps: {
     scanConfig: 'Scan Configuration',
@@ -289,6 +318,7 @@ export default {
   iteration: {
     new: 'New Iteration',
     confirmDelete: 'Are you sure to delete iteration "{key}"? This action cannot be undone',
+    deleteBlocked: 'This iteration still has repositories or is attached to a release window and cannot be deleted',
     columns: {
       key: 'Iteration Key',
       name: 'Iteration Name',
@@ -337,6 +367,8 @@ export default {
       featureBranch: 'Feature Branch',
       sync: 'Sync',
       syncSuccess: 'Version synced successfully',
+      source: 'Source',
+      syncedAt: 'Synced At',
       conflictDetected: 'Version conflict detected',
       resolveConflict: 'Resolve Conflict',
       useSystem: 'Use System Version',
@@ -392,7 +424,6 @@ export default {
       tokenPlaceholder: 'Personal Access Token',
       currentToken: 'Current Token: {token}',
       providers: {
-        MOCK: 'Mock (for testing)',
         GITHUB: 'GitHub',
         GITLAB: 'GitLab'
       }
@@ -457,9 +488,42 @@ export default {
     detail: {
       title: 'Run',
       triplesTitle: 'Triples (executedOrder)',
-      exportJson: 'Export JSON'
+      exportJson: 'Export JSON',
+      tasksTitle: 'Run Tasks',
+      totalItems: 'Items',
+      successItems: 'Success',
+      failedItems: 'Failed',
+      retryableItems: 'Retryable',
+      partialFailure: '{success} items succeeded, {failed} items failed',
+      taskSummary: '{total} tasks, {failed} failed, {retryable} retryable'
     },
     steps: 'Execution Steps',
+    task: {
+      order: 'Order',
+      type: 'Task Type',
+      targetType: 'Target Type',
+      targetId: 'Target ID',
+      retries: 'Retries',
+      error: 'Error',
+      retry: 'Retry',
+      status: {
+        PENDING: 'Pending',
+        RUNNING: 'Running',
+        COMPLETED: 'Completed',
+        FAILED: 'Failed',
+        SKIPPED: 'Skipped'
+      },
+      types: {
+        CLOSE_ITERATION: 'Close Iteration',
+        ARCHIVE_FEATURE_BRANCH: 'Archive Feature Branch',
+        MERGE_RELEASE_TO_MASTER: 'Merge to Master',
+        CREATE_TAG: 'Create Tag',
+        UPDATE_POM_VERSION: 'Update POM Version',
+        TRIGGER_CI_BUILD: 'Trigger CI Build',
+        CREATE_RELEASE_BRANCH: 'Create Release Branch',
+        MERGE_FEATURE_TO_RELEASE: 'Merge to Release'
+      }
+    },
     diff: {
       title: 'Version Update Diff',
       noDiff: 'No diff information'
