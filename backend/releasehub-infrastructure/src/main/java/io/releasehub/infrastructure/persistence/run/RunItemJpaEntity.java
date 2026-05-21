@@ -7,6 +7,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
@@ -16,7 +17,9 @@ import lombok.Setter;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Entity
 @Table(name = "run_item")
@@ -52,4 +55,10 @@ public class RunItemJpaEntity {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "run_step", joinColumns = @JoinColumn(name = "run_item_id"))
     private List<RunStepJpaEmbeddable> steps = new ArrayList<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "run_item_metadata", joinColumns = @JoinColumn(name = "run_item_id"))
+    @MapKeyColumn(name = "metadata_key")
+    @Column(name = "metadata_value", columnDefinition = "TEXT")
+    private Map<String, String> metadata = new LinkedHashMap<>();
 }

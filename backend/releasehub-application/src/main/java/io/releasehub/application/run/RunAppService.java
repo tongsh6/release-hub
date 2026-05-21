@@ -42,6 +42,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -60,6 +61,15 @@ public class RunAppService {
     private final VersionDeriverUseCase versionDeriverUseCase;
     private final SettingsPort settingsPort;
     private final Clock clock;
+
+    private static final String META_VERSION_BUILD_TOOL = "versionUpdate.buildTool";
+    private static final String META_VERSION_BRANCH_NAME = "versionUpdate.branchName";
+    private static final String META_VERSION_REPO_PATH = "versionUpdate.repoPath";
+    private static final String META_VERSION_TARGET_VERSION = "versionUpdate.targetVersion";
+    private static final String META_VERSION_POM_PATH = "versionUpdate.pomPath";
+    private static final String META_VERSION_GRADLE_PROPERTIES_PATH = "versionUpdate.gradlePropertiesPath";
+    private static final String META_RETRY_SOURCE_RUN_ID = "retry.sourceRunId";
+    private static final String META_RETRY_SOURCE_ITEM_ID = "retry.sourceItemId";
 
     private String deriveReleaseBranch(String windowKey) {
         return settingsPort.getNaming()
@@ -235,6 +245,9 @@ public class RunAppService {
     public Run retry(String runId, List<String> items, String operator) {
         Instant now = Instant.now(clock);
         Run previous = runPort.findById(runId).orElseThrow();
+        if (previous.getRunType() == RunType.VERSION_UPDATE) {
+            return retryVersionUpdate(previous, items, operator, now);
+        }
         Run run = Run.start(previous.getRunType(), operator, now);
 
         for (RunItem prevItem : previous.getItems()) {
@@ -255,7 +268,8 @@ public class RunAppService {
             String token = repo.getGitAccessToken();
             String cloneUrl = repo.getCloneUrl();
 
-            RunItem item = RunItem.create(prevItem.getWindowKey(), repoId, iterationKey, prevItem.getPlannedOrder(), now);
+            RunItem item = RunItem.createRetry(prevItem.getWindowKey(), repoId, iterationKey, prevItem.getPlannedOrder(), run.getId().value(), now);
+            addRetryTrace(item, previous, prevItem);
 
             Optional<IterationRepoVersionInfo> versionInfoOpt = iterationRepoPort.getVersionInfo(iterationKey.value(), repoId.value());
             String featureBranch = versionInfoOpt.map(IterationRepoVersionInfo::getFeatureBranch).orElse(null);
@@ -457,6 +471,7 @@ public class RunAppService {
 
                 // Step 5: TRIGGER_CI
                 Instant sc = Instant.now(clock);
+                RunItemResult ciResult = null;
                 if (!itemFailed) {
                     String ref = releaseBranch;
                     if (!gitPort.getBranchStatus(cloneUrl, token, ref).exists()) {
@@ -464,10 +479,12 @@ public class RunAppService {
                     }
                     String pipelineId = gitPort.triggerPipeline(cloneUrl, token, ref);
                     if (pipelineId != null) {
-                        item.addStep(new RunStep(ActionType.TRIGGER_CI, RunItemResult.CI_TRIGGERED, sc, sc,
+                        ciResult = RunItemResult.CI_TRIGGERED;
+                        item.addStep(new RunStep(ActionType.TRIGGER_CI, ciResult, sc, sc,
                                 "Pipeline triggered: " + pipelineId + " on " + ref));
                     } else {
-                        item.addStep(new RunStep(ActionType.TRIGGER_CI, RunItemResult.CI_NOT_CONFIGURED, sc, sc,
+                        ciResult = RunItemResult.CI_NOT_CONFIGURED;
+                        item.addStep(new RunStep(ActionType.TRIGGER_CI, ciResult, sc, sc,
                                 "CI not configured for provider: " + repo.getGitProvider()));
                     }
                 } else {
@@ -476,7 +493,7 @@ public class RunAppService {
                 }
 
                 item.setExecutedOrder(order);
-                item.finishWith(itemFailed ? RunItemResult.FAILED : RunItemResult.SUCCESS, Instant.now(clock));
+                item.finishWith(resolveCleanupFinalResult(itemFailed, ciResult), Instant.now(clock));
                 run.addItem(item);
             }
         }
@@ -485,6 +502,16 @@ public class RunAppService {
         runPort.save(run);
         log.info("Cleanup run {} completed for window {}", run.getId().value(), windowId);
         return run;
+    }
+
+    private RunItemResult resolveCleanupFinalResult(boolean itemFailed, RunItemResult ciResult) {
+        if (itemFailed) {
+            return RunItemResult.FAILED;
+        }
+        if (ciResult == RunItemResult.CI_NOT_CONFIGURED) {
+            return RunItemResult.CI_NOT_CONFIGURED;
+        }
+        return RunItemResult.SUCCESS;
     }
 
     @Transactional
@@ -526,6 +553,7 @@ public class RunAppService {
 
         IterationKey dummyIterationKey = IterationKey.of("VERSION_UPDATE");
         RunItem item = RunItem.create(rw.getWindowKey(), RepoId.of(repoId), dummyIterationKey, 1, now);
+        addVersionUpdateMetadata(item, request);
 
         RunItemResult stepResult = result.success()
                 ? RunItemResult.VERSION_UPDATE_SUCCESS
@@ -593,6 +621,7 @@ public class RunAppService {
 
             IterationKey dummyIterationKey = IterationKey.of("VERSION_UPDATE");
             RunItem item = RunItem.create(rw.getWindowKey(), RepoId.of(repoInfo.repoId()), dummyIterationKey, order, now);
+            addVersionUpdateMetadata(item, request);
 
             RunItemResult stepResult = result.success()
                     ? RunItemResult.VERSION_UPDATE_SUCCESS
@@ -624,6 +653,135 @@ public class RunAppService {
         runPort.save(run);
 
         return run;
+    }
+
+    private Run retryVersionUpdate(Run previous, List<String> items, String operator, Instant now) {
+        Run run = Run.start(RunType.VERSION_UPDATE, operator, now);
+
+        for (RunItem prevItem : previous.getItems()) {
+            String key = prevItem.getWindowKey() + "::" + prevItem.getRepo().value() + "::" + prevItem.getIterationKey().value();
+            if (items.stream().noneMatch(sel -> sel.equals(key))) {
+                continue;
+            }
+            if (prevItem.getFinalResult() != RunItemResult.VERSION_UPDATE_FAILED) {
+                continue;
+            }
+
+            RunItem item = RunItem.createRetry(
+                    prevItem.getWindowKey(),
+                    prevItem.getRepo(),
+                    prevItem.getIterationKey(),
+                    prevItem.getPlannedOrder(),
+                    run.getId().value(),
+                    now
+            );
+            addRetryTrace(item, previous, prevItem);
+
+            Optional<VersionUpdateRequest> requestOpt = buildVersionUpdateRequest(prevItem);
+            if (requestOpt.isEmpty()) {
+                Instant failedAt = Instant.now(clock);
+                item.addStep(new RunStep(
+                        ActionType.UPDATE_VERSION,
+                        RunItemResult.VERSION_UPDATE_FAILED,
+                        failedAt,
+                        failedAt,
+                        "Missing version update retry metadata"
+                ));
+                item.setExecutedOrder(prevItem.getPlannedOrder());
+                item.finishWith(RunItemResult.VERSION_UPDATE_FAILED, failedAt);
+                run.addItem(item);
+                continue;
+            }
+
+            VersionUpdateRequest request = requestOpt.get();
+            addVersionUpdateMetadata(item, request);
+
+            if (codeRepositoryPort.findById(request.repoId()).isEmpty()) {
+                Instant failedAt = Instant.now(clock);
+                item.addStep(new RunStep(
+                        ActionType.UPDATE_VERSION,
+                        RunItemResult.VERSION_UPDATE_FAILED,
+                        failedAt,
+                        failedAt,
+                        "Repository not found: " + request.repoId().value()
+                ));
+                item.setExecutedOrder(prevItem.getPlannedOrder());
+                item.finishWith(RunItemResult.VERSION_UPDATE_FAILED, failedAt);
+                run.addItem(item);
+                continue;
+            }
+
+            Instant stepStart = Instant.now(clock);
+            VersionUpdateResult result = versionUpdateAppService.updateVersion(request);
+            Instant stepEnd = Instant.now(clock);
+
+            RunItemResult stepResult = result.success()
+                    ? RunItemResult.VERSION_UPDATE_SUCCESS
+                    : RunItemResult.VERSION_UPDATE_FAILED;
+
+            item.addStep(new RunStep(ActionType.UPDATE_VERSION, stepResult, stepStart, stepEnd, buildVersionUpdateStepMessage(result)));
+            item.setExecutedOrder(prevItem.getPlannedOrder());
+            item.finishWith(stepResult, stepEnd);
+            run.addItem(item);
+        }
+
+        run.finish(Instant.now(clock));
+        runPort.save(run);
+        return run;
+    }
+
+    private Optional<VersionUpdateRequest> buildVersionUpdateRequest(RunItem item) {
+        Map<String, String> metadata = item.getMetadata();
+        try {
+            String buildToolValue = metadata.get(META_VERSION_BUILD_TOOL);
+            String branchName = metadata.get(META_VERSION_BRANCH_NAME);
+            String repoPath = metadata.get(META_VERSION_REPO_PATH);
+            String targetVersion = metadata.get(META_VERSION_TARGET_VERSION);
+            if (isBlank(buildToolValue) || isBlank(branchName) || isBlank(repoPath) || isBlank(targetVersion)) {
+                return Optional.empty();
+            }
+
+            BuildTool buildTool = BuildTool.valueOf(buildToolValue);
+            if (buildTool == BuildTool.MAVEN) {
+                return Optional.of(VersionUpdateRequest.forMaven(item.getRepo(), branchName, repoPath, targetVersion, metadata.get(META_VERSION_POM_PATH)));
+            }
+            if (buildTool == BuildTool.GRADLE) {
+                return Optional.of(VersionUpdateRequest.forGradle(item.getRepo(), branchName, repoPath, targetVersion, metadata.get(META_VERSION_GRADLE_PROPERTIES_PATH)));
+            }
+            return Optional.empty();
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
+        }
+    }
+
+    private void addVersionUpdateMetadata(RunItem item, VersionUpdateRequest request) {
+        item.putMetadata(META_VERSION_BUILD_TOOL, request.buildTool().name());
+        item.putMetadata(META_VERSION_BRANCH_NAME, request.branchName());
+        item.putMetadata(META_VERSION_REPO_PATH, request.repoPath());
+        item.putMetadata(META_VERSION_TARGET_VERSION, request.targetVersion());
+        item.putMetadata(META_VERSION_POM_PATH, request.pomPath());
+        item.putMetadata(META_VERSION_GRADLE_PROPERTIES_PATH, request.gradlePropertiesPath());
+    }
+
+    private void addRetryTrace(RunItem item, Run previous, RunItem prevItem) {
+        item.putMetadata(META_RETRY_SOURCE_RUN_ID, previous.getId().value());
+        item.putMetadata(META_RETRY_SOURCE_ITEM_ID, prevItem.getId().value());
+    }
+
+    private String buildVersionUpdateStepMessage(VersionUpdateResult result) {
+        if (!result.success()) {
+            return result.errorMessage();
+        }
+        String baseMessage = String.format("Version updated from %s to %s. File: %s",
+                result.oldVersion(), result.newVersion(), result.filePath());
+        if (result.diff() != null && !result.diff().isBlank()) {
+            return baseMessage + "\n--- Diff ---\n" + result.diff();
+        }
+        return baseMessage;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     public record RepoVersionUpdateInfo(

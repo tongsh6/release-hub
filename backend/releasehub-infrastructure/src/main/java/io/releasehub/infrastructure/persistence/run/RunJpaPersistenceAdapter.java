@@ -130,6 +130,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 entity.getExecutedOrder(),
                 entity.getFinalResult() != null ? RunItemResult.valueOf(entity.getFinalResult()) : null,
                 steps,
+                entity.getMetadata(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt(),
                 0L // RunItemJpaEntity doesn't have version field, defaulting to 0
@@ -162,6 +163,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                                                         }
                                                         itemEntity.setCreatedAt(item.getCreatedAt());
                                                         itemEntity.setUpdatedAt(item.getUpdatedAt());
+                                                        itemEntity.setMetadata(new java.util.LinkedHashMap<>(item.getMetadata()));
 
                                                         List<RunStepJpaEmbeddable> steps = item.getSteps().stream()
                                                                                                .map(step -> new RunStepJpaEmbeddable(

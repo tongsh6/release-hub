@@ -152,6 +152,55 @@ describe('RunDetail', () => {
     expect(runApi.getRunById).toHaveBeenCalledWith('run-retry-1')
   })
 
+  it('retries only failed version update items from the detail page', async () => {
+    vi.mocked(runApi.getRunById).mockImplementation(async (id) => ({
+      id: String(id),
+      runType: 'VERSION_UPDATE',
+      status: 'FAILED',
+      startedAt: '',
+      finishedAt: '',
+      operator: 'tester',
+      items: [
+        {
+          windowKey: 'WK',
+          repoId: 'repo-success',
+          iterationKey: 'VERSION_UPDATE',
+          plannedOrder: 1,
+          executedOrder: 1,
+          finalResult: 'VERSION_UPDATE_SUCCESS',
+          steps: []
+        },
+        {
+          windowKey: 'WK',
+          repoId: 'repo-fail',
+          iterationKey: 'VERSION_UPDATE',
+          plannedOrder: 2,
+          executedOrder: 2,
+          finalResult: 'VERSION_UPDATE_FAILED',
+          steps: []
+        }
+      ]
+    }))
+
+    const wrapper = shallowMount(RunDetail, {
+      global: { stubs }
+    })
+    await flushPromises()
+    await flushPromises()
+
+    const retryButton = wrapper.findAll('button')
+      .find(button => button.text().includes('run.retryFailedItems'))
+    expect(retryButton).toBeTruthy()
+    await retryButton!.trigger('click')
+    await flushPromises()
+
+    expect(runApi.retry).toHaveBeenCalledWith(
+      'run-1',
+      ['WK::repo-fail::VERSION_UPDATE'],
+      'tester'
+    )
+  })
+
   it('hides retry action when there are no failed run items', async () => {
     vi.mocked(runApi.getRunById).mockResolvedValue({
       id: 'run-1',
