@@ -16,7 +16,7 @@
 | 可独立验证 | ✅ | 目标 Vitest、typecheck、i18n lint、静态扫描 |
 | 可回滚 | ✅ | 影响集中在发布窗口详情页与对应测试/文档 |
 | 依赖明确 | ✅ | 依赖既有 `releaseWindowApi.detach` 和 `AttachAppService.detach` |
-| 风险收敛 | ✅ | 前端状态约束对齐后端非冻结、非关闭规则；真实 GitLab/UI E2E 留作后续 |
+| 风险收敛 | ✅ | 前端状态约束对齐后端非冻结、非关闭规则；真实 GitLab 证据复核和外部 Playwright 页面复核留作后续 |
 
 ## 涉及文件
 
@@ -76,13 +76,13 @@
 - **扫描命令**：`bash scripts/dev/static-scan-topn.sh 10`
 - **报告路径**：`.ai/reports/static-scan/20260519-001037/summary.md`
 - **TopN 处理结论**：TopN 未发现代码问题；git diff check、backend SpotBugs、frontend ESLint、frontend typecheck 均通过。
-- **未解决风险**：无代码扫描风险；解除挂载真实 GitLab/UI E2E 复核仍为 SA-010 后续任务。
+- **未解决风险**：无代码扫描风险；解除挂载真实 GitLab 证据复核和外部 Playwright 页面复核仍为 SA-010 后续任务。
 
 ## 未完成项
 
 | 项 | 原因 | 追踪位置 |
 |----|------|---------|
-| 解除挂载真实 GitLab/UI E2E 复核 | 本切片只补前端入口和现有 API 接通；真实外部状态证据需要完整环境 | `docs/reports/scenario-acceptance-matrix.md` SA-010 缺口 |
+| 解除挂载真实 GitLab 证据复核/外部 Playwright 页面复核 | 本切片只补前端入口和现有 API 接通；真实外部状态证据需要完整环境 | `docs/reports/scenario-acceptance-matrix.md` SA-010 缺口 |
 | GitLab 不可达/权限失败类风险 | 属于 SA-011 外部系统异常路径 | `docs/reports/scenario-acceptance-matrix.md` 当前推进队列 |
 
 ## 经验沉淀

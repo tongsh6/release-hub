@@ -56,7 +56,7 @@ bash scripts/dev/static-scan-topn.sh 10
 结果：
 
 - 语法检查通过。
-- 真实 GitLab 验收通过：99 PASS / 0 FAIL / 0 SKIP。
+- 真实 GitLab 证据复核通过：99 PASS / 0 FAIL / 0 SKIP。
 - 静态扫描通过：`.ai/reports/static-scan/20260517-220354/summary.md`。
 
 ## 事后检查
@@ -65,7 +65,7 @@ bash scripts/dev/static-scan-topn.sh 10
 |--------|------|------|
 | 行为闭环 | ✅ | SA-011 跨仓版本风险已有后端/GitLab 强证据 |
 | 层级闭环 | ✅ | 无新增悬空 API 或 DTO |
-| 测试闭环 | ✅ | 验收脚本真实执行通过 |
+| 测试闭环 | ✅ | 证据复核脚本真实执行通过 |
 | 架构闭环 | ✅ | 未改动 DDD 分层和业务主流程 |
 | 性能闭环 | ✅ | 仅新增验收脚本路径，不影响运行时性能 |
 | 文档闭环 | ✅ | 台账、场景矩阵、任务记录已同步 |

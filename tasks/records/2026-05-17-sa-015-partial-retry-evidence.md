@@ -56,7 +56,7 @@ bash scripts/acceptance/run-acceptance.sh
 结果：
 
 - 语法检查通过。
-- 真实 GitLab 验收通过：112 PASS / 0 FAIL / 0 SKIP。
+- 真实 GitLab 证据复核通过：112 PASS / 0 FAIL / 0 SKIP。
 - 新增 5.8 段通过：`ATTACH_ITERATION::1779027610247` 同时包含成功项和 `MERGE_BLOCKED` 项；retry 新 Run `ATTACH_ITERATION::1779027613682` 只包含失败项，结果为 `MERGE_BLOCKED`。
 
 ## 事后检查
@@ -65,7 +65,7 @@ bash scripts/acceptance/run-acceptance.sh
 |--------|------|------|
 | 行为闭环 | ✅ | 新增脚本路径覆盖真实部分失败 attach 和失败项 retry |
 | 层级闭环 | ✅ | 复用既有接口和领域模型，无新增悬空 API |
-| 测试闭环 | ✅ | 已完成脚本语法检查和完整真实 GitLab 验收 |
+| 测试闭环 | ✅ | 已完成脚本语法检查和完整真实 GitLab 证据复核 |
 | 架构闭环 | ✅ | 未改动 DDD 分层和业务主流程 |
 | 性能闭环 | ✅ | 仅新增验收脚本路径，不影响运行时性能 |
 | 文档闭环 | ✅ | 台账、场景矩阵、任务记录已同步 |

@@ -29,4 +29,4 @@ bash scripts/dev/static-scan-topn.sh 5
 
 ## 结论
 
-- SA-007 前端已具备 scoped policy 创建/删除基础管理能力；后续剩余重点是完整 UI E2E、编辑入口、版本更新入口按组织/仓库范围选取默认策略。
+- SA-007 前端已具备 scoped policy 创建/删除基础管理能力；后续剩余重点是外部 Playwright 真实页面场景验收、编辑入口、版本更新入口按组织/仓库范围选取默认策略。

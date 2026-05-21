@@ -55,7 +55,7 @@
 |--------|------|------|
 | 行为闭环 | OK | 批量版本更新部分失败时成功项真实写回，失败项原因可见 |
 | 层级闭环 | OK | 复用既有批量版本更新 API、Run、RunItem 和 GitLab file adapter |
-| 测试闭环 | OK | 全量真实 GitLab 验收通过 |
+| 测试闭环 | OK | 全量真实 GitLab 证据复核通过 |
 | 架构闭环 | OK | 未改变产品 API；版本更新失败重试保留为独立能力 |
 | 文档闭环 | OK | 已同步场景矩阵、项目台账和本执行记录 |
 | 工作区闭环 | OK | `bash -n`、`git diff --check`、全量 acceptance 和静态扫描均已通过；扫描报告：`.ai/reports/static-scan/20260520-235530/summary.md` |

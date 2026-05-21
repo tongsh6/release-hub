@@ -6,24 +6,24 @@
 
 把现有验收从“技术链路可用”升级为“真实用户场景可解释、前后端覆盖可追踪、自动化证据可持续补齐”的体系。
 
-当前 `scripts/acceptance/run-acceptance.sh` 已能验证真实 GitLab、PostgreSQL、后端 API、Run 明细、分支模式、冲突检测与干净路径。它是强证据入口，但不是场景本身。场景验收必须从管理员、发布经理、技术负责人、测试人员的真实使用路径出发，再用前端 E2E、后端 E2E、真实 GitLab 和数据审计共同证明该路径成立。
+当前 `scripts/acceptance/run-acceptance.sh` 已能验证真实 GitLab、PostgreSQL、后端 API、Run 明细、分支模式、冲突检测与干净路径。它是证据复核入口，但不是场景本身。正确的验收测试必须由外部 Playwright 进程驱动浏览器访问真实运行中的前端页面，从管理员、发布经理、技术负责人、测试人员的真实使用路径出发完成操作或复核；后端 API、数据库和 GitLab 检查只能作为旅程后的证据证明该路径成立。
 
 ## 二、最终行为
 
 验收体系最终包含四层：
 
 1. **场景矩阵**：按角色、用户故事、用户入口、业务约束和证据来源描述“为什么验收、用户做什么、系统如何证明结果可信”。
-2. **前端 Playwright 旅程验收**：证明用户能从 UI 完成关键操作、观察状态并理解失败原因，包括分组、仓库、窗口、迭代、冲突、Run 和版本操作。
-3. **后端业务约束验收**：证明 API、领域状态、校验规则、错误阻断和 Run 记录符合业务语义。
-4. **真实 GitLab 与数据证据验收**：继续以 `run-acceptance.sh` 为强证据入口，验证数据库状态、GitLab 分支/Commit、版本写回、RunItem/RunStep 一致。
+2. **外部 Playwright 场景验收**：驱动真实页面，证明用户能从 UI 完成关键操作、观察状态并理解失败原因，包括分组、仓库、窗口、迭代、冲突、Run 和版本操作。
+3. **后端业务约束证据**：证明 API、领域状态、校验规则、错误阻断和 Run 记录符合业务语义，但不替代页面旅程。
+4. **真实 GitLab 与数据复核证据**：验证数据库状态、GitLab 分支/Commit、版本写回、RunItem/RunStep 一致，但不替代页面旅程。
 
 ## 三、范围
 
 ### 本轮范围
 
 - 新增场景化验收矩阵文档。
-- 将现有 `run-acceptance.sh`、后端 E2E、前端 Playwright 映射到矩阵。
-- 明确 API/脚本只是证据层，不把接口调用写成用户场景。
+- 将现有 `run-acceptance.sh`、后端 E2E、前端 Playwright 映射到矩阵，并区分“场景验收”和“证据复核/回归检查”。
+- 明确 API/脚本只是证据层，不把接口调用、route stub 或数据库造数写成用户场景。
 - 第一批自动化只补 3 类缺口：
   - 干净窗口黄金路径：`0 冲突 -> Publish -> Orchestrate SUCCESS -> RunItem > 0`。
   - 冲突恢复闭环：发现冲突、解决冲突、重新扫描为 0、重试成功。
@@ -61,12 +61,12 @@
 
 | 层级 | 验证对象 | 主入口 |
 |---|---|---|
-| 后端/数据/GitLab 证据 | API 响应、数据库状态、GitLab 分支/Commit、Run 明细 | `scripts/acceptance/run-acceptance.sh` |
-| 后端 E2E | Spring Boot 用例、真实或 Mock GitProvider 行为 | `backend/releasehub-bootstrap/src/test/java/.../e2e` |
-| 前端 UI | 页面是否可完成观察与操作 | `frontend/e2e/tests/*.spec.ts` |
+| 外部 Playwright 场景验收 | 真实页面操作、真实后端交互、页面状态复核 | `frontend/e2e/tests/*.spec.ts` |
+| 后端/数据/GitLab 复核证据 | API 响应、数据库状态、GitLab 分支/Commit、Run 明细 | `scripts/acceptance/run-acceptance.sh` |
+| 后端 E2E | Spring Boot 用例、领域约束和适配器行为 | `backend/releasehub-bootstrap/src/test/java/.../e2e` |
 | 文档矩阵 | 场景覆盖、缺口、优先级、验证方式 | 新增验收矩阵文档 |
 
-验收结论以用户场景为主语。API 响应、数据库查询和 GitLab 检查只能作为证据写入“当前覆盖”或“验证记录”，不能替代用户旅程本身。
+验收结论以用户场景为主语。API 响应、数据库查询、GitLab 检查、Playwright `--list`、TypeScript 检查和 route-level API stub 只能作为证据或回归检查写入“当前覆盖”或“验证记录”，不能替代用户旅程本身。
 
 ## 五、验收矩阵草案
 

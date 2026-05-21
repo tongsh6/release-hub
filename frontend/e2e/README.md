@@ -1,6 +1,19 @@
 # E2E 自动化测试
 
-基于 Playwright 的前端端到端自动化测试。
+基于 Playwright 的外部页面自动化。
+
+## 验收口径
+
+本项目中“验收测试”特指外部 Playwright 进程驱动浏览器访问真实运行中的 ReleaseHub 页面，并按真实用户路径完成操作或复核。业务数据必须通过页面旅程产生或变更；API、数据库和 GitLab 查询只能作为旅程后的证据复核或环境 fixture。
+
+以下检查不计为场景化验收测试通过：
+
+- 使用 `page.route()` / `route.fulfill()` stub 业务 API 的用例。
+- 直接调用 API 或数据库造数后只观察页面。
+- `playwright test --list`。
+- `tsc -p e2e/tsconfig.json --noEmit`。
+
+这些检查可以作为 UI 回归、异常状态构造、可发现性或类型检查，但报告中必须明确标注，不得写成“验收通过”。
 
 ## 目录结构
 
@@ -26,7 +39,7 @@ e2e/
 
 ### 前置条件
 
-启动后端和前端服务，或通过 `E2E_BASE_URL` 指向已运行的服务。
+启动真实后端和前端服务，或通过 `E2E_BASE_URL` 指向已运行的前端服务。需要完整验收结论时，后端、数据库和 GitLab fixture 也必须处于可用状态。
 
 ### 运行所有测试
 
@@ -66,7 +79,7 @@ Playwright 配置见 `playwright.config.ts`：chromium、60s timeout、失败时
 
 ## 编写新测试
 
-使用 Playwright test API：
+使用 Playwright test API。新增场景验收用例应优先从页面完成建数和操作，不应通过 route stub 替代业务后端：
 
 ```typescript
 import { test, expect } from '@playwright/test'

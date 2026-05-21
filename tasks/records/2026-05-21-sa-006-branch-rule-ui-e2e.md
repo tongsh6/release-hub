@@ -13,14 +13,14 @@
 
 ## 实现范围
 
-- 新增 `frontend/e2e/tests/branch-rule.spec.ts`，覆盖 SA-006 分支规则管理页面旅程。
+- 新增 `frontend/e2e/tests/branch-rule.spec.ts`，覆盖 SA-006 分支规则管理真实页面候选旅程。
 - 复用现有 Playwright 登录、i18n label 和强制点击 helper。
 - 场景只验证前端用户旅程；真实 GitLab 分支创建被规则约束的强证据仍由后续全链路环境补充。
 
 ## 验证
 
 - `pnpm exec playwright test branch-rule.spec.ts --list`
-  - 识别 1 个 spec / 3 个 test。
+  - 识别 1 个 spec / 3 个 test；该结果只证明可发现，不作为验收通过证据。
 - `pnpm exec playwright test branch-rule.spec.ts`
   - BLOCKED：本机 `localhost:5173` 未启动，首个 `page.goto('/')` 返回 `ERR_CONNECTION_REFUSED`；`scripts/dev/start-local-env.sh status` 显示 Docker、PostgreSQL、GitLab、后端和前端均未就绪。
 - `pnpm run typecheck`
@@ -35,6 +35,6 @@
 
 ## 非目标
 
-- 不启动 Docker Desktop 或重建全链路验收环境。
+- 不启动 Docker Desktop 或重建全链路验收环境，因此本记录不声明场景化验收通过。
 - 不补真实 GitLab feature/release 分支创建证据。
 - 不改变 BranchRule 后端业务模型。

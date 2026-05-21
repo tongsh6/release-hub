@@ -1,9 +1,9 @@
-# SA-007 版本策略 UI E2E
+# SA-007 版本策略真实页面候选旅程
 
 ## 目标
 
-- 补齐 SA-007 scoped policy 创建、编辑、删除的前端用户旅程自动化。
-- 让版本策略页具备可实跑的 Playwright 场景证据。
+- 补齐 SA-007 scoped policy 创建、编辑、删除的外部 Playwright 候选旅程。
+- 明确该用例只有在真实前端、真实后端和真实数据链路上实跑通过后，才可计入场景化验收测试。
 
 ## 变更
 
@@ -23,7 +23,7 @@ pnpm run lint
 bash scripts/dev/static-scan-topn.sh 5
 ```
 
-- Playwright `--list` 可发现 3 条用例。
+- Playwright `--list` 可发现 3 条用例；该结果只证明可发现，不作为验收通过证据。
 - E2E TypeScript 检查已通过。
 - 静态扫描报告：`.ai/reports/static-scan/20260522-005336/summary.md`
 
@@ -33,4 +33,4 @@ bash scripts/dev/static-scan-topn.sh 5
 
 ## 结论
 
-- SA-007 scoped policy UI 旅程已有 Playwright 自动化用例，环境就绪后可直接实跑；后续剩余重点是浏览器实跑和版本更新策略选择 UI E2E。
+- SA-007 scoped policy 真实页面候选旅程已有 Playwright 自动化用例；环境就绪后必须实跑真实页面才可计入验收。

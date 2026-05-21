@@ -29,4 +29,4 @@ bash scripts/dev/static-scan-topn.sh 5
 
 ## 结论
 
-- SA-007 scoped policy 基础管理已具备创建、编辑、删除闭环；后续剩余重点是完整 UI E2E 和版本更新入口按组织/仓库范围选取默认策略。
+- SA-007 scoped policy 基础管理已具备创建、编辑、删除闭环；后续剩余重点是外部 Playwright 真实页面场景验收和版本更新入口按组织/仓库范围选取默认策略。
