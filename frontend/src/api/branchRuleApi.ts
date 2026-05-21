@@ -94,9 +94,12 @@ export const branchRuleApi = {
     await apiPost<void>(`/v1/branch-rules/${id}/disable`, {})
   },
 
-  async check(branchName: string): Promise<{ branchName: string; compliant: boolean }> {
+  async check(branchName: string, scope?: { projectId?: string; subProjectId?: string }): Promise<{ branchName: string; compliant: boolean }> {
+    const params = new URLSearchParams({ branchName })
+    if (scope?.projectId) params.set('scopeProjectId', scope.projectId)
+    if (scope?.subProjectId) params.set('scopeSubProjectId', scope.subProjectId)
     return await apiGet<{ branchName: string; compliant: boolean }>(
-      `/v1/branch-rules/check?branchName=${encodeURIComponent(branchName)}`)
+      `/v1/branch-rules/check?${params.toString()}`)
   },
 
   async test(req: BranchRuleTestReq): Promise<BranchRuleTestResp> {

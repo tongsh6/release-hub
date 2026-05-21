@@ -84,11 +84,33 @@ public class BranchRuleAppService implements BranchRuleUseCase {
      */
     @Transactional(readOnly = true)
     public boolean isCompliant(String branchName) {
+        return isCompliant(branchName, null, null);
+    }
+
+    /**
+     * 检查指定作用域下的分支名称是否符合规则。
+     * 规则按 SUB_PROJECT > PROJECT > GLOBAL 解析；存在更具体规则时不再回退到全局规则。
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isCompliant(String branchName, String projectId, String subProjectId) {
         List<BranchRule> enabledRules = branchRulePort.findAllEnabled();
         if (enabledRules.isEmpty()) {
             return true; // 无启用规则时默认允许
         }
-        return enabledRules.stream().anyMatch(r -> r.matches(branchName));
+        List<BranchRule> scopedRules = enabledRules.stream()
+                .filter(rule -> rule.getScope().matches(projectId, subProjectId))
+                .toList();
+        if (scopedRules.isEmpty()) {
+            return true;
+        }
+        int maxSpecificity = scopedRules.stream()
+                .mapToInt(rule -> rule.getScope().specificity())
+                .max()
+                .orElse(0);
+        return scopedRules.stream()
+                .filter(rule -> rule.getScope().specificity() == maxSpecificity)
+                .anyMatch(rule -> rule.matches(branchName));
     }
 
     @Transactional(readOnly = true)

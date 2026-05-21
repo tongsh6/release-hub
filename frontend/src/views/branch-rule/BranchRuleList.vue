@@ -84,7 +84,7 @@
           <el-input v-model="form.description" :placeholder="t('branchRule.descriptionPlaceholder')" />
         </el-form-item>
         <el-form-item :label="t('branchRule.scopeLevel')" prop="scopeLevel">
-          <el-radio-group v-model="form.scopeLevel">
+          <el-radio-group v-model="form.scopeLevel" @change="onScopeLevelChange">
             <el-radio value="GLOBAL">{{ t('branchRule.scopeGlobal') }}</el-radio>
             <el-radio value="PROJECT">{{ t('branchRule.scopeProject') }}</el-radio>
             <el-radio value="SUB_PROJECT">{{ t('branchRule.scopeSubProject') }}</el-radio>
@@ -172,9 +172,27 @@ const form = reactive({
   scopeSubProjectId: ''
 })
 
+const validateProjectScope = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+  if (form.scopeLevel !== 'GLOBAL' && !value?.trim()) {
+    callback(new Error(t('branchRule.scopeProjectRequired')))
+    return
+  }
+  callback()
+}
+
+const validateSubProjectScope = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+  if (form.scopeLevel === 'SUB_PROJECT' && !value?.trim()) {
+    callback(new Error(t('branchRule.scopeSubProjectRequired')))
+    return
+  }
+  callback()
+}
+
 const rules: FormRules = {
   name: [{ required: true, message: t('branchRule.nameRequired'), trigger: 'blur' }],
   pattern: [{ required: true, message: t('branchRule.patternRequired'), trigger: 'blur' }],
+  scopeProjectId: [{ validator: validateProjectScope, trigger: 'blur' }],
+  scopeSubProjectId: [{ validator: validateSubProjectScope, trigger: 'blur' }],
 }
 
 // Test dialog
@@ -193,6 +211,17 @@ const handleAdd = () => {
   isEdit.value = false
   editId.value = ''
   dialogVisible.value = true
+}
+
+const onScopeLevelChange = (level: ScopeLevel) => {
+  if (level === 'GLOBAL') {
+    form.scopeProjectId = ''
+    form.scopeSubProjectId = ''
+  }
+  if (level === 'PROJECT') {
+    form.scopeSubProjectId = ''
+  }
+  formRef.value?.clearValidate(['scopeProjectId', 'scopeSubProjectId'])
 }
 
 const handleEdit = (row: BranchRule) => {

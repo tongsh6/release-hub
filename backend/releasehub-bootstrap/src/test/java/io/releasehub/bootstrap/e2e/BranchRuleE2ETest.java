@@ -83,6 +83,46 @@ class BranchRuleE2ETest extends AbstractE2ETest {
     }
 
     @Test
+    void checkScopedCompliance() throws Exception {
+        String globalId = createRule("""
+                {"name":"Scoped Global Release","pattern":"release/*","type":"TEMPLATE","description":"global","scopeLevel":"GLOBAL","scopeProjectId":null,"scopeSubProjectId":null}""");
+        String projectId = createRule("""
+                {"name":"Scoped Project Feature","pattern":"feature/*","type":"TEMPLATE","description":"project","scopeLevel":"PROJECT","scopeProjectId":"project-a","scopeSubProjectId":null}""");
+        try {
+            mockMvc.perform(get("/api/v1/branch-rules/check?branchName=feature/ITER-1&scopeProjectId=project-a")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.compliant").value(true));
+
+            mockMvc.perform(get("/api/v1/branch-rules/check?branchName=release/RW-1&scopeProjectId=project-a")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.compliant").value(false));
+
+            mockMvc.perform(get("/api/v1/branch-rules/check?branchName=release/RW-1&scopeProjectId=project-b")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.compliant").value(true));
+        } finally {
+            mockMvc.perform(delete("/api/v1/branch-rules/" + globalId)
+                    .header("Authorization", "Bearer " + token));
+            mockMvc.perform(delete("/api/v1/branch-rules/" + projectId)
+                    .header("Authorization", "Bearer " + token));
+        }
+    }
+
+    private String createRule(String body) throws Exception {
+        var result = mockMvc.perform(post("/api/v1/branch-rules")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").isNotEmpty())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("data").get("id").asText();
+    }
+
+    @Test
     void z_deleteRule() throws Exception {
         mockMvc.perform(delete("/api/v1/branch-rules/" + ruleId)
                         .header("Authorization", "Bearer " + token))

@@ -99,8 +99,10 @@ public class BranchRuleController {
 
     @GetMapping("/check")
     @Operation(summary = "检查分支名称是否符合规则")
-    public ApiResponse<BranchCheckResult> check(@RequestParam String branchName) {
-        boolean compliant = branchRuleUseCase.isCompliant(branchName);
+    public ApiResponse<BranchCheckResult> check(@RequestParam String branchName,
+                                                @RequestParam(name = "scopeProjectId", required = false) String scopeProjectId,
+                                                @RequestParam(name = "scopeSubProjectId", required = false) String scopeSubProjectId) {
+        boolean compliant = branchRuleUseCase.isCompliant(branchName, scopeProjectId, scopeSubProjectId);
         return ApiResponse.success(new BranchCheckResult(branchName, compliant));
     }
 

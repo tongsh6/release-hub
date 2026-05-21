@@ -50,6 +50,23 @@ public class BranchRuleScope {
 
     public boolean isGlobal() { return level == ScopeLevel.GLOBAL; }
 
+    public boolean matches(String projectId, String subProjectId) {
+        return switch (level) {
+            case GLOBAL -> true;
+            case PROJECT -> Objects.equals(this.projectId, projectId);
+            case SUB_PROJECT -> Objects.equals(this.projectId, projectId)
+                    && Objects.equals(this.subProjectId, subProjectId);
+        };
+    }
+
+    public int specificity() {
+        return switch (level) {
+            case GLOBAL -> 0;
+            case PROJECT -> 1;
+            case SUB_PROJECT -> 2;
+        };
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

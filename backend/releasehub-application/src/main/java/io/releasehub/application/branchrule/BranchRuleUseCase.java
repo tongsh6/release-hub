@@ -32,5 +32,9 @@ public interface BranchRuleUseCase {
 
     boolean isCompliant(String branchName);
 
+    default boolean isCompliant(String branchName, String projectId, String subProjectId) {
+        return isCompliant(branchName);
+    }
+
     BranchRuleTestResult test(String pattern, BranchRuleType type, String branchName);
 }

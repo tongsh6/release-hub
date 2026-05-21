@@ -71,6 +71,32 @@ class BranchRuleAppServiceTest {
     }
 
     @Test
+    @DisplayName("项目级规则应覆盖全局规则")
+    void should_use_project_scoped_rules_before_global_rules() {
+        port.save(BranchRule.create("global release", "release/*",
+                BranchRuleType.TEMPLATE, BranchRuleScope.global(), Instant.now()));
+        port.save(BranchRule.create("project feature", "feature/*",
+                BranchRuleType.TEMPLATE, BranchRuleScope.project("project-a"), Instant.now()));
+
+        assertThat(appService.isCompliant("feature/ITER-1", "project-a", null)).isTrue();
+        assertThat(appService.isCompliant("release/RW-1", "project-a", null)).isFalse();
+        assertThat(appService.isCompliant("release/RW-1", "project-b", null)).isTrue();
+    }
+
+    @Test
+    @DisplayName("子项目级规则应覆盖项目级规则")
+    void should_use_sub_project_scoped_rules_before_project_rules() {
+        port.save(BranchRule.create("project release", "release/*",
+                BranchRuleType.TEMPLATE, BranchRuleScope.project("project-a"), Instant.now()));
+        port.save(BranchRule.create("sub project hotfix", "hotfix/*",
+                BranchRuleType.TEMPLATE, BranchRuleScope.subProject("project-a", "sub-1"), Instant.now()));
+
+        assertThat(appService.isCompliant("hotfix/urgent", "project-a", "sub-1")).isTrue();
+        assertThat(appService.isCompliant("release/RW-1", "project-a", "sub-1")).isFalse();
+        assertThat(appService.isCompliant("release/RW-1", "project-a", "sub-2")).isTrue();
+    }
+
+    @Test
     @DisplayName("get 不存在时抛异常")
     void should_throw_when_rule_not_found() {
         assertThatThrownBy(() -> appService.get("missing"))
