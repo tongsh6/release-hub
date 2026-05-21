@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -47,6 +48,13 @@ public class ReleaseWindowController {
         return ApiResponse.success(view);
     }
 
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Delete release window")
+    public ApiResponse<Boolean> delete(@PathVariable("id") String id) {
+        appService.delete(id);
+        return ApiResponse.success(true);
+    }
+
     @GetMapping
     @Operation(summary = "List release windows")
     public ApiResponse<List<ReleaseWindowView>> list() {
@@ -59,9 +67,10 @@ public class ReleaseWindowController {
     public ApiPageResponse<List<ReleaseWindowView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
                                                               @RequestParam(name = "size", defaultValue = "20") int size,
                                                               @RequestParam(name = "name", required = false) String name,
-                                                              @RequestParam(name = "status", required = false) String status) {
+                                                              @RequestParam(name = "status", required = false) String status,
+                                                              @RequestParam(name = "groupCode", required = false) String groupCode) {
         ReleaseWindowStatus statusEnum = parseStatus(status);
-        var result = appService.listPaged(name, statusEnum, page, size);
+        var result = appService.listPaged(name, statusEnum, groupCode, page, size);
         return ApiPageResponse.success(result.items(), new PageMeta(page, size, result.total()));
     }
 

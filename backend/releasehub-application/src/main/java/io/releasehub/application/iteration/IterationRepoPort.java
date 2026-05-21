@@ -1,5 +1,7 @@
 package io.releasehub.application.iteration;
 
+import io.releasehub.domain.iteration.BranchCreationMode;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -14,7 +16,8 @@ public interface IterationRepoPort {
      */
     void saveWithVersion(String iterationKey, String repoId, String baseVersion, 
                          String devVersion, String targetVersion, String featureBranch,
-                         String versionSource, Instant versionSyncedAt);
+                         String versionSource, Instant versionSyncedAt,
+                         BranchCreationMode branchCreationMode);
     
     /**
      * 获取迭代-仓库关联的版本信息

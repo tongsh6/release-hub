@@ -103,6 +103,7 @@ class IterationAppServiceTest {
         );
         lenient().when(clock.instant()).thenReturn(now);
         lenient().when(clock.getZone()).thenReturn(java.time.ZoneId.of("UTC"));
+        lenient().when(branchRuleUseCase.isCompliant(anyString(), any(), any())).thenReturn(true);
     }
 
     @Test
@@ -159,16 +160,17 @@ class IterationAppServiceTest {
         when(codeRepositoryPort.getInitialVersion("repo-1")).thenReturn(Optional.of("1.0.0"));
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
-        when(branchRuleUseCase.isCompliant("feature/ITER-1")).thenReturn(true);
+        when(branchRuleUseCase.isCompliant("feature/ITER-1", "G001", "repo-1")).thenReturn(true);
         when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
         when(gitBranchPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/ITER-1", "master")).thenReturn(true);
 
         iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.AUTO, null);
 
+        verify(branchRuleUseCase).isCompliant("feature/ITER-1", "G001", "repo-1");
         verify(gitBranchPort).createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/ITER-1", "master");
         verify(iterationRepoPort).saveWithVersion(
                 eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
-                eq("feature/ITER-1"), eq("SYSTEM"), any(Instant.class));
+                eq("feature/ITER-1"), eq("SYSTEM"), any(Instant.class), eq(BranchCreationMode.AUTO));
         verify(iterationPort).save(any(Iteration.class));
     }
 
@@ -190,7 +192,7 @@ class IterationAppServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("ITER_005"));
         verify(gitBranchAdapterFactory, never()).getAdapter(any());
         verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
-                anyString(), anyString(), anyString(), anyString(), anyString(), any());
+                anyString(), anyString(), anyString(), anyString(), anyString(), any(), any());
         verify(iterationPort, never()).save(any());
     }
 
@@ -213,7 +215,7 @@ class IterationAppServiceTest {
         verify(codeRepositoryPort, never()).findById(any());
         verify(gitBranchAdapterFactory, never()).getAdapter(any());
         verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
-                anyString(), anyString(), anyString(), anyString(), anyString(), any());
+                anyString(), anyString(), anyString(), anyString(), anyString(), any(), any());
         verify(iterationPort, never()).save(any());
     }
 
@@ -453,7 +455,7 @@ class IterationAppServiceTest {
 
         verify(iterationPort).save(any(Iteration.class));
         verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
-                anyString(), anyString(), anyString(), anyString(), anyString(), any());
+                anyString(), anyString(), anyString(), anyString(), anyString(), any(), any());
     }
 
     @Test
@@ -468,7 +470,7 @@ class IterationAppServiceTest {
         when(codeRepositoryPort.getInitialVersion("repo-1")).thenReturn(Optional.of("1.0.0"));
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
-        when(branchRuleUseCase.isCompliant("feature/upgrade-guava")).thenReturn(true);
+        when(branchRuleUseCase.isCompliant("feature/upgrade-guava", "G001", "repo-1")).thenReturn(true);
         when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
         when(gitBranchPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/upgrade-guava", "master")).thenReturn(true);
 
@@ -477,7 +479,7 @@ class IterationAppServiceTest {
         verify(gitBranchPort).createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/upgrade-guava", "master");
         verify(iterationRepoPort).saveWithVersion(
                 eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
-                eq("feature/upgrade-guava"), eq("SYSTEM"), any(Instant.class));
+                eq("feature/upgrade-guava"), eq("SYSTEM"), any(Instant.class), eq(BranchCreationMode.NAMED));
     }
 
     @Test
@@ -500,7 +502,7 @@ class IterationAppServiceTest {
 
         verify(iterationRepoPort).saveWithVersion(
                 eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
-                eq("feature/JIRA-4521"), eq("SYSTEM"), any(Instant.class));
+                eq("feature/JIRA-4521"), eq("SYSTEM"), any(Instant.class), eq(BranchCreationMode.EXISTING));
     }
 
     @Test
@@ -521,7 +523,7 @@ class IterationAppServiceTest {
 
         verify(iterationPort).save(any(Iteration.class));
         verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
-                anyString(), anyString(), anyString(), anyString(), anyString(), any());
+                anyString(), anyString(), anyString(), anyString(), anyString(), any(), any());
     }
 
     @Test
@@ -537,7 +539,7 @@ class IterationAppServiceTest {
         when(codeRepositoryPort.getInitialVersion(anyString())).thenReturn(Optional.of("1.0.0"));
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
-        when(branchRuleUseCase.isCompliant(anyString())).thenReturn(true);
+        when(branchRuleUseCase.isCompliant(anyString(), any(), any())).thenReturn(true);
         when(gitBranchAdapterFactory.getAdapter(any())).thenReturn(gitBranchPort);
         when(gitBranchPort.createBranch(anyString(), any(), anyString(), anyString())).thenReturn(true);
 
@@ -548,7 +550,7 @@ class IterationAppServiceTest {
         iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", Set.of("repo-1", "repo-2"), configs);
 
         verify(iterationRepoPort, times(2)).saveWithVersion(anyString(), anyString(),
-                anyString(), anyString(), anyString(), anyString(), anyString(), any(Instant.class));
+                anyString(), anyString(), anyString(), anyString(), anyString(), any(Instant.class), any());
     }
 
     @Test
@@ -562,7 +564,7 @@ class IterationAppServiceTest {
         when(codeRepositoryPort.getInitialVersion("repo-1")).thenReturn(Optional.of("1.0.0"));
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
-        when(branchRuleUseCase.isCompliant(anyString())).thenReturn(true);
+        when(branchRuleUseCase.isCompliant(anyString(), any(), any())).thenReturn(true);
         when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
         when(gitBranchPort.createBranch(eq(repo.getCloneUrl()), any(), anyString(), eq("master"))).thenReturn(true);
 
@@ -582,13 +584,13 @@ class IterationAppServiceTest {
         CodeRepository repo = createRepo("repo-1", "git@gitlab.com:test/repo.git");
         when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
         when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
-        when(branchRuleUseCase.isCompliant("feature/bad/name")).thenReturn(false);
+        when(branchRuleUseCase.isCompliant("feature/bad/name", "G001", "repo-1")).thenReturn(false);
 
         iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.NAMED, "feature/bad/name");
 
         verify(iterationPort).save(any(Iteration.class));
         verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
-                anyString(), anyString(), anyString(), anyString(), anyString(), any());
+                anyString(), anyString(), anyString(), anyString(), anyString(), any(), any());
     }
 
     // ==== 辅助方法 ====

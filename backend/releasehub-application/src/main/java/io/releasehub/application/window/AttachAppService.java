@@ -110,7 +110,7 @@ public class AttachAppService {
         String repoUrl = repo.getCloneUrl();
 
         String releaseBranch = "release/" + releaseWindow.getWindowKey();
-        if (!branchRuleUseCase.isCompliant(releaseBranch)) {
+        if (!isBranchCompliantForRepo(releaseBranch, repo)) {
             throw ValidationException.invalidParameter("branchName");
         }
 
@@ -201,14 +201,14 @@ public class AttachAppService {
         Instant now = Instant.now(clock);
 
         String releaseBranch = "release/" + releaseWindow.getWindowKey();
-        if (!branchRuleUseCase.isCompliant(releaseBranch)) {
-            throw ValidationException.invalidParameter("branchName");
-        }
 
         for (RepoId repoId : iteration.getRepos()) {
             try {
                 CodeRepository repo = codeRepositoryPort.findById(repoId)
                         .orElseThrow(() -> NotFoundException.repository(repoId.value()));
+                if (!isBranchCompliantForRepo(releaseBranch, repo)) {
+                    throw ValidationException.invalidParameter("branchName");
+                }
                 GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
                 boolean created = gitBranchPort.createBranch(
                         repo.getCloneUrl(), repo.getGitAccessToken(), releaseBranch, repo.getDefaultBranch());
@@ -286,5 +286,9 @@ public class AttachAppService {
         if (releaseWindow.getStatus() == ReleaseWindowStatus.CLOSED) {
             throw BusinessException.rwInvalidState(releaseWindow.getStatus());
         }
+    }
+
+    private boolean isBranchCompliantForRepo(String branchName, CodeRepository repo) {
+        return branchRuleUseCase.isCompliant(branchName, repo.getGroupCode(), repo.getId().value());
     }
 }

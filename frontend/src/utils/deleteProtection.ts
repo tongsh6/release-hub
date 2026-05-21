@@ -2,6 +2,8 @@ import { ApiError } from '@/api/http'
 
 const DELETE_PROTECTION_MESSAGES: Record<string, string> = {
   REPO_011: 'repository.deleteBlocked',
+  ITER_002: 'iteration.deleteBlocked',
+  RW_014: 'releaseWindow.deleteBlocked',
   GROUP_008: 'group.deleteBlocked',
   GROUP_013: 'group.deleteReferenced'
 }

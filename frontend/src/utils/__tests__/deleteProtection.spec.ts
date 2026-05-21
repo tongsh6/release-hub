@@ -6,6 +6,10 @@ describe('deleteProtectionMessageKey', () => {
   it('maps backend delete guard errors to frontend copy keys', () => {
     expect(deleteProtectionMessageKey(new ApiError({ code: 'REPO_011', message: 'attached' })))
       .toBe('repository.deleteBlocked')
+    expect(deleteProtectionMessageKey(new ApiError({ code: 'ITER_002', message: 'attached' })))
+      .toBe('iteration.deleteBlocked')
+    expect(deleteProtectionMessageKey(new ApiError({ code: 'RW_014', message: 'blocked' })))
+      .toBe('releaseWindow.deleteBlocked')
     expect(deleteProtectionMessageKey(new ApiError({ code: 'GROUP_008', message: 'children' })))
       .toBe('group.deleteBlocked')
     expect(deleteProtectionMessageKey(new ApiError({ code: 'GROUP_013', message: 'referenced' })))

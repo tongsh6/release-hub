@@ -9,6 +9,7 @@ import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
 import io.releasehub.domain.iteration.Iteration;
@@ -16,6 +17,7 @@ import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
+import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.repo.RepoId;
@@ -41,6 +43,7 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -123,6 +126,49 @@ class ReleaseWindowAppServiceTest {
     }
 
     @Nested
+    @DisplayName("listPaged 方法")
+    class ListPagedTests {
+        @Test
+        @DisplayName("按组织筛选时包含当前组织及子组织")
+        void shouldFilterByGroupAndDescendants() {
+            Instant now = Instant.now();
+            Group parent = Group.rehydrate(GroupId.of("parent"), "Parent", "G001", null, now, now, 0L);
+            Group child = Group.rehydrate(GroupId.of("child"), "Child", "G001001", "G001", now, now, 0L);
+            Group leaf = Group.rehydrate(GroupId.of("leaf"), "Leaf", "G001001001", "G001001", now, now, 0L);
+            ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001001001", now);
+            when(groupPort.findByCode("G001")).thenReturn(Optional.of(parent));
+            when(groupPort.findByParentCode("G001")).thenReturn(List.of(child));
+            when(groupPort.findByParentCode("G001001")).thenReturn(List.of(leaf));
+            when(groupPort.findByParentCode("G001001001")).thenReturn(List.of());
+            when(releaseWindowPort.findPaged(
+                    eq("Window"),
+                    eq(ReleaseWindowStatus.DRAFT),
+                    eq(List.of("G001", "G001001", "G001001001")),
+                    eq(1),
+                    eq(10)
+            )).thenReturn(new PageResult<>(List.of(window), 1));
+
+            PageResult<ReleaseWindowView> result = releaseWindowAppService.listPaged(
+                    "Window", ReleaseWindowStatus.DRAFT, "G001", 1, 10);
+
+            assertThat(result.total()).isEqualTo(1);
+            assertThat(result.items()).extracting(ReleaseWindowView::getGroupCode)
+                    .containsExactly("G001001001");
+        }
+
+        @Test
+        @DisplayName("组织不存在时筛选失败")
+        void shouldFailWhenGroupFilterDoesNotExist() {
+            when(groupPort.findByCode("G404")).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> releaseWindowAppService.listPaged(null, null, "G404", 1, 10))
+                    .isInstanceOf(NotFoundException.class)
+                    .satisfies(ex -> assertThat(((NotFoundException) ex).getCode()).isEqualTo("GROUP_002"));
+            verify(releaseWindowPort, never()).findPaged(any(), any(), any(List.class), anyInt(), anyInt());
+        }
+    }
+
+    @Nested
     @DisplayName("publish 方法")
     class PublishTests {
         @Test
@@ -154,6 +200,53 @@ class ReleaseWindowAppServiceTest {
             verify(runAppService, never()).executeCleanup(any(), any());
             assertThat(view.getStatus()).isEqualTo("PUBLISHED");
             assertThat(view.getPublishedAt()).isNotNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("delete 方法")
+    class DeleteTests {
+        @Test
+        @DisplayName("空草稿窗口可以删除")
+        void shouldDeleteEmptyDraftWindow() {
+            Instant now = Instant.now();
+            ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
+            when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
+            when(windowIterationPort.listByWindow(ReleaseWindowId.of("window-1"))).thenReturn(List.of());
+
+            releaseWindowAppService.delete("window-1");
+
+            verify(releaseWindowPort).deleteById(ReleaseWindowId.of("window-1"));
+        }
+
+        @Test
+        @DisplayName("已关联迭代的草稿窗口拒绝删除")
+        void shouldRejectDeleteWhenDraftHasIterations() {
+            Instant now = Instant.now();
+            ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
+            when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
+            when(windowIterationPort.listByWindow(ReleaseWindowId.of("window-1")))
+                    .thenReturn(List.of(WindowIteration.attach(ReleaseWindowId.of("window-1"), IterationKey.of("ITER-1"), now, now)));
+
+            assertThatThrownBy(() -> releaseWindowAppService.delete("window-1"))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("RW_014"));
+            verify(releaseWindowPort, never()).deleteById(any());
+        }
+
+        @Test
+        @DisplayName("非草稿窗口拒绝删除")
+        void shouldRejectDeleteWhenWindowIsNotDraft() {
+            Instant now = Instant.now();
+            ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
+            window.publish(now);
+            when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
+
+            assertThatThrownBy(() -> releaseWindowAppService.delete("window-1"))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("RW_014"));
+            verify(windowIterationPort, never()).listByWindow(any());
+            verify(releaseWindowPort, never()).deleteById(any());
         }
     }
 
@@ -224,12 +317,12 @@ class ReleaseWindowAppServiceTest {
 
             CodeRepository repo = CodeRepository.rehydrate(
                     RepoId.of(repoId), "my-repo", "https://github.com/org/repo.git",
-                    "main", "G001", null, GitProvider.MOCK, "token", false,
+                    "main", "G001", null, GitProvider.GITLAB, "token", false,
                     0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
             when(codeRepositoryPort.findById(RepoId.of(repoId))).thenReturn(Optional.of(repo));
 
             GitBranchPort mockAdapter = org.mockito.Mockito.mock(GitBranchPort.class);
-            when(gitBranchAdapterFactory.getAdapter(GitProvider.MOCK)).thenReturn(mockAdapter);
+            when(gitBranchAdapterFactory.getAdapter(GitProvider.GITLAB)).thenReturn(mockAdapter);
             when(mockAdapter.getBranchStatus(any(), any(), eq("feature/" + iterKey)))
                     .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
             when(mockAdapter.getBranchStatus(any(), any(), eq("release/" + windowKey)))

@@ -198,14 +198,14 @@ public class IterationAppService {
         String featureBranch = switch (mode) {
             case AUTO -> {
                 String autoBranch = "feature/" + iterationKey.value();
-                if (!branchRuleUseCase.isCompliant(autoBranch)) {
+                if (!isBranchCompliantForRepo(autoBranch, repo)) {
                     throw ValidationException.invalidParameter("自动生成的分支名不符合 BranchRule 规则");
                 }
                 yield autoBranch;
             }
             case NAMED -> {
                 validateFeaturePrefix(customBranchName);
-                if (!branchRuleUseCase.isCompliant(customBranchName)) {
+                if (!isBranchCompliantForRepo(customBranchName, repo)) {
                     throw ValidationException.invalidParameter("分支名不符合 BranchRule 规则");
                 }
                 yield customBranchName;
@@ -241,11 +241,16 @@ public class IterationAppService {
                 targetVersion,
                 featureBranch,
                 VersionSource.SYSTEM.name(),
-                now
+                now,
+                mode
         );
 
         log.info("Setup repo {} for iteration {}: mode={} featureBranch={} baseVersion={} devVersion={} targetVersion={}",
                 repoId.value(), iterationKey.value(), mode, featureBranch, baseVersion, devVersion, targetVersion);
+    }
+
+    private boolean isBranchCompliantForRepo(String branchName, CodeRepository repo) {
+        return branchRuleUseCase.isCompliant(branchName, repo.getGroupCode(), repo.getId().value());
     }
 
     private void ensureReposBelongToGroup(String iterationKey, Set<RepoId> repoIds, String iterationGroupCode) {

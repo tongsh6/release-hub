@@ -8,6 +8,24 @@ const TEST_USER = { username: 'admin', password: 'admin' }
 
 export const FORCE = { force: true } as const
 
+const AUTHED_USER = {
+  id: 'e2e-user',
+  username: 'admin',
+  displayName: 'E2E Admin',
+  permissions: [
+    'dashboard:read',
+    'release-window:read',
+    'release-window:write',
+    'iteration:read',
+    'repository:read',
+    'run:read',
+    'version-policy:read',
+    'version-policy:write',
+    'branch-rule:read',
+    'branch-rule:write'
+  ]
+}
+
 /** Ensure logged in via UI, from any starting page. */
 export async function ensureLoggedIn(page: Page) {
   await page.goto('/')
@@ -18,6 +36,27 @@ export async function ensureLoggedIn(page: Page) {
     await page.locator('.el-button--primary').click()
     await expect(page).not.toHaveURL(/\/login/, { timeout: 5000 })
   }
+}
+
+/** Seed auth state and stub the profile endpoint for route-stubbed UI specs. */
+export async function seedAuthenticatedSession(page: Page) {
+  await page.route('**/api/v1/me', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 'OK',
+        message: 'OK',
+        success: true,
+        data: AUTHED_USER
+      })
+    })
+  })
+  await page.addInitScript(() => {
+    localStorage.setItem('RH_TOKEN', 'e2e-stub-token')
+  })
+  await page.goto('/')
+  await expect(page).not.toHaveURL(/\/login/, { timeout: 5000 })
 }
 
 /**

@@ -70,7 +70,7 @@ class ConflictDetectionAppServiceTest {
                 iterationRepoPort, codeRepositoryPort, gitBranchAdapterFactory,
                 versionExtractorUseCase, versionDeriverUseCase, branchRuleUseCase, conflictDetectionPort);
         when(gitBranchAdapterFactory.getAdapter(any())).thenReturn(gitBranchPort);
-        when(branchRuleUseCase.isCompliant(anyString())).thenReturn(true);
+        when(branchRuleUseCase.isCompliant(anyString(), any(), any())).thenReturn(true);
     }
 
     @Test
@@ -144,8 +144,8 @@ class ConflictDetectionAppServiceTest {
                 .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
         when(gitBranchPort.checkMergeability(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(GitBranchPort.MergeabilityResult.mergeable());
-        when(branchRuleUseCase.isCompliant("feature/" + ITERATION_KEY)).thenReturn(false);
-        when(branchRuleUseCase.isCompliant("release/rel-1.0")).thenReturn(true);
+        when(branchRuleUseCase.isCompliant("feature/" + ITERATION_KEY, "default", "R001")).thenReturn(false);
+        when(branchRuleUseCase.isCompliant("release/rel-1.0", "default", "R001")).thenReturn(true);
 
         // When
         ConflictReport report = service.checkWindowConflicts(WINDOW_ID);

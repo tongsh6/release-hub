@@ -10,7 +10,7 @@ const profile = { username: 'tester' }
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string) => key
+    t: (key: string, params?: Record<string, unknown>) => (params ? `${key}:${JSON.stringify(params)}` : key)
   })
 }))
 
@@ -68,6 +68,10 @@ const stubs = {
   ElDescriptionsItem: {
     template: '<div><slot /></div>'
   },
+  ElAlert: {
+    props: ['title'],
+    template: '<div>{{ title }}</div>'
+  },
   ElTable: {
     template: '<table><slot /></table>'
   },
@@ -79,6 +83,16 @@ const stubs = {
   ElTimeline: true,
   ElTimelineItem: true
 }
+
+const mountRunDetail = () => shallowMount(RunDetail, {
+  global: {
+    stubs,
+    directives: {
+      loading: {},
+      perm: {}
+    }
+  }
+})
 
 describe('RunDetail', () => {
   beforeEach(() => {
@@ -123,9 +137,7 @@ describe('RunDetail', () => {
   })
 
   it('retries only failed run items from the detail page', async () => {
-    const wrapper = shallowMount(RunDetail, {
-      global: { stubs }
-    })
+    const wrapper = mountRunDetail()
     await flushPromises()
     await flushPromises()
 
@@ -150,6 +162,51 @@ describe('RunDetail', () => {
       params: { runId: 'run-retry-1' }
     })
     expect(runApi.getRunById).toHaveBeenCalledWith('run-retry-1')
+  })
+
+  it('summarizes partial success and retryable items for run evidence review', async () => {
+    vi.mocked(runApi.getTasks).mockResolvedValue([
+      {
+        id: 'task-ok',
+        runId: 'run-1',
+        taskType: 'CREATE_RELEASE_BRANCH',
+        taskOrder: 1,
+        status: 'COMPLETED',
+        retryCount: 0,
+        maxRetries: 3,
+        createdAt: ''
+      },
+      {
+        id: 'task-fail',
+        runId: 'run-1',
+        taskType: 'MERGE_FEATURE_TO_RELEASE',
+        taskOrder: 2,
+        status: 'FAILED',
+        retryCount: 1,
+        maxRetries: 3,
+        errorMessage: 'conflict',
+        createdAt: ''
+      }
+    ])
+
+    const wrapper = mountRunDetail()
+    await flushPromises()
+    await flushPromises()
+
+    expect((wrapper.vm as any).itemSummary).toEqual({
+      total: 2,
+      succeeded: 1,
+      failed: 1,
+      skipped: 0,
+      retryable: 1
+    })
+    expect((wrapper.vm as any).taskSummary).toEqual({
+      total: 2,
+      completed: 1,
+      failed: 1,
+      retryable: 1
+    })
+    expect((wrapper.vm as any).hasPartialFailure).toBe(true)
   })
 
   it('retries only failed version update items from the detail page', async () => {
@@ -182,9 +239,7 @@ describe('RunDetail', () => {
       ]
     }))
 
-    const wrapper = shallowMount(RunDetail, {
-      global: { stubs }
-    })
+    const wrapper = mountRunDetail()
     await flushPromises()
     await flushPromises()
 
@@ -222,9 +277,7 @@ describe('RunDetail', () => {
       ]
     })
 
-    const wrapper = shallowMount(RunDetail, {
-      global: { stubs }
-    })
+    const wrapper = mountRunDetail()
     await flushPromises()
     await flushPromises()
 

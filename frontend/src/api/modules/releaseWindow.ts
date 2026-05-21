@@ -1,4 +1,4 @@
-import { apiGet, apiPost, http } from '@/api/http'
+import { apiDel, apiGet, apiPost, http } from '@/api/http'
 import type { BuildTool } from '@/types/dto'
 import type { PageQuery, PageResult } from '@/types/crud'
 import type { ApiPageResponse } from '@/api/repositoryApi'
@@ -62,6 +62,18 @@ export interface VersionUpdateResponse {
   status: string
 }
 
+export interface VersionValidationRequest {
+  policyId: string
+  currentVersion: string
+}
+
+export interface VersionValidationResponse {
+  valid: boolean
+  derivedVersion?: string
+  derivedBranch?: string
+  errorMessage?: string
+}
+
 export interface OrchestrateRequest {
   repoIds: string[]
   iterationKeys: string[]
@@ -79,12 +91,13 @@ export interface PlanItemView {
 
 // --- API Functions ---
 
-export async function list(query: PageQuery & { name?: string; status?: string }): Promise<PageResult<ReleaseWindowView>> {
+export async function list(query: PageQuery & { name?: string; status?: string; groupCode?: string }): Promise<PageResult<ReleaseWindowView>> {
   const params = {
     page: query.page,
     size: query.pageSize,
     name: (query as any).name,
-    status: (query as any).status
+    status: (query as any).status,
+    groupCode: (query as any).groupCode
   }
   const res = await http.get<ApiPageResponse<ReleaseWindowView[]>>(`${BASE}/release-windows/paged`, { params })
   return {
@@ -117,6 +130,10 @@ export function closeWindow(id: string): Promise<ReleaseWindowView> {
   return apiPost<ReleaseWindowView>(`${BASE}/release-windows/${id}/close`, {})
 }
 
+export function deleteWindow(id: string): Promise<boolean> {
+  return apiDel<boolean>(`${BASE}/release-windows/${id}`)
+}
+
 export function attach(id: string, iterationKey: string): Promise<string[]> {
   return apiPost<string[]>(`${BASE}/release-windows/${id}/attach`, { iterationKeys: [iterationKey] })
 }
@@ -147,6 +164,10 @@ export function executeVersionUpdate(id: string, req: VersionUpdateRequest): Pro
 
 export function executeBatchVersionUpdate(id: string, req: BatchVersionUpdateRequest): Promise<VersionUpdateResponse> {
   return apiPost<VersionUpdateResponse>(`${BASE}/release-windows/${id}/execute/batch-version-update`, req)
+}
+
+export function validateVersion(id: string, req: VersionValidationRequest): Promise<VersionValidationResponse> {
+  return apiPost<VersionValidationResponse>(`${BASE}/release-windows/${id}/validate`, req)
 }
 
 // --- 代码合并相关 ---
@@ -249,6 +270,7 @@ export const releaseWindowApi = {
   unfreeze,
   publish,
   close: closeWindow,
+  delete: deleteWindow,
   attach,
   detach,
   listIterations,
@@ -257,6 +279,7 @@ export const releaseWindowApi = {
   getDryPlan,
   executeVersionUpdate,
   executeBatchVersionUpdate,
+  validateVersion,
   mergeIteration,
   mergeAll,
   getBranchStatus,

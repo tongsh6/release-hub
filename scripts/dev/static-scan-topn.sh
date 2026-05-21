@@ -38,6 +38,7 @@ BACKEND_DIR="$REPO_ROOT/backend"
 if [ -f "$BACKEND_DIR/pom.xml" ]; then
     cd "$BACKEND_DIR"
     if mvn -q -B -DskipTests \
+        install \
         com.github.spotbugs:spotbugs-maven-plugin:4.9.8.3:check \
         > "$RAW_DIR/backend-spotbugs.txt" 2>&1; then
         echo "    PASS (0 bugs)"
@@ -103,6 +104,29 @@ count_real_bugs() {
     extract_bugs "$f" | wc -l | tr -d ' '
 }
 
+has_maven_scan_failure() {
+    local f="$1"
+    [ -f "$f" ] && grep -qE 'BUILD FAILURE|Failed to execute goal|Could not resolve dependencies|No plugin found for prefix|Plugin .* not found' "$f" 2>/dev/null
+}
+
+count_eslint_errors() {
+    local f="$1"
+    if [ -f "$f" ]; then
+        { grep -E '^[[:space:]]+[0-9]+:[0-9]+[[:space:]]+error[[:space:]]+' "$f" 2>/dev/null || true; } | wc -l | tr -d ' '
+    else
+        echo 0
+    fi
+}
+
+count_eslint_warnings() {
+    local f="$1"
+    if [ -f "$f" ]; then
+        { grep -E '^[[:space:]]+[0-9]+:[0-9]+[[:space:]]+warning[[:space:]]+' "$f" 2>/dev/null || true; } | wc -l | tr -d ' '
+    else
+        echo 0
+    fi
+}
+
 cat > "$SUMMARY" << 'HEADER'
 # 静态代码扫描与 TopN 处理报告
 
@@ -128,15 +152,21 @@ HEADER
 
     # SpotBugs
     SPOTBUGS_COUNT=$(count_real_bugs "$RAW_DIR/backend-spotbugs.txt")
-    if [ "$SPOTBUGS_COUNT" -eq 0 ]; then
+    if has_maven_scan_failure "$RAW_DIR/backend-spotbugs.txt"; then
+        echo "| backend SpotBugs | ❌ FAIL (scan failed) |"
+    elif [ "$SPOTBUGS_COUNT" -eq 0 ]; then
         echo "| backend SpotBugs | ✅ PASS (0 bugs) |"
     else
         echo "| backend SpotBugs | ⚠️ $SPOTBUGS_COUNT bugs |"
     fi
 
-    # ESLint: avoid matching "0 errors" / "0 problems" when clean
-    if grep -qE '[1-9][0-9]* error|✖ [1-9]' "$RAW_DIR/frontend-lint.txt" 2>/dev/null; then
-        echo "| frontend ESLint | ⚠️ issues found |"
+    # ESLint: distinguish errors from warnings; warnings still deserve report visibility.
+    ESLINT_ERROR_COUNT=$(count_eslint_errors "$RAW_DIR/frontend-lint.txt")
+    ESLINT_WARNING_COUNT=$(count_eslint_warnings "$RAW_DIR/frontend-lint.txt")
+    if [ "$ESLINT_ERROR_COUNT" -gt 0 ]; then
+        echo "| frontend ESLint | ❌ $ESLINT_ERROR_COUNT errors |"
+    elif [ "$ESLINT_WARNING_COUNT" -gt 0 ]; then
+        echo "| frontend ESLint | ⚠️ $ESLINT_WARNING_COUNT warnings |"
     else
         echo "| frontend ESLint | ✅ PASS |"
     fi
@@ -157,13 +187,22 @@ HEADER
     # Extract TopN real issues (prioritize SpotBugs -> typecheck -> ESLint)
     issue_count=0
 
-    # Phase 1: real SpotBugs bugs
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
+    # Phase 0: scan execution failures
+    if has_maven_scan_failure "$RAW_DIR/backend-spotbugs.txt"; then
         issue_count=$((issue_count + 1))
-        [ "$issue_count" -gt "$TOP_N" ] && break
-        echo "| $issue_count | backend-spotbugs | $(echo "$line" | sed 's/|/\\|/g' | cut -c1-100) | 中 | 待修复 | — | — |"
-    done < <(extract_bugs "$RAW_DIR/backend-spotbugs.txt")
+        first_error=$(grep -E 'Failed to execute goal|Could not resolve dependencies|No plugin found for prefix|BUILD FAILURE' "$RAW_DIR/backend-spotbugs.txt" 2>/dev/null | head -1)
+        echo "| $issue_count | backend-spotbugs | $(echo "$first_error" | sed 's/|/\\|/g' | cut -c1-100) | 高 | 修复扫描命令或 Maven 环境 | 待处理 | raw/backend-spotbugs.txt |"
+    fi
+
+    # Phase 1: real SpotBugs bugs
+    if [ "$issue_count" -lt "$TOP_N" ]; then
+        while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            issue_count=$((issue_count + 1))
+            [ "$issue_count" -gt "$TOP_N" ] && break
+            echo "| $issue_count | backend-spotbugs | $(echo "$line" | sed 's/|/\\|/g' | cut -c1-100) | 中 | 待修复 | — | — |"
+        done < <(extract_bugs "$RAW_DIR/backend-spotbugs.txt")
+    fi
 
     # Phase 2: typecheck errors (if TopN not yet reached)
     if [ "$issue_count" -lt "$TOP_N" ] && [ -f "$RAW_DIR/frontend-typecheck.txt" ]; then
@@ -185,6 +224,16 @@ HEADER
         done < <(grep -E '^\s+[0-9]+:[0-9]+\s+error' "$RAW_DIR/frontend-lint.txt" 2>/dev/null | head -"$((TOP_N - issue_count))")
     fi
 
+    # Phase 4: ESLint warnings (if TopN not yet reached)
+    if [ "$issue_count" -lt "$TOP_N" ] && [ -f "$RAW_DIR/frontend-lint.txt" ]; then
+        while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            issue_count=$((issue_count + 1))
+            [ "$issue_count" -gt "$TOP_N" ] && break
+            echo "| $issue_count | frontend-lint | $(echo "$line" | sed 's/|/\\|/g' | cut -c1-100) | 低 | 待修复 | — | — |"
+        done < <(grep -E '^\s+[0-9]+:[0-9]+\s+warning' "$RAW_DIR/frontend-lint.txt" 2>/dev/null | head -"$((TOP_N - issue_count))")
+    fi
+
     # If no issues found
     if [ "$issue_count" -eq 0 ]; then
         echo "| — | — | 未发现代码问题 | — | — | — | — |"
@@ -195,10 +244,30 @@ HEADER
     echo ""
     echo "| 指标 | 状态 |"
     echo "|------|:----:|"
-    echo "| git diff --check | ✅ |"
-    echo "| backend SpotBugs (新引入) | ✅ |"
-    echo "| frontend ESLint | ✅ |"
-    echo "| frontend typecheck | ✅ |"
+    if [ -s "$RAW_DIR/git-diff-check.txt" ]; then
+        echo "| git diff --check | ❌ |"
+    else
+        echo "| git diff --check | ✅ |"
+    fi
+    if has_maven_scan_failure "$RAW_DIR/backend-spotbugs.txt"; then
+        echo "| backend SpotBugs (新引入) | ❌ |"
+    elif [ "$(count_real_bugs "$RAW_DIR/backend-spotbugs.txt")" -eq 0 ]; then
+        echo "| backend SpotBugs (新引入) | ✅ |"
+    else
+        echo "| backend SpotBugs (新引入) | ⚠️ |"
+    fi
+    if [ "$(count_eslint_errors "$RAW_DIR/frontend-lint.txt")" -gt 0 ]; then
+        echo "| frontend ESLint | ❌ |"
+    elif [ "$(count_eslint_warnings "$RAW_DIR/frontend-lint.txt")" -gt 0 ]; then
+        echo "| frontend ESLint | ⚠️ |"
+    else
+        echo "| frontend ESLint | ✅ |"
+    fi
+    if grep -qi 'error' "$RAW_DIR/frontend-typecheck.txt" 2>/dev/null; then
+        echo "| frontend typecheck | ❌ |"
+    else
+        echo "| frontend typecheck | ✅ |"
+    fi
 
     echo ""
     echo "原始扫描日志保留在 \`raw/\` 目录。"

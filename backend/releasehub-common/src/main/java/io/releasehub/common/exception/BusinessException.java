@@ -47,6 +47,10 @@ public class BusinessException extends BaseException {
         return of(ErrorCode.RW_ITERATION_GROUP_MISMATCH, iterationKey, windowGroup, iterationGroup);
     }
 
+    public static BusinessException rwDeleteBlocked(Object windowId) {
+        return of(ErrorCode.RW_DELETE_BLOCKED, windowId);
+    }
+
     // ========== Group ==========
 
     public static BusinessException groupCodeExists(Object code) {

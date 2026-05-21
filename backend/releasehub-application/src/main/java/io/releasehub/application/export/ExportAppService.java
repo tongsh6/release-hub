@@ -98,6 +98,92 @@ public class ExportAppService {
         return joiner.toString();
     }
 
+    public String exportReleaseWindowMarkdown(String windowId) {
+        ReleaseWindowReportView report = exportReleaseWindowReport(windowId);
+        StringBuilder markdown = new StringBuilder();
+        markdown.append("# Release Window Report: ").append(markdownText(report.windowKey())).append("\n\n");
+        markdown.append("| Field | Value |\n");
+        markdown.append("| --- | --- |\n");
+        appendMarkdownRow(markdown, "Window ID", report.windowId());
+        appendMarkdownRow(markdown, "Window Key", report.windowKey());
+        appendMarkdownRow(markdown, "Name", report.name());
+        appendMarkdownRow(markdown, "Status", report.status());
+        appendMarkdownRow(markdown, "Group Code", report.groupCode());
+        appendMarkdownRow(markdown, "Planned Release At", report.plannedReleaseAt());
+        appendMarkdownRow(markdown, "Published At", report.publishedAt());
+        appendMarkdownRow(markdown, "Run Count", String.valueOf(report.runCount()));
+        appendMarkdownRow(markdown, "Item Count", String.valueOf(report.itemCount()));
+        appendMarkdownRow(markdown, "Step Count", String.valueOf(report.stepCount()));
+
+        markdown.append("\n## Result Counts\n\n");
+        if (report.resultCounts().isEmpty()) {
+            markdown.append("No final results recorded.\n");
+        } else {
+            markdown.append("| Result | Count |\n");
+            markdown.append("| --- | ---: |\n");
+            report.resultCounts().entrySet().stream()
+                    .sorted(java.util.Map.Entry.comparingByKey())
+                    .forEach(entry -> appendMarkdownRow(markdown, entry.getKey(), String.valueOf(entry.getValue())));
+        }
+
+        markdown.append("\n## Runs\n");
+        for (ReleaseWindowReportView.RunReport run : report.runs()) {
+            markdown.append("\n### ").append(markdownText(run.runId())).append("\n\n");
+            markdown.append("| Type | Status | Operator | Started At | Finished At |\n");
+            markdown.append("| --- | --- | --- | --- | --- |\n");
+            markdown.append("| ")
+                    .append(markdownCell(run.runType())).append(" | ")
+                    .append(markdownCell(run.status())).append(" | ")
+                    .append(markdownCell(run.operator())).append(" | ")
+                    .append(markdownCell(run.startedAt())).append(" | ")
+                    .append(markdownCell(run.finishedAt())).append(" |\n\n");
+            markdown.append("| Repo | Iteration | Planned | Executed | Final Result | Step | Step Result | Message |\n");
+            markdown.append("| --- | --- | ---: | ---: | --- | --- | --- | --- |\n");
+            for (ReleaseWindowReportView.ItemReport item : run.items()) {
+                if (item.steps().isEmpty()) {
+                    appendMarkdownItemRow(markdown, item, null);
+                    continue;
+                }
+                for (ReleaseWindowReportView.StepReport step : item.steps()) {
+                    appendMarkdownItemRow(markdown, item, step);
+                }
+            }
+        }
+        return markdown.toString();
+    }
+
+    private void appendMarkdownRow(StringBuilder markdown, String field, String value) {
+        markdown.append("| ")
+                .append(markdownCell(field))
+                .append(" | ")
+                .append(markdownCell(value))
+                .append(" |\n");
+    }
+
+    private void appendMarkdownItemRow(StringBuilder markdown,
+                                       ReleaseWindowReportView.ItemReport item,
+                                       ReleaseWindowReportView.StepReport step) {
+        markdown.append("| ")
+                .append(markdownCell(item.repo())).append(" | ")
+                .append(markdownCell(item.iterationKey())).append(" | ")
+                .append(item.plannedOrder()).append(" | ")
+                .append(item.executedOrder()).append(" | ")
+                .append(markdownCell(item.finalResult())).append(" | ")
+                .append(markdownCell(step == null ? null : step.actionType())).append(" | ")
+                .append(markdownCell(step == null ? null : step.result())).append(" | ")
+                .append(markdownCell(step == null ? null : step.message())).append(" |\n");
+    }
+
+    private String markdownCell(String value) {
+        return markdownText(value).replace("|", "\\|");
+    }
+
+    private String markdownText(String value) {
+        return valueOrEmpty(value)
+                .replace("\r", " ")
+                .replace("\n", " ");
+    }
+
     private String csvRow(List<String> values) {
         return values.stream().map(this::csvCell).collect(java.util.stream.Collectors.joining(","));
     }

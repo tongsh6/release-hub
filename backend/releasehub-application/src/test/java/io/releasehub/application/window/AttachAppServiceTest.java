@@ -36,7 +36,9 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -71,6 +73,7 @@ class AttachAppServiceTest {
                 releaseWindowPort, iterationPort, windowIterationPort,
                 iterationRepoPort, gitBranchAdapterFactory, codeRepositoryPort, branchRuleUseCase, runPort
         );
+        lenient().when(branchRuleUseCase.isCompliant(anyString(), any(), any())).thenReturn(true);
     }
 
     @Test
@@ -96,7 +99,7 @@ class AttachAppServiceTest {
         when(iterationRepoPort.getVersionInfo("ITER-1", "repo-1")).thenReturn(Optional.of(
                 IterationRepoVersionInfo.builder().repoId("repo-1").featureBranch("feature/ITER-1").build()
         ));
-        when(branchRuleUseCase.isCompliant("release/RW-1")).thenReturn(true);
+        when(branchRuleUseCase.isCompliant("release/RW-1", "G001", "repo-1")).thenReturn(true);
         when(gitBranchAdapterFactory.getAdapter(GitProvider.GITLAB)).thenReturn(gitBranchPort);
         when(gitBranchPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "release/RW-1", "master")).thenReturn(true);
         when(gitBranchPort.mergeBranch(eq(repo.getCloneUrl()), eq(repo.getGitAccessToken()), eq("feature/ITER-1"), eq("release/RW-1"), any()))
@@ -104,6 +107,7 @@ class AttachAppServiceTest {
 
         attachAppService.attach("window-1", List.of("ITER-1"));
 
+        verify(branchRuleUseCase).isCompliant("release/RW-1", "G001", "repo-1");
         verify(gitBranchPort).createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "release/RW-1", "master");
         verify(gitBranchPort).mergeBranch(eq(repo.getCloneUrl()), eq(repo.getGitAccessToken()), eq("feature/ITER-1"), eq("release/RW-1"), any());
         verify(windowIterationPort).updateReleaseBranch(eq("window-1"), eq("ITER-1"), eq("release/RW-1"), any());

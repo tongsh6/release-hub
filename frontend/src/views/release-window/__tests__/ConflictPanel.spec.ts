@@ -1,3 +1,4 @@
+/* eslint-disable vue/one-component-per-file */
 import { shallowMount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, inject, provide } from 'vue'
@@ -32,7 +33,12 @@ const stubs = {
     template: '<span><slot /></span>'
   },
   ElTable: defineComponent({
-    props: ['data'],
+    props: {
+      data: {
+        type: Array,
+        default: () => []
+      }
+    },
     setup(props, { slots }) {
       provide('tableRows', props.data)
       return () => h('table', slots.default?.())

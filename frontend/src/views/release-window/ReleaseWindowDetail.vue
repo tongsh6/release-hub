@@ -40,13 +40,23 @@
         <el-divider direction="vertical" />
         
         <!-- 功能按钮 -->
-        <el-button
+        <el-dropdown
           v-if="form.id"
-          :icon="Download"
-          @click="handleExportReport"
+          trigger="click"
+          @command="handleExportReport"
         >
-          {{ t('releaseWindow.report.export') }}
-        </el-button>
+          <el-button :icon="Download">
+            {{ t('releaseWindow.report.export') }}
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="csv">{{ t('releaseWindow.report.csv') }}</el-dropdown-item>
+              <el-dropdown-item command="json">{{ t('releaseWindow.report.json') }}</el-dropdown-item>
+              <el-dropdown-item command="md">{{ t('releaseWindow.report.markdown') }}</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button
           v-if="canChangeIterations"
           v-perm.disable="'release-window:write'"
@@ -56,7 +66,7 @@
           {{ t('releaseWindow.attachIterations') }}
         </el-button>
         <el-button
-          v-if="iterations.length > 0 && form.status === 'DRAFT'"
+          v-if="iterations.length > 0 && canChangeIterations"
           v-perm.disable="'release-window:write'"
           type="success"
           @click="openCodeMerge"
@@ -205,7 +215,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, Delete, Download } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowLeft, Delete, Download } from '@element-plus/icons-vue'
 import { releaseWindowApi, type ConflictItemView, type ReleaseWindow } from '@/api/modules/releaseWindow'
 import { iterationApi, type ConflictResolution } from '@/api/iterationApi'
 import { repositoryApi, type Repository } from '@/api/repositoryApi'
@@ -385,13 +395,13 @@ const openVersionUpdate = () => {
   versionUpdateDialogRef.value?.open(form.value.id, iterations.value.flatMap(iter => iter.repos || []))
 }
 
-const handleExportReport = () => {
+const handleExportReport = (format: 'csv' | 'json' | 'md' = 'csv') => {
   if (!form.value?.id) return
   if (!hasPerm('release-window:read')) {
     ElMessage.warning(t('common.permissionDenied'))
     return
   }
-  window.open(`/api/v1/release-windows/${form.value.id}/report.csv`, '_blank')
+  window.open(`/api/v1/release-windows/${form.value.id}/report.${format}`, '_blank')
 }
 
 const handleResolveConflict = async (item: ConflictItemView, resolution: ConflictResolution = 'USE_SYSTEM') => {

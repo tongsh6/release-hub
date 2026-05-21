@@ -39,9 +39,11 @@ public class IterationRepoJpaEntity {
     
     @Column(name = "version_synced_at")
     private Instant versionSyncedAt;
+
+    @Column(name = "branch_creation_mode", length = 16)
+    private String branchCreationMode;
     
     public IterationRepoJpaEntity(IterationRepoId id) {
         this.id = id;
     }
 }
-

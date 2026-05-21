@@ -76,6 +76,7 @@ import { hasPerm } from '@/utils/perm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { handleError } from '@/utils/error'
 import { formatDate, formatDateTime } from '@/utils/date'
+import { deleteProtectionMessageKey } from '@/utils/deleteProtection'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -118,6 +119,11 @@ async function handleDelete(row: Iteration) {
     fetch()
   } catch (error) {
     if (error !== 'cancel') {
+      const messageKey = deleteProtectionMessageKey(error)
+      if (messageKey) {
+        ElMessage.warning(t(messageKey))
+        return
+      }
       handleError(error)
     }
   }

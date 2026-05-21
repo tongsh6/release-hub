@@ -15,6 +15,32 @@
         <el-descriptions-item :label="t('run.columns.end')">{{ detail?.finishedAt }}</el-descriptions-item>
         <el-descriptions-item :label="t('run.columns.operator')">{{ detail?.operator }}</el-descriptions-item>
       </el-descriptions>
+      <div class="run-summary">
+        <div class="summary-item">
+          <span class="summary-label">{{ t('run.detail.totalItems') }}</span>
+          <strong>{{ itemSummary.total }}</strong>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">{{ t('run.detail.successItems') }}</span>
+          <strong class="summary-success">{{ itemSummary.succeeded }}</strong>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">{{ t('run.detail.failedItems') }}</span>
+          <strong class="summary-danger">{{ itemSummary.failed }}</strong>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">{{ t('run.detail.retryableItems') }}</span>
+          <strong>{{ itemSummary.retryable }}</strong>
+        </div>
+      </div>
+      <el-alert
+        v-if="hasPartialFailure"
+        class="partial-failure-alert"
+        type="warning"
+        :closable="false"
+        show-icon
+        :title="t('run.detail.partialFailure', { success: itemSummary.succeeded, failed: itemSummary.failed })"
+      />
     </el-card>
 
     <!-- 运行任务列表 -->
@@ -22,6 +48,13 @@
       <template #header>
         <div class="card-header">
           <span>{{ t('run.detail.tasksTitle') }}</span>
+          <span class="task-summary">
+            {{ t('run.detail.taskSummary', {
+              total: taskSummary.total,
+              failed: taskSummary.failed,
+              retryable: taskSummary.retryable
+            }) }}
+          </span>
           <el-button size="small" @click="fetchTasks">{{ t('common.refresh') }}</el-button>
         </div>
       </template>
@@ -165,6 +198,31 @@ const failedItemKeys = computed(() => {
     .map(item => `${item.windowKey}::${item.repoId}::${item.iterationKey}`)
 })
 
+const itemSummary = computed(() => {
+  const items = detail.value?.items || []
+  const succeeded = items.filter(item => isSuccessfulResult(item.finalResult)).length
+  const failed = items.filter(item => isFailedResult(item.finalResult)).length
+  const skipped = items.filter(item => isSkippedResult(item.finalResult)).length
+  return {
+    total: items.length,
+    succeeded,
+    failed,
+    skipped,
+    retryable: failedItemKeys.value.length
+  }
+})
+
+const taskSummary = computed(() => {
+  return {
+    total: tasks.value.length,
+    completed: tasks.value.filter(task => task.status === 'COMPLETED').length,
+    failed: tasks.value.filter(task => task.status === 'FAILED').length,
+    retryable: tasks.value.filter(task => task.status === 'FAILED' && task.retryCount < task.maxRetries).length
+  }
+})
+
+const hasPartialFailure = computed(() => itemSummary.value.succeeded > 0 && itemSummary.value.failed > 0)
+
 const goBack = () => {
   router.push({ name: 'Runs' })
 }
@@ -237,7 +295,19 @@ async function handleRetryFailedItems() {
 }
 
 function isRetryableItem(item: RunItem): boolean {
-  return Boolean(item.finalResult?.includes('FAILED') || item.finalResult === 'MERGE_BLOCKED')
+  return isFailedResult(item.finalResult)
+}
+
+function isFailedResult(result?: string): boolean {
+  return Boolean(result?.includes('FAILED') || result === 'MERGE_BLOCKED')
+}
+
+function isSuccessfulResult(result?: string): boolean {
+  return Boolean(result?.includes('SUCCESS') || result === 'MERGED')
+}
+
+function isSkippedResult(result?: string): boolean {
+  return Boolean(result === 'SKIPPED' || result === 'CI_NOT_CONFIGURED')
 }
 
 function getTaskStatusType(status: string): string {
@@ -334,5 +404,42 @@ onMounted(() => {
 .error-message {
   color: var(--el-color-danger);
   font-size: 12px;
+}
+.run-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.summary-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 4px;
+}
+.summary-label,
+.task-summary {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+.summary-success {
+  color: var(--el-color-success);
+}
+.summary-danger {
+  color: var(--el-color-danger);
+}
+.partial-failure-alert {
+  margin-top: 12px;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.card-header .task-summary {
+  flex: 1;
 }
 </style>

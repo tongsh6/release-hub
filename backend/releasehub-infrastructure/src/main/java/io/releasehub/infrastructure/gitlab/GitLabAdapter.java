@@ -281,15 +281,17 @@ public class GitLabAdapter implements GitLabPort {
             }
 
             int total = branches.size();
-            // Assuming all returned are active for now, or check 'commit' date if needed
-            int active = total;
+            List<String> activeBranches = branches.stream()
+                    .map(b -> (String) b.get("name"))
+                    .filter(name -> name != null && !isArchiveBranch(name))
+                    .toList();
+            int active = activeBranches.size();
 
             // Check compliance
             Pattern compliantPattern = Pattern.compile("^(main|master|develop|feature/.*|fix/.*|release/.*|hotfix/.*)$");
-            int nonCompliant = (int) branches.stream()
-                                             .map(b -> (String) b.get("name"))
-                                             .filter(name -> !compliantPattern.matcher(name).matches())
-                                             .count();
+            int nonCompliant = (int) activeBranches.stream()
+                    .filter(name -> !compliantPattern.matcher(name).matches())
+                    .count();
 
             return new BranchStatistics(total, active, nonCompliant);
 
@@ -297,6 +299,10 @@ public class GitLabAdapter implements GitLabPort {
             log.error("Failed to fetch branch statistics for project {}", projectId, e);
             return new BranchStatistics(0, 0, 0);
         }
+    }
+
+    private boolean isArchiveBranch(String branchName) {
+        return branchName.startsWith("archive/");
     }
 
     @Override

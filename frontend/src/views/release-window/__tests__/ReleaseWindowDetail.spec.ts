@@ -76,10 +76,32 @@ const conflictPanelRefresh = vi.fn()
 
 const stubs = {
   ArrowLeft: true,
+  ArrowDown: true,
   Download: true,
   ElButton: {
     emits: ['click'],
     template: '<button type="button" @click="$emit(\'click\', $event)"><slot /></button>'
+  },
+  ElIcon: {
+    template: '<span><slot /></span>'
+  },
+  ElDropdown: {
+    emits: ['command'],
+    template: `
+      <div>
+        <slot />
+        <slot name="dropdown" />
+        <button type="button" class="export-csv" @click="$emit('command', 'csv')">csv</button>
+        <button type="button" class="export-json" @click="$emit('command', 'json')">json</button>
+        <button type="button" class="export-md" @click="$emit('command', 'md')">md</button>
+      </div>
+    `
+  },
+  ElDropdownMenu: {
+    template: '<div><slot /></div>'
+  },
+  ElDropdownItem: {
+    template: '<button type="button"><slot /></button>'
   },
   ElDivider: true,
   ElDescriptions: {
@@ -133,6 +155,16 @@ const stubs = {
   }
 }
 
+const mountReleaseWindowDetail = (customStubs = stubs) => shallowMount(ReleaseWindowDetail, {
+  global: {
+    stubs: customStubs,
+    directives: {
+      loading: {},
+      perm: {}
+    }
+  }
+})
+
 describe('ReleaseWindowDetail', () => {
   const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
 
@@ -171,7 +203,7 @@ describe('ReleaseWindowDetail', () => {
     vi.mocked(repositoryApi.get).mockResolvedValue({
       id: 'repo-1',
       name: 'repo-1',
-      cloneUrl: 'mock:///repo-1.git',
+      cloneUrl: 'https://gitlab.example.com/customer/repo-1.git',
       defaultBranch: 'main',
       repoType: 'application',
       monoRepo: false,
@@ -197,9 +229,7 @@ describe('ReleaseWindowDetail', () => {
   })
 
   it('resolves a version conflict with USE_SYSTEM and refreshes the conflict panel', async () => {
-    const wrapper = shallowMount(ReleaseWindowDetail, {
-      global: { stubs }
-    })
+    const wrapper = mountReleaseWindowDetail()
     await flushPromises()
     await flushPromises()
 
@@ -234,9 +264,7 @@ describe('ReleaseWindowDetail', () => {
       }
     }
 
-    const wrapper = shallowMount(ReleaseWindowDetail, {
-      global: { stubs: repoAheadStubs }
-    })
+    const wrapper = mountReleaseWindowDetail(repoAheadStubs)
     await flushPromises()
     await flushPromises()
 
@@ -253,30 +281,55 @@ describe('ReleaseWindowDetail', () => {
   })
 
   it('exports the release window report as CSV from the detail page', async () => {
-    const wrapper = shallowMount(ReleaseWindowDetail, {
-      global: { stubs }
-    })
+    const wrapper = mountReleaseWindowDetail()
     await flushPromises()
     await flushPromises()
 
-    const exportButton = wrapper.findAll('button')
-      .find(button => button.text().includes('releaseWindow.report.export'))
-    expect(exportButton).toBeTruthy()
-    await exportButton!.trigger('click')
+    await wrapper.find('.export-csv').trigger('click')
 
     expect(openSpy).toHaveBeenCalledWith('/api/v1/release-windows/window-1/report.csv', '_blank')
   })
 
+  it('exports JSON and Markdown release window report artifacts from the detail page', async () => {
+    const wrapper = mountReleaseWindowDetail()
+    await flushPromises()
+    await flushPromises()
+
+    await wrapper.find('.export-json').trigger('click')
+    await wrapper.find('.export-md').trigger('click')
+
+    expect(openSpy).toHaveBeenCalledWith('/api/v1/release-windows/window-1/report.json', '_blank')
+    expect(openSpy).toHaveBeenCalledWith('/api/v1/release-windows/window-1/report.md', '_blank')
+  })
+
   it('hides release plan mutation controls after publish', async () => {
-    const wrapper = shallowMount(ReleaseWindowDetail, {
-      global: { stubs }
-    })
+    const wrapper = mountReleaseWindowDetail()
     await flushPromises()
     await flushPromises()
 
     const buttonTexts = wrapper.findAll('button').map(button => button.text())
     expect(buttonTexts.some(text => text.includes('releaseWindow.attachIterations'))).toBe(false)
     expect(buttonTexts.some(text => text.includes('common.remove'))).toBe(false)
+  })
+
+  it('hides release plan mutation controls while draft window is frozen', async () => {
+    vi.mocked(releaseWindowApi.get).mockResolvedValue({
+      id: 'window-1',
+      windowKey: 'RW-1',
+      name: 'Window 1',
+      status: 'DRAFT',
+      frozen: true
+    } as any)
+
+    const wrapper = mountReleaseWindowDetail()
+    await flushPromises()
+    await flushPromises()
+
+    const buttonTexts = wrapper.findAll('button').map(button => button.text())
+    expect(buttonTexts.some(text => text.includes('releaseWindow.attachIterations'))).toBe(false)
+    expect(buttonTexts.some(text => text.includes('releaseWindow.codeMerge.button'))).toBe(false)
+    expect(buttonTexts.some(text => text.includes('common.remove'))).toBe(false)
+    expect(buttonTexts.some(text => text.includes('releaseWindow.unfreeze'))).toBe(true)
   })
 
   it('detaches an associated iteration from the detail page and refreshes the list', async () => {
@@ -288,9 +341,7 @@ describe('ReleaseWindowDetail', () => {
       frozen: false
     } as any)
 
-    const wrapper = shallowMount(ReleaseWindowDetail, {
-      global: { stubs }
-    })
+    const wrapper = mountReleaseWindowDetail()
     await flushPromises()
     await flushPromises()
 

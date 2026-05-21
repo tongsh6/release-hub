@@ -30,4 +30,10 @@ public class ReleaseWindowReportController {
     public ResponseEntity<String> exportCsv(@PathVariable("id") String id) {
         return ResponseEntity.ok(exportAppService.exportReleaseWindowCsv(id));
     }
+
+    @GetMapping(value = "/{id}/report.md", produces = "text/markdown")
+    @Operation(summary = "Export release window report as Markdown")
+    public ResponseEntity<String> exportMarkdown(@PathVariable("id") String id) {
+        return ResponseEntity.ok(exportAppService.exportReleaseWindowMarkdown(id));
+    }
 }

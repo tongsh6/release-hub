@@ -2,6 +2,7 @@ package io.releasehub.infrastructure.persistence.iteration;
 
 import io.releasehub.application.iteration.IterationRepoPort;
 import io.releasehub.application.iteration.IterationRepoVersionInfo;
+import io.releasehub.domain.iteration.BranchCreationMode;
 import io.releasehub.domain.version.VersionSource;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -20,9 +21,11 @@ public class IterationRepoPersistenceAdapter implements IterationRepoPort {
     @Override
     public void saveWithVersion(String iterationKey, String repoId, String baseVersion,
                                  String devVersion, String targetVersion, String featureBranch,
-                                 String versionSource, Instant versionSyncedAt) {
+                                 String versionSource, Instant versionSyncedAt,
+                                 BranchCreationMode branchCreationMode) {
         IterationRepoId id = new IterationRepoId(iterationKey, repoId);
         Optional<IterationRepoJpaEntity> existing = jpaRepository.findById(id);
+        String branchMode = branchCreationMode != null ? branchCreationMode.name() : BranchCreationMode.AUTO.name();
         
         IterationRepoJpaEntity entity;
         if (existing.isPresent()) {
@@ -33,9 +36,10 @@ public class IterationRepoPersistenceAdapter implements IterationRepoPort {
             entity.setFeatureBranch(featureBranch);
             entity.setVersionSource(versionSource);
             entity.setVersionSyncedAt(versionSyncedAt);
+            entity.setBranchCreationMode(branchMode);
         } else {
             entity = new IterationRepoJpaEntity(id, baseVersion, devVersion, targetVersion,
-                    featureBranch, versionSource, versionSyncedAt);
+                    featureBranch, versionSource, versionSyncedAt, branchMode);
         }
         
         jpaRepository.save(entity);
@@ -74,8 +78,16 @@ public class IterationRepoPersistenceAdapter implements IterationRepoPort {
                 .devVersion(e.getDevVersion())
                 .targetVersion(e.getTargetVersion())
                 .featureBranch(e.getFeatureBranch())
+                .branchCreationMode(parseBranchCreationMode(e.getBranchCreationMode()))
                 .versionSource(e.getVersionSource() != null ? VersionSource.valueOf(e.getVersionSource()) : null)
                 .versionSyncedAt(e.getVersionSyncedAt())
                 .build();
+    }
+
+    private BranchCreationMode parseBranchCreationMode(String value) {
+        if (value == null || value.isBlank()) {
+            return BranchCreationMode.AUTO;
+        }
+        return BranchCreationMode.valueOf(value);
     }
 }

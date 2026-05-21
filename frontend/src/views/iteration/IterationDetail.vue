@@ -64,7 +64,7 @@
         show-icon
         :title="t('iteration.detail.repoScopeLocked')"
       />
-      <el-table v-if="repos.length > 0" v-loading="reposLoading" :data="repos" stripe>
+      <el-table v-if="repoRows.length > 0" v-loading="reposLoading" :data="repoRows" stripe>
         <el-table-column prop="name" :label="t('repository.columns.name')" min-width="140">
           <template #default="{ row }">
             <span class="repo-name">{{ row.name }}</span>
@@ -77,27 +77,45 @@
             </el-link>
           </template>
         </el-table-column>
+        <el-table-column :label="t('iteration.branchCreationMode.label')" width="120">
+          <template #default="{ row }">
+            <el-tag v-if="row.versionInfo?.branchCreationMode" size="small">
+              {{ branchCreationModeLabel(row.versionInfo.branchCreationMode) }}
+            </el-tag>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
         <el-table-column :label="t('iteration.version.featureBranch')" width="180">
           <template #default="{ row }">
-            <el-tag v-if="versionMap[row.id]?.featureBranch" size="small" type="info">
-              {{ versionMap[row.id].featureBranch }}
+            <el-tag v-if="row.versionInfo?.featureBranch" size="small" type="info">
+              {{ row.versionInfo.featureBranch }}
             </el-tag>
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('iteration.version.baseVersion')" width="110">
           <template #default="{ row }">
-            <span>{{ versionMap[row.id]?.baseVersion || '-' }}</span>
+            <span>{{ row.versionInfo?.baseVersion || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('iteration.version.devVersion')" width="110">
           <template #default="{ row }">
-            <span class="version-dev">{{ versionMap[row.id]?.devVersion || '-' }}</span>
+            <span class="version-dev">{{ row.versionInfo?.devVersion || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('iteration.version.targetVersion')" width="110">
           <template #default="{ row }">
-            <span class="version-target">{{ versionMap[row.id]?.targetVersion || '-' }}</span>
+            <span class="version-target">{{ row.versionInfo?.targetVersion || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('iteration.version.source')" width="100">
+          <template #default="{ row }">
+            <span>{{ row.versionInfo?.versionSource || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('iteration.version.syncedAt')" width="160">
+          <template #default="{ row }">
+            <span>{{ formatDateTime(row.versionInfo?.versionSyncedAt) }}</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('common.actions')" width="150" fixed="right">
@@ -179,6 +197,14 @@ const attachRef = ref<InstanceType<typeof AttachWindowDialog>>()
 const addReposRef = ref<InstanceType<typeof AddReposDialog>>()
 const conflictDialogRef = ref<InstanceType<typeof VersionConflictDialog>>()
 const canChangeRepos = computed(() => !iteration.value?.attachedToWindow)
+const repoRows = computed(() => repos.value.map(repo => ({
+  ...repo,
+  versionInfo: versionMap[repo.id]
+})))
+
+function branchCreationModeLabel(mode?: IterationRepoVersionInfo['branchCreationMode']) {
+  return mode ? t(`iteration.branchCreationMode.${mode}`) : '-'
+}
 
 const fetchDetail = async () => {
   loading.value = true

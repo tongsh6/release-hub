@@ -86,6 +86,20 @@ public class ReleaseWindowAppService {
         return ReleaseWindowView.from(rw);
     }
 
+    @Transactional
+    public void delete(String id) {
+        ReleaseWindowId windowId = ReleaseWindowId.of(id);
+        ReleaseWindow rw = releaseWindowPort.findById(windowId)
+                                            .orElseThrow(() -> NotFoundException.releaseWindow(id));
+        if (rw.getStatus() != ReleaseWindowStatus.DRAFT) {
+            throw BusinessException.rwDeleteBlocked(id);
+        }
+        if (!windowIterationPort.listByWindow(windowId).isEmpty()) {
+            throw BusinessException.rwDeleteBlocked(id);
+        }
+        releaseWindowPort.deleteById(windowId);
+    }
+
     public List<ReleaseWindowView> list() {
         return releaseWindowPort.findAll().stream()
                                 .map(ReleaseWindowView::from)
@@ -98,6 +112,33 @@ public class ReleaseWindowAppService {
                                               .map(ReleaseWindowView::from)
                                               .toList();
         return new PageResult<>(views, result.total());
+    }
+
+    public PageResult<ReleaseWindowView> listPaged(String name, ReleaseWindowStatus status, String groupCode, int page, int size) {
+        if (groupCode == null || groupCode.isBlank()) {
+            return listPaged(name, status, page, size);
+        }
+        groupPort.findByCode(groupCode)
+                 .orElseThrow(() -> NotFoundException.groupCode(groupCode));
+        List<String> groupCodes = collectGroupCodes(groupCode);
+        PageResult<ReleaseWindow> result = releaseWindowPort.findPaged(name, status, groupCodes, page, size);
+        List<ReleaseWindowView> views = result.items().stream()
+                                              .map(ReleaseWindowView::from)
+                                              .toList();
+        return new PageResult<>(views, result.total());
+    }
+
+    private List<String> collectGroupCodes(String rootCode) {
+        List<String> codes = new ArrayList<>();
+        collectGroupCodes(rootCode, codes);
+        return codes;
+    }
+
+    private void collectGroupCodes(String code, List<String> result) {
+        result.add(code);
+        for (var child : groupPort.findByParentCode(code)) {
+            collectGroupCodes(child.getCode(), result);
+        }
     }
 
     @Transactional

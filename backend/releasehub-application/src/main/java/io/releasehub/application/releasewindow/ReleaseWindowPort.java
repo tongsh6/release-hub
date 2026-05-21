@@ -19,4 +19,12 @@ public interface ReleaseWindowPort {
     List<ReleaseWindow> findAll();
 
     PageResult<ReleaseWindow> findPaged(String name, ReleaseWindowStatus status, int page, int size);
+
+    default PageResult<ReleaseWindow> findPaged(String name, ReleaseWindowStatus status, List<String> groupCodes, int page, int size) {
+        return findPaged(name, status, page, size);
+    }
+
+    default void deleteById(ReleaseWindowId id) {
+        throw new UnsupportedOperationException("deleteById is not implemented");
+    }
 }

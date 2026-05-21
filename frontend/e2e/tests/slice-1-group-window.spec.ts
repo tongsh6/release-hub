@@ -6,7 +6,7 @@
  */
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { ensureLoggedIn, loadLabels, confirmDialog, confirmMessageBox, tcName, FORCE } from './helpers'
+import { ensureLoggedIn, loadLabels, confirmDialog, confirmMessageBox, tcName, FORCE } from './helpers.js'
 
 test.describe.serial('Slice-1: Group + Window', () => {
   let L: Record<string, string> = {}

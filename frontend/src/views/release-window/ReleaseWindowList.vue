@@ -12,6 +12,13 @@
           <el-option value="CLOSED" :label="t('releaseWindow.statusText.CLOSED')" />
         </el-select>
       </el-form-item>
+      <el-form-item :label="t('group.title')">
+        <GroupTreeSelect
+          v-model="query.groupCode"
+          :leaf-only="false"
+          :placeholder="t('group.selectGroup')"
+        />
+      </el-form-item>
     </SearchForm>
 
     <DataTable
@@ -28,6 +35,11 @@
       </template>
       <el-table-column prop="windowKey" :label="t('releaseWindow.windowKey')" width="180" />
       <el-table-column prop="name" :label="t('releaseWindow.name')" min-width="150" />
+      <el-table-column :label="t('releaseWindow.groupPath')" min-width="180">
+        <template #default="{ row }">
+          {{ resolveWindowGroupPath(row) }}
+        </template>
+      </el-table-column>
       <el-table-column prop="description" :label="t('releaseWindow.description')" min-width="150">
         <template #default="{ row }">
           <el-tooltip
@@ -65,7 +77,7 @@
           <el-button link type="primary" @click="handleView(row)">{{ t('releaseWindow.view') }}</el-button>
 
           <el-button 
-            v-if="row.status === 'DRAFT'"
+            v-if="canAttachIterations(row)"
             v-perm.disable="'release-window:write'"
             link 
             type="primary"
@@ -75,7 +87,7 @@
           </el-button>
           
           <el-button 
-            v-if="row.status === 'DRAFT' && !row.frozen"
+            v-if="canFreeze(row)"
             v-perm.disable="'release-window:write'"
             link 
             type="warning"
@@ -85,7 +97,7 @@
           </el-button>
           
           <el-button 
-            v-if="row.frozen && row.status === 'DRAFT'"
+            v-if="canUnfreeze(row)"
             v-perm.disable="'release-window:write'"
             link 
             @click="handleUnfreeze(row)"
@@ -112,6 +124,16 @@
           >
             {{ t('releaseWindow.close') }}
           </el-button>
+
+          <el-button
+            v-if="row.status === 'DRAFT'"
+            v-perm.disable="'release-window:write'"
+            link
+            type="danger"
+            @click="handleDelete(row)"
+          >
+            {{ t('common.delete') }}
+          </el-button>
         </template>
       </el-table-column>
     </DataTable>
@@ -122,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Plus } from '@element-plus/icons-vue'
@@ -132,15 +154,20 @@ import DataTable from '@/components/crud/DataTable.vue'
 import ReleaseWindowDialog from './ReleaseWindowDialog.vue'
 import AttachIterationsDialog from './AttachIterationsDialog.vue'
 import { releaseWindowApi, type ReleaseWindow, type ReleaseWindowStatus } from '@/api/modules/releaseWindow'
+import { groupApi, type GroupNode } from '@/api/modules/group'
+import GroupTreeSelect from '@/components/common/GroupTreeSelect.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { hasPerm } from '@/utils/perm'
 import { handleError } from '@/utils/error'
 import { formatDateTime } from '@/utils/date'
+import { resolveGroupPath } from '@/utils/groupPath'
+import { deleteProtectionMessageKey } from '@/utils/deleteProtection'
 
 const { t } = useI18n()
 const router = useRouter()
 const dialogRef = ref<InstanceType<typeof ReleaseWindowDialog>>()
 const attachDialogRef = ref<InstanceType<typeof AttachIterationsDialog>>()
+const groupTree = ref<GroupNode[]>([])
 
 const listFetcher = async (q: any) => {
   return releaseWindowApi.list(q)
@@ -150,9 +177,28 @@ const { query, loading, list, total, fetch, search, reset, onPageChange, onPageS
   fetcher: listFetcher,
   defaultQuery: {
     name: '',
-    status: ''
+    status: '',
+    groupCode: ''
   }
 })
+
+onMounted(async () => {
+  try {
+    groupTree.value = await groupApi.listTree()
+  } catch {
+    groupTree.value = []
+  }
+})
+
+const resolveWindowGroupPath = (row: ReleaseWindow) => {
+  return resolveGroupPath(row.groupCode, groupTree.value) || row.groupCode || '-'
+}
+
+const canAttachIterations = (row: ReleaseWindow) => row.status === 'DRAFT' && !row.frozen
+
+const canFreeze = (row: ReleaseWindow) => row.status === 'DRAFT' && !row.frozen
+
+const canUnfreeze = (row: ReleaseWindow) => row.status === 'DRAFT' && row.frozen
 
 const handleCreate = () => {
   dialogRef.value?.open({ mode: 'create' })
@@ -224,6 +270,32 @@ if (!hasPerm('release-window:write')) {
     fetch()
   } catch (error) {
     if (error !== 'cancel') handleError(error)
+  }
+}
+
+const handleDelete = async (row: ReleaseWindow) => {
+  if (!hasPerm('release-window:write')) {
+    ElMessage.warning(t('common.permissionDenied'))
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      t('releaseWindow.confirmDelete', { key: row.windowKey }),
+      t('common.warning'),
+      { type: 'warning' }
+    )
+    await releaseWindowApi.delete(row.id)
+    ElMessage.success(t('common.success'))
+    fetch()
+  } catch (error) {
+    if (error !== 'cancel') {
+      const messageKey = deleteProtectionMessageKey(error)
+      if (messageKey) {
+        ElMessage.warning(t(messageKey))
+        return
+      }
+      handleError(error)
+    }
   }
 }
 

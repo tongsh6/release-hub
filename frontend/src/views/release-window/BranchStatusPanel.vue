@@ -11,7 +11,44 @@
       {{ t('releaseWindow.releasePlan.empty') }}
     </div>
 
-    <el-table v-else :data="planRows" border stripe style="width: 100%">
+    <template v-else>
+      <div class="branch-summary">
+        <div class="summary-item">
+          <span class="summary-label">{{ t('releaseWindow.releasePlan.totalRepos') }}</span>
+          <strong>{{ branchSummary.total }}</strong>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">{{ t('releaseWindow.releasePlan.featureMissing') }}</span>
+          <strong :class="{ 'summary-danger': branchSummary.featureMissing > 0 }">{{ branchSummary.featureMissing }}</strong>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">{{ t('releaseWindow.releasePlan.releaseMissing') }}</span>
+          <strong :class="{ 'summary-danger': branchSummary.releaseMissing > 0 }">{{ branchSummary.releaseMissing }}</strong>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">{{ t('releaseWindow.releasePlan.mergedCount') }}</span>
+          <strong class="summary-success">{{ branchSummary.merged }}</strong>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">{{ t('releaseWindow.releasePlan.conflictCount') }}</span>
+          <strong :class="{ 'summary-danger': branchSummary.conflict > 0 }">{{ branchSummary.conflict }}</strong>
+        </div>
+      </div>
+      <el-alert
+        v-if="hasBranchRisk"
+        class="branch-risk-alert"
+        type="warning"
+        :closable="false"
+        show-icon
+        :title="t('releaseWindow.releasePlan.branchRisk', {
+          featureMissing: branchSummary.featureMissing,
+          releaseMissing: branchSummary.releaseMissing,
+          conflict: branchSummary.conflict
+        })"
+      />
+    </template>
+
+    <el-table v-if="planRows.length > 0" :data="planRows" border stripe style="width: 100%">
       <el-table-column :label="t('releaseWindow.releasePlan.plannedOrder')" width="120" align="center">
         <template #default="{ row }">
           <el-tag type="info" size="small">{{ row.plannedOrderLabel }}</el-tag>
@@ -103,6 +140,23 @@ const planRows = computed<ReleasePlanRow[]>(() => {
     .sort((a, b) => (a.plannedOrder ?? Number.MAX_SAFE_INTEGER) - (b.plannedOrder ?? Number.MAX_SAFE_INTEGER) || a.iterationKey.localeCompare(b.iterationKey) || a.repoName.localeCompare(b.repoName))
 })
 
+const branchSummary = computed(() => {
+  const rows = planRows.value
+  return {
+    total: rows.length,
+    featureMissing: rows.filter(row => !row.featureBranch.exists).length,
+    releaseMissing: rows.filter(row => !row.releaseBranch.exists).length,
+    merged: rows.filter(row => row.releaseBranch.mergeStatus === 'MERGED').length,
+    conflict: rows.filter(row => row.releaseBranch.mergeStatus === 'CONFLICT').length
+  }
+})
+
+const hasBranchRisk = computed(() => (
+  branchSummary.value.featureMissing > 0 ||
+  branchSummary.value.releaseMissing > 0 ||
+  branchSummary.value.conflict > 0
+))
+
 const load = async () => {
   loading.value = true
   try {
@@ -177,5 +231,39 @@ onMounted(() => load())
   background: #f5f7fa;
   padding: 0 4px;
   border-radius: 2px;
+}
+
+.branch-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 4px;
+}
+
+.summary-label {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.summary-success {
+  color: var(--el-color-success);
+}
+
+.summary-danger {
+  color: var(--el-color-danger);
+}
+
+.branch-risk-alert {
+  margin-bottom: 12px;
 }
 </style>
