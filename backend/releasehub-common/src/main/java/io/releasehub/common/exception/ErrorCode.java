@@ -51,6 +51,8 @@ public enum ErrorCode {
     REPO_BRANCH_TOO_LONG("REPO_009", "error.repo.branch_too_long", 400),
     REPO_ID_INVALID("REPO_010", "error.repo.id_invalid", 400),
     REPO_ATTACHED("REPO_011", "error.repo.attached", 400),
+    REPO_CLONE_URL_EXISTS("REPO_012", "error.repo.clone_url_exists", 409),
+    REPO_URL_INVALID("REPO_013", "error.repo.url_invalid", 400),
 
     // ========== 分组 (GROUP) ==========
     GROUP_NOT_FOUND("GROUP_001", "error.group.not_found", 404),

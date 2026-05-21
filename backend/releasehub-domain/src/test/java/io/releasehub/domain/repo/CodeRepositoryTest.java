@@ -68,11 +68,11 @@ class CodeRepositoryTest {
         Instant now = Instant.now();
 
         // Name checks
-        ValidationException exName = assertThrows(ValidationException.class, () -> CodeRepository.create("", "url", "main", "G001", RepoType.SERVICE, false, now));
+        ValidationException exName = assertThrows(ValidationException.class, () -> CodeRepository.create("", "https://git.com/group/repo.git", "main", "G001", RepoType.SERVICE, false, now));
         assertEquals("REPO_002", exName.getCode());
 
         String longName = "a".repeat(129);
-        ValidationException exNameLong = assertThrows(ValidationException.class, () -> CodeRepository.create(longName, "url", "main", "G001", RepoType.SERVICE, false, now));
+        ValidationException exNameLong = assertThrows(ValidationException.class, () -> CodeRepository.create(longName, "https://git.com/group/repo.git", "main", "G001", RepoType.SERVICE, false, now));
         assertEquals("REPO_003", exNameLong.getCode());
 
         // URL checks
@@ -83,23 +83,42 @@ class CodeRepositoryTest {
         ValidationException exUrlLong = assertThrows(ValidationException.class, () -> CodeRepository.create("Name", longUrl, "main", "G001", RepoType.SERVICE, false, now));
         assertEquals("REPO_007", exUrlLong.getCode());
 
+        ValidationException exUrlInvalid = assertThrows(ValidationException.class, () -> CodeRepository.create("Name", "not-a-git-url", "main", "G001", RepoType.SERVICE, false, now));
+        assertEquals("REPO_013", exUrlInvalid.getCode());
+
         // Branch checks
-        ValidationException exBranch = assertThrows(ValidationException.class, () -> CodeRepository.create("Name", "url", "", "G001", RepoType.SERVICE, false, now));
+        ValidationException exBranch = assertThrows(ValidationException.class, () -> CodeRepository.create("Name", "https://git.com/group/repo.git", "", "G001", RepoType.SERVICE, false, now));
         assertEquals("REPO_008", exBranch.getCode());
 
         // Group checks
-        ValidationException exGroup = assertThrows(ValidationException.class, () -> CodeRepository.create("Name", "url", "main", " ", RepoType.SERVICE, false, now));
+        ValidationException exGroup = assertThrows(ValidationException.class, () -> CodeRepository.create("Name", "https://git.com/group/repo.git", "main", " ", RepoType.SERVICE, false, now));
         assertEquals("GROUP_005", exGroup.getCode());
 
         String longGroup = "G".repeat(65);
-        ValidationException exGroupLong = assertThrows(ValidationException.class, () -> CodeRepository.create("Name", "url", "main", longGroup, RepoType.SERVICE, false, now));
+        ValidationException exGroupLong = assertThrows(ValidationException.class, () -> CodeRepository.create("Name", "https://git.com/group/repo.git", "main", longGroup, RepoType.SERVICE, false, now));
         assertEquals("GROUP_006", exGroupLong.getCode());
+    }
+
+    @Test
+    void cloneUrl_ShouldCanonicalizeCommonGitUrlForms() {
+        assertEquals(
+                "gitlab.example.com/customer/payment-service",
+                CloneUrl.parse("git@gitlab.example.com:Customer/Payment-Service.git").canonicalKey()
+        );
+        assertEquals(
+                "gitlab.example.com/customer/payment-service",
+                CloneUrl.parse("https://gitlab.example.com/customer/payment-service").canonicalKey()
+        );
+        assertEquals(
+                "gitlab.example.com/customer/payment-service",
+                CloneUrl.parse("ssh://git@gitlab.example.com/customer/payment-service.git").canonicalKey()
+        );
     }
 
     @Test
     void changeDefaultBranch_ShouldUpdate() {
         Instant now = Instant.now();
-        CodeRepository repo = CodeRepository.create("Name", "url", "main", "G001", RepoType.SERVICE, false, now);
+        CodeRepository repo = CodeRepository.create("Name", "https://git.com/group/repo.git", "main", "G001", RepoType.SERVICE, false, now);
 
         Instant later = now.plusSeconds(10);
         repo.changeDefaultBranch("develop", later);

@@ -80,6 +80,7 @@ import { ElMessage, type FormInstance } from 'element-plus'
 import { repositoryApi, type CreateRepoReq, type GitProvider } from '@/api/repositoryApi'
 import GroupTreeSelect from '@/components/common/GroupTreeSelect.vue'
 import { handleError } from '@/utils/error'
+import { isSupportedCloneUrl } from '@/utils/cloneUrl'
 
 interface RepoForm extends CreateRepoReq {
   gitProvider: GitProvider
@@ -114,6 +115,14 @@ const maskedToken = computed(() => {
   return originalToken.value.substring(0, 4) + '****'
 })
 
+const validateCloneUrl = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+  if (!isSupportedCloneUrl(value || '')) {
+    callback(new Error(t('repository.validation.cloneUrlFormat')))
+    return
+  }
+  callback()
+}
+
 const rules = {
   name: [
     { required: true, message: t('common.pleaseEnter') + t('repository.columns.repo'), trigger: 'blur' },
@@ -121,7 +130,8 @@ const rules = {
   ],
   cloneUrl: [
     { required: true, message: t('common.pleaseEnter') + t('repository.columns.cloneUrl'), trigger: 'blur' },
-    { max: 512, message: t('repository.validation.cloneUrl'), trigger: 'blur' }
+    { max: 512, message: t('repository.validation.cloneUrl'), trigger: 'blur' },
+    { validator: validateCloneUrl, trigger: 'blur' }
   ],
   defaultBranch: [
     { max: 128, message: t('repository.validation.defaultBranch'), trigger: 'blur' }
@@ -166,12 +176,12 @@ const submit = async () => {
       loading.value = true
       try {
         const payload = {
-          name: form.name,
-          cloneUrl: form.cloneUrl,
-          defaultBranch: form.defaultBranch,
+          name: form.name.trim(),
+          cloneUrl: form.cloneUrl.trim(),
+          defaultBranch: form.defaultBranch.trim(),
           repoType: form.repoType,
           monoRepo: form.monoRepo,
-          initialVersion: form.initialVersion || undefined,
+          initialVersion: form.initialVersion.trim() || undefined,
           groupCode: form.groupCode,
           gitProvider: form.gitProvider,
           gitAccessToken: form.gitAccessToken || undefined

@@ -105,6 +105,10 @@ public class BusinessException extends BaseException {
         return of(ErrorCode.REPO_ATTACHED, repoId);
     }
 
+    public static BusinessException repoCloneUrlExists(Object cloneUrl, Object existingRepoId) {
+        return of(ErrorCode.REPO_CLONE_URL_EXISTS, cloneUrl, existingRepoId);
+    }
+
     // ========== Run ==========
 
     public static BusinessException runNoItemsCreated(int iterationCount, Object windowId) {

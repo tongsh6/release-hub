@@ -10,6 +10,7 @@ import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.CloneUrl;
 import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.repo.RepoType;
@@ -42,9 +43,11 @@ public class CodeRepositoryAppService {
 
     @Transactional
     public CodeRepository create(String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode, GitProvider gitProvider, String gitAccessToken) {
-        String normalizedBranch = normalizeBranch(cloneUrl, defaultBranch);
+        CloneUrl parsedCloneUrl = CloneUrl.parse(cloneUrl);
+        String normalizedBranch = normalizeBranch(parsedCloneUrl.value(), defaultBranch);
         ensureLeafGroup(groupCode);
-        CodeRepository repo = CodeRepository.create(name, cloneUrl, normalizedBranch, groupCode, repoType, gitProvider, gitAccessToken, monoRepo, Instant.now(clock));
+        ensureCloneUrlUnique(parsedCloneUrl, null);
+        CodeRepository repo = CodeRepository.create(name, parsedCloneUrl.value(), normalizedBranch, groupCode, repoType, gitProvider, gitAccessToken, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
 
         if (initialVersion != null && !initialVersion.isBlank()) {
@@ -53,7 +56,7 @@ public class CodeRepositoryAppService {
         } else {
             // 尝试从仓库获取初始版本号
             try {
-                versionExtractorUseCase.extractVersion(cloneUrl, normalizedBranch)
+                versionExtractorUseCase.extractVersion(parsedCloneUrl.value(), normalizedBranch)
                                 .ifPresent(versionInfo -> {
                                     codeRepositoryPort.updateInitialVersion(
                                             repo.getId().value(),
@@ -100,11 +103,13 @@ public class CodeRepositoryAppService {
     @Transactional
     public CodeRepository update(String repoId, String name, String cloneUrl, String defaultBranch, RepoType repoType, boolean monoRepo, String initialVersion, String groupCode, GitProvider gitProvider, String gitAccessToken) {
         CodeRepository repo = get(repoId);
-        String normalizedBranch = normalizeBranch(cloneUrl, defaultBranch);
+        CloneUrl parsedCloneUrl = CloneUrl.parse(cloneUrl);
+        String normalizedBranch = normalizeBranch(parsedCloneUrl.value(), defaultBranch);
         ensureLeafGroup(groupCode);
+        ensureCloneUrlUnique(parsedCloneUrl, repo.getId());
         GitProvider effectiveProvider = gitProvider != null ? gitProvider : repo.getGitProvider();
         String effectiveToken = (gitAccessToken != null && !gitAccessToken.isBlank()) ? gitAccessToken.trim() : repo.getGitAccessToken();
-        repo.update(name, cloneUrl, normalizedBranch, groupCode, repoType, effectiveProvider, effectiveToken, monoRepo, Instant.now(clock));
+        repo.update(name, parsedCloneUrl.value(), normalizedBranch, groupCode, repoType, effectiveProvider, effectiveToken, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
         if (initialVersion != null && !initialVersion.isBlank()) {
             codeRepositoryPort.updateInitialVersion(repoId, initialVersion.trim(), VersionSource.MANUAL.name());
@@ -126,6 +131,25 @@ public class CodeRepositoryAppService {
                 .orElseThrow(() -> NotFoundException.groupCode(groupCode));
         if (groupPort.countChildren(groupCode) > 0) {
             throw BusinessException.groupNotLeaf(groupCode);
+        }
+    }
+
+    private void ensureCloneUrlUnique(CloneUrl candidate, RepoId excludedRepoId) {
+        codeRepositoryPort.findAll().stream()
+                .filter(existing -> excludedRepoId == null || !existing.getId().equals(excludedRepoId))
+                .filter(existing -> sameCloneUrl(existing, candidate))
+                .findFirst()
+                .ifPresent(existing -> {
+                    throw BusinessException.repoCloneUrlExists(candidate.value(), existing.getId().value());
+                });
+    }
+
+    private boolean sameCloneUrl(CodeRepository existing, CloneUrl candidate) {
+        try {
+            return CloneUrl.parse(existing.getCloneUrl()).canonicalKey().equals(candidate.canonicalKey());
+        } catch (ValidationException e) {
+            log.warn("Skip invalid existing cloneUrl while checking repository uniqueness, repoId={}", existing.getId().value());
+            return false;
         }
     }
 

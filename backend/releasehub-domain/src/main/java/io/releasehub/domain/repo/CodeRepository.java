@@ -94,12 +94,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
     }
 
     private static void validateUrl(String url) {
-        if (url == null || url.isBlank()) {
-            throw ValidationException.repoUrlRequired();
-        }
-        if (url.length() > 512) {
-            throw ValidationException.repoUrlTooLong(512);
-        }
+        CloneUrl.parse(url);
     }
 
     private static void validateBranch(String branch) {
@@ -129,7 +124,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
         validateUrl(cloneUrl);
         validateBranch(defaultBranch);
         validateGroupCode(groupCode);
-        return new CodeRepository(RepoId.newId(), name, cloneUrl, defaultBranch, groupCode, repoType, gitProvider, gitAccessToken, monoRepo, now);
+        return new CodeRepository(RepoId.newId(), name, cloneUrl.trim(), defaultBranch, groupCode, repoType, gitProvider, gitAccessToken, monoRepo, now);
     }
 
     public void changeDefaultBranch(String branch, Instant now) {
@@ -160,7 +155,7 @@ public class CodeRepository extends BaseEntity<RepoId> {
         validateBranch(defaultBranch);
         validateGroupCode(groupCode);
         this.name = name;
-        this.cloneUrl = cloneUrl;
+        this.cloneUrl = cloneUrl.trim();
         this.defaultBranch = defaultBranch;
         this.groupCode = groupCode;
         this.repoType = repoType != null ? repoType : RepoType.SERVICE;

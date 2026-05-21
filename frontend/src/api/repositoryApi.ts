@@ -132,6 +132,11 @@ export const repositoryApi = {
     return res.data.data
   },
 
+  async syncInitialVersion(id: Id): Promise<InitialVersionView> {
+    const res = await http.post<ApiResponse<InitialVersionView>>(`/v1/repositories/${id}/sync-version`)
+    return res.data.data
+  },
+
   async sync(id: Id): Promise<Repository> {
     const res = await http.post<ApiResponse<Repository>>(`/v1/repositories/${id}/sync`)
     return res.data.data

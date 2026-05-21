@@ -59,6 +59,10 @@ public class ValidationException extends BaseException {
         return of(ErrorCode.REPO_URL_TOO_LONG, maxLength);
     }
 
+    public static ValidationException repoUrlInvalid() {
+        return of(ErrorCode.REPO_URL_INVALID);
+    }
+
     public static ValidationException repoBranchRequired() {
         return of(ErrorCode.REPO_BRANCH_REQUIRED);
     }

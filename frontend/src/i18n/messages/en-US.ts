@@ -413,6 +413,8 @@ export default {
     },
     gitlabMissing: 'Configure GitLab settings first',
     gitlabUrlNotAvailable: 'GitLab URL not available',
+    syncVersion: 'Rescan Version',
+    versionSyncSuccess: 'Version status refreshed',
     confirmDelete: 'Confirm to delete this repository?',
     health: {
       healthy: 'Healthy',
@@ -421,6 +423,7 @@ export default {
     validation: {
       name: 'Name max 128 chars',
       cloneUrl: 'Clone URL max 512 chars',
+      cloneUrlFormat: 'Enter a supported Git URL',
       defaultBranch: 'Default branch max 128 chars',
       initialVersion: 'Initial version max 50 chars'
     }

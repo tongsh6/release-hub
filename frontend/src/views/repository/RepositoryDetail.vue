@@ -16,6 +16,16 @@
         <el-descriptions-item :label="t('repository.columns.versionStatus')">
           <span>{{ initialVersion?.version || '-' }}</span>
           <el-tag class="version-source-tag" :type="versionSourceTagType" size="small">{{ versionSourceLabel }}</el-tag>
+          <el-button
+            v-if="canSyncInitialVersion"
+            class="version-sync-button"
+            link
+            type="primary"
+            :loading="syncingVersion"
+            @click="handleSyncInitialVersion"
+          >
+            {{ t('repository.syncVersion') }}
+          </el-button>
         </el-descriptions-item>
         <el-descriptions-item :label="t('repository.columns.cloneUrl')">{{ detail?.cloneUrl || '-' }}</el-descriptions-item>
       </el-descriptions>
@@ -96,6 +106,7 @@ const branchSummary = ref<BranchSummary>()
 const initialVersion = ref<InitialVersionView>()
 const groupPath = ref('')
 const syncing = ref(false)
+const syncingVersion = ref(false)
 
 const versionSourceLabel = computed(() => {
   const source = initialVersion.value?.versionSource
@@ -111,6 +122,12 @@ const versionSourceTagType = computed(() => {
     return 'danger'
   }
   return source ? 'success' : 'info'
+})
+
+const canSyncInitialVersion = computed(() => {
+  const versionInfo = initialVersion.value
+  if (!versionInfo) return false
+  return !versionInfo.version || versionInfo.versionSource === 'VERSION_UNRESOLVED'
 })
 
 /**
@@ -168,6 +185,19 @@ async function handleSync() {
   }
 }
 
+async function handleSyncInitialVersion() {
+  if (!repoId) return
+  syncingVersion.value = true
+  try {
+    initialVersion.value = await repositoryApi.syncInitialVersion(repoId)
+    ElMessage.success(t('repository.versionSyncSuccess'))
+  } catch (e) {
+    handleError(e)
+  } finally {
+    syncingVersion.value = false
+  }
+}
+
 async function refresh() {
   if (!repoId) return
   try {
@@ -196,6 +226,10 @@ onMounted(() => {
 <style scoped>
 /* 页面特定样式 - 通用样式已移至 index.css */
 .version-source-tag {
+  margin-left: 8px;
+}
+
+.version-sync-button {
   margin-left: 8px;
 }
 </style>
