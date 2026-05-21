@@ -4,6 +4,13 @@
       <el-form-item :label="t('common.keyword')">
         <el-input v-model="query.keyword" :placeholder="t('repository.searchPlaceholder')" clearable />
       </el-form-item>
+      <el-form-item :label="t('group.title')">
+        <GroupTreeSelect
+          v-model="query.groupCode"
+          :leaf-only="false"
+          :placeholder="t('group.selectGroup')"
+        />
+      </el-form-item>
     </SearchForm>
 
     <DataTable
@@ -59,6 +66,7 @@ import DataTable from '@/components/crud/DataTable.vue'
 import RepositoryDrawer from './RepositoryDrawer.vue'
 import RepositoryEdit from './RepositoryEdit.vue'
 import { repositoryApi } from '@/api/repositoryApi'
+import GroupTreeSelect from '@/components/common/GroupTreeSelect.vue'
 import { hasPerm } from '@/utils/perm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/http'
@@ -71,7 +79,8 @@ const editRef = ref<InstanceType<typeof RepositoryEdit>>()
 const { query, loading, list, total, search, reset, onPageChange, onPageSizeChange } = useListPage({
   fetcher: repositoryApi.list,
   defaultQuery: {
-    keyword: ''
+    keyword: '',
+    groupCode: ''
   }
 })
 

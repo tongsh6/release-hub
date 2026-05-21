@@ -9,11 +9,13 @@ import io.releasehub.domain.repo.RepoType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -100,6 +102,19 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
             String k = keyword.trim();
             result = repository.findByNameContainingIgnoreCaseOrCloneUrlContainingIgnoreCase(k, k, pageable);
         }
+        List<CodeRepository> items = result.getContent().stream()
+                .map(this::toDomain)
+                .collect(Collectors.toList());
+        return new PageResult<>(items, result.getTotalElements());
+    }
+
+    @Override
+    public PageResult<CodeRepository> searchPaged(String keyword, Set<String> groupCodes, int page, int size) {
+        int pageIndex = Math.max(page - 1, 0);
+        PageRequest pageable = PageRequest.of(pageIndex, size);
+        Page<CodeRepositoryJpaEntity> result = groupCodes == null || groupCodes.isEmpty()
+                ? new PageImpl<>(List.of(), pageable, 0)
+                : repository.searchByGroupCodesAndKeyword(groupCodes, keyword == null ? null : keyword.trim(), pageable);
         List<CodeRepository> items = result.getContent().stream()
                 .map(this::toDomain)
                 .collect(Collectors.toList());

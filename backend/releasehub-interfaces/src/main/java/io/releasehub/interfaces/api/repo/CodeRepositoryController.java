@@ -119,8 +119,9 @@ public class CodeRepositoryController {
     @Operation(summary = "List repositories (paged)")
     public ApiPageResponse<List<CodeRepositoryView>> listPaged(@RequestParam(name = "page", defaultValue = "1") int page,
                                                                @RequestParam(name = "size", defaultValue = "20") int size,
-                                                               @RequestParam(name = "keyword", required = false) String keyword) {
-        var result = appService.searchPaged(keyword, page, size);
+                                                               @RequestParam(name = "keyword", required = false) String keyword,
+                                                               @RequestParam(name = "groupCode", required = false) String groupCode) {
+        var result = appService.searchPaged(keyword, groupCode, page, size);
         List<CodeRepositoryView> views = result.items().stream()
                 .map(CodeRepositoryView::fromDomain)
                 .collect(Collectors.toList());

@@ -84,11 +84,12 @@ export interface ApiPageResponse<T> {
 }
 
 export const repositoryApi = {
-  async list(query: PageQuery & { keyword?: string }): Promise<PageResult<Repository>> {
+  async list(query: PageQuery & { keyword?: string; groupCode?: string }): Promise<PageResult<Repository>> {
     const params = {
       page: query.page,
       size: query.pageSize,
-      keyword: query.keyword
+      keyword: query.keyword,
+      groupCode: query.groupCode
     }
     const res = await http.get<ApiPageResponse<Repository[]>>('/v1/repositories/paged', { params })
     return {

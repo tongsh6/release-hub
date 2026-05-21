@@ -7,6 +7,7 @@ import io.releasehub.application.settings.SettingsPort;
 import io.releasehub.application.version.VersionExtractorUseCase;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
 import io.releasehub.domain.iteration.Iteration;
@@ -32,6 +33,8 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -167,5 +170,85 @@ class CodeRepositoryAppServiceTest {
         assertThatThrownBy(() -> appService.create("Repo", "git@gitlab.com:test/repo.git", "main", null, false, null, "G404"))
                 .isInstanceOf(NotFoundException.class)
                 .satisfies(ex -> assertThat(((NotFoundException) ex).getCode()).isEqualTo("GROUP_002"));
+    }
+
+    @Test
+    @DisplayName("创建仓库时规范化后 cloneUrl 重复则失败")
+    void shouldRejectCreateWhenCloneUrlAlreadyManaged() {
+        Instant now = Instant.now();
+        CodeRepository existing = CodeRepository.rehydrate(
+                RepoId.of("repo-1"), "Repo", "git@gitlab.com:Customer/Payment.git", "main", "G001",
+                RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+        when(codeRepositoryPort.findAll()).thenReturn(List.of(existing));
+        when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, now, now, 0L)));
+        when(groupPort.countChildren("G001")).thenReturn(0L);
+
+        assertThatThrownBy(() -> appService.create("Repo2", "https://gitlab.com/customer/payment", "main", null, false, null, "G001"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("REPO_012"));
+        verify(codeRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("更新仓库时允许保持自身 cloneUrl 但拒绝改成其它仓库地址")
+    void shouldRejectUpdateWhenCloneUrlBelongsToAnotherRepo() {
+        Instant now = Instant.now();
+        CodeRepository current = CodeRepository.rehydrate(
+                RepoId.of("repo-1"), "Repo", "git@gitlab.com:team/current.git", "main", "G001",
+                RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+        CodeRepository other = CodeRepository.rehydrate(
+                RepoId.of("repo-2"), "Other", "git@gitlab.com:team/other.git", "main", "G001",
+                RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(current));
+        when(codeRepositoryPort.findAll()).thenReturn(List.of(current, other));
+        when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, now, now, 0L)));
+        when(groupPort.countChildren("G001")).thenReturn(0L);
+
+        assertThatThrownBy(() -> appService.update("repo-1", "Repo", "https://gitlab.com/team/other.git", "main", null, false, null, "G001"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("REPO_012"));
+        verify(codeRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("更新仓库时允许保持自身 cloneUrl")
+    void shouldAllowUpdateWhenCloneUrlBelongsToCurrentRepo() {
+        Instant now = Instant.now();
+        CodeRepository current = CodeRepository.rehydrate(
+                RepoId.of("repo-1"), "Repo", "git@gitlab.com:team/current.git", "main", "G001",
+                RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(current));
+        when(codeRepositoryPort.findAll()).thenReturn(List.of(current));
+        when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, now, now, 0L)));
+        when(groupPort.countChildren("G001")).thenReturn(0L);
+
+        appService.update("repo-1", "Repo", "https://gitlab.com/team/current.git", "main", null, false, null, "G001");
+
+        verify(codeRepositoryPort).save(current);
+    }
+
+    @Test
+    @DisplayName("按组织筛选仓库时包含所选组织及子组织")
+    void shouldSearchPagedByGroupScopeIncludingChildren() {
+        Instant now = Instant.now();
+        Group parent = Group.rehydrate(GroupId.of("G001"), "Parent", "G001", null, now, now, 0L);
+        Group child = Group.rehydrate(GroupId.of("G001001"), "Child", "G001001", "G001", now, now, 0L);
+        Group leaf = Group.rehydrate(GroupId.of("G001001001"), "Leaf", "G001001001", "G001001", now, now, 0L);
+        PageResult<CodeRepository> expected = new PageResult<>(List.of(), 0);
+        when(groupPort.findByCode("G001")).thenReturn(Optional.of(parent));
+        when(groupPort.findByParentCode("G001")).thenReturn(List.of(child));
+        when(groupPort.findByParentCode("G001001")).thenReturn(List.of(leaf));
+        when(groupPort.findByParentCode("G001001001")).thenReturn(List.of());
+        when(codeRepositoryPort.searchPaged(anyString(), anySet(), anyInt(), anyInt())).thenReturn(expected);
+
+        PageResult<CodeRepository> result = appService.searchPaged("payment", "G001", 1, 10);
+
+        assertThat(result).isSameAs(expected);
+        verify(codeRepositoryPort).searchPaged(
+                org.mockito.ArgumentMatchers.eq("payment"),
+                org.mockito.ArgumentMatchers.argThat(codes -> codes.containsAll(Set.of("G001", "G001001", "G001001001")) && codes.size() == 3),
+                org.mockito.ArgumentMatchers.eq(1),
+                org.mockito.ArgumentMatchers.eq(10)
+        );
     }
 }

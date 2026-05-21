@@ -22,7 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -174,6 +176,29 @@ public class CodeRepositoryAppService {
 
     public PageResult<CodeRepository> searchPaged(String keyword, int page, int size) {
         return codeRepositoryPort.searchPaged(keyword, page, size);
+    }
+
+    public PageResult<CodeRepository> searchPaged(String keyword, String groupCode, int page, int size) {
+        if (groupCode == null || groupCode.isBlank()) {
+            return searchPaged(keyword, page, size);
+        }
+        groupPort.findByCode(groupCode)
+                .orElseThrow(() -> NotFoundException.groupCode(groupCode));
+        Set<String> groupCodes = collectGroupScopeCodes(groupCode);
+        return codeRepositoryPort.searchPaged(keyword, groupCodes, page, size);
+    }
+
+    private Set<String> collectGroupScopeCodes(String rootGroupCode) {
+        Set<String> codes = new LinkedHashSet<>();
+        collectGroupScopeCodes(rootGroupCode, codes);
+        return codes;
+    }
+
+    private void collectGroupScopeCodes(String groupCode, Set<String> codes) {
+        if (!codes.add(groupCode)) {
+            return;
+        }
+        groupPort.findByParentCode(groupCode).forEach(child -> collectGroupScopeCodes(child.getCode(), codes));
     }
 
     public GateSummary getGateSummary(String repoId) {
