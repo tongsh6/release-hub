@@ -19,6 +19,7 @@
 | 目录 | 用途 | 何时加载 |
 |------|------|----------|
 | [project-ledger.md](project-ledger.md) | 项目事实台账（权威基线） | **每次会话首次加载**，判断项目阶段、已完成事项、当前原则和 Top Priority |
+| [execution-roadmap.md](execution-roadmap.md) | 执行路线图（唯一队首任务） | 用户要求“挑任务执行”“继续推进”“做下一项”时必读，并且只能选择 `HEAD` |
 | [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) | 项目变更日志 | 需要追溯历史变更时加载 |
 | [context/](context/INDEX.md) | 项目知识库（长期记忆） | 理解业务/技术背景 |
 | [context/experience/](context/experience/INDEX.md) | 经验索引（可检索） | 实现类任务前必读 |
@@ -157,6 +158,15 @@ AI 在接收任务时，应自动判断任务类型并执行相应流程：
 | **Bug 修复** | "修复"、"解决"、"处理" + 错误描述 | 加载经验 → 实现 → 测试 |
 | **重构** | "重构"、"优化"、"改进" + 模块描述 | 评估影响 → 设计（如需）→ 实现 → 测试 |
 | **查询** | "查看"、"显示"、"解释" | 直接回答 |
+
+### 挑任务执行规则
+
+当用户要求“挑任务执行”“继续推进”“做下一项”或表达等价意图时，AI 必须：
+
+1. 读取 `docs/project-ledger.md` 和 `docs/execution-roadmap.md`。
+2. 只选择 `docs/execution-roadmap.md` 中标记为 `HEAD` 的队首任务。
+3. 若 `HEAD` 已完成或与 `docs/reports/scenario-acceptance-matrix.md` 冲突，先更新路线图，不得自行随机选择其它任务。
+4. 任务完成后运行 `bash scripts/dev/check-roadmap.sh`，并同步更新路线图、场景矩阵、项目台账和任务记录。
 
 ### 流程决策树
 

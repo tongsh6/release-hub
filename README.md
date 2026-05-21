@@ -10,6 +10,7 @@
 核心能力：发布窗口管理、迭代与仓库关联、GitFlow 分支自动化、版本策略管理、冲突预检、编排执行。
 
 > 📋 **新会话/新成员请先读：[`docs/project-ledger.md`](docs/project-ledger.md)** — 项目事实台账（当前阶段目标 / 已验证 / Top Priority / 关键证据索引）。
+> 🎯 **需要挑任务时读取：[`docs/execution-roadmap.md`](docs/execution-roadmap.md)** — 当前唯一队首任务与后续执行队列。
 
 ## 项目结构
 
@@ -39,6 +40,7 @@ cd frontend && pnpm install && pnpm dev
 
 - [架构文档](docs/context/tech/architecture/) — 系统架构与技术栈
 - [开发规范](docs/context/tech/conventions/) — 代码规范与测试策略
+- [执行路线图](docs/execution-roadmap.md) — 当前唯一队首任务
 - [工作流](docs/workflow/) — AI 辅助开发工作流
 - [API 契约](backend/docs/architecture.md) — REST API 概览
 
