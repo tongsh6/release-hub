@@ -71,6 +71,7 @@ import { hasPerm } from '@/utils/perm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/http'
 import { handleError } from '@/utils/error'
+import { deleteProtectionMessageKey } from '@/utils/deleteProtection'
 
 const { t } = useI18n()
 const drawerRef = ref<InstanceType<typeof RepositoryDrawer>>()
@@ -112,6 +113,11 @@ async function handleDelete(row: any) {
     search()
   } catch (e) {
     if (e !== 'cancel') {
+      const messageKey = deleteProtectionMessageKey(e)
+      if (messageKey) {
+        ElMessage.warning(t(messageKey))
+        return
+      }
       handleError(e)
     }
   }

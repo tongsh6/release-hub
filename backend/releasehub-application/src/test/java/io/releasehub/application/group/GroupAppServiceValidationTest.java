@@ -10,11 +10,13 @@ import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.repo.RepoType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -81,6 +83,60 @@ class GroupAppServiceValidationTest {
 
         assertEquals("ChildRenamed", updated.getName());
         assertEquals("PARENT", updated.getParentCode());
+    }
+
+    @Test
+    void deleteByCodeShouldFailWhenGroupReferencedByRepository() {
+        port.save(Group.create("Group", "G001", null, now));
+        CodeRepository repo = CodeRepository.rehydrate(
+                RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git", "main", "G001",
+                RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+        GroupAppService service = new GroupAppService(
+                port,
+                new EmptyReleaseWindowPort(),
+                new EmptyIterationPort(),
+                new FixedRepoPort(List.of(repo))
+        );
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.deleteByCode("G001"));
+
+        assertEquals("GROUP_013", ex.getCode());
+    }
+
+    @Test
+    void deleteByCodeShouldFailWhenGroupReferencedByIteration() {
+        port.save(Group.create("Group", "G001", null, now));
+        Iteration iteration = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iteration", null, null, "G001",
+                java.util.Set.of(), IterationStatus.ACTIVE, now, now);
+        GroupAppService service = new GroupAppService(
+                port,
+                new EmptyReleaseWindowPort(),
+                new FixedIterationPort(List.of(iteration)),
+                new EmptyRepoPort()
+        );
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.deleteByCode("G001"));
+
+        assertEquals("GROUP_013", ex.getCode());
+    }
+
+    @Test
+    void deleteByCodeShouldFailWhenGroupReferencedByReleaseWindow() {
+        port.save(Group.create("Group", "G001", null, now));
+        ReleaseWindow window = ReleaseWindow.rehydrate(
+                ReleaseWindowId.of("window-1"), "RW-1", "Window", null, null, "G001",
+                ReleaseWindowStatus.DRAFT, now, now, false, null);
+        GroupAppService service = new GroupAppService(
+                port,
+                new FixedReleaseWindowPort(List.of(window)),
+                new EmptyIterationPort(),
+                new EmptyRepoPort()
+        );
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.deleteByCode("G001"));
+
+        assertEquals("GROUP_013", ex.getCode());
     }
 
     static class InMemoryPort implements GroupPort {
@@ -183,6 +239,19 @@ class GroupAppServiceValidationTest {
         }
     }
 
+    static class FixedReleaseWindowPort extends EmptyReleaseWindowPort {
+        private final List<ReleaseWindow> windows;
+
+        FixedReleaseWindowPort(List<ReleaseWindow> windows) {
+            this.windows = windows;
+        }
+
+        @Override
+        public List<ReleaseWindow> findAll() {
+            return windows;
+        }
+    }
+
     static class EmptyIterationPort implements IterationPort {
         @Override
         public void save(Iteration iteration) {
@@ -205,6 +274,19 @@ class GroupAppServiceValidationTest {
 
         @Override
         public void deleteByKey(IterationKey key) {
+        }
+    }
+
+    static class FixedIterationPort extends EmptyIterationPort {
+        private final List<Iteration> iterations;
+
+        FixedIterationPort(List<Iteration> iterations) {
+            this.iterations = iterations;
+        }
+
+        @Override
+        public List<Iteration> findAll() {
+            return iterations;
         }
     }
 
@@ -244,6 +326,19 @@ class GroupAppServiceValidationTest {
         @Override
         public Optional<String> getInitialVersion(String repoId) {
             return Optional.empty();
+        }
+    }
+
+    static class FixedRepoPort extends EmptyRepoPort {
+        private final List<CodeRepository> repositories;
+
+        FixedRepoPort(List<CodeRepository> repositories) {
+            this.repositories = repositories;
+        }
+
+        @Override
+        public List<CodeRepository> findAll() {
+            return repositories;
         }
     }
 }

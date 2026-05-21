@@ -416,6 +416,7 @@ export default {
     syncVersion: 'Rescan Version',
     versionSyncSuccess: 'Version status refreshed',
     confirmDelete: 'Confirm to delete this repository?',
+    deleteBlocked: 'This repository is used by an iteration or release plan and cannot be deleted',
     health: {
       healthy: 'Healthy',
       risk: 'Risk'
@@ -583,6 +584,7 @@ export default {
     updateFailed: 'Update failed',
     deleteSuccess: 'Deleted successfully',
     deleteBlocked: 'Cannot delete group with children',
+    deleteReferenced: 'This group is used by repositories, iterations, or release windows and cannot be deleted',
     validation: {
       nameRequired: 'Please enter name',
       codeRequired: 'Please enter code',

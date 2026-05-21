@@ -416,6 +416,7 @@ export default {
     syncVersion: '重新解析版本',
     versionSyncSuccess: '版本解析已刷新',
     confirmDelete: '确认删除此仓库？',
+    deleteBlocked: '仓库已被迭代或发布计划使用，无法删除',
     health: {
       healthy: '健康',
       risk: '风险'
@@ -610,6 +611,7 @@ export default {
     updateFailed: '更新失败',
     deleteSuccess: '删除成功',
     deleteBlocked: '存在子分组，无法删除',
+    deleteReferenced: '分组已被仓库、迭代或发布窗口使用，无法删除',
     validation: {
       nameRequired: '请输入名称',
       codeRequired: '请输入编码',

@@ -95,6 +95,7 @@ import { useGroupTree } from '@/composables/useGroupTree'
 import { hasPerm } from '@/utils/perm'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { handleError } from '@/utils/error'
+import { deleteProtectionMessageKey } from '@/utils/deleteProtection'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -199,6 +200,11 @@ const handleDelete = async (node: GroupNode) => {
     await loadTree()
   } catch (error: any) {
     if (error !== 'cancel') {
+      const messageKey = deleteProtectionMessageKey(error)
+      if (messageKey) {
+        ElMessage.warning(t(messageKey))
+        return
+      }
       handleError(error)
     }
   }

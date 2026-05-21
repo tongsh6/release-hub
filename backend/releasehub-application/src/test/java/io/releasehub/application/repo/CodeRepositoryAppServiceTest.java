@@ -152,6 +152,22 @@ class CodeRepositoryAppServiceTest {
     }
 
     @Test
+    @DisplayName("删除时仓库未被迭代引用则成功")
+    void shouldDeleteWhenRepoNotAttachedToIteration() {
+        Instant now = Instant.now();
+        CodeRepository repo = CodeRepository.rehydrate(
+                RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git", "main", "G001",
+                RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+        when(iterationPort.findAll()).thenReturn(List.of());
+
+        appService.delete("repo-1");
+
+        verify(codeRepositoryPort).deleteById(RepoId.of("repo-1"));
+    }
+
+    @Test
     @DisplayName("group 非末端节点时创建失败")
     void shouldFailCreateWhenGroupHasChildren() {
         when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L)));

@@ -35,6 +35,7 @@ import { useI18n } from 'vue-i18n'
 import { groupApi, type GroupView } from '@/api/modules/group'
 import GroupDialog from './GroupDialog.vue'
 import { handleError } from '@/utils/error'
+import { deleteProtectionMessageKey } from '@/utils/deleteProtection'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -75,6 +76,11 @@ const handleDelete = async () => {
     handleBack()
   } catch (error) {
     if (error !== 'cancel') {
+      const messageKey = deleteProtectionMessageKey(error)
+      if (messageKey) {
+        ElMessage.warning(t(messageKey))
+        return
+      }
       handleError(error)
     }
   }
