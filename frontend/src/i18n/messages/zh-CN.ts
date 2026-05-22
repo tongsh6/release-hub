@@ -746,6 +746,13 @@ export default {
       archiveBranch: '归档分支'
     },
     executeFinish: '执行收尾',
+    latestRun: '最新 Run 复核',
+    runItems: '执行项',
+    failedItems: '失败项',
+    failureContext: '失败上下文',
+    failedStep: '失败步骤',
+    failureReason: '失败原因',
+    viewRunDetail: '查看 Run 详情',
     recentRuns: '最近执行记录',
     planPreview: '执行计划预览',
     confirmMergeAll: '确认合并所有迭代的代码到 release 分支？',

@@ -139,6 +139,48 @@
       </div>
     </div>
 
+    <!-- 最新 Run 复核摘要 -->
+    <div v-if="latestRunDetail" class="run-review-summary" :class="{ failed: latestRunItemSummary.failed > 0 }">
+      <div class="section-title">{{ t('orchestration.latestRun') }}</div>
+      <div class="run-review-grid">
+        <div class="review-field">
+          <span class="label">{{ t('run.columns.runId') }}:</span>
+          <span class="value">{{ latestRunDetail.id }}</span>
+        </div>
+        <div class="review-field">
+          <span class="label">{{ t('run.columns.status') }}:</span>
+          <el-tag :type="getRunStatusType(latestRunDetail.status)" size="small">{{ latestRunDetail.status }}</el-tag>
+        </div>
+        <div class="review-field">
+          <span class="label">{{ t('orchestration.runItems') }}:</span>
+          <span class="value">{{ latestRunItemSummary.total }}</span>
+        </div>
+        <div class="review-field">
+          <span class="label">{{ t('orchestration.failedItems') }}:</span>
+          <span class="value" :class="{ danger: latestRunItemSummary.failed > 0 }">{{ latestRunItemSummary.failed }}</span>
+        </div>
+      </div>
+      <div v-if="firstFailedItem" class="failed-run-evidence">
+        <div class="review-field">
+          <span class="label">{{ t('orchestration.failureContext') }}:</span>
+          <span class="value">{{ firstFailedItem.windowKey }} / {{ firstFailedItem.repoId }} / {{ firstFailedItem.iterationKey }}</span>
+        </div>
+        <div v-if="firstFailedStep" class="review-field">
+          <span class="label">{{ t('orchestration.failedStep') }}:</span>
+          <span class="value">{{ firstFailedStep.actionType }} · {{ firstFailedStep.result }}</span>
+        </div>
+        <div v-if="firstFailedStep?.message" class="review-field failure-message">
+          <span class="label">{{ t('orchestration.failureReason') }}:</span>
+          <span class="value">{{ firstFailedStep.message }}</span>
+        </div>
+      </div>
+      <div class="review-actions">
+        <el-button link type="primary" size="small" @click="viewRunDetail(latestRunDetail)">
+          {{ t('orchestration.viewRunDetail') }}
+        </el-button>
+      </div>
+    </div>
+
     <!-- 最近执行记录 -->
     <div v-if="recentRuns.length > 0" class="recent-runs">
       <div class="section-title">{{ t('orchestration.recentRuns') }}</div>
@@ -190,7 +232,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Document, Connection, Edit, CircleCheck, SuccessFilled, WarningFilled, CircleCloseFilled } from '@element-plus/icons-vue'
 import { releaseWindowApi, type CodeMergeResult } from '@/api/modules/releaseWindow'
-import { runApi, type Run } from '@/api/runApi'
+import { runApi, type Run, type RunDetail } from '@/api/runApi'
 import { handleError } from '@/utils/error'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -219,6 +261,7 @@ const planLoading = ref(false)
 const planDialogVisible = ref(false)
 const mergeResults = ref<CodeMergeResult[]>([])
 const recentRuns = ref<Run[]>([])
+const latestRunDetail = ref<RunDetail>()
 const planData = ref<any>(null)
 
 // 计算属性
@@ -247,6 +290,23 @@ const canPreview = computed(() => props.iterationCount > 0)
 const canMerge = computed(() => props.windowStatus === 'DRAFT' && props.iterationCount > 0)
 const canUpdateVersion = computed(() => props.windowStatus === 'DRAFT' || props.windowStatus === 'PUBLISHED')
 const canOrchestrate = computed(() => props.windowStatus === 'PUBLISHED')
+const latestRunItemSummary = computed(() => {
+  const items = latestRunDetail.value?.items || []
+  return {
+    total: items.length,
+    failed: items.filter(item => isFailedResult(item.finalResult)).length
+  }
+})
+const firstFailedItem = computed(() => {
+  return (latestRunDetail.value?.items || []).find(item =>
+    isFailedResult(item.finalResult) || item.steps.some(step => isFailedResult(step.result))
+  )
+})
+const firstFailedStep = computed(() => {
+  const item = firstFailedItem.value
+  if (!item) return undefined
+  return item.steps.find(step => isFailedResult(step.result)) || item.steps[item.steps.length - 1]
+})
 
 // 方法
 async function handlePreviewPlan() {
@@ -305,15 +365,18 @@ async function handleOrchestrate() {
     )
     
     orchestrating.value = true
-    await releaseWindowApi.orchestrate(props.windowId, {
+    const runId = await releaseWindowApi.orchestrate(props.windowId, {
       repoIds: props.repoIds,
       iterationKeys: props.iterationKeys,
       failFast: false,
       operator: 'frontend'
     })
     ElMessage.success(t('common.success'))
-    
-    loadRecentRuns()
+
+    if (runId) {
+      await loadRunDetail(String(runId))
+    }
+    await loadRecentRuns()
     emit('refresh')
   } catch (e) {
     if (e !== 'cancel') handleError(e)
@@ -326,13 +389,20 @@ async function loadRecentRuns() {
   try {
     const result = await runApi.list({ page: 1, pageSize: 5, windowKey: props.windowKey })
     recentRuns.value = result.list
+    if (result.list[0]?.id) {
+      await loadRunDetail(result.list[0].id)
+    }
   } catch (e) {
     // 静默失败
     console.warn('Failed to load recent runs:', e)
   }
 }
 
-function viewRunDetail(run: Run) {
+async function loadRunDetail(runId: string) {
+  latestRunDetail.value = await runApi.getRunById(runId)
+}
+
+function viewRunDetail(run: Run | RunDetail) {
   router.push(`/runs/${run.id}`)
 }
 
@@ -359,6 +429,10 @@ function getRunStatusType(status: string) {
   if (status === 'RUNNING') return 'primary'
   if (status === 'FAILED') return 'danger'
   return 'info'
+}
+
+function isFailedResult(result?: string) {
+  return Boolean(result && (result.includes('FAILED') || result === 'MERGE_BLOCKED'))
 }
 
 onMounted(() => {
@@ -492,6 +566,65 @@ onMounted(() => {
 
 .status-error {
   color: #f56c6c;
+}
+
+.run-review-summary {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.run-review-summary.failed {
+  border-color: #fab6b6;
+  background: #fef0f0;
+}
+
+.run-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 16px;
+}
+
+.review-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.review-field .label {
+  flex: none;
+  color: #606266;
+}
+
+.review-field .value {
+  min-width: 0;
+  color: #303133;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.review-field .danger {
+  color: #c45656;
+}
+
+.failed-run-evidence {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #f3d19e;
+}
+
+.failure-message .value {
+  font-weight: 400;
+}
+
+.review-actions {
+  margin-top: 12px;
 }
 
 .recent-runs {

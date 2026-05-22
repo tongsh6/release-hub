@@ -746,6 +746,13 @@ export default {
       archiveBranch: 'Archive Branch'
     },
     executeFinish: 'Execute Finish',
+    latestRun: 'Latest Run Review',
+    runItems: 'Run Items',
+    failedItems: 'Failed Items',
+    failureContext: 'Failure Context',
+    failedStep: 'Failed Step',
+    failureReason: 'Failure Reason',
+    viewRunDetail: 'View Run Detail',
     recentRuns: 'Recent Runs',
     planPreview: 'Execution Plan Preview',
     confirmMergeAll: 'Confirm to merge all iterations to release branch?',
