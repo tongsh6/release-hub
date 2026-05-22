@@ -23,7 +23,7 @@
 #   SA-002: 存量数据审计（BranchCreationMode、featureBranch、cloneUrl、仓库/Settings token 安全）
 #   SA-003: 三层分组，非叶子资源挂载拒绝
 #   SA-005: 分组仓库纳管、真实 GitLab cloneUrl、token 安全审计
-#   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
+#   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法写入前拒绝/EXISTING/Branches端点）
 #   SA-008: 发布窗口创建、空窗口发布拒绝、windowKey
 #   SA-010: Attach 迭代、GitLab release 分支创建、解除挂载后 release 分支归档、runItems 细粒度断言
 #   SA-011: 冲突检测和分类统计、MERGE_CONFLICT / CROSS_REPO_VERSION_MISMATCH / REPO_AHEAD / SYSTEM_AHEAD / GIT_PERMISSION_DENIED / GIT_UNAVAILABLE 真实 GitLab 强证据
@@ -693,7 +693,7 @@ NON_LEAF_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Cont
 [ "$NON_LEAF_ITER" = "True" ] && no "非叶子分组创建迭代未被拒绝" || ok "非叶子分组创建迭代被拒绝"
 
 NON_LEAF_REPO=$(curl -s -X POST "$BACKEND/api/v1/repositories" -H "$AUTH" -H "Content-Type: application/json" \
-    -d "{\"name\":\"验收-非叶子仓库-$TS\",\"cloneUrl\":\"http://localhost:9080/e2e-user/non-leaf-probe.git\",\"defaultBranch\":\"main\",\"groupCode\":\"$CUSTOMER_CODE\",\"gitProvider\":\"MOCK\"}" \
+    -d "{\"name\":\"验收-非叶子仓库-$TS\",\"cloneUrl\":\"http://localhost:9080/e2e-user/non-leaf-probe.git\",\"defaultBranch\":\"main\",\"groupCode\":\"$CUSTOMER_CODE\",\"gitProvider\":\"GITLAB\"}" \
     | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "False")
 [ "$NON_LEAF_REPO" = "True" ] && no "非叶子分组创建仓库未被拒绝" || ok "非叶子分组创建仓库被拒绝"
 
@@ -2527,33 +2527,48 @@ if [ -n "$NAMED_ITER_KEY" ]; then
     NAMED_FB=$(echo "$NAMED_VINFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('featureBranch','NONE'))" 2>/dev/null)
     if echo "$NAMED_FB" | grep -q "acceptance-named"; then
         ok "NAMED featureBranch: $NAMED_FB"
+        NAMED_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R2" -H "$AUTH" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+        NAMED_BRANCH_STATE=$(gitlab_branch_state "$NAMED_REPO_URL" "$NAMED_FB")
+        [ "$NAMED_BRANCH_STATE" = "FOUND" ] && ok "GitLab 直查确认 NAMED 合规分支已创建: $NAMED_FB" || no "GitLab NAMED 分支状态异常: $NAMED_BRANCH_STATE"
     else
         no "NAMED featureBranch 异常: $NAMED_FB"
     fi
 fi
 
-# 10.3 NAMED 非法分支名：不在 feature/ 路径下 → 版本信息不保存
-info "10.3 NAMED 非法分支名校验"
+# 10.3 NAMED 非法分支名：不在 feature/ 路径下 → 写入前拒绝且 GitLab 不创建
+info "10.3 NAMED 非法分支名写入前拒绝"
 NAMED_ITER2=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"name\":\"验收-NAMED-BAD-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
 NAMED_ITER2_KEY=$(echo "$NAMED_ITER2" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
 
 if [ -n "$NAMED_ITER2_KEY" ]; then
-    # addRepos 吞异常——repo 仍被添加，但 featureBranch 为 null（versionInfo 未保存）
-    curl -s -X POST "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
-        -d "{\"repoIds\":[\"$R3\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"hotfix/bad-name\"}" > /dev/null
+    NAMED_BAD_BRANCH="hotfix/bad-name"
+    NAMED_BAD_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"repoIds\":[\"$R3\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"$NAMED_BAD_BRANCH\"}")
+    NAMED_BAD_SUCCESS=$(echo "$NAMED_BAD_ADD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success', False))" 2>/dev/null)
+    [ "$NAMED_BAD_SUCCESS" = "False" ] && ok "NAMED 非法分支名 API 写入前拒绝" || no "NAMED 非法分支名未返回失败: $NAMED_BAD_ADD"
 
     sleep 1
-    BAD_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos/$R3/version-info" -H "$AUTH")
-    BAD_FB=$(echo "$BAD_VINFO" | python3 -c "import sys,json; d=json.load(sys.stdin); f=d.get('data',{}).get('featureBranch'); print(f if f is not None else 'None')" 2>/dev/null)
-    if [ "$BAD_FB" = "None" ]; then
-        ok "NAMED 非法分支名被拒绝（featureBranch=null）"
+    NAMED_BAD_REPOS=$(curl -s "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos" -H "$AUTH")
+    NAMED_BAD_REPO_PRESENT=$(echo "$NAMED_BAD_REPOS" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print('FOUND' if '$R3' in (d.get('data') or []) else 'NOT_FOUND')
+" 2>/dev/null)
+    if [ "$NAMED_BAD_REPO_PRESENT" = "NOT_FOUND" ]; then
+        ok "NAMED 非法分支名未写入迭代仓库集合"
     else
-        no "NAMED 非法分支名未被拦截: featureBranch=$BAD_FB"
+        no "NAMED 非法分支名仍写入仓库集合: $NAMED_BAD_REPOS"
     fi
+
+    NAMED_BAD_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R3" -H "$AUTH" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+    NAMED_BAD_BRANCH_STATE=$(gitlab_branch_state "$NAMED_BAD_REPO_URL" "$NAMED_BAD_BRANCH")
+    [ "$NAMED_BAD_BRANCH_STATE" = "NOT_FOUND" ] && ok "GitLab 直查确认 NAMED 非法分支未创建: $NAMED_BAD_BRANCH" || no "GitLab NAMED 非法分支状态异常: $NAMED_BAD_BRANCH_STATE"
 fi
 
-# 10.4 EXISTING 模式：关联不存在的分支 → featureBranch 应为 null
+# 10.4 EXISTING 模式：关联不存在的分支 → 写入前拒绝
 info "10.4 EXISTING 模式（关联不存在分支时拒绝）"
 EXISTING_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"name\":\"验收-EXISTING-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
@@ -2561,17 +2576,29 @@ EXISTING_ITER_KEY=$(echo "$EXISTING_ITER" | python3 -c "import sys,json; d=json.
 
 if [ -n "$EXISTING_ITER_KEY" ]; then
     # 用一个绝对不存在的分支名，验证 EXISTING 模式的 GitLab 校验
-    curl -s -X POST "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
-        -d "{\"repoIds\":[\"$R1\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"feature/nonexistent-acceptance-$TS\"}" > /dev/null
+    EXISTING_MISSING_BRANCH="feature/nonexistent-acceptance-$TS"
+    EXISTING_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"repoIds\":[\"$R1\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"$EXISTING_MISSING_BRANCH\"}")
+    EXISTING_SUCCESS=$(echo "$EXISTING_ADD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success', False))" 2>/dev/null)
+    [ "$EXISTING_SUCCESS" = "False" ] && ok "EXISTING 不存在分支 API 写入前拒绝" || no "EXISTING 不存在分支未返回失败: $EXISTING_ADD"
 
     sleep 1
-    EXISTING_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/$R1/version-info" -H "$AUTH")
-    EXISTING_FB=$(echo "$EXISTING_VINFO" | python3 -c "import sys,json; d=json.load(sys.stdin); f=d.get('data',{}).get('featureBranch'); print(f if f is not None else 'None')" 2>/dev/null)
-    if [ "$EXISTING_FB" = "None" ]; then
-        ok "EXISTING 不存在的分支被拒绝（featureBranch=null）"
+    EXISTING_REPOS=$(curl -s "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos" -H "$AUTH")
+    EXISTING_REPO_PRESENT=$(echo "$EXISTING_REPOS" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print('FOUND' if '$R1' in (d.get('data') or []) else 'NOT_FOUND')
+" 2>/dev/null)
+    if [ "$EXISTING_REPO_PRESENT" = "NOT_FOUND" ]; then
+        ok "EXISTING 不存在分支未写入迭代仓库集合"
     else
-        no "EXISTING 未正确拒绝不存在分支: featureBranch=$EXISTING_FB"
+        no "EXISTING 不存在分支仍写入仓库集合: $EXISTING_REPOS"
     fi
+
+    EXISTING_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+    EXISTING_BRANCH_STATE=$(gitlab_branch_state "$EXISTING_REPO_URL" "$EXISTING_MISSING_BRANCH")
+    [ "$EXISTING_BRANCH_STATE" = "NOT_FOUND" ] && ok "GitLab 直查确认 EXISTING 不存在分支仍不存在: $EXISTING_MISSING_BRANCH" || no "GitLab EXISTING 不存在分支状态异常: $EXISTING_BRANCH_STATE"
 fi
 
 # 10.5 Branches 端点验证

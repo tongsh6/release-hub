@@ -441,8 +441,8 @@ class IterationAppServiceTest {
     // ==== 分支创建模式测试 ====
 
     @Test
-    @DisplayName("NAMED 模式 — 分支名不在 feature/ 路径下时仓库仍被添加但版本信息不保存")
-    void shouldStillAddRepoButSkipVersionWhenNamedBranchInvalid() {
+    @DisplayName("NAMED 模式 — 分支名不在 feature/ 路径下时写入前拒绝")
+    void shouldRejectBeforeSavingRepoWhenNamedBranchInvalid() {
         Instant now = Instant.now();
         Iteration existing = Iteration.rehydrate(
                 IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(), IterationStatus.ACTIVE, now, now);
@@ -450,10 +450,12 @@ class IterationAppServiceTest {
         when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
         when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
 
-        // addRepos swallows setup exceptions — repo is still added
-        iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.NAMED, "hotfix/critical");
+        assertThatThrownBy(() -> iterationAppService.addRepos(
+                "ITER-1", Set.of("repo-1"), BranchCreationMode.NAMED, "hotfix/critical"))
+                .isInstanceOf(ValidationException.class);
 
-        verify(iterationPort).save(any(Iteration.class));
+        verify(iterationPort, never()).save(any(Iteration.class));
+        verify(gitBranchAdapterFactory, never()).getAdapter(any());
         verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
                 anyString(), anyString(), anyString(), anyString(), anyString(), any(), any());
     }
@@ -506,8 +508,8 @@ class IterationAppServiceTest {
     }
 
     @Test
-    @DisplayName("EXISTING 模式 — 分支不存在时仓库仍添加但跳过版本信息")
-    void shouldStillAddRepoButSkipVersionWhenExistingBranchNotFound() {
+    @DisplayName("EXISTING 模式 — 分支不存在时写入前拒绝")
+    void shouldRejectBeforeSavingRepoWhenExistingBranchNotFound() {
         Instant now = Instant.now();
         Iteration existing = Iteration.rehydrate(
                 IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(), IterationStatus.ACTIVE, now, now);
@@ -518,10 +520,11 @@ class IterationAppServiceTest {
         when(gitBranchPort.getBranchStatus(repo.getCloneUrl(), null, "feature/nonexistent"))
                 .thenReturn(GitBranchPort.BranchStatus.missing());
 
-        // addRepos swallows setup exceptions — repo is still added
-        iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.EXISTING, "feature/nonexistent");
+        assertThatThrownBy(() -> iterationAppService.addRepos(
+                "ITER-1", Set.of("repo-1"), BranchCreationMode.EXISTING, "feature/nonexistent"))
+                .isInstanceOf(ValidationException.class);
 
-        verify(iterationPort).save(any(Iteration.class));
+        verify(iterationPort, never()).save(any(Iteration.class));
         verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
                 anyString(), anyString(), anyString(), anyString(), anyString(), any(), any());
     }
@@ -576,8 +579,8 @@ class IterationAppServiceTest {
     }
 
     @Test
-    @DisplayName("NAMED 模式 — 自定义名不符合 BranchRule 时仓库仍添加但版本信息不保存")
-    void shouldStillAddRepoButSkipVersionWhenNamedBranchFailsBranchRule() {
+    @DisplayName("NAMED 模式 — 自定义名不符合 BranchRule 时写入和 Git 创建前拒绝")
+    void shouldRejectBeforeSavingOrCreatingBranchWhenNamedBranchFailsBranchRule() {
         Instant now = Instant.now();
         Iteration existing = Iteration.rehydrate(
                 IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(), IterationStatus.ACTIVE, now, now);
@@ -586,9 +589,12 @@ class IterationAppServiceTest {
         when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
         when(branchRuleUseCase.isCompliant("feature/bad/name", "G001", "repo-1")).thenReturn(false);
 
-        iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.NAMED, "feature/bad/name");
+        assertThatThrownBy(() -> iterationAppService.addRepos(
+                "ITER-1", Set.of("repo-1"), BranchCreationMode.NAMED, "feature/bad/name"))
+                .isInstanceOf(ValidationException.class);
 
-        verify(iterationPort).save(any(Iteration.class));
+        verify(iterationPort, never()).save(any(Iteration.class));
+        verify(gitBranchAdapterFactory, never()).getAdapter(any());
         verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
                 anyString(), anyString(), anyString(), anyString(), anyString(), any(), any());
     }

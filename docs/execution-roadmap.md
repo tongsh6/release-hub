@@ -27,7 +27,7 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-006 | 分支规则真实端到端证据收口 | `scenario-acceptance-matrix.md` SA-006 P1 缺口 | 分支规则作用域、核心创建链路和归档分支统计治理已补，下一步需要证明“规则配置 → 分支创建被规则约束”的真实 GitLab 端到端路径 |
+| 1 | HEAD | SA-006 | 分支规则真实端到端证据收口 | `scenario-acceptance-matrix.md` SA-006 P1 缺口 | 分支规则作用域、核心创建链路、PROJECT scoped 真实 GitLab 前置拒绝证据和归档分支统计治理已补，下一步需要补 GLOBAL/SUB_PROJECT 组合的真实 GitLab 端到端证据复核 |
 
 ---
 
@@ -39,7 +39,7 @@
 
 - 管理员在前端配置 GLOBAL / PROJECT / SUB_PROJECT 分支规则后，后续 feature / release 分支创建会按最具体规则校验。
 - 不合规 NAMED 分支在写入迭代或创建 release 分支前被拒绝，且错误可被用户理解。
-- 真实 GitLab 证据能证明合规分支被创建、不合规分支未创建。
+- 真实 GitLab 证据能证明合规分支被创建、不合规分支未创建；PROJECT scoped 证据已补，剩余 GLOBAL/SUB_PROJECT 组合复核。
 - 覆盖必要的后端单测、前端 Vitest；如补真实用户旅程，必须由外部 Playwright 驱动真实页面，不用 route-level stub 伪装验收。
 - 完成后同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md` 和 `tasks/records/`。
 - 完成后运行 `bash scripts/dev/check-roadmap.sh`，确保下一个 `HEAD` 唯一且可追溯。

@@ -1,13 +1,13 @@
 package io.releasehub.infrastructure.persistence.repo;
 
 import io.releasehub.application.repo.CodeRepositoryPort;
-import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.repo.RepoType;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
 @Repository
 @Primary
 @RequiredArgsConstructor
+@Slf4j
 public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
 
     private final CodeRepositoryJpaRepository repository;
@@ -130,11 +131,7 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
         } catch (Exception e) {
             repoType = RepoType.SERVICE;
         }
-        try {
-            gitProvider = GitProvider.valueOf(entity.getGitProvider());
-        } catch (Exception e) {
-            throw ValidationException.invalidParameter("gitProvider");
-        }
+        gitProvider = parseGitProvider(entity);
         return CodeRepository.rehydrate(
                 RepoId.of(entity.getId()),
                 entity.getName(),
@@ -157,6 +154,21 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
                 entity.getUpdatedAt(),
                 entity.getVersion()
         );
+    }
+
+    private GitProvider parseGitProvider(CodeRepositoryJpaEntity entity) {
+        String rawProvider = entity.getGitProvider();
+        if (rawProvider == null || rawProvider.isBlank()) {
+            log.warn("Repository {} has empty git_provider, defaulting to GITLAB for backward compatibility", entity.getId());
+            return GitProvider.GITLAB;
+        }
+        try {
+            return GitProvider.valueOf(rawProvider);
+        } catch (Exception e) {
+            log.warn("Repository {} has unsupported git_provider '{}', defaulting to GITLAB for backward compatibility",
+                    entity.getId(), rawProvider);
+            return GitProvider.GITLAB;
+        }
     }
 
     @Override

@@ -73,6 +73,9 @@ public class IterationAppService {
         }
     }
 
+    private record RepoSetupPlan(RepoId repoId, CodeRepository repo, BranchCreationMode mode, String featureBranch) {
+    }
+
     @Transactional
     public Iteration create(String name, String description, LocalDate expectedReleaseAt, String groupCode, Set<String> repoIds, List<RepoBranchConfig> repoConfigs) {
         String iterationKey = generateIterationKey();
@@ -80,18 +83,14 @@ public class IterationAppService {
         Set<RepoId> repos = safeRepoIds.stream().map(RepoId::new).collect(java.util.stream.Collectors.toSet());
         ensureLeafGroup(groupCode);
         ensureReposBelongToGroup(iterationKey, repos, groupCode);
+        var configs = resolveRepoConfigs(repos, repoConfigs);
+        var plans = planRepoSetups(IterationKey.of(iterationKey), configs);
         Iteration it = Iteration.create(IterationKey.of(iterationKey), name, description, expectedReleaseAt, groupCode, repos, Instant.now(clock));
         iterationPort.save(it);
 
-        // 统一执行分支创建/映射
-        var configs = resolveRepoConfigs(repos, repoConfigs);
         Instant now = Instant.now(clock);
-        for (var config : configs) {
-            try {
-                setupRepoForIteration(it.getId(), RepoId.of(config.repoId), config.branchCreationMode, config.customBranchName, now);
-            } catch (Exception e) {
-                log.error("Failed to setup repo {} for iteration {}: {}", config.repoId, iterationKey, e.getMessage());
-            }
+        for (var plan : plans) {
+            executeRepoSetup(it.getId(), plan, now);
         }
         return it;
     }
@@ -126,14 +125,11 @@ public class IterationAppService {
 
         // 检测新增的仓库：执行分支创建/映射
         var configs = resolveRepoConfigs(newRepos, repoConfigs);
+        List<RepoSetupPlan> plans = new ArrayList<>();
         for (var config : configs) {
             RepoId repoId = RepoId.of(config.repoId);
             if (!existing.getRepos().contains(repoId)) {
-                try {
-                    setupRepoForIteration(existing.getId(), repoId, config.branchCreationMode, config.customBranchName, now);
-                } catch (Exception e) {
-                    log.error("Failed to setup repo {} for iteration {}: {}", config.repoId, key, e.getMessage());
-                }
+                plans.add(planRepoSetup(existing.getId(), config));
             }
         }
 
@@ -146,6 +142,10 @@ public class IterationAppService {
                     log.error("Failed to archive branch for removed repo {}: {}", oldRepoId.value(), e.getMessage());
                 }
             }
+        }
+
+        for (var plan : plans) {
+            executeRepoSetup(existing.getId(), plan, now);
         }
 
         Iteration updated = Iteration.rehydrate(existing.getId(), name, description, expectedReleaseAt, groupCode, newRepos, existing.getStatus(), existing.getCreatedAt(), now);
@@ -170,14 +170,16 @@ public class IterationAppService {
         }
         ensureReposBelongToGroup(key, toAdd, existing.getGroupCode());
 
+        List<RepoSetupPlan> plans = new ArrayList<>();
         for (RepoId repoId : toAdd) {
             if (!merged.contains(repoId)) {
-                try {
-                    setupRepoForIteration(existing.getId(), repoId, mode, customBranchName, now);
-                } catch (Exception e) {
-                    log.error("Failed to setup repo {} for iteration {}: {}", repoId.value(), key, e.getMessage());
-                }
+                plans.add(planRepoSetup(existing.getId(),
+                        new RepoBranchConfig(repoId.value(), mode, customBranchName)));
             }
+        }
+
+        for (var plan : plans) {
+            executeRepoSetup(existing.getId(), plan, now);
         }
 
         merged.addAll(toAdd);
@@ -189,13 +191,21 @@ public class IterationAppService {
     /**
      * 为迭代设置仓库：根据分支创建模式确定/创建 feature 分支，推导版本号，保存关联记录。
      */
-    private void setupRepoForIteration(IterationKey iterationKey, RepoId repoId,
-                                        BranchCreationMode mode, String customBranchName, Instant now) {
+    private List<RepoSetupPlan> planRepoSetups(IterationKey iterationKey, List<RepoBranchConfig> configs) {
+        List<RepoSetupPlan> plans = new ArrayList<>();
+        for (var config : configs) {
+            plans.add(planRepoSetup(iterationKey, config));
+        }
+        return plans;
+    }
+
+    private RepoSetupPlan planRepoSetup(IterationKey iterationKey, RepoBranchConfig config) {
+        RepoId repoId = RepoId.of(config.repoId);
         CodeRepository repo = codeRepositoryPort.findById(repoId)
                 .orElseThrow(() -> NotFoundException.repository(repoId.value()));
 
         // 1. 确定 feature 分支名
-        String featureBranch = switch (mode) {
+        String featureBranch = switch (config.branchCreationMode) {
             case AUTO -> {
                 String autoBranch = "feature/" + iterationKey.value();
                 if (!isBranchCompliantForRepo(autoBranch, repo)) {
@@ -204,21 +214,27 @@ public class IterationAppService {
                 yield autoBranch;
             }
             case NAMED -> {
-                validateFeaturePrefix(customBranchName);
-                if (!isBranchCompliantForRepo(customBranchName, repo)) {
+                validateFeaturePrefix(config.customBranchName);
+                if (!isBranchCompliantForRepo(config.customBranchName, repo)) {
                     throw ValidationException.invalidParameter("分支名不符合 BranchRule 规则");
                 }
-                yield customBranchName;
+                yield config.customBranchName;
             }
             case EXISTING -> {
-                validateFeaturePrefix(customBranchName);
-                validateBranchExists(repo, customBranchName);
-                yield customBranchName;
+                validateFeaturePrefix(config.customBranchName);
+                validateBranchExists(repo, config.customBranchName);
+                yield config.customBranchName;
             }
         };
+        return new RepoSetupPlan(repoId, repo, config.branchCreationMode, featureBranch);
+    }
 
-        // 2. 非 EXISTING 模式：创建分支
-        if (mode != BranchCreationMode.EXISTING) {
+    private void executeRepoSetup(IterationKey iterationKey, RepoSetupPlan plan, Instant now) {
+        CodeRepository repo = plan.repo;
+        RepoId repoId = plan.repoId;
+        String featureBranch = plan.featureBranch;
+
+        if (plan.mode != BranchCreationMode.EXISTING) {
             var gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
             boolean branchCreated = gitPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), featureBranch, repo.getDefaultBranch());
             if (!branchCreated) {
@@ -242,11 +258,11 @@ public class IterationAppService {
                 featureBranch,
                 VersionSource.SYSTEM.name(),
                 now,
-                mode
+                plan.mode
         );
 
         log.info("Setup repo {} for iteration {}: mode={} featureBranch={} baseVersion={} devVersion={} targetVersion={}",
-                repoId.value(), iterationKey.value(), mode, featureBranch, baseVersion, devVersion, targetVersion);
+                repoId.value(), iterationKey.value(), plan.mode, featureBranch, baseVersion, devVersion, targetVersion);
     }
 
     private boolean isBranchCompliantForRepo(String branchName, CodeRepository repo) {
