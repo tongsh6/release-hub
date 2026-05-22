@@ -364,16 +364,7 @@ public class IterationAppService {
         for (RepoId repoId : existing.getRepos()) {
             if (toRemove.contains(repoId.value())) {
                 try {
-                    String featureBranch = iterationRepoPort.getVersionInfo(existing.getId().value(), repoId.value())
-                            .map(IterationRepoVersionInfo::getFeatureBranch)
-                            .orElse("feature/" + existing.getId().value());
-                    codeRepositoryPort.findById(repoId).ifPresent(repo -> {
-                        var gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-                        boolean archived = gitPort.archiveBranch(repo.getCloneUrl(), repo.getGitAccessToken(), featureBranch, "unpublished");
-                        if (!archived) {
-                            log.warn("Failed to archive branch {} for repo {}", featureBranch, repoId.value());
-                        }
-                    });
+                    archiveFeatureBranchForRepo(existing.getId(), repoId);
                 } catch (Exception e) {
                     log.error("Failed to archive branch for repo {}: {}", repoId.value(), e.getMessage());
                 }

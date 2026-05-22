@@ -1,6 +1,6 @@
 # ReleaseHub 场景化验收矩阵
 
-> 日期：2026-05-22
+> 日期：2026-05-23
 > 目标：按完整业务蓝图定义场景化验收，用来发现现有系统能力不完整、实现覆盖不足和自动化缺口。
 
 ## 一、使用口径
@@ -53,8 +53,8 @@
 | SA-006 | Admin Setup | 系统管理员 | 配置分支规则 | feature/hotfix/release 规则在分支创建时生效，不合规拒绝 | 已覆盖 |
 | SA-007 | Admin Setup | 系统管理员 | 配置版本策略 | 基础策略、SemVer、版本校验、Maven 单模块真实写回前置 | 已覆盖 |
 | SA-008 | Release Planning | 发布经理 | 创建发布窗口 | 叶子分组创建、windowKey、DRAFT、空窗口发布拒绝、列表/日历可见 | 已覆盖 |
-| SA-009 | Release Planning | 技术负责人 | 创建迭代并选择已纳管仓库 | 叶子分组创建、同分组仓库选择、iterationKey、分支模式、版本/分支记录 | 部分覆盖 |
-| SA-010 | Release Planning | 发布经理 | 挂载迭代到发布窗口 | 同分组挂载、多迭代多仓计划、release 分支真实创建、细粒度 attach 结果、冲突阻断 | 部分覆盖 |
+| SA-009 | Release Planning | 技术负责人 | 创建迭代并选择已纳管仓库 | 叶子分组创建、同分组仓库选择、iterationKey、分支模式、版本/分支记录 | 已覆盖 |
+| SA-010 | Release Planning | 发布经理 | 挂载迭代到发布窗口 | 同分组挂载、多迭代多仓计划、release 分支真实创建、细粒度 attach 结果、冲突阻断 | 已覆盖 |
 | SA-011 | Risk & Execution | 测试人员 | 检查冲突与发布风险 | 冲突扫描、类型分布、阻塞发布、解决后重扫清零；`MERGE_CONFLICT`、`CROSS_REPO_VERSION_MISMATCH`、`REPO_AHEAD`、`SYSTEM_AHEAD`、`GIT_PERMISSION_DENIED`、`GIT_UNAVAILABLE` 具备真实 GitLab 强证据 | 已覆盖 |
 | SA-012 | Risk & Execution | 技术负责人 | 解决冲突 | 版本冲突 `USE_SYSTEM` 解决、重扫为 0、发布可继续；feature 缺失、release 已存在、分支名不合规具备后端/GitLab 强证据 | 已覆盖 |
 | SA-013 | Risk & Execution | 技术负责人 | 触发发布编排 | 无阻塞冲突后 Run COMPLETED/SUCCESS、RunItem > 0、GitLab 状态一致、未解决冲突阻断 | 已覆盖 |
@@ -72,7 +72,7 @@
 | SA-006 | 管理员在分支规则页配置命名规范 | BranchRule 校验、AUTO/NAMED/EXISTING 分支模式约束；GLOBAL/PROJECT/SUB_PROJECT 作用域按最具体规则解析；feature/release 分支创建和冲突扫描传入仓库上下文；不合规 NAMED 在迭代仓库写入和 GitLab 创建前拒绝，手动 release 分支在 GitLab 创建前拒绝 | 创建出的 feature/hotfix/release 分支名称符合规则；真实 GitLab 直查可证明合规分支存在、不合规分支不存在 | P0 已覆盖：规则作用域表单校验、页面单测、Playwright 真实页面管理旅程、scoped check API、核心分支链路 scoped compliance、PROJECT/GLOBAL/SUB_PROJECT 真实 GitLab 前置拒绝证据已补；历史不合规分支治理入口留作后续扩展 |
 | SA-007 | 管理员在版本策略页配置版本演进规则 | SemVer 校验、PATCH/MINOR/MAJOR 推导；版本策略支持 GLOBAL/PROJECT/SUB_PROJECT 作用域元数据和可继承策略查询，前端可创建/编辑/删除 scoped policy，版本更新入口按仓库范围默认选取继承策略并推导目标版本 | Maven/Gradle 写回前置条件可验证 | P0 已覆盖：策略作用域元数据、PostgreSQL 迁移、scoped policy 创建/编辑/删除/applicable API、前端 scoped policy 创建/编辑/删除表单与单测、版本更新入口继承策略默认选择已补；外部 Playwright 已在真实前后端页面实跑 GLOBAL/PROJECT/SUB_PROJECT 创建、编辑、删除和项目级必填校验 |
 | SA-008 | 发布经理在窗口页创建发布窗口并查看列表/日历 | 发布窗口创建、DRAFT 状态、空窗口发布拒绝；分页接口支持按组织及子组织范围筛选；冻结草稿隐藏发布计划变更入口；仅空草稿窗口允许删除 | windowKey 唯一且关联叶子分组；非空草稿或非草稿窗口不会被删除 | 列表组织路径、组织范围筛选、后端 API、冻结限制和删除保护前端证据已补；后续保持回归 |
-| SA-009 | 技术负责人在迭代页创建迭代并选择仓库 | 同分组仓库选择、iterationKey、分支模式记录；创建、更新和追加仓库写入前均拒绝跨分组仓库；已挂窗口后禁止变更仓库集合或迭代分组；分支创建模式写入 `iteration_repo` 并在版本信息 API 返回 | feature 分支和版本信息落库并可追踪；跨分组仓库不会触发分支创建、版本记录或迭代保存副作用；已挂窗口后不会归档 feature 分支或污染发布计划 | 同分组候选过滤、后端跨分组拒绝、已挂窗口修改限制、迭代删除保护提示和迭代详情版本/分支/模式可观察性已补；移除仓库归档更多真实 GitLab 证据仍为 P1 |
+| SA-009 | 技术负责人在迭代页创建迭代并选择仓库 | 同分组仓库选择、iterationKey、分支模式记录；创建、更新和追加仓库写入前均拒绝跨分组仓库；已挂窗口后禁止变更仓库集合或迭代分组；分支创建模式写入 `iteration_repo` 并在版本信息 API 返回 | feature 分支和版本信息落库并可追踪；跨分组仓库不会触发分支创建、版本记录或迭代保存副作用；未挂窗移除仓库会把原 feature 分支归档到 `archive/unpublished/...`，已挂窗口后不会归档 feature 分支或污染发布计划 | P0 已覆盖：同分组候选过滤、后端跨分组拒绝、已挂窗口修改限制、迭代删除保护提示、迭代详情版本/分支/模式可观察性，以及移除仓库真实 GitLab 归档证据均已补 |
 | SA-010 | 发布经理在窗口详情页挂载迭代并查看发布计划 | attach/detach 细粒度结果、状态流转、冲突阻断；解除挂载已有前端详情页入口、后端约束、外部 Playwright 页面复核候选用例和真实 GitLab 分支归档复核；发布后计划变更已锁定 | release 分支真实创建，WindowIteration 状态一致；detach 后原 release 分支删除且 `archive/unpublished/release-<windowKey>` 存在；部分失败重试已有后端/GitLab 证据 | 发布计划已有最小前端观察；解除挂载已补 Vitest、Slice-1 Playwright 页面复核候选用例和真实 GitLab 分支归档证据；发布后 attach/detach 已有后端拒绝和前端隐藏入口；Run 详情已补部分成功/失败汇总和失败项重试复核；发布计划面板已补分支状态汇总与风险提示，后续保持回归 |
 | SA-011 | 测试人员在窗口详情页触发/查看风险扫描 | 冲突总数、类型分布、阻塞发布；`MERGE_CONFLICT`、`CROSS_REPO_VERSION_MISMATCH`、`REPO_AHEAD`、`SYSTEM_AHEAD`、`GIT_PERMISSION_DENIED`、`GIT_UNAVAILABLE` 已有后端冲突扫描证据和前端展示 | 冲突与 GitLab 分支/版本状态可对应；`MERGE_CONFLICT` 已有真实 feature/release 分支和冲突提交证据；`CROSS_REPO_VERSION_MISMATCH` 已有真实 feature/release 分支、两仓 targetVersion 差异和冲突扫描证据；`REPO_AHEAD`/`SYSTEM_AHEAD` 已有真实 feature 分支 `pom.xml` 版本差异和冲突扫描证据；`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 已有真实 GitLab 权限不足和不可达探针证据 | 严重级别、建议处理方式、合并冲突、跨仓版本不一致、仓库版本较新、系统版本较新、Git 权限不足和 Git 不可达均已有前端观察；后续保持回归 |
 | SA-012 | 技术负责人在冲突详情中执行解决动作 | `USE_SYSTEM` / `USE_REPO` 等解决动作更新记录，重扫清零；feature 缺失、release 已存在、分支名不合规具备后端业务证据 | 必要时写回仓库或保留处理证据；分支名不合规路径已补 GitLab 分支直查与冲突扫描证据；仓库版本较新可接受仓库版本并更新系统记录 | P0 版本冲突 `USE_SYSTEM` 已闭环；`REPO_AHEAD` 已补 `USE_REPO` 解决路径；feature 缺失、release 分支已存在和分支名不合规强证据已补；后续保持回归 |
@@ -302,10 +302,11 @@ P0 验收焦点：
 - 已挂载发布窗口的迭代不能再追加、移除仓库，也不能通过更新接口变更仓库集合或分组；详情 API 返回 `attachedToWindow`，前端隐藏添加/移除仓库入口并展示锁定状态。
 - 迭代仍关联仓库或已挂载发布窗口时，后端以 `ITER_002` 拒绝删除；迭代列表识别该错误并展示明确删除保护提示，避免落入通用错误处理。
 - `iteration_repo.branch_creation_mode` 已由新增/追加仓库路径写入并从版本信息 API 返回；迭代详情关联仓库表展示分支创建模式、feature 分支、基础/开发/目标版本、版本来源和同步时间。
+- `scripts/acceptance/sa009-remove-repo-gitlab-evidence.sh` 已用真实后端和真实 GitLab 覆盖：未挂载发布窗口的迭代移除仓库后，原 `feature/<iterationKey>` 分支不再作为活跃分支存在，`archive/unpublished/feature-<iterationKey>` 归档分支存在；已挂载发布窗口的迭代移除仓库被拒绝，原 feature 分支保持活跃且不会产生归档分支。
 
 缺口：
 
-- 移除仓库归档更多真实 GitLab 证据为 P1。
+- 后续保持回归。
 
 ### SA-010：发布经理挂载迭代到发布窗口
 
@@ -540,7 +541,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-009 移除迭代仓库真实 GitLab 归档证据 | 同分组候选过滤、后端跨分组拒绝、已挂窗口修改限制、迭代删除保护提示和迭代详情版本/分支/模式可观察性已补；移除仓库归档仍缺少更多真实 GitLab 证据 | 用真实后端 + 真实 GitLab 证明未挂载迭代移除仓库时 feature 分支按 archive 约定归档，且已挂窗口锁定保护仍生效 |
+| P2 | SA-004 GitLab 连接异常诊断展示 | 保存、连接测试、token 加密、重启持久化和真实 GitLab API 调用已覆盖；当前失败出口仍偏通用 | 细分 token 无效、权限不足、GitLab 不可达的接口与页面诊断，保持 token 不泄露 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
 | P1 | SA-016 收尾扩展 | P0 已闭环，重复关闭幂等、真实部分失败重试、发布报告 JSON/CSV/Markdown 导出和 CI 触发状态证据已补 | 后续保持回归 |
@@ -548,6 +549,28 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-009 移除仓库真实 GitLab 归档证据
+
+命令：
+
+```bash
+bash -n scripts/acceptance/sa009-remove-repo-gitlab-evidence.sh
+bash scripts/acceptance/sa009-remove-repo-gitlab-evidence.sh
+mvn -q -pl releasehub-application -am -Dtest=IterationAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test
+```
+
+结果：
+
+- SA-009 专用验收脚本通过 **22 PASS / 0 FAIL**，使用真实后端和真实 GitLab 创建独立分组、仓库、迭代和发布窗口。
+- 未挂载发布窗口的迭代移除仓库后，GitLab 直查确认原 `feature/<iterationKey>` 分支不再活跃，`archive/unpublished/feature-<iterationKey>` 归档分支存在。
+- 已挂载发布窗口的迭代移除仓库被拒绝；GitLab 直查确认原 feature 分支仍活跃，且未产生归档分支。
+- `removeRepos` 已复用既有 `archiveFeatureBranchForRepo` 共享逻辑，避免移除路径与更新路径维护两份归档实现。
+- 应用层 `IterationAppServiceTest` 通过，覆盖移除仓库归档、已挂窗口拒绝变更等既有回归。
+
+缺口：
+
+- 后续保持回归。
 
 ### 2026-05-23 SA-007 版本策略真实页面验收
 
@@ -1057,7 +1080,7 @@ bash scripts/dev/static-scan-topn.sh 5
 
 结论：
 
-- SA-009 “分支模式记录”和“迭代详情可观察性”已补齐到后端落库、版本信息 API 和前端详情复核；后续保留移除仓库归档更多真实 GitLab 证据。
+- SA-009 “分支模式记录”和“迭代详情可观察性”已补齐到后端落库、版本信息 API 和前端详情复核；移除仓库归档真实 GitLab 证据已在 2026-05-23 补齐。
 
 ### 2026-05-21 SA-009 迭代删除保护前端提示
 
@@ -1080,7 +1103,7 @@ bash scripts/dev/static-scan-topn.sh 5
 
 结论：
 
-- SA-009 “删除保护”已有后端权威拒绝和前端明确提示；后续保留移除仓库归档更多真实 GitLab 证据和迭代详情可观察性扩展。
+- SA-009 “删除保护”已有后端权威拒绝和前端明确提示；迭代详情可观察性和移除仓库归档真实 GitLab 证据均已在后续切片补齐。
 
 ### 2026-05-21 SA-009 已挂窗口后迭代仓库集合锁定
 
@@ -1103,7 +1126,7 @@ git diff --check
 
 结论：
 
-- SA-009 “已挂窗口后的修改限制”已具备后端权威写入保护和前端入口约束；后续保留删除保护、移除仓库归档更多真实 GitLab 证据和迭代详情可观察性扩展。
+- SA-009 “已挂窗口后的修改限制”已具备后端权威写入保护和前端入口约束；删除保护、迭代详情可观察性和移除仓库归档真实 GitLab 证据均已在后续切片补齐。
 
 ### 2026-05-21 SA-009 同分组仓库选择与写入保护
 
@@ -1126,7 +1149,7 @@ git diff --check
 
 结论：
 
-- SA-009 “只能选择同分组已纳管仓库”已有前端候选过滤和后端权威写入保护；已挂窗口后的修改限制已在后续切片补齐，后续保留移除仓库归档更多真实 GitLab 证据、删除保护和迭代详情可观察性。
+- SA-009 “只能选择同分组已纳管仓库”已有前端候选过滤和后端权威写入保护；已挂窗口后的修改限制、删除保护、迭代详情可观察性和移除仓库归档真实 GitLab 证据均已在后续切片补齐。
 
 ### 2026-05-21 场景矩阵全量复验
 
