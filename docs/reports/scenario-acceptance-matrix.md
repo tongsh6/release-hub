@@ -540,6 +540,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
+| P1 | SA-006 分支规则真实端到端证据收口 | 规则作用域表单校验、页面单测、Playwright 候选用户旅程 spec、scoped check API、核心分支链路 scoped compliance 和 archive 分支统计治理已补；仍缺真实 GitLab 端到端 scoped rule 证据 | 用外部 Playwright + 真实后端 + 真实 GitLab 证明“规则配置 → 分支创建被规则约束”，并保留合规创建与不合规拒绝证据 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
 | P1 | SA-016 收尾扩展 | P0 已闭环，重复关闭幂等、真实部分失败重试、发布报告 JSON/CSV/Markdown 导出和 CI 触发状态证据已补 | 后续保持回归 |
