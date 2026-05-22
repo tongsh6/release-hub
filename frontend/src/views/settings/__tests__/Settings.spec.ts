@@ -4,12 +4,27 @@ import Settings from '../Settings.vue'
 import { settingsApi } from '@/api/settingsApi'
 import { handleError } from '@/utils/error'
 import { ElMessage } from 'element-plus'
+import { ApiError } from '@/api/http'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
     t: (key: string) => key
   })
 }))
+
+vi.mock('@/api/http', () => {
+  class MockApiError extends Error {
+    public readonly code: string
+
+    constructor(args: { code: string; message: string }) {
+      super(args.message)
+      this.name = 'ApiError'
+      this.code = args.code
+    }
+  }
+
+  return { ApiError: MockApiError }
+})
 
 vi.mock('element-plus', () => ({
   ElMessage: {
@@ -50,6 +65,10 @@ const stubs = {
   ElButton: {
     template: '<button type="button" @click="$emit(\'click\')"><slot /></button>'
   },
+  ElAlert: {
+    props: ['title'],
+    template: '<div class="gitlab-diagnostic">{{ title }}</div>'
+  },
   ElEmpty: true,
   ElRadioGroup: {
     template: '<div><slot /></div>'
@@ -87,5 +106,19 @@ describe('Settings', () => {
 
     expect(handleError).toHaveBeenCalledWith(error)
     expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+
+  it('renders classified GitLab connection diagnostics on the settings page', async () => {
+    const error = new ApiError({
+      code: 'GITLAB_004',
+      message: 'GitLab token is invalid or expired'
+    })
+    vi.mocked(settingsApi.testGitLab).mockRejectedValue(error)
+    const wrapper = mount(Settings, { global: { stubs } })
+
+    await (wrapper.vm as any).testGitLab()
+
+    expect(wrapper.find('.gitlab-diagnostic').text()).toBe('GitLab token is invalid or expired')
+    expect(handleError).toHaveBeenCalledWith(error)
   })
 })

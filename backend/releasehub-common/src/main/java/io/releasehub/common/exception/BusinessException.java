@@ -103,6 +103,18 @@ public class BusinessException extends BaseException {
         return of(ErrorCode.GITLAB_CONNECTION_FAILED, reason);
     }
 
+    public static BusinessException gitlabTokenInvalid() {
+        return of(ErrorCode.GITLAB_TOKEN_INVALID);
+    }
+
+    public static BusinessException gitlabPermissionDenied() {
+        return of(ErrorCode.GITLAB_PERMISSION_DENIED);
+    }
+
+    public static BusinessException gitlabUnreachable() {
+        return of(ErrorCode.GITLAB_UNREACHABLE);
+    }
+
     // ========== Repository ==========
 
     public static BusinessException repoAttached(Object repoId) {

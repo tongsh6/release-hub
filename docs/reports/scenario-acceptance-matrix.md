@@ -67,7 +67,7 @@
 | ID | 用户旅程入口 | 后端业务证据 | GitLab/数据证据 | 当前主要缺口 |
 |---|---|---|---|---|
 | SA-003 | 管理员在分组页面创建多层分组并查看树 | Group API、非叶子资源挂载拒绝 | 仓库/迭代/窗口 groupCode 均落在叶子分组 | 前端已稳定断言仓库、迭代、发布窗口创建入口只能选择叶子分组；资源移动、关联资源删除保护为 P1/P2 |
-| SA-004 | 管理员在系统设置页保存并测试 GitLab 连接 | Settings 保存、读取、重启持久化；`system_settings.gitlab_token` 透明加密；连接测试调用 GitLab `/api/v4/user` | 后续真实 GitLab 分支操作成功且 token 不泄露；验收脚本同时审计仓库 token 和 Settings token 明文数量；无效 token / 不可达会返回 `GITLAB_003` | 已补前端连接测试入口、成功提示和失败错误出口；后续仅保留更细粒度诊断展示 |
+| SA-004 | 管理员在系统设置页保存并测试 GitLab 连接 | Settings 保存、读取、重启持久化；`system_settings.gitlab_token` 透明加密；连接测试调用 GitLab `/api/v4/user` | 后续真实 GitLab 分支操作成功且 token 不泄露；验收脚本同时审计仓库 token 和 Settings token 明文数量；token 无效、权限不足和 GitLab 不可达分别返回 `GITLAB_004`、`GITLAB_005`、`GITLAB_006` | 连接测试入口、成功提示、失败错误出口和页面内细分诊断展示已补；后续保持回归 |
 | SA-005 | 管理员在仓库页纳管分组仓库并查看详情 | 仓库创建校验、叶子分组归属、重复/错误 URL 校验；仓库列表支持按组织及子组织范围筛选；详情页/抽屉展示组织路径和版本解析状态；仓库仍被迭代引用、分组仍有子分组或仍被仓库/迭代/发布窗口引用时拒绝删除 | 真实 GitLab cloneUrl、默认分支、token 安全审计；初始版本来源 `versionSource` 可复核 | Clone URL 格式校验、规范化重复纳管保护、版本解析失败修复引导、按组织筛选和删除保护已补；后续保持回归 |
 | SA-006 | 管理员在分支规则页配置命名规范 | BranchRule 校验、AUTO/NAMED/EXISTING 分支模式约束；GLOBAL/PROJECT/SUB_PROJECT 作用域按最具体规则解析；feature/release 分支创建和冲突扫描传入仓库上下文；不合规 NAMED 在迭代仓库写入和 GitLab 创建前拒绝，手动 release 分支在 GitLab 创建前拒绝 | 创建出的 feature/hotfix/release 分支名称符合规则；真实 GitLab 直查可证明合规分支存在、不合规分支不存在 | P0 已覆盖：规则作用域表单校验、页面单测、Playwright 真实页面管理旅程、scoped check API、核心分支链路 scoped compliance、PROJECT/GLOBAL/SUB_PROJECT 真实 GitLab 前置拒绝证据已补；历史不合规分支治理入口留作后续扩展 |
 | SA-007 | 管理员在版本策略页配置版本演进规则 | SemVer 校验、PATCH/MINOR/MAJOR 推导；版本策略支持 GLOBAL/PROJECT/SUB_PROJECT 作用域元数据和可继承策略查询，前端可创建/编辑/删除 scoped policy，版本更新入口按仓库范围默认选取继承策略并推导目标版本 | Maven/Gradle 写回前置条件可验证 | P0 已覆盖：策略作用域元数据、PostgreSQL 迁移、scoped policy 创建/编辑/删除/applicable API、前端 scoped policy 创建/编辑/删除表单与单测、版本更新入口继承策略默认选择已补；外部 Playwright 已在真实前后端页面实跑 GLOBAL/PROJECT/SUB_PROJECT 创建、编辑、删除和项目级必填校验 |
@@ -170,12 +170,12 @@ P0 验收焦点：
 - 真实 GitLab 操作间接覆盖可用性。
 - `SystemSettingsJpaEntity.gitlabToken` 复用 `GitTokenAttributeConverter` 透明加密，`GitTokenAttributeConverterTest` 覆盖长明文 token 加密、历史无前缀密文兼容和加密关闭透传。
 - `run-acceptance.sh` v3.16 已把 `system_settings.gitlab_token` 纳入 SA-002/SA-004 token 明文审计。
-- `GET /api/v1/settings/gitlab/test` 已从固定返回 true 改为调用 GitLab `/api/v4/user`；`GitLabAdapterTest` 覆盖成功、401 和配置缺失；`SettingsApiTest` 覆盖 API 委托和业务错误响应。
-- 前端设置页“测试连接”成功显示专用文案，失败走统一 `handleError`，`Settings.spec.ts` 已覆盖。
+- `GET /api/v1/settings/gitlab/test` 已从固定返回 true 改为调用 GitLab `/api/v4/user`；`GitLabAdapterTest` 覆盖成功、401、403、不可达和配置缺失；`SettingsApiTest` 覆盖 API 委托、token 无效、权限不足和不可达业务错误响应。
+- 前端设置页“测试连接”成功显示专用文案；GitLab 诊断错误会在页面内显示安全错误文案，同时继续走统一 `handleError`，`Settings.spec.ts` 已覆盖。
 
 缺口：
 
-- 更细粒度区分权限不足、token 无效、网络不可达的诊断详情为 P2。
+- 后续保持回归。
 
 ### SA-005：管理员纳管代码仓库
 
@@ -541,7 +541,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P2 | SA-004 GitLab 连接异常诊断展示 | 保存、连接测试、token 加密、重启持久化和真实 GitLab API 调用已覆盖；当前失败出口仍偏通用 | 细分 token 无效、权限不足、GitLab 不可达的接口与页面诊断，保持 token 不泄露 |
+| P2 | SA-006 历史不合规分支治理入口 | 分支规则创建、scoped 解析和真实 GitLab 前置拒绝证据已覆盖；历史已存在的不合规分支当前只在同步统计中可见 | 给管理员提供历史不合规分支的可见入口和治理动作边界，不自动批量改名或删除 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
 | P1 | SA-016 收尾扩展 | P0 已闭环，重复关闭幂等、真实部分失败重试、发布报告 JSON/CSV/Markdown 导出和 CI 触发状态证据已补 | 后续保持回归 |
@@ -549,6 +549,28 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-004 GitLab 连接异常诊断展示
+
+命令：
+
+```bash
+mvn -q -pl releasehub-infrastructure -am -Dtest=GitLabAdapterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -q -pl releasehub-bootstrap -am -Dtest=SettingsApiTest -Dsurefire.failIfNoSpecifiedTests=false test
+pnpm exec vitest run src/views/settings/__tests__/Settings.spec.ts
+pnpm i18n:lint
+```
+
+结果：
+
+- `GitLabAdapter.testConnection()` 继续调用真实 GitLab `/api/v4/user`，并把 401、403 和网络不可达分别映射为 `GITLAB_004`、`GITLAB_005`、`GITLAB_006`。
+- 新增错误码均使用固定安全文案，不携带 token、baseUrl 或 GitLab 原始响应体；token 无效使用业务 400，避免前端把 GitLab token 问题误判为当前登录态 401。
+- `SettingsApiTest` 覆盖 token 无效、权限不足和服务不可达的 API 响应状态、错误码和消息。
+- 设置页在连接测试失败时展示页面内诊断提示，并继续走统一错误处理；前端 Settings 专项 3/0 通过，i18n lint 通过。
+
+缺口：
+
+- 后续保持回归。
 
 ### 2026-05-23 SA-009 移除仓库真实 GitLab 归档证据
 

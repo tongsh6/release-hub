@@ -27,20 +27,20 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-004 | GitLab 连接异常诊断展示 | `scenario-acceptance-matrix.md` SA-004 P2 缺口 | 上一队首任务已补齐并出队；当前仍可执行的矩阵缺口是区分 token 无效、权限不足和 GitLab 不可达的诊断体验 |
+| 1 | HEAD | SA-006 | 历史不合规分支治理入口 | `scenario-acceptance-matrix.md` SA-006 P2 缺口 | 上一队首任务已补齐并出队；当前仍可执行的矩阵缺口是让管理员看到历史已存在的不合规分支并明确治理动作边界 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-004 GitLab 连接异常诊断展示。
+任务：SA-006 历史不合规分支治理入口。
 
 验收出口：
 
-- 管理员在系统设置页测试 GitLab 连接时，能区分 token 无效、权限不足和 GitLab 不可达。
-- 后端错误码和页面提示必须不泄露 token、URL 凭据或敏感响应体。
-- 连接测试仍调用真实 GitLab `/api/v4/user` 或等价真实探针，不退回固定 mock 成功。
-- 覆盖必要的后端契约、前端回归；如补真实用户旅程，必须由外部 Playwright 驱动真实页面，不用 route-level stub 伪装验收。
+- 管理员能从前端看到历史已存在的不合规分支，而不是只在同步统计里看到数量。
+- 治理入口必须明确动作边界：本切片只做可见性和安全引导，不自动批量重命名、删除或归档历史分支。
+- 后端接口不得把 `archive/...` 分支误判为活跃不合规分支；已有统计排除规则必须继续有效。
+- 覆盖必要的后端契约和前端回归；如补真实用户旅程，必须由外部 Playwright 驱动真实页面，不用 route-level stub 伪装验收。
 - 完成后同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md` 和 `tasks/records/`。
 - 完成后运行 `bash scripts/dev/check-roadmap.sh`，确保下一个 `HEAD` 唯一且可追溯。
 
@@ -48,9 +48,9 @@
 
 - 不做 RBAC。
 - 不做通知。
-- 不做 GitLab Settings 存储模型重写。
-- 不做仓库级 token 轮换或批量修复。
-- 不做历史连接记录审计报表。
+- 不做历史分支自动重命名、删除或归档。
+- 不做跨仓批量修复任务。
+- 不改变 BranchRule 匹配语义。
 - 不把 route-level stub 回归记录为场景化验收通过。
 
 ---

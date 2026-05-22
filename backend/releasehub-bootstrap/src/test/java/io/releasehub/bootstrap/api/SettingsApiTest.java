@@ -120,12 +120,39 @@ class SettingsApiTest {
     @Test
     void shouldReturnBusinessErrorWhenGitLabConnectionFails() throws Exception {
         String token = loginAndGetToken();
-        doThrow(BusinessException.gitlabConnectionFailed("invalid token"))
+        doThrow(BusinessException.gitlabTokenInvalid())
             .when(gitLabPort).testConnection();
 
         mockMvc.perform(get("/api/v1/settings/gitlab/test")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.code").value("GITLAB_003"));
+            .andExpect(jsonPath("$.code").value("GITLAB_004"))
+            .andExpect(jsonPath("$.message").value("GitLab token is invalid or expired"));
+    }
+
+    @Test
+    void shouldReturnBusinessErrorWhenGitLabPermissionDenied() throws Exception {
+        String token = loginAndGetToken();
+        doThrow(BusinessException.gitlabPermissionDenied())
+            .when(gitLabPort).testConnection();
+
+        mockMvc.perform(get("/api/v1/settings/gitlab/test")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("GITLAB_005"))
+            .andExpect(jsonPath("$.message").value("GitLab token does not have required permissions"));
+    }
+
+    @Test
+    void shouldReturnBusinessErrorWhenGitLabUnreachable() throws Exception {
+        String token = loginAndGetToken();
+        doThrow(BusinessException.gitlabUnreachable())
+            .when(gitLabPort).testConnection();
+
+        mockMvc.perform(get("/api/v1/settings/gitlab/test")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(jsonPath("$.code").value("GITLAB_006"))
+            .andExpect(jsonPath("$.message").value("GitLab service is unreachable"));
     }
 }

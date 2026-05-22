@@ -100,6 +100,9 @@ public enum ErrorCode {
     GITLAB_SETTINGS_MISSING("GITLAB_001", "error.gitlab.settings_missing", 400),
     GITLAB_PROJECT_NOT_FOUND("GITLAB_002", "error.gitlab.project_not_found", 404),
     GITLAB_CONNECTION_FAILED("GITLAB_003", "error.gitlab.connection_failed", 400),
+    GITLAB_TOKEN_INVALID("GITLAB_004", "error.gitlab.token_invalid", 400),
+    GITLAB_PERMISSION_DENIED("GITLAB_005", "error.gitlab.permission_denied", 403),
+    GITLAB_UNREACHABLE("GITLAB_006", "error.gitlab.unreachable", 503),
 
     // ========== 分支规则 (BR) ==========
     BRANCH_RULE_NOT_FOUND("BR_001", "error.br.not_found", 404),

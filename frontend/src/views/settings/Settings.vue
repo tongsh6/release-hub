@@ -14,6 +14,14 @@
             <el-button :loading="testing" @click="testGitLab">{{ t('settings.buttons.testConnection') }}</el-button>
             <el-button type="primary" :loading="saving" @click="saveGitLab">{{ t('common.save') }}</el-button>
           </el-form-item>
+          <el-alert
+            v-if="gitlabTestError"
+            class="gitlab-diagnostic"
+            type="error"
+            show-icon
+            :closable="false"
+            :title="gitlabTestError"
+          />
         </el-form>
       </el-tab-pane>
 
@@ -64,11 +72,13 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { settingsApi, type GitLabSettings, type NamingSettings, type BlockingSettings } from '@/api/settingsApi'
 import { handleError } from '@/utils/error'
+import { ApiError } from '@/api/http'
 
 const { t } = useI18n()
 const active = ref('gitlab')
 const saving = ref(false)
 const testing = ref(false)
+const gitlabTestError = ref('')
 
 const gitlabForm = ref<GitLabSettings>({ baseUrl: '', token: '' })
 const namingForm = ref<NamingSettings>({ featureTemplate: '', releaseTemplate: '' })
@@ -97,10 +107,14 @@ const saveGitLab = async () => {
 
 const testGitLab = async () => {
   testing.value = true
+  gitlabTestError.value = ''
   try {
     await settingsApi.testGitLab()
     ElMessage.success(t('settings.messages.connectionSuccess'))
   } catch (error) {
+    if (error instanceof ApiError && error.code.startsWith('GITLAB_')) {
+      gitlabTestError.value = error.message
+    }
     handleError(error)
   } finally {
     testing.value = false
