@@ -69,7 +69,7 @@
 | SA-003 | 管理员在分组页面创建多层分组并查看树 | Group API、非叶子资源挂载拒绝 | 仓库/迭代/窗口 groupCode 均落在叶子分组 | 前端已稳定断言仓库、迭代、发布窗口创建入口只能选择叶子分组；资源移动、关联资源删除保护为 P1/P2 |
 | SA-004 | 管理员在系统设置页保存并测试 GitLab 连接 | Settings 保存、读取、重启持久化；`system_settings.gitlab_token` 透明加密；连接测试调用 GitLab `/api/v4/user` | 后续真实 GitLab 分支操作成功且 token 不泄露；验收脚本同时审计仓库 token 和 Settings token 明文数量；无效 token / 不可达会返回 `GITLAB_003` | 已补前端连接测试入口、成功提示和失败错误出口；后续仅保留更细粒度诊断展示 |
 | SA-005 | 管理员在仓库页纳管分组仓库并查看详情 | 仓库创建校验、叶子分组归属、重复/错误 URL 校验；仓库列表支持按组织及子组织范围筛选；详情页/抽屉展示组织路径和版本解析状态；仓库仍被迭代引用、分组仍有子分组或仍被仓库/迭代/发布窗口引用时拒绝删除 | 真实 GitLab cloneUrl、默认分支、token 安全审计；初始版本来源 `versionSource` 可复核 | Clone URL 格式校验、规范化重复纳管保护、版本解析失败修复引导、按组织筛选和删除保护已补；后续保持回归 |
-| SA-006 | 管理员在分支规则页配置命名规范 | BranchRule 校验、AUTO/NAMED/EXISTING 分支模式约束；GLOBAL/PROJECT/SUB_PROJECT 作用域按最具体规则解析；feature/release 分支创建和冲突扫描传入仓库上下文 | 创建出的 feature/hotfix/release 分支名称符合规则 | 规则作用域表单校验、页面单测、Playwright 候选用户旅程 spec、scoped check API 和核心分支链路 scoped compliance 已补；本机全链路环境未启动，外部 Playwright 真实页面验收待环境就绪后实跑；仍缺“规则配置 → 分支创建被规则约束”的真实 GitLab 证据 |
+| SA-006 | 管理员在分支规则页配置命名规范 | BranchRule 校验、AUTO/NAMED/EXISTING 分支模式约束；GLOBAL/PROJECT/SUB_PROJECT 作用域按最具体规则解析；feature/release 分支创建和冲突扫描传入仓库上下文 | 创建出的 feature/hotfix/release 分支名称符合规则 | 规则作用域表单校验、页面单测、Playwright 真实页面管理旅程、scoped check API 和核心分支链路 scoped compliance 已补；仍缺“规则配置 → 分支创建被规则约束”的真实 GitLab 证据 |
 | SA-007 | 管理员在版本策略页配置版本演进规则 | SemVer 校验、PATCH/MINOR/MAJOR 推导；版本策略支持 GLOBAL/PROJECT/SUB_PROJECT 作用域元数据和可继承策略查询，前端可创建/编辑/删除 scoped policy，版本更新入口按仓库范围默认选取继承策略并推导目标版本 | Maven/Gradle 写回前置条件可验证 | 策略作用域元数据、PostgreSQL 迁移、scoped policy 创建/编辑/删除/applicable API、前端 scoped policy 创建/编辑/删除表单与单测已补；版本更新弹窗已按 `groupCode + repoId` 加载 applicable policy 并用 validate API 推导目标版本；版本更新策略选择 route-stub Playwright 仅作为 UI 回归，不计入验收通过；版本策略管理 Playwright 候选旅程已通过可发现性和 e2e TypeScript 检查，真实页面验收待环境就绪后实跑 |
 | SA-008 | 发布经理在窗口页创建发布窗口并查看列表/日历 | 发布窗口创建、DRAFT 状态、空窗口发布拒绝；分页接口支持按组织及子组织范围筛选；冻结草稿隐藏发布计划变更入口；仅空草稿窗口允许删除 | windowKey 唯一且关联叶子分组；非空草稿或非草稿窗口不会被删除 | 列表组织路径、组织范围筛选、后端 API、冻结限制和删除保护前端证据已补；后续保持回归 |
 | SA-009 | 技术负责人在迭代页创建迭代并选择仓库 | 同分组仓库选择、iterationKey、分支模式记录；创建、更新和追加仓库写入前均拒绝跨分组仓库；已挂窗口后禁止变更仓库集合或迭代分组；分支创建模式写入 `iteration_repo` 并在版本信息 API 返回 | feature 分支和版本信息落库并可追踪；跨分组仓库不会触发分支创建、版本记录或迭代保存副作用；已挂窗口后不会归档 feature 分支或污染发布计划 | 同分组候选过滤、后端跨分组拒绝、已挂窗口修改限制、迭代删除保护提示和迭代详情版本/分支/模式可观察性已补；移除仓库归档更多真实 GitLab 证据仍为 P1 |
@@ -540,7 +540,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-006 分支规则真实端到端证据收口 | 规则作用域表单校验、页面单测、Playwright 候选用户旅程 spec、scoped check API、核心分支链路 scoped compliance 和 archive 分支统计治理已补；仍缺真实 GitLab 端到端 scoped rule 证据 | 用外部 Playwright + 真实后端 + 真实 GitLab 证明“规则配置 → 分支创建被规则约束”，并保留合规创建与不合规拒绝证据 |
+| P1 | SA-006 分支规则真实端到端证据收口 | 规则作用域表单校验、页面单测、Playwright 真实页面管理旅程、scoped check API、核心分支链路 scoped compliance 和 archive 分支统计治理已补；仍缺真实 GitLab 端到端 scoped rule 证据 | 用真实后端 + 真实 GitLab 证明“规则配置 → 分支创建被规则约束”，并保留合规创建与不合规拒绝证据 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
 | P1 | SA-016 收尾扩展 | P0 已闭环，重复关闭幂等、真实部分失败重试、发布报告 JSON/CSV/Markdown 导出和 CI 触发状态证据已补 | 后续保持回归 |
@@ -549,6 +549,32 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-22 SA-006 分支规则真实页面管理旅程
+
+命令：
+
+```bash
+mvn -q -pl releasehub-infrastructure -am -DskipTests compile
+pnpm exec vitest run src/views/branch-rule/__tests__/BranchRuleList.spec.ts
+pnpm exec playwright test e2e/tests/branch-rule.spec.ts
+pnpm run typecheck
+pnpm run lint
+bash scripts/dev/static-scan-topn.sh 5
+```
+
+结果：
+
+- 后端 infrastructure 编译通过，确认 scope 默认值映射和实体长度约束可编译。
+- 分支规则列表页面单测通过，覆盖项目级、子项目级 scope 明细展示。
+- 外部 Playwright 在真实前端、真实后端和本地 GitLab 环境下通过 3 个测试：项目级规则创建、缺失项目 ID 表单阻止、列表搜索复核、规则测试、禁用/启用切换和清理。
+- 前端 typecheck、lint 和静态扫描通过；静态扫描报告：`.ai/reports/static-scan/20260522-231950/summary.md`。
+- 本轮修复了列表开关刷新误用 `reload` 的真实页面问题；开关成功后重新拉取列表，避免页面操作通过但状态不刷新的产品体验缺口。
+
+影响：
+
+- SA-006 分支规则管理页从“候选 spec 可发现”推进为“真实页面旅程已跑通”。
+- 仍不声明 SA-006 完成；缺口继续收敛到“规则配置真正约束 feature/release 分支创建”的真实 GitLab 证据。
 
 ### 2026-05-22 SA-007 版本更新策略选择 UI 回归
 

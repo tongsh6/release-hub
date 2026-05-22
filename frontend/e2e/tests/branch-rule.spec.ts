@@ -49,7 +49,7 @@ test.describe.serial('SA-006: Branch rule management', () => {
     await expect(dialog).toBeVisible({ timeout: 5000 })
     await dialog.getByRole('textbox', { name: L['branchRule.name'] }).fill(ruleName)
     await dialog.getByRole('textbox', { name: L['branchRule.pattern'] }).fill('feature/{key}')
-    await dialog.locator('.el-radio').filter({ hasText: L['branchRule.scopeProject'] }).click(FORCE)
+    await dialog.locator('.el-radio').filter({ hasText: new RegExp(`^${L['branchRule.scopeProject']}$`) }).click(FORCE)
 
     await dialog.locator('button').filter({ hasText: L['common.save'] }).click(FORCE)
     await expect(dialog.locator('.el-form-item__error')).toContainText(L['branchRule.scopeProjectRequired'])
@@ -80,10 +80,10 @@ test.describe.serial('SA-006: Branch rule management', () => {
     await testDialog.locator('.el-dialog__headerbtn').click(FORCE)
     await expect(testDialog).toBeHidden({ timeout: 5000 })
 
-    await row.locator('.el-switch').click(FORCE)
+    await row.locator('.el-switch').click()
     await expect(page.locator('.el-message').last()).toContainText(L['branchRule.disableSuccess'], { timeout: 5000 })
     await searchRule(page)
-    await ruleRow(page).locator('.el-switch').click(FORCE)
+    await ruleRow(page).locator('.el-switch').click()
     await expect(page.locator('.el-message').last()).toContainText(L['branchRule.enableSuccess'], { timeout: 5000 })
   })
 
