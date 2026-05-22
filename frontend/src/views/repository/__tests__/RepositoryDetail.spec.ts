@@ -31,6 +31,7 @@ vi.mock('@/api/repositoryApi', () => ({
     getGateSummary: vi.fn(),
     getBranchSummary: vi.fn(),
     getInitialVersion: vi.fn(),
+    getNonCompliantBranches: vi.fn(),
     syncInitialVersion: vi.fn(),
     sync: vi.fn()
   }
@@ -85,6 +86,24 @@ const stubs = {
   ElStatistic: {
     props: ['title', 'value'],
     template: '<div>{{ title }} {{ value }}</div>'
+  },
+  ElDivider: {
+    template: '<hr />'
+  },
+  ElAlert: {
+    props: ['title'],
+    template: '<div>{{ title }}</div>'
+  },
+  ElTable: {
+    props: ['data'],
+    template: '<table><tr v-for="row in data" :key="row.branchName"><td>{{ row.branchName }}</td><td>{{ row.scopeProjectId }}</td><td>{{ row.scopeSubProjectId }}</td><slot /></tr></table>'
+  },
+  ElTableColumn: {
+    template: '<td><slot /></td>'
+  },
+  ElEmpty: {
+    props: ['description'],
+    template: '<div>{{ description }}</div>'
   }
 }
 
@@ -116,6 +135,7 @@ describe('RepositoryDetail', () => {
     vi.mocked(repositoryApi.getGateSummary).mockReset()
     vi.mocked(repositoryApi.getBranchSummary).mockReset()
     vi.mocked(repositoryApi.getInitialVersion).mockReset()
+    vi.mocked(repositoryApi.getNonCompliantBranches).mockReset()
     vi.mocked(repositoryApi.syncInitialVersion).mockReset()
     vi.mocked(groupApi.listTree).mockReset()
     vi.mocked(ElMessage.success).mockReset()
@@ -135,6 +155,7 @@ describe('RepositoryDetail', () => {
       mergedMrs: 0,
       closedMrs: 0
     })
+    vi.mocked(repositoryApi.getNonCompliantBranches).mockResolvedValue([])
     vi.mocked(groupApi.listTree).mockResolvedValue([])
   })
 

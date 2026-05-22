@@ -48,6 +48,16 @@ export interface InitialVersionView {
   versionSource?: string | null
 }
 
+export interface NonCompliantBranch {
+  repositoryId: string
+  repositoryName: string
+  branchName: string
+  scopeProjectId: string
+  scopeSubProjectId: string
+  actionBoundary: 'MANUAL_REVIEW_ONLY'
+  guidance: string
+}
+
 export interface CreateRepoReq {
   name: string
   cloneUrl: string
@@ -145,6 +155,13 @@ export const repositoryApi = {
 
   async listBranches(id: Id, prefix: string = 'feature/'): Promise<string[]> {
     const res = await http.get<ApiResponse<string[]>>(`/v1/repositories/${id}/branches`, { params: { prefix } })
+    return res.data.data ?? []
+  },
+
+  async getNonCompliantBranches(id: Id): Promise<NonCompliantBranch[]> {
+    const res = await http.get<ApiResponse<NonCompliantBranch[]>>(
+      `/v1/repositories/${id}/branch-governance/noncompliant`
+    )
     return res.data.data ?? []
   }
 }

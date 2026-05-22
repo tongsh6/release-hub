@@ -442,6 +442,13 @@ export default {
       mergedMrs: 'Merged MRs',
       closedMrs: 'Closed MRs'
     },
+    branchGovernance: {
+      boundary: 'This governance entry only shows active non-compliant branches and safe guidance; it will not automatically rename, delete, or archive historical branches.',
+      branchName: 'Branch',
+      guidanceLabel: 'Guidance',
+      guidance: 'Confirm the branch owner and business state first, then handle it manually in the Git platform.',
+      empty: 'No historical non-compliant branches need governance.'
+    },
     gitlabMissing: 'Configure GitLab settings first',
     gitlabUrlNotAvailable: 'GitLab URL not available',
     syncVersion: 'Rescan Version',

@@ -442,6 +442,13 @@ export default {
       mergedMrs: '已合并 MR',
       closedMrs: '已关闭 MR'
     },
+    branchGovernance: {
+      boundary: '治理入口仅展示活跃不合规分支并提供安全引导，不会自动重命名、删除或归档历史分支',
+      branchName: '分支名',
+      guidanceLabel: '处理建议',
+      guidance: '请先确认分支负责人和业务状态，再在 Git 平台中手动处理',
+      empty: '未发现需要治理的历史不合规分支'
+    },
     gitlabMissing: '请先在系统设置中配置 GitLab',
     gitlabUrlNotAvailable: '无法获取 GitLab 地址',
     syncVersion: '重新解析版本',

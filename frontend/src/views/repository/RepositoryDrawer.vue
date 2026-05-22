@@ -68,6 +68,7 @@
             <el-statistic :title="t('repository.branchSummary.closedMrs')" :value="branchSummary?.closedMrs || 0" />
           </el-col>
         </el-row>
+        <BranchGovernancePanel :branches="nonCompliantBranches" />
       </el-card>
     </div>
   </el-drawer>
@@ -76,9 +77,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { repositoryApi, type Repository, type GateSummary, type BranchSummary, type InitialVersionView } from '@/api/repositoryApi'
+import { repositoryApi, type Repository, type GateSummary, type BranchSummary, type InitialVersionView, type NonCompliantBranch } from '@/api/repositoryApi'
 import { groupApi } from '@/api/modules/group'
 import { resolveGroupPath } from '@/utils/groupPath'
+import BranchGovernancePanel from './BranchGovernancePanel.vue'
 
 const { t } = useI18n()
 
@@ -88,6 +90,7 @@ const detail = ref<Repository>()
 const gateSummary = ref<GateSummary>()
 const branchSummary = ref<BranchSummary>()
 const initialVersion = ref<InitialVersionView>()
+const nonCompliantBranches = ref<NonCompliantBranch[]>([])
 const groupPath = ref('')
 
 const versionSourceLabel = computed(() => {
@@ -115,17 +118,19 @@ const open = async (id: string) => {
 const refresh = async () => {
   if (!repoId.value) return
   try {
-    const [d, g, b, v, tree] = await Promise.all([
+    const [d, g, b, v, governanceBranches, tree] = await Promise.all([
       repositoryApi.get(repoId.value),
       repositoryApi.getGateSummary(repoId.value),
       repositoryApi.getBranchSummary(repoId.value),
       repositoryApi.getInitialVersion(repoId.value),
+      repositoryApi.getNonCompliantBranches(repoId.value),
       groupApi.listTree().catch(() => [])
     ])
     detail.value = d
     gateSummary.value = g
     branchSummary.value = b
     initialVersion.value = v
+    nonCompliantBranches.value = governanceBranches
     groupPath.value = resolveGroupPath(d.groupCode, tree) || d.groupCode || ''
   } catch (e) {
     console.error(e)
