@@ -1,5 +1,6 @@
 package io.releasehub.interfaces.api.repo;
 
+import io.releasehub.application.branchrule.BranchGovernanceAppService;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.repo.CodeRepositoryAppService;
 import io.releasehub.application.repo.CodeRepositoryPort;
@@ -35,6 +36,7 @@ public class CodeRepositoryController {
     private final CodeRepositoryAppService appService;
     private final CodeRepositoryPort codeRepositoryPort;
     private final GitBranchAdapterFactory gitBranchAdapterFactory;
+    private final BranchGovernanceAppService branchGovernanceAppService;
 
     @PostMapping
     @Operation(summary = "Create repository")
@@ -108,6 +110,15 @@ public class CodeRepositoryController {
                 summary.mergedMrs(),
                 summary.closedMrs()
         ));
+    }
+
+    @GetMapping("/{id}/branch-governance/noncompliant")
+    @Operation(summary = "List active non-compliant branches for manual governance review")
+    public ApiResponse<List<NonCompliantBranchView>> listNonCompliantBranches(@PathVariable("id") String id) {
+        List<NonCompliantBranchView> branches = branchGovernanceAppService.listNonCompliantBranches(id).stream()
+                .map(NonCompliantBranchView::from)
+                .toList();
+        return ApiResponse.success(branches);
     }
 
     @GetMapping
@@ -190,6 +201,28 @@ public class CodeRepositoryController {
             return GitProvider.valueOf(gitProvider.toUpperCase());
         } catch (IllegalArgumentException e) {
             throw ValidationException.invalidParameter("gitProvider");
+        }
+    }
+
+    public record NonCompliantBranchView(
+            String repositoryId,
+            String repositoryName,
+            String branchName,
+            String scopeProjectId,
+            String scopeSubProjectId,
+            String actionBoundary,
+            String guidance
+    ) {
+        static NonCompliantBranchView from(BranchGovernanceAppService.NonCompliantBranch branch) {
+            return new NonCompliantBranchView(
+                    branch.repositoryId(),
+                    branch.repositoryName(),
+                    branch.branchName(),
+                    branch.scopeProjectId(),
+                    branch.scopeSubProjectId(),
+                    branch.actionBoundary(),
+                    branch.guidance()
+            );
         }
     }
 }
