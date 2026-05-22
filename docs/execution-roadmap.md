@@ -27,20 +27,20 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-006 | 分支规则真实端到端证据收口 | `scenario-acceptance-matrix.md` SA-006 P1 缺口 | 分支规则作用域、核心创建链路、PROJECT scoped 真实 GitLab 前置拒绝证据和归档分支统计治理已补，下一步需要补 GLOBAL/SUB_PROJECT 组合的真实 GitLab 端到端证据复核 |
+| 1 | HEAD | SA-007 | 版本策略真实页面验收 | `scenario-acceptance-matrix.md` SA-007 P1/P2 缺口 | SA-006 分支规则真实端到端证据已补齐并出队；当前最小可执行缺口是 SA-007 scoped policy 管理的外部 Playwright 真实页面验收 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-006 分支规则真实端到端证据收口。
+任务：SA-007 版本策略真实页面验收。
 
 验收出口：
 
-- 管理员在前端配置 GLOBAL / PROJECT / SUB_PROJECT 分支规则后，后续 feature / release 分支创建会按最具体规则校验。
-- 不合规 NAMED 分支在写入迭代或创建 release 分支前被拒绝，且错误可被用户理解。
-- 真实 GitLab 证据能证明合规分支被创建、不合规分支未创建；PROJECT scoped 证据已补，剩余 GLOBAL/SUB_PROJECT 组合复核。
-- 覆盖必要的后端单测、前端 Vitest；如补真实用户旅程，必须由外部 Playwright 驱动真实页面，不用 route-level stub 伪装验收。
+- 管理员能在真实版本策略页创建、编辑、删除 GLOBAL / PROJECT / SUB_PROJECT 版本策略。
+- 页面能阻止缺失 scope 必填项，并能在列表中复核 scope 明细。
+- scoped policy 的 applicable 选择仍按 `SUB_PROJECT > PROJECT > GLOBAL` 工作；如果从版本更新入口复核，必须使用真实后端数据，不用 route-level stub 伪装验收。
+- 覆盖必要的后端/前端回归；真实用户旅程必须由外部 Playwright 驱动真实页面。
 - 完成后同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md` 和 `tasks/records/`。
 - 完成后运行 `bash scripts/dev/check-roadmap.sh`，确保下一个 `HEAD` 唯一且可追溯。
 
@@ -49,8 +49,8 @@
 - 不做 RBAC。
 - 不做通知。
 - 不做历史不合规分支自动修复或批量重命名；历史治理入口可作为后续切片。
-- 不改变既有 `AUTO` / `NAMED` / `EXISTING` 分支创建模式的产品语义。
-- 不新增 Git Provider。
+- 不扩展版本更新批量写回能力；该能力归 SA-014。
+- 不把 route-level stub 回归记录为场景化验收通过。
 
 ---
 
