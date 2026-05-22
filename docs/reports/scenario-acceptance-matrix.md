@@ -69,7 +69,7 @@
 | SA-003 | 管理员在分组页面创建多层分组并查看树 | Group API、非叶子资源挂载拒绝 | 仓库/迭代/窗口 groupCode 均落在叶子分组 | 前端已稳定断言仓库、迭代、发布窗口创建入口只能选择叶子分组；资源移动、关联资源删除保护为 P1/P2 |
 | SA-004 | 管理员在系统设置页保存并测试 GitLab 连接 | Settings 保存、读取、重启持久化；`system_settings.gitlab_token` 透明加密；连接测试调用 GitLab `/api/v4/user` | 后续真实 GitLab 分支操作成功且 token 不泄露；验收脚本同时审计仓库 token 和 Settings token 明文数量；token 无效、权限不足和 GitLab 不可达分别返回 `GITLAB_004`、`GITLAB_005`、`GITLAB_006` | 连接测试入口、成功提示、失败错误出口和页面内细分诊断展示已补；后续保持回归 |
 | SA-005 | 管理员在仓库页纳管分组仓库并查看详情 | 仓库创建校验、叶子分组归属、重复/错误 URL 校验；仓库列表支持按组织及子组织范围筛选；详情页/抽屉展示组织路径和版本解析状态；仓库仍被迭代引用、分组仍有子分组或仍被仓库/迭代/发布窗口引用时拒绝删除 | 真实 GitLab cloneUrl、默认分支、token 安全审计；初始版本来源 `versionSource` 可复核 | Clone URL 格式校验、规范化重复纳管保护、版本解析失败修复引导、按组织筛选和删除保护已补；后续保持回归 |
-| SA-006 | 管理员在分支规则页配置命名规范 | BranchRule 校验、AUTO/NAMED/EXISTING 分支模式约束；GLOBAL/PROJECT/SUB_PROJECT 作用域按最具体规则解析；feature/release 分支创建和冲突扫描传入仓库上下文；不合规 NAMED 在迭代仓库写入和 GitLab 创建前拒绝，手动 release 分支在 GitLab 创建前拒绝 | 创建出的 feature/hotfix/release 分支名称符合规则；真实 GitLab 直查可证明合规分支存在、不合规分支不存在 | P0 已覆盖：规则作用域表单校验、页面单测、Playwright 真实页面管理旅程、scoped check API、核心分支链路 scoped compliance、PROJECT/GLOBAL/SUB_PROJECT 真实 GitLab 前置拒绝证据已补；历史不合规分支治理入口留作后续扩展 |
+| SA-006 | 管理员在分支规则页配置命名规范 | BranchRule 校验、AUTO/NAMED/EXISTING 分支模式约束；GLOBAL/PROJECT/SUB_PROJECT 作用域按最具体规则解析；feature/release 分支创建和冲突扫描传入仓库上下文；不合规 NAMED 在迭代仓库写入和 GitLab 创建前拒绝，手动 release 分支在 GitLab 创建前拒绝；仓库维度可只读列出活跃历史不合规分支 | 创建出的 feature/hotfix/release 分支名称符合规则；真实 GitLab 直查可证明合规分支存在、不合规分支不存在；归档分支不会进入历史不合规治理清单 | P0 已覆盖：规则作用域表单校验、页面单测、Playwright 真实页面管理旅程、scoped check API、核心分支链路 scoped compliance、PROJECT/GLOBAL/SUB_PROJECT 真实 GitLab 前置拒绝证据、历史不合规分支只读治理入口已补；后续保持回归 |
 | SA-007 | 管理员在版本策略页配置版本演进规则 | SemVer 校验、PATCH/MINOR/MAJOR 推导；版本策略支持 GLOBAL/PROJECT/SUB_PROJECT 作用域元数据和可继承策略查询，前端可创建/编辑/删除 scoped policy，版本更新入口按仓库范围默认选取继承策略并推导目标版本 | Maven/Gradle 写回前置条件可验证 | P0 已覆盖：策略作用域元数据、PostgreSQL 迁移、scoped policy 创建/编辑/删除/applicable API、前端 scoped policy 创建/编辑/删除表单与单测、版本更新入口继承策略默认选择已补；外部 Playwright 已在真实前后端页面实跑 GLOBAL/PROJECT/SUB_PROJECT 创建、编辑、删除和项目级必填校验 |
 | SA-008 | 发布经理在窗口页创建发布窗口并查看列表/日历 | 发布窗口创建、DRAFT 状态、空窗口发布拒绝；分页接口支持按组织及子组织范围筛选；冻结草稿隐藏发布计划变更入口；仅空草稿窗口允许删除 | windowKey 唯一且关联叶子分组；非空草稿或非草稿窗口不会被删除 | 列表组织路径、组织范围筛选、后端 API、冻结限制和删除保护前端证据已补；后续保持回归 |
 | SA-009 | 技术负责人在迭代页创建迭代并选择仓库 | 同分组仓库选择、iterationKey、分支模式记录；创建、更新和追加仓库写入前均拒绝跨分组仓库；已挂窗口后禁止变更仓库集合或迭代分组；分支创建模式写入 `iteration_repo` 并在版本信息 API 返回 | feature 分支和版本信息落库并可追踪；跨分组仓库不会触发分支创建、版本记录或迭代保存副作用；未挂窗移除仓库会把原 feature 分支归档到 `archive/unpublished/...`，已挂窗口后不会归档 feature 分支或污染发布计划 | P0 已覆盖：同分组候选过滤、后端跨分组拒绝、已挂窗口修改限制、迭代删除保护提示、迭代详情版本/分支/模式可观察性，以及移除仓库真实 GitLab 归档证据均已补 |
@@ -225,10 +225,12 @@ P0 验收焦点：
 - 迭代 feature 分支创建、发布窗口 release 分支创建和冲突扫描均已传入 `repo.groupCode` + `repoId` 作为作用域上下文，应用层测试覆盖调用契约。
 - 仓库同步统计已把 `archive/...` 分支排除出 active/nonCompliant，避免归档分支污染历史不合规风险；`GitLabAdapterTest` 覆盖。
 - `scripts/acceptance/sa006-branch-rule-gitlab-evidence.sh` 已覆盖 PROJECT / GLOBAL / SUB_PROJECT 三类作用域的真实 GitLab 证据：合规 NAMED feature 分支创建成功，不合规 NAMED 分支写入前拒绝且 GitLab 不存在，不合规 release 分支创建前拒绝且 GitLab 不存在。
+- `GET /api/v1/repositories/{id}/branch-governance/noncompliant` 已提供仓库维度只读治理清单，按 `repo.groupCode` + `repoId` 复用 BranchRule 作用域合规判断，并排除 `archive/...`、默认分支和基础分支。
+- 仓库详情抽屉和详情页已展示历史不合规分支名、作用域和安全处理边界，明确本切片不自动重命名、删除或归档历史分支。
 
 缺口：
 
-- 历史不合规分支治理入口为后续扩展，不阻塞当前 P0。
+- 后续保持回归。
 
 ### SA-007：管理员配置版本策略
 
@@ -541,7 +543,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P2 | SA-006 历史不合规分支治理入口 | 分支规则创建、scoped 解析和真实 GitLab 前置拒绝证据已覆盖；历史已存在的不合规分支当前只在同步统计中可见 | 给管理员提供历史不合规分支的可见入口和治理动作边界，不自动批量改名或删除 |
+| P1 | SA-013 发布编排结果复核与失败 Run 观察 | 无阻塞冲突后 Run 创建和冲突未解决时拒绝已有后端证据；当前矩阵仍保留 UI 侧执行后结果复核和失败 Run 观察缺口 | 从真实页面触发或复核发布编排后，管理员能看到 Run 结果、失败态入口和可追溯执行记录，不改变编排业务语义 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
 | P1 | SA-016 收尾扩展 | P0 已闭环，重复关闭幂等、真实部分失败重试、发布报告 JSON/CSV/Markdown 导出和 CI 触发状态证据已补 | 后续保持回归 |
@@ -549,6 +551,33 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-006 历史不合规分支治理入口
+
+命令：
+
+```bash
+mvn -q -pl releasehub-application -am -Dtest=BranchGovernanceAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -q -pl releasehub-bootstrap -am -Dtest=RepositorySyncApiTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -q -pl releasehub-infrastructure -am -Dtest=GitLabGitBranchAdapterTest -Dsurefire.failIfNoSpecifiedTests=false test
+pnpm exec vitest run src/views/repository/__tests__/RepositoryDrawer.spec.ts src/views/repository/__tests__/RepositoryDetail.spec.ts
+pnpm run typecheck
+pnpm i18n:lint
+bash scripts/dev/check-roadmap.sh
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 新增 `BranchGovernanceAppService`，按仓库维度读取远端活跃分支，并用 `repo.groupCode` + `repoId` 复用 BranchRule 作用域合规判断。
+- 治理清单排除 `archive/...`、默认分支、`main`、`master`、`develop`，避免把归档或基础分支误报为历史不合规风险。
+- 新增 `GET /api/v1/repositories/{id}/branch-governance/noncompliant`，响应包含分支名、仓库、作用域和 `MANUAL_REVIEW_ONLY` 动作边界。
+- 仓库详情抽屉和详情页展示历史不合规分支与安全引导；本切片只提供可见性，不自动重命名、删除或归档历史分支。
+- 静态扫描通过，报告：`.ai/reports/static-scan/20260523-005017/summary.md`，TopN 未发现代码问题。
+
+缺口：
+
+- SA-006 后续保持回归；当前队首转向 SA-013 发布编排结果复核与失败 Run 观察。
 
 ### 2026-05-23 SA-004 GitLab 连接异常诊断展示
 
