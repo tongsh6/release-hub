@@ -76,7 +76,7 @@
 | SA-010 | 发布经理在窗口详情页挂载迭代并查看发布计划 | attach/detach 细粒度结果、状态流转、冲突阻断；解除挂载已有前端详情页入口、后端约束、外部 Playwright 页面复核候选用例和真实 GitLab 分支归档复核；发布后计划变更已锁定 | release 分支真实创建，WindowIteration 状态一致；detach 后原 release 分支删除且 `archive/unpublished/release-<windowKey>` 存在；部分失败重试已有后端/GitLab 证据 | 发布计划已有最小前端观察；解除挂载已补 Vitest、Slice-1 Playwright 页面复核候选用例和真实 GitLab 分支归档证据；发布后 attach/detach 已有后端拒绝和前端隐藏入口；Run 详情已补部分成功/失败汇总和失败项重试复核；发布计划面板已补分支状态汇总与风险提示，后续保持回归 |
 | SA-011 | 测试人员在窗口详情页触发/查看风险扫描 | 冲突总数、类型分布、阻塞发布；`MERGE_CONFLICT`、`CROSS_REPO_VERSION_MISMATCH`、`REPO_AHEAD`、`SYSTEM_AHEAD`、`GIT_PERMISSION_DENIED`、`GIT_UNAVAILABLE` 已有后端冲突扫描证据和前端展示 | 冲突与 GitLab 分支/版本状态可对应；`MERGE_CONFLICT` 已有真实 feature/release 分支和冲突提交证据；`CROSS_REPO_VERSION_MISMATCH` 已有真实 feature/release 分支、两仓 targetVersion 差异和冲突扫描证据；`REPO_AHEAD`/`SYSTEM_AHEAD` 已有真实 feature 分支 `pom.xml` 版本差异和冲突扫描证据；`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 已有真实 GitLab 权限不足和不可达探针证据 | 严重级别、建议处理方式、合并冲突、跨仓版本不一致、仓库版本较新、系统版本较新、Git 权限不足和 Git 不可达均已有前端观察；后续保持回归 |
 | SA-012 | 技术负责人在冲突详情中执行解决动作 | `USE_SYSTEM` / `USE_REPO` 等解决动作更新记录，重扫清零；feature 缺失、release 已存在、分支名不合规具备后端业务证据 | 必要时写回仓库或保留处理证据；分支名不合规路径已补 GitLab 分支直查与冲突扫描证据；仓库版本较新可接受仓库版本并更新系统记录 | P0 版本冲突 `USE_SYSTEM` 已闭环；`REPO_AHEAD` 已补 `USE_REPO` 解决路径；feature 缺失、release 分支已存在和分支名不合规强证据已补；后续保持回归 |
-| SA-013 | 技术负责人在窗口详情页触发发布编排 | 无阻塞冲突后 Run COMPLETED/SUCCESS，冲突未解决时拒绝 | RunItem/RunStep、GitLab 分支状态一致 | P0 已闭环；后续补 UI 侧执行后结果复核和失败 Run 观察 |
+| SA-013 | 技术负责人在窗口详情页触发发布编排 | 无阻塞冲突后 Run COMPLETED/SUCCESS，冲突未解决时拒绝；Run 分页按开始时间倒序返回，窗口详情能复核最新发布编排 Run | RunItem/RunStep、GitLab 分支状态一致；失败 Run 可追溯到发布窗口、仓库、迭代、失败步骤和失败原因 | P0 已闭环；UI 侧执行后结果复核和失败 Run 观察已补；后续保持回归 |
 | SA-014 | 技术负责人在版本操作入口执行版本更新 | 版本更新 Run COMPLETED/SUCCESS，失败原因可见；多仓窗口可从版本更新弹窗提交批量版本更新请求；批量版本更新可保留成功项并暴露失败项原因；Run 详情可只选择失败版本更新项重试 | `pom.xml` / `gradle.properties` 在 release 分支真实 commit；批量请求按仓库生成 repoPath 并调用既有后端批量端点；批量部分失败 RunItem 可追溯到成功仓库、失败仓库和失败 POM 路径；retry 新 Run 通过 metadata 追溯原失败 RunItem | P0 Maven 单模块已闭环；批量版本更新前端入口、Maven 多模块、Gradle 真实写回、多仓部分失败后端/GitLab 证据和版本更新失败项重试已补；后续保持回归 |
 | SA-015 | 测试人员在 Run/窗口详情复核执行证据 | Run 列表、Run 详情、窗口详情返回完整状态；UI 触发失败版本更新后可按窗口、状态和分组筛选并复核失败 Run；窗口详情可复核冲突类型分布、分支/版本详情和建议处理方式；Run 详情可复核一个 Run 内成功项与失败项并存，并可直接重试失败项；后端/GitLab 证据可复核真实部分失败重试只选择失败项；窗口报告 CSV/JSON/Markdown 可导出最近 Run 与迭代/仓库明细 | RunItem/RunStep 可追溯到窗口、迭代、仓库和失败 POM 路径；Run 分页接口支持按发布窗口分组过滤；retry 新 Run 保留选中失败项且不重复执行成功项；报告端点按窗口聚合 Run 和 WindowIteration 明细 | P0 已闭环；Run 详情失败项重试前端入口、部分失败重试后端/GitLab 强证据与发布报告制品导出已补 |
 | SA-016 | 发布经理在窗口详情页关闭窗口并查看收尾结果 | CLOSED 状态、关闭后关键操作禁止、重复关闭幂等；窗口详情可触发报告导出；收尾 Run 可记录 CI 触发结果 | tag、merge、归档和收尾 Run 可追踪；报告导出包含窗口状态、迭代、仓库和最近 Run 证据；未配置 CI 时记录 `CI_NOT_CONFIGURED`，已触发时记录 pipeline id | P0 已闭环；真实部分失败重试后端/GitLab 证据、发布报告制品导出和 CI 触发状态证据已补 |
@@ -420,11 +420,12 @@ P0 验收焦点：
 - 干净路径已升级为正式 PASS/FAIL 验收项，断言 Run `COMPLETED/SUCCESS`、`RunItem > 0`、`RunStep > 0`。
 - 真实 GitLab 验收已验证干净窗口编排 `COMPLETED`，且 RunItem/RunStep 中包含 `MERGED`。
 - Playwright 已覆盖前端真实旅程：通过 UI 创建分组、纳管仓库、创建迭代、挂载仓库、创建发布窗口、挂载迭代、发布窗口，并从窗口详情触发编排请求；请求体断言包含 UI 创建出的仓库和迭代作用域。
+- 窗口详情发布编排面板已补“最新 Run 复核”摘要：编排返回 Run ID 后立即读取详情并展示状态、执行项数量、失败项数量；存在失败项时展示发布窗口/仓库/迭代上下文、失败步骤和失败原因，并提供 Run 详情入口。
+- Run 分页按 `startedAt` 倒序返回，避免窗口详情最近执行记录拿到旧 Run；`RunPagedApiTest` 覆盖同一窗口下新 Run 排在旧 Run 前。
 
 缺口：
 
-- 失败 Run 重试和窗口/Run 状态一致性为 P1。
-- 单条连续 UI 旅程直接跑到真实 GitLab Run 成功仍未纳入 Playwright，当前由 `run-acceptance.sh` 强证据补齐。
+- 后续保持回归；单条连续 UI 旅程直接跑到真实 GitLab Run 成功仍由 `run-acceptance.sh` 强证据补齐，不把 route-level stub 当作场景化验收通过。
 
 ### SA-014：技术负责人执行版本更新
 
@@ -543,7 +544,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-013 发布编排结果复核与失败 Run 观察 | 无阻塞冲突后 Run 创建和冲突未解决时拒绝已有后端证据；当前矩阵仍保留 UI 侧执行后结果复核和失败 Run 观察缺口 | 从真实页面触发或复核发布编排后，管理员能看到 Run 结果、失败态入口和可追溯执行记录，不改变编排业务语义 |
+| P1 | SA-003 组织资源移动治理 | 三层分组、叶子分组资源挂载和删除保护已有证据；当前矩阵仍保留资源移动治理缺口 | 明确分组移动/资源迁移的产品边界，保证资源移动不会破坏叶子分组归属、发布范围追溯和既有关联保护 |
+| P1 | SA-013 发布编排结果复核与失败 Run 观察 | 无阻塞冲突后 Run 创建和冲突未解决时拒绝已有后端证据；窗口详情最新 Run 复核、失败上下文和最近 Run 倒序已补 | 后续保持回归 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
 | P1 | SA-016 收尾扩展 | P0 已闭环，重复关闭幂等、真实部分失败重试、发布报告 JSON/CSV/Markdown 导出和 CI 触发状态证据已补 | 后续保持回归 |
@@ -551,6 +553,33 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-013 发布编排结果复核与失败 Run 观察
+
+命令：
+
+```bash
+mvn -q -pl releasehub-bootstrap -am -Dtest=RunPagedApiTest -Dsurefire.failIfNoSpecifiedTests=false test
+pnpm exec vitest run src/views/release-window/__tests__/OrchestrationPanel.spec.ts
+pnpm run typecheck
+pnpm i18n:lint
+git diff --check
+bash scripts/dev/check-roadmap.sh
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- `RunJpaPersistenceAdapter` 对 Run 分页统一按 `startedAt DESC` 排序，保证窗口详情“最近执行记录”和最新 Run 复核不会拿到旧 Run。
+- 发布编排面板在 `orchestrate` 返回 Run ID 后读取 Run 详情，并展示最新 Run ID、状态、执行项数量和失败项数量。
+- 失败 Run 会在窗口详情编排面板直接展示发布窗口/仓库/迭代上下文、失败步骤和失败原因，并保留进入 Run 详情的复核入口。
+- 不改变发布编排业务语义：冲突预检、Run 创建、RunItem/RunStep 记录和重试模型均复用既有后端能力。
+- 静态扫描通过，报告：`.ai/reports/static-scan/20260523-010723/summary.md`，TopN 未发现代码问题。
+
+缺口：
+
+- SA-013 后续保持回归；真实 GitLab 成功编排仍由 `run-acceptance.sh` 基线证据承担，不把 route-level stub 当作场景化验收通过。
+- 当前队首转向 SA-003 组织资源移动治理。
 
 ### 2026-05-23 SA-006 历史不合规分支治理入口
 

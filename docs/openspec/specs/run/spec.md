@@ -3,6 +3,27 @@
 ## Purpose
 运行记录（Run）是发布编排的执行追踪聚合。每次发布窗口的编排操作（准备/收尾/版本更新）产生一个 Run，包含有序的 RunItem 和 RunStep。系统支持 10 种任务执行器（ENSURE_FEATURE、ENSURE_RELEASE、ENSURE_MR、TRY_MERGE、UPDATE_VERSION、CLOSE_ITERATION、ARCHIVE_BRANCH、MERGE_TO_MASTER、CREATE_TAG、TRIGGER_CI），支持手动重试和执行结果导出。
 ## Requirements
+### Requirement: 发布编排 Run 页面内复核
+
+系统 SHALL 在发布窗口详情页提供发布编排 Run 的页面内复核入口。
+
+#### Scenario: 编排后展示最新 Run 结果
+
+- **GIVEN** 一个已发布且已挂载迭代的发布窗口
+- **WHEN** 管理员从发布窗口详情页触发发布编排
+- **THEN** 页面展示本次编排返回的 Run ID 和状态
+- **AND** 页面展示执行项数量与失败项数量
+- **AND** 最近 Run 列表按开始时间倒序展示，最新 Run 排在最前
+
+#### Scenario: 失败 Run 展示可追溯失败原因
+
+- **GIVEN** 发布窗口存在失败的发布编排 Run
+- **WHEN** 管理员打开发布窗口详情页的发布编排面板
+- **THEN** 页面展示失败 Run 的状态和失败项数量
+- **AND** 页面展示首个失败项的发布窗口、仓库、迭代上下文
+- **AND** 页面展示失败步骤和失败原因
+- **AND** 管理员可以进入 Run 详情继续复核完整 RunItem 和 RunStep
+
 ### Requirement: 运行任务管理
 
 系统 SHALL 支持运行任务（RunTask）的创建、执行和状态管理。
@@ -75,4 +96,3 @@ RunTask 状态 SHALL 按以下规则流转：
 - **WHEN** 系统创建 Run 和 RunTask
 - **THEN** 发布 API 立即返回成功
 - **AND** 任务在后台异步执行
-
