@@ -70,6 +70,9 @@ public enum ErrorCode {
     GROUP_ID_INVALID("GROUP_012", "error.group.id_invalid", 400),
     GROUP_REFERENCED("GROUP_013", "error.group.referenced", 400),
     GROUP_NOT_LEAF("GROUP_014", "error.group.not_leaf", 400),
+    GROUP_MOVE_HAS_CHILDREN("GROUP_015", "error.group.move_has_children", 400),
+    GROUP_MOVE_REFERENCED("GROUP_016", "error.group.move_referenced", 400),
+    GROUP_MOVE_TARGET_REFERENCED("GROUP_017", "error.group.move_target_referenced", 400),
 
     // ========== 迭代 (ITER) ==========
     ITERATION_NOT_FOUND("ITER_001", "error.iter.not_found", 404),

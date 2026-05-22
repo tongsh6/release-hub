@@ -45,6 +45,7 @@ import EntityDialog from '@/components/common/EntityDialog.vue'
 import { groupApi, type GroupView } from '@/api/modules/group'
 import { useDialogForm } from '@/composables/crud/useDialogForm'
 import { handleError } from '@/utils/error'
+import { groupMoveProtectionMessageKey } from '@/utils/groupMoveProtection'
 
 const { t } = useI18n()
 const emit = defineEmits<{ (e: 'success'): void }>()
@@ -90,6 +91,11 @@ const {
       })
       ElMessage.success(t('group.updateSuccess'))
     } catch (error) {
+      const messageKey = groupMoveProtectionMessageKey(error)
+      if (messageKey) {
+        ElMessage.warning(t(messageKey))
+        throw error
+      }
       handleError(error)
       throw error
     }

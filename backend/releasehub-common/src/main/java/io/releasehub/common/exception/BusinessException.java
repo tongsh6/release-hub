@@ -73,6 +73,18 @@ public class BusinessException extends BaseException {
         return of(ErrorCode.GROUP_NOT_LEAF, code);
     }
 
+    public static BusinessException groupMoveHasChildren(Object code) {
+        return of(ErrorCode.GROUP_MOVE_HAS_CHILDREN, code);
+    }
+
+    public static BusinessException groupMoveReferenced(Object code) {
+        return of(ErrorCode.GROUP_MOVE_REFERENCED, code);
+    }
+
+    public static BusinessException groupMoveTargetReferenced(Object code) {
+        return of(ErrorCode.GROUP_MOVE_TARGET_REFERENCED, code);
+    }
+
     // ========== Iteration ==========
 
     public static BusinessException iterationAttached(Object key) {

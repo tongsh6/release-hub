@@ -656,6 +656,9 @@ export default {
     deleteSuccess: '删除成功',
     deleteBlocked: '存在子分组，无法删除',
     deleteReferenced: '分组已被仓库、迭代或发布窗口使用，无法删除',
+    moveBlockedByChildren: '存在子分组，无法移动该分组',
+    moveBlockedByReference: '分组已被仓库、迭代或发布窗口使用，无法移动',
+    moveTargetReferenced: '目标父分组已被仓库、迭代或发布窗口使用，无法作为新的上级',
     validation: {
       nameRequired: '请输入名称',
       codeRequired: '请输入编码',
