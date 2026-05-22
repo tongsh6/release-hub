@@ -29,4 +29,4 @@ bash scripts/dev/static-scan-topn.sh 5
 
 ## 结论
 
-- SA-007 版本更新入口已按组织/仓库范围选取默认策略并推导目标版本；后续剩余重点是外部 Playwright 真实页面场景验收。
+- SA-007 版本更新入口已按组织/仓库范围选取默认策略并推导目标版本；后续真实页面验收已由 `2026-05-23-sa-007-version-policy-real-page.md` 收口。

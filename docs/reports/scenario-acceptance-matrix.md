@@ -51,7 +51,7 @@
 | SA-004 | Admin Setup | 系统管理员 | 配置 GitLab 连接 | 保存、不泄露、重启持久化、真实 API 可用 | 已覆盖 |
 | SA-005 | Admin Setup | 系统管理员 | 纳管代码仓库 | 叶子分组归属、真实 GitLab 可用、token 安全、默认分支/版本基础信息 | 已覆盖 |
 | SA-006 | Admin Setup | 系统管理员 | 配置分支规则 | feature/hotfix/release 规则在分支创建时生效，不合规拒绝 | 已覆盖 |
-| SA-007 | Admin Setup | 系统管理员 | 配置版本策略 | 基础策略、SemVer、版本校验、Maven 单模块真实写回前置 | 部分覆盖 |
+| SA-007 | Admin Setup | 系统管理员 | 配置版本策略 | 基础策略、SemVer、版本校验、Maven 单模块真实写回前置 | 已覆盖 |
 | SA-008 | Release Planning | 发布经理 | 创建发布窗口 | 叶子分组创建、windowKey、DRAFT、空窗口发布拒绝、列表/日历可见 | 已覆盖 |
 | SA-009 | Release Planning | 技术负责人 | 创建迭代并选择已纳管仓库 | 叶子分组创建、同分组仓库选择、iterationKey、分支模式、版本/分支记录 | 部分覆盖 |
 | SA-010 | Release Planning | 发布经理 | 挂载迭代到发布窗口 | 同分组挂载、多迭代多仓计划、release 分支真实创建、细粒度 attach 结果、冲突阻断 | 部分覆盖 |
@@ -70,7 +70,7 @@
 | SA-004 | 管理员在系统设置页保存并测试 GitLab 连接 | Settings 保存、读取、重启持久化；`system_settings.gitlab_token` 透明加密；连接测试调用 GitLab `/api/v4/user` | 后续真实 GitLab 分支操作成功且 token 不泄露；验收脚本同时审计仓库 token 和 Settings token 明文数量；无效 token / 不可达会返回 `GITLAB_003` | 已补前端连接测试入口、成功提示和失败错误出口；后续仅保留更细粒度诊断展示 |
 | SA-005 | 管理员在仓库页纳管分组仓库并查看详情 | 仓库创建校验、叶子分组归属、重复/错误 URL 校验；仓库列表支持按组织及子组织范围筛选；详情页/抽屉展示组织路径和版本解析状态；仓库仍被迭代引用、分组仍有子分组或仍被仓库/迭代/发布窗口引用时拒绝删除 | 真实 GitLab cloneUrl、默认分支、token 安全审计；初始版本来源 `versionSource` 可复核 | Clone URL 格式校验、规范化重复纳管保护、版本解析失败修复引导、按组织筛选和删除保护已补；后续保持回归 |
 | SA-006 | 管理员在分支规则页配置命名规范 | BranchRule 校验、AUTO/NAMED/EXISTING 分支模式约束；GLOBAL/PROJECT/SUB_PROJECT 作用域按最具体规则解析；feature/release 分支创建和冲突扫描传入仓库上下文；不合规 NAMED 在迭代仓库写入和 GitLab 创建前拒绝，手动 release 分支在 GitLab 创建前拒绝 | 创建出的 feature/hotfix/release 分支名称符合规则；真实 GitLab 直查可证明合规分支存在、不合规分支不存在 | P0 已覆盖：规则作用域表单校验、页面单测、Playwright 真实页面管理旅程、scoped check API、核心分支链路 scoped compliance、PROJECT/GLOBAL/SUB_PROJECT 真实 GitLab 前置拒绝证据已补；历史不合规分支治理入口留作后续扩展 |
-| SA-007 | 管理员在版本策略页配置版本演进规则 | SemVer 校验、PATCH/MINOR/MAJOR 推导；版本策略支持 GLOBAL/PROJECT/SUB_PROJECT 作用域元数据和可继承策略查询，前端可创建/编辑/删除 scoped policy，版本更新入口按仓库范围默认选取继承策略并推导目标版本 | Maven/Gradle 写回前置条件可验证 | 策略作用域元数据、PostgreSQL 迁移、scoped policy 创建/编辑/删除/applicable API、前端 scoped policy 创建/编辑/删除表单与单测已补；版本更新弹窗已按 `groupCode + repoId` 加载 applicable policy 并用 validate API 推导目标版本；版本更新策略选择 route-stub Playwright 仅作为 UI 回归，不计入验收通过；版本策略管理 Playwright 候选旅程已通过可发现性和 e2e TypeScript 检查，真实页面验收待环境就绪后实跑 |
+| SA-007 | 管理员在版本策略页配置版本演进规则 | SemVer 校验、PATCH/MINOR/MAJOR 推导；版本策略支持 GLOBAL/PROJECT/SUB_PROJECT 作用域元数据和可继承策略查询，前端可创建/编辑/删除 scoped policy，版本更新入口按仓库范围默认选取继承策略并推导目标版本 | Maven/Gradle 写回前置条件可验证 | P0 已覆盖：策略作用域元数据、PostgreSQL 迁移、scoped policy 创建/编辑/删除/applicable API、前端 scoped policy 创建/编辑/删除表单与单测、版本更新入口继承策略默认选择已补；外部 Playwright 已在真实前后端页面实跑 GLOBAL/PROJECT/SUB_PROJECT 创建、编辑、删除和项目级必填校验 |
 | SA-008 | 发布经理在窗口页创建发布窗口并查看列表/日历 | 发布窗口创建、DRAFT 状态、空窗口发布拒绝；分页接口支持按组织及子组织范围筛选；冻结草稿隐藏发布计划变更入口；仅空草稿窗口允许删除 | windowKey 唯一且关联叶子分组；非空草稿或非草稿窗口不会被删除 | 列表组织路径、组织范围筛选、后端 API、冻结限制和删除保护前端证据已补；后续保持回归 |
 | SA-009 | 技术负责人在迭代页创建迭代并选择仓库 | 同分组仓库选择、iterationKey、分支模式记录；创建、更新和追加仓库写入前均拒绝跨分组仓库；已挂窗口后禁止变更仓库集合或迭代分组；分支创建模式写入 `iteration_repo` 并在版本信息 API 返回 | feature 分支和版本信息落库并可追踪；跨分组仓库不会触发分支创建、版本记录或迭代保存副作用；已挂窗口后不会归档 feature 分支或污染发布计划 | 同分组候选过滤、后端跨分组拒绝、已挂窗口修改限制、迭代删除保护提示和迭代详情版本/分支/模式可观察性已补；移除仓库归档更多真实 GitLab 证据仍为 P1 |
 | SA-010 | 发布经理在窗口详情页挂载迭代并查看发布计划 | attach/detach 细粒度结果、状态流转、冲突阻断；解除挂载已有前端详情页入口、后端约束、外部 Playwright 页面复核候选用例和真实 GitLab 分支归档复核；发布后计划变更已锁定 | release 分支真实创建，WindowIteration 状态一致；detach 后原 release 分支删除且 `archive/unpublished/release-<windowKey>` 存在；部分失败重试已有后端/GitLab 证据 | 发布计划已有最小前端观察；解除挂载已补 Vitest、Slice-1 Playwright 页面复核候选用例和真实 GitLab 分支归档证据；发布后 attach/detach 已有后端拒绝和前端隐藏入口；Run 详情已补部分成功/失败汇总和失败项重试复核；发布计划面板已补分支状态汇总与风险提示，后续保持回归 |
@@ -250,13 +250,13 @@ P0 验收焦点：
 - 版本策略已支持 GLOBAL/PROJECT/SUB_PROJECT 作用域元数据；`GET /api/v1/version-policies/applicable` 按 `SUB_PROJECT > PROJECT > GLOBAL` 返回可继承策略，`VersionPolicyE2ETest` 覆盖 PostgreSQL 迁移、scoped policy 创建、编辑后 applicable 排序和清理。
 - 版本策略页已提供 scoped policy 创建、编辑和删除入口，`VersionPolicyList.spec.ts` 覆盖项目作用域必填校验、作用域切换清理、子项目 scoped create payload、编辑预填、update payload 和删除后 reload。
 - 版本更新弹窗已按所选仓库的 `groupCode + repoId` 加载可继承策略，默认选择最具体策略，并通过既有 validate API 由当前版本推导目标版本；`VersionUpdateDialog.spec.ts` 覆盖 scoped applicable 查询、当前版本读取、默认策略推导和切换策略后重新推导。
-- `frontend/e2e/tests/version-policy.spec.ts` 已补 scoped policy 真实页面候选旅程，覆盖创建时项目作用域必填校验、编辑为子项目策略和删除清理；Playwright `--list` 与 `pnpm exec tsc -p e2e/tsconfig.json --noEmit` 只证明用例可发现、可编译，尚不计为验收通过。
+- `frontend/e2e/tests/version-policy.spec.ts` 已在真实前端、真实后端和本地 PostgreSQL 环境下实跑通过，覆盖 GLOBAL / PROJECT / SUB_PROJECT scoped policy 的创建、编辑、删除，以及项目作用域必填校验和列表 scope 明细复核。
 - `frontend/e2e/tests/version-update-policy.spec.ts` 已补版本更新入口策略选择 UI 回归用例，使用路由级 API stub 验证弹窗按仓库范围加载 applicable policies、默认选中最具体策略、填充推导版本并在切换策略后重新推导；该用例不属于场景化验收测试通过证据。
 
 缺口：
 
 - 批量版本更新多仓部分失败已由 SA-014 8.5 覆盖；版本更新失败重试已由 Run 详情重试入口和后端 VERSION_UPDATE retry 覆盖。
-- scoped policy 管理的外部 Playwright 真实页面验收实跑为 P1/P2。
+- 后续保持回归。
 
 ### SA-008：发布经理创建发布窗口
 
@@ -540,14 +540,39 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
+| P1 | SA-009 移除迭代仓库真实 GitLab 归档证据 | 同分组候选过滤、后端跨分组拒绝、已挂窗口修改限制、迭代删除保护提示和迭代详情版本/分支/模式可观察性已补；移除仓库归档仍缺少更多真实 GitLab 证据 | 用真实后端 + 真实 GitLab 证明未挂载迭代移除仓库时 feature 分支按 archive 约定归档，且已挂窗口锁定保护仍生效 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
 | P1 | SA-016 收尾扩展 | P0 已闭环，重复关闭幂等、真实部分失败重试、发布报告 JSON/CSV/Markdown 导出和 CI 触发状态证据已补 | 后续保持回归 |
 | P1/P2 | SA-012 更多冲突解决路径 | 版本冲突 `USE_SYSTEM`、`REPO_AHEAD` 接受仓库版本、feature 缺失、release 分支已存在和分支名不合规均已有对应证据 | 后续保持回归 |
-| P1/P2 | SA-007 版本策略前端闭环 | scoped policy 后端作用域、继承查询、创建/编辑/删除 API、前端创建/编辑/删除表单、版本更新入口继承策略默认选择、Vitest、版本策略管理 Playwright 候选 spec 和版本更新策略选择 UI 回归已补 | 环境就绪后用外部 Playwright 实跑真实页面场景验收 |
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-007 版本策略真实页面验收
+
+命令：
+
+```bash
+pnpm exec tsc -p e2e/tsconfig.json --noEmit
+pnpm exec playwright test e2e/tests/version-policy.spec.ts
+pnpm exec vitest run src/views/version-policy/__tests__/VersionPolicyList.spec.ts
+mvn -q -pl releasehub-bootstrap -am -Dtest=VersionPolicyE2ETest -Dsurefire.failIfNoSpecifiedTests=false test
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 外部 Playwright 在真实前端、真实后端和本地 PostgreSQL 环境下通过 3 个测试：GLOBAL / PROJECT / SUB_PROJECT scoped policy 均可创建、编辑、删除。
+- PROJECT scope 缺失项目 ID 时，页面在提交前展示必填校验；创建后列表可复核项目 ID；SUB_PROJECT 创建后列表可复核项目 ID 和子项目 ID。
+- E2E TypeScript 检查通过，版本策略页 Vitest 6/0 通过。
+- 后端 `VersionPolicyE2ETest` 通过，确认 scoped policy 创建、更新后 applicable 查询仍按 `SUB_PROJECT > PROJECT > GLOBAL` 返回可继承策略。
+- Top10 静态扫描通过，报告：`.ai/reports/static-scan/20260523-000924/summary.md`。
+
+影响：
+
+- SA-007 从“候选旅程可发现”推进到“真实页面验收已通过”。
+- SA-007 P0 出队；版本更新入口策略选择的 route-stub 用例仍只作为 UI 回归，不作为场景化验收证据。
 
 ### 2026-05-22 SA-006 分支规则 GitLab 前置拒绝证据
 
@@ -674,7 +699,7 @@ bash scripts/dev/static-scan-topn.sh 5
 
 结论：
 
-- SA-007 scoped policy 真实页面候选旅程已有 Playwright 自动化用例，环境就绪后需直接实跑才可计入场景化验收；`--list` 和 TypeScript 检查不计入验收通过。
+- SA-007 scoped policy 真实页面候选旅程已有 Playwright 自动化用例；后续已由 2026-05-23 真实页面验收实跑收口。
 
 ### 2026-05-22 SA-007 版本更新入口策略选择
 
@@ -696,7 +721,7 @@ bash scripts/dev/static-scan-topn.sh 5
 
 结论：
 
-- SA-007 版本更新入口已按组织/仓库范围选取默认策略并推导目标版本；后续剩余重点是外部 Playwright 真实页面场景验收。
+- SA-007 版本更新入口已按组织/仓库范围选取默认策略并推导目标版本；后续已由 2026-05-23 真实页面验收实跑收口。
 
 ### 2026-05-22 SA-007 版本策略编辑闭环
 
@@ -720,7 +745,7 @@ bash scripts/dev/static-scan-topn.sh 5
 
 结论：
 
-- SA-007 scoped policy 基础管理已具备创建、编辑、删除闭环；后续剩余重点是外部 Playwright 真实页面场景验收和版本更新入口按组织/仓库范围选取默认策略。
+- SA-007 scoped policy 基础管理已具备创建、编辑、删除闭环；后续已由版本更新入口策略选择证据和 2026-05-23 真实页面验收实跑收口。
 
 ### 2026-05-22 SA-007 版本策略前端管理
 
@@ -742,7 +767,7 @@ bash scripts/dev/static-scan-topn.sh 5
 
 结论：
 
-- SA-007 前端已具备 scoped policy 创建/删除基础管理能力；后续剩余重点是外部 Playwright 真实页面场景验收、编辑入口、版本更新入口按组织/仓库范围选取默认策略。
+- SA-007 前端已具备 scoped policy 创建/删除基础管理能力；后续已由编辑入口、版本更新入口策略选择证据和 2026-05-23 真实页面验收实跑收口。
 
 ### 2026-05-22 SA-007 版本策略作用域与继承
 
