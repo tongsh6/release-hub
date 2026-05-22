@@ -302,6 +302,30 @@ class RunPagedApiTest {
     }
 
     @Test
+    void should_return_recent_runs_first_for_window_review() throws Exception {
+        String uniqueOperator = "op-recent-" + System.nanoTime();
+        String windowKey = "WK-RECENT-" + System.nanoTime();
+        Instant base = Instant.parse("2026-05-23T01:00:00Z");
+        Run olderRun = createRunWithStatusAndWindowKeyAt("SUCCESS", uniqueOperator, windowKey, base);
+        Run newerRun = createRunWithStatusAndWindowKeyAt("FAILED", uniqueOperator, windowKey, base.plusSeconds(60));
+
+        MvcResult result = mockMvc.perform(get("/api/v1/runs/paged")
+                .header("Authorization", "Bearer " + token)
+                .param("windowKey", windowKey)
+                .param("operator", uniqueOperator)
+                .param("page", "1")
+                .param("size", "5"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andReturn();
+
+        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
+        assertThat(data).hasSize(2);
+        assertThat(data.get(0).get("id").asText()).isEqualTo(newerRun.getId().value());
+        assertThat(data.get(1).get("id").asText()).isEqualTo(olderRun.getId().value());
+    }
+
+    @Test
     void should_paginate_runs_correctly() throws Exception {
         // Given - 创建多个 Run
         for (int i = 0; i < 25; i++) {
@@ -368,6 +392,10 @@ class RunPagedApiTest {
     private Run createRunWithStatusAndWindowKey(String status, String operator, String windowKey) {
         // 使用纳秒确保唯一时间戳，避免并发问题
         Instant runTime = Instant.now().plusNanos(System.nanoTime() % 1000000000);
+        return createRunWithStatusAndWindowKeyAt(status, operator, windowKey, runTime);
+    }
+
+    private Run createRunWithStatusAndWindowKeyAt(String status, String operator, String windowKey, Instant runTime) {
         Run run = Run.start(RunType.WINDOW_ORCHESTRATION, operator, runTime);
         RepoId repoId = RepoId.of("repo-1");
         IterationKey iterationKey = IterationKey.of("IT-" + System.nanoTime());
