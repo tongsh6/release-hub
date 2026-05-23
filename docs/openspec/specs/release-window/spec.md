@@ -129,3 +129,14 @@
 - **THEN** 返回对应分页结果
 - **AND** `page.total` 为总条数且 `page` 为 1-based
 
+### Requirement: 发布窗口报告制品包归档
+系统 SHALL 为发布窗口提供可下载的报告制品包，用于发布证据归档，并保持既有 JSON、CSV、Markdown 报告契约兼容。
+
+#### Scenario: 下载发布窗口报告制品包
+- **GIVEN** 一个存在的发布窗口
+- **WHEN** 用户从发布窗口详情页选择导出制品包
+- **THEN** 系统返回 `application/zip` 制品包
+- **AND** 响应头包含可审计文件名 `release-window-<windowKey>-evidence.zip`
+- **AND** 制品包包含 `manifest.txt`、`report.json`、`report.csv`、`report.md`
+- **AND** `manifest.txt` 说明窗口 ID、窗口 Key、状态、Run/Item/Step 数量和包内文件清单
+- **AND** `report.json`、`report.csv`、`report.md` 与对应单文件报告端点表达同一窗口证据

@@ -404,7 +404,7 @@ P0 验收焦点：
 
 缺口：
 
-- 当前主线可转向 SA-016 CI pipeline、PDF/制品归档等报告扩展。
+- 当前主线已完成 SA-016 CI pipeline 状态、发布报告 JSON/CSV/Markdown 和制品包归档；下一可执行缺口转向 SA-002 存量数据安全清理。
 - 真实仓库写回证据由 `run-acceptance.sh` 承担；Playwright 当前断言前端旅程和请求语义。
 
 ### SA-013：技术负责人触发发布编排
@@ -482,10 +482,11 @@ P0 验收焦点：
 - Playwright 已补 Run 详情部分失败复核：复用同一个 serial UI 旅程创建出的窗口标识，从 Run 列表筛出部分失败 Run，并在 Run 详情页复核成功仓库项、失败仓库项、`MERGE_BLOCKED` 结果、失败任务重试次数和错误信息。
 - `run-acceptance.sh` 5.9 已补真实 GitLab 部分失败重试证据：同一 attach Run 内构造一个 `MERGED` 仓库项和一个 `MERGE_BLOCKED` 仓库项，再调用 retry API 验证新 Run 只包含选中的失败项。
 - 发布窗口报告导出已补后端 JSON/CSV/Markdown：按窗口汇总 window 基本信息、Run、RunItem、RunStep、结果分布；详情页提供格式菜单，可导出 CSV、JSON 和 Markdown。
+- 发布窗口报告制品包归档已补：`GET /api/v1/release-windows/{id}/report.zip` 返回 `application/zip`，固定包含 `manifest.txt`、`report.json`、`report.csv`、`report.md`；manifest 记录窗口 ID、窗口 Key、状态、Run/Item/Step 数量和文件清单，详情页导出菜单新增“制品包”入口。
 
 缺口：
 
-- 后续优先保留更正式的制品包归档为 P2，PDF 留作制品包之后的扩展。
+- 发布报告制品包归档已闭环；PDF 留作后续扩展，不进入当前队首。
 
 ### SA-016：发布经理关闭发布窗口并完成收尾
 
@@ -509,11 +510,11 @@ P0 验收焦点：
 - CI 触发结果已补应用层证据：provider 返回 pipeline id 时 `TRIGGER_CI/CI_TRIGGERED` 记录 id 与 ref；未配置 CI 时 `TRIGGER_CI/CI_NOT_CONFIGURED` 写入步骤且 RunItem finalResult 不伪装为 `SUCCESS`。
 - 前端已在 CLOSED 状态隐藏列表页和详情页的挂载入口；编排面板按真实 `windowKey` 加载最近 Run。
 - `run-acceptance.sh` 5.9 已补真实部分失败重试后端/GitLab 强证据：部分成功/部分阻塞 attach Run 可选择失败项重试，成功项不会被重复执行。
-- 发布窗口报告导出已补：`GET /api/v1/release-windows/{id}/report.json` 返回窗口级结构化报告，`GET /api/v1/release-windows/{id}/report.csv` 返回可下载 CSV，`GET /api/v1/release-windows/{id}/report.md` 返回可归档 Markdown；前端发布窗口详情页可选择 CSV、JSON 或 Markdown。
+- 发布窗口报告导出已补：`GET /api/v1/release-windows/{id}/report.json` 返回窗口级结构化报告，`GET /api/v1/release-windows/{id}/report.csv` 返回可下载 CSV，`GET /api/v1/release-windows/{id}/report.md` 返回可归档 Markdown，`GET /api/v1/release-windows/{id}/report.zip` 返回包含 manifest、JSON、CSV、Markdown 的可归档制品包；前端发布窗口详情页可选择 CSV、JSON、Markdown 或制品包。
 
 缺口：
 
-- 后续优先保留更正式的制品包归档为 P2，PDF 留作制品包之后的扩展。
+- 发布报告制品包归档已闭环；PDF 留作后续扩展，不进入当前队首。
 
 ## 五、第一批落地顺序
 
@@ -551,7 +552,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P2 | SA-016 发布报告制品包归档 | P0 已闭环，重复关闭幂等、真实部分失败重试、发布报告 JSON/CSV/Markdown 导出和 CI 触发状态证据已补；矩阵仍保留更正式制品包归档缺口 | 设计并补齐可归档制品包能力，保持 JSON/CSV/Markdown 现有契约不回退；PDF 留作后续扩展 |
+| P1/P2 | SA-002 存量数据安全清理 | 数据质量审计已可见，token 明文、BranchCreationMode、feature_branch 缺失、cloneUrl 异常和 DRAFT 残留均可报告；矩阵仍保留一键安全清理脚本缺口 | 设计并补齐最小安全清理能力，要求默认 dry-run、可审计输出、不会绕过业务约束 |
 | P1 | SA-013 发布编排结果复核与失败 Run 观察 | 无阻塞冲突后 Run 创建和冲突未解决时拒绝已有后端证据；窗口详情最新 Run 复核、失败上下文和最近 Run 倒序已补 | 后续保持回归 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
@@ -560,6 +561,34 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-016 发布报告制品包归档
+
+命令：
+
+```bash
+mvn -pl releasehub-bootstrap -am -Dtest=WindowRunApiTest -Dsurefire.failIfNoSpecifiedTests=false test
+pnpm exec vitest run src/views/release-window/__tests__/ReleaseWindowDetail.spec.ts
+pnpm run typecheck
+pnpm i18n:lint
+git diff --check
+bash scripts/dev/check-roadmap.sh
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 后端新增 `GET /api/v1/release-windows/{id}/report.zip`，返回 `application/zip` 和 `Content-Disposition: release-window-<windowKey>-evidence.zip`。
+- ZIP 制品包固定包含 `manifest.txt`、`report.json`、`report.csv`、`report.md`，manifest 明确窗口 ID、窗口 Key、状态、Run/Item/Step 数量和包内文件清单。
+- MockMvc 解包验证四个文件存在，且 JSON、CSV、Markdown 均对应同一发布窗口证据。
+- 发布窗口详情页导出菜单新增“制品包”入口，前端 Vitest 断言打开 `/api/v1/release-windows/{id}/report.zip`。
+- `WindowRunApiTest` 通过：1 PASS / 0 FAIL / 0 SKIP。
+- `ReleaseWindowDetail.spec.ts` 通过：8 PASS / 0 FAIL / 0 SKIP。
+- 前端 typecheck、i18n lint、路线图检查和最终静态扫描均通过；静态扫描报告：`.ai/reports/static-scan/20260523-134733/summary.md`。
+
+结论：
+
+- SA-016 发布报告已从单文件 JSON/CSV/Markdown 扩展到可归档制品包；当前报告制品包缺口闭环，后续队首转向 SA-002 存量数据安全清理。
 
 ### 2026-05-23 SA-003 code 自动生成当前测试证据
 
@@ -1664,7 +1693,7 @@ pnpm i18n:lint
 
 结论：
 
-- SA-016 发布报告导出从 P2 缺口补强为可用能力；后续仅保留 PDF/制品归档等更完整报告形态。
+- SA-016 发布报告导出从 P2 缺口补强为可用能力；制品包归档已在 2026-05-23 后续切片补齐。
 
 ### 2026-05-17 SA-015/SA-016 真实部分失败重试后端/GitLab 强证据补强
 
