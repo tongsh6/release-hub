@@ -552,7 +552,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | 已闭环 | 合并冲突制造、解决和 Run retry；多窗口并行发布；批量窗口和大规模迭代 | 风险强证据、冲突解决路径、Run 失败项重试、多窗口并行发布观察、大规模迭代仓库分页和发布报告制品包均已补 |
 | 暂缓 | 批量组织重构、批量资源迁移向导 | 当前阶段不进入执行队列；后续若重新进入，必须先形成独立设计和验收出口 |
 
-当前 Phase 2 存量缺口已清账，发布候选收口报告、发布经理评审页和验收数据命名空间口径均已形成；下一阶段优先统一验收脚本与应用 API 的数据源口径，避免报告继续在 API 可见资产和数据库审计资产之间漂移。
+当前 Phase 2 存量缺口已清账，发布候选收口报告、发布经理评审页、验收数据命名空间口径和数据源边界均已形成；下一阶段优先复跑更完整的前端场景证据，确认最近新增的发布候选评审、数据质量复核和 Run/窗口复核入口仍符合真实页面旅程原则。
 
 ## 七、当前推进队列
 
@@ -560,7 +560,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-002 验收脚本与应用 API 数据源口径统一 | safe-cleanup 已能按命名空间、复核批次、资产范围和保留策略标注动作，但全量验收、safe-cleanup 与应用页面仍可能分别使用 API 资产统计和数据库审计统计 | 统一并记录 API 可见资产、数据库审计资产和复核队列资产的取数边界；报告不再让操作者误把底层审计总量当成用户可见风险 |
+| P1 | SA-015 更完整的前端场景复跑与证据更新 | 当前 P0 已覆盖，但最近新增发布候选评审、数据质量复核队列和数据源边界展示后，需要复跑关键页面旅程并明确真实用户旅程与组件回归证据边界 | 复跑 Run/窗口详情复核、数据质量复核队列和发布候选评审相关前端场景；不把 route-level stub 或 API 造数误记为完整场景验收 |
+| P1 | SA-002 验收脚本与应用 API 数据源口径统一 | 全量验收、safe-cleanup 与应用复核队列已统一使用 `API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS` 和 `REVIEW_QUEUE_ACTIONS`；复核 API 返回资产边界说明和资产范围计数 | 后续保持回归 |
 | P1 | SA-002 验收数据命名空间与保留策略 | dry-run 报告、actions.jsonl、复核 API 和数据质量复核队列已补 `dataNamespace`、`reviewBatchId`、`assetScope`、`retentionPolicy`；页面可按资产范围筛选 | 后续保持回归 |
 | P1 | SA-001 发布候选评审页 / 发布经理检查清单 | 发布候选评审页已补，支持聚合候选结论、验收证据、数据质量风险、检查清单和人工签核记录 | 后续保持回归 |
 | P1 | SA-002 数据质量复核队列页面化 | 复核队列页面已补，支持导入 dry-run JSONL、筛选、人工决策和受控复核 API；直接执行和自动执行仍被拒绝 | 后续保持回归 |
@@ -579,6 +580,37 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-002 验收脚本与应用 API 数据源口径统一
+
+命令：
+
+```bash
+mvn -f backend/pom.xml -pl releasehub-application -am clean test -Dtest=DataQualityCleanupReviewAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false
+mvn -f backend/pom.xml -pl releasehub-bootstrap -am -Dtest=DataQualityCleanupApiTest -Dsurefire.failIfNoSpecifiedTests=false test
+pnpm exec vitest run src/views/data-quality/__tests__/DataQualityReviewQueue.spec.ts
+bash -n scripts/acceptance/sa002-safe-cleanup.sh
+bash -n scripts/acceptance/run-acceptance.sh
+pnpm run typecheck
+pnpm i18n:lint
+bash scripts/dev/check-roadmap.sh
+git diff --check
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 应用层复核服务通过：验证响应固定返回 `API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS` 和 `REVIEW_QUEUE_ACTIONS` 边界说明，并按 `assetScope` 统计复核动作数量。
+- API 复核入口通过：响应保留数据命名空间元数据，同时返回资产边界说明和资产范围计数；复核结果仍保持 `executionPermitted=false`。
+- 前端数据质量复核队列通过：页面可展示数据源口径边界和资产范围计数，继续展示命名空间、复核批次、资产范围和保留策略。
+- 验收脚本语法检查通过：全量验收输出使用 `API_VISIBLE_ASSETS` 标注应用 API 可见资产；safe-cleanup summary 使用 `API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS` 和 `REVIEW_QUEUE_ACTIONS` 表示三类资产边界。
+- 前端 typecheck 和 i18n lint 通过，roadmap 检查和 diff 空白检查通过。
+- 浏览器冒烟通过：`/data-quality/review` 导入 dry-run JSONL 后，复核结果显示“数据源口径”、`REVIEW_QUEUE_ACTIONS` 和 `HISTORICAL_ACCEPTANCE: 1`。
+- 静态扫描通过：`.ai/reports/static-scan/20260523-204621/summary.md`；SpotBugs 0，frontend lint PASS，typecheck PASS。
+
+结论：
+
+- SA-002 已统一验收脚本、safe-cleanup 报告和应用复核队列的数据源口径。操作者可以区分用户可见资产、数据库审计资产和人工复核队列动作；当前仍只做 dry-run 与人工复核，不自动删除数据库记录、不关闭发布窗口、不触碰 GitLab 远端资源。当前执行队列转向 SA-015 更完整的前端场景复跑与证据更新。
 
 ### 2026-05-23 SA-002 验收数据命名空间与保留策略
 

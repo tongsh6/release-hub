@@ -53,7 +53,22 @@ export interface CleanupReviewResult {
   accepted: number
   pending: number
   rejected: number
+  assetBoundaries: AssetBoundarySummary[]
+  assetScopeCounts: AssetScopeCount[]
   actions: CleanupActionReview[]
+}
+
+export interface AssetBoundarySummary {
+  key: string
+  label: string
+  description: string
+  userVisible: boolean
+  manualReviewCandidate: boolean
+}
+
+export interface AssetScopeCount {
+  assetScope: string
+  count: number
 }
 
 export const dataQualityApi = {

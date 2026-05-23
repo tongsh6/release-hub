@@ -22,7 +22,8 @@
 
 - **WHEN** 全量验收脚本通过后端 API 报告 DRAFT 发布窗口残留
 - **THEN** SA-002 dry-run SHALL 使用同一后端 API 口径生成 DRAFT 发布窗口复核动作
-- **AND** 报告同时输出应用 API 资产统计和数据库直查资产统计，避免操作者混淆用户可见数据与底层审计数据
+- **AND** 报告同时输出 `API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS` 和 `REVIEW_QUEUE_ACTIONS` 三类数据源口径，避免操作者混淆用户可见数据、底层审计数据与人工复核队列
+- **AND** 全量验收脚本 SHALL 使用 `API_VISIBLE_ASSETS` 标注通过应用 API 统计到的分组、仓库、发布窗口、迭代和 Run 数量
 - **AND** token 明文、BranchCreationMode、featureBranch、cloneUrl 和 branchCreated 等底层字段仍可通过数据库只读审计补充
 
 #### Scenario: 拒绝自动执行危险清理
@@ -93,6 +94,19 @@
 - **AND** 页面 SHALL 展示这些字段，并允许按资产范围筛选
 - **AND** 筛选后的复核摘要 SHALL 仍只统计匹配动作
 - **AND** 复核接口 SHALL 继续保持 `executionPermitted=false`
+
+### Requirement: 验收脚本与应用 API 数据源口径统一
+
+系统 SHALL 在全量验收、SA-002 dry-run 报告和应用内复核队列之间使用一致的数据源边界，明确哪些指标代表用户可见资产、哪些只代表数据库审计资产、哪些代表人工复核队列动作。
+
+#### Scenario: 报告和页面展示统一资产边界
+
+- **WHEN** 操作者查看全量验收输出、SA-002 dry-run `summary.md` 或数据质量复核队列结果
+- **THEN** 系统 SHALL 使用 `API_VISIBLE_ASSETS` 表示应用 API 可见资产统计
+- **AND** 系统 SHALL 使用 `DB_AUDIT_ASSETS` 表示数据库只读审计统计
+- **AND** 系统 SHALL 使用 `REVIEW_QUEUE_ACTIONS` 表示进入人工复核队列的动作数量和资产范围分布
+- **AND** 复核 API SHALL 返回资产边界说明和 `assetScope` 计数，页面 SHALL 展示这些边界说明
+- **AND** 这些指标不得暗示 dry-run 或复核接口会自动删除数据库记录、关闭发布窗口或触碰 GitLab 远端资源
 
 ### Requirement: 存量数据风险类型
 

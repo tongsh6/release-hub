@@ -65,6 +65,16 @@ describe('DataQualityReviewQueue', () => {
       accepted: 1,
       pending: 0,
       rejected: 0,
+      assetBoundaries: [
+        {
+          key: 'REVIEW_QUEUE_ACTIONS',
+          label: 'Review Queue Actions',
+          description: 'Actions submitted for manual review',
+          userVisible: true,
+          manualReviewCandidate: true
+        }
+      ],
+      assetScopeCounts: [{ assetScope: 'HISTORICAL_ACCEPTANCE', count: 1 }],
       actions: [
         {
           resourceType: 'release_window',
@@ -141,6 +151,8 @@ describe('DataQualityReviewQueue', () => {
       ]
     })
     expect(vm.reviewResult.total).toBe(1)
+    expect(vm.reviewResult.assetBoundaries[0].key).toBe('REVIEW_QUEUE_ACTIONS')
+    expect(vm.reviewResult.assetScopeCounts[0].assetScope).toBe('HISTORICAL_ACCEPTANCE')
     expect(ElMessage.success).toHaveBeenCalledWith('dataQuality.review.reviewComplete:{"count":1}')
   })
 

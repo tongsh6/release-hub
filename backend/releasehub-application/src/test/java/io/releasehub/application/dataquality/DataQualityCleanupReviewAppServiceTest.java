@@ -81,6 +81,12 @@ class DataQualityCleanupReviewAppServiceTest {
         assertThat(review.reviewBatchId()).isEqualTo("sa002-20260523");
         assertThat(review.assetScope()).isEqualTo("HISTORICAL_ACCEPTANCE");
         assertThat(review.retentionPolicy()).isEqualTo("manual-review-then-archive");
+        assertThat(result.assetBoundaries())
+                .extracting(CleanupReviewResult.AssetBoundarySummary::key)
+                .containsExactly("API_VISIBLE_ASSETS", "DB_AUDIT_ASSETS", "REVIEW_QUEUE_ACTIONS");
+        assertThat(result.assetScopeCounts()).hasSize(1);
+        assertThat(result.assetScopeCounts().get(0).assetScope()).isEqualTo("HISTORICAL_ACCEPTANCE");
+        assertThat(result.assetScopeCounts().get(0).count()).isEqualTo(1);
     }
 
     @Test

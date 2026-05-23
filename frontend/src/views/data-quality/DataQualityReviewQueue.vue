@@ -86,6 +86,26 @@
         <el-statistic :title="t('dataQuality.review.rejected')" :value="reviewResult?.rejected ?? 0" />
       </div>
 
+      <div v-if="reviewResult" class="boundary-panel">
+        <div class="boundary-title">{{ t('dataQuality.review.dataSourceBoundary') }}</div>
+        <el-table :data="reviewResult.assetBoundaries" border>
+          <el-table-column prop="key" :label="t('dataQuality.review.metricKey')" width="210" />
+          <el-table-column prop="label" :label="t('dataQuality.review.metricLabel')" width="180" />
+          <el-table-column prop="description" :label="t('dataQuality.review.metricDescription')" min-width="320" />
+          <el-table-column :label="t('dataQuality.review.userVisible')" width="130">
+            <template #default="{ row }">{{ row.userVisible ? t('common.yes') : t('common.no') }}</template>
+          </el-table-column>
+          <el-table-column :label="t('dataQuality.review.manualReviewCandidate')" width="150">
+            <template #default="{ row }">{{ row.manualReviewCandidate ? t('common.yes') : t('common.no') }}</template>
+          </el-table-column>
+        </el-table>
+        <div class="scope-counts">
+          <el-tag v-for="item in reviewResult.assetScopeCounts" :key="item.assetScope" type="info">
+            {{ item.assetScope }}: {{ item.count }}
+          </el-tag>
+        </div>
+      </div>
+
       <el-table :data="displayRows" class="review-table" border>
         <el-table-column prop="resourceType" :label="t('dataQuality.review.resourceType')" width="160" />
         <el-table-column prop="resourceId" :label="t('dataQuality.review.resourceId')" min-width="220" show-overflow-tooltip />
@@ -273,7 +293,8 @@ defineExpose({
 .page-title,
 .panel-header,
 .panel-actions,
-.summary-strip {
+.summary-strip,
+.scope-counts {
   display: flex;
   align-items: center;
 }
@@ -325,6 +346,22 @@ defineExpose({
 .summary-strip {
   gap: 40px;
   padding: 12px 0 18px;
+}
+
+.boundary-panel {
+  margin-bottom: 16px;
+}
+
+.boundary-title {
+  margin-bottom: 8px;
+  color: var(--el-text-color-primary);
+  font-weight: 600;
+}
+
+.scope-counts {
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
 }
 
 .review-table {

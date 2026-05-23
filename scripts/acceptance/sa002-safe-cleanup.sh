@@ -212,6 +212,9 @@ DB_ITER_COUNT=$(count_or_zero iteration)
 DB_RUN_COUNT=$(count_or_zero run)
 FLYWAY_VERSION=$(psql_scalar "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1;" 2>/dev/null || true)
 BRANCH_MODE_DISTRIBUTION=$(psql_tsv "SELECT COALESCE(branch_creation_mode, '<NULL>'), COUNT(*) FROM iteration_repo GROUP BY branch_creation_mode ORDER BY 1;" 2>/dev/null || true)
+API_VISIBLE_METRIC="API_VISIBLE_ASSETS"
+DB_AUDIT_METRIC="DB_AUDIT_ASSETS"
+REVIEW_QUEUE_METRIC="REVIEW_QUEUE_ACTIONS"
 
 while IFS=$'\t' read -r repo_id repo_name; do
     [ -z "${repo_id:-}" ] && continue
@@ -337,12 +340,26 @@ fi
     echo "- 资产范围口径：CURRENT_BATCH=本轮批次可识别资产；HISTORICAL_ACCEPTANCE=历史验收资产；USER_BUSINESS=用户业务资产；UNKNOWN_LEGACY=无法从命名推断的历史资产。"
     echo "- Flyway 最新迁移：${FLYWAY_VERSION:-unknown}"
     echo "- 后端：$BACKEND"
-    echo "- 应用 API 资产统计：Groups=$GROUP_COUNT, Repos=$REPO_COUNT, Windows=$WINDOW_COUNT, Iterations=$ITER_COUNT, Runs=$RUN_COUNT"
-    echo "- 数据库直查资产统计：Groups=$DB_GROUP_COUNT, Repos=$DB_REPO_COUNT, Windows=$DB_WINDOW_COUNT, Iterations=$DB_ITER_COUNT, Runs=$DB_RUN_COUNT"
     echo "- 待复核动作数：$ACTION_COUNT"
     echo "- 动作 JSONL：$ACTIONS_JSONL"
     echo "- 动作 Markdown：$ACTIONS_MD"
     echo "- 动作字段：resourceType、resourceId、riskType、suggestedAction、executed、source、dataNamespace、reviewBatchId、assetScope、retentionPolicy、applicationEntry、preExecutionCheck、postExecutionVerification、manualReviewRequired、reviewDecision"
+    echo
+    echo "## 数据源口径"
+    echo
+    echo "| 指标键 | 口径 | 用户可见风险 | 进入复核队列 |"
+    echo "|---|---|---|---|"
+    echo "| \`$API_VISIBLE_METRIC\` | 应用 API 返回的用户可见资产统计；用于判断页面和业务操作可见的资产范围。 | 是 | 否 |"
+    echo "| \`$DB_AUDIT_METRIC\` | 数据库只读审计统计；用于发现字段级风险，不等同于用户可见风险。 | 否 | 否 |"
+    echo "| \`$REVIEW_QUEUE_METRIC\` | dry-run 风险识别生成并进入人工复核的动作集合。 | 是 | 是 |"
+    echo
+    echo "## 资产统计"
+    echo
+    echo "| 指标键 | Groups | Repos | Windows | Iterations | Runs | Actions |"
+    echo "|---|---:|---:|---:|---:|---:|---:|"
+    echo "| \`$API_VISIBLE_METRIC\` | $GROUP_COUNT | $REPO_COUNT | $WINDOW_COUNT | $ITER_COUNT | $RUN_COUNT | - |"
+    echo "| \`$DB_AUDIT_METRIC\` | $DB_GROUP_COUNT | $DB_REPO_COUNT | $DB_WINDOW_COUNT | $DB_ITER_COUNT | $DB_RUN_COUNT | - |"
+    echo "| \`$REVIEW_QUEUE_METRIC\` | - | - | - | - | - | $ACTION_COUNT |"
     echo
     echo "## BranchCreationMode 分布"
     echo

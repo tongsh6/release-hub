@@ -27,23 +27,23 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-002 | 验收脚本与应用 API 数据源口径统一 | `scenario-acceptance-matrix.md` 当前推进队列 | 命名空间和保留策略已落地，但验收报告仍需要统一 API 可见资产、数据库审计资产和复核队列资产的取数边界 |
+| 1 | HEAD | SA-015 | 更完整的前端场景复跑与证据更新 | `scenario-acceptance-matrix.md` 当前推进队列 | 数据源口径已统一，下一步用前端场景复跑确认页面旅程证据仍覆盖关键发布复核路径 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-002 验收脚本与应用 API 数据源口径统一。
+任务：SA-015 更完整的前端场景复跑与证据更新。
 
 验收出口：
 
-- 形成并落地 API 可见资产、数据库审计资产、复核队列资产的取数边界说明，避免操作者把底层审计总量误读为用户可见风险。
-- 对齐全量验收、safe-cleanup 报告和数据质量复核队列中的资产统计命名，让同一指标在不同入口含义一致。
-- 保留命名空间、复核批次、资产范围和保留策略字段，不回退到只看 DRAFT 残留总数。
-- 保留现有安全边界：不直接删除数据库记录，不关闭发布窗口，不触碰 GitLab 远端资源，不绕过应用层不变量。
-- 能在报告或页面中说明哪些资产属于用户可见风险、哪些仅是底层审计资产、哪些进入人工复核队列。
+- 明确本轮前端场景复跑范围，优先覆盖 Run/窗口详情复核、数据质量复核队列和发布候选评审入口，不盲目扩大到与当前缺口无关的页面。
+- 使用现有 Playwright/Vitest/E2E 入口复跑关键页面旅程，并记录哪些证据属于真实页面旅程、哪些只是 route-level stub 或组件回归。
+- 保持场景化用户旅程原则：ReleaseHub 业务数据不得用 API 或数据库脚本偷造后再声称完成完整用户旅程；API、数据库和 GitLab 查询只能作为复核证据。
+- 如发现场景证据失效，先修复用户可观察路径或测试夹具，再更新验收矩阵，不把失败用例改成 skip。
+- 复跑结果必须能说明 SA-015 发布状态和执行证据复核仍成立，并兼顾最近新增的 SA-002 数据质量复核页面边界展示。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md`、`docs/openspec/specs/` 和 `tasks/records/`。
-- 完成后运行相关脚本/后端/API/前端专项测试，并至少运行 `bash scripts/dev/check-roadmap.sh` 和 `git diff --check`。
+- 完成后运行相关前端 E2E/组件测试，并至少运行 `bash scripts/dev/check-roadmap.sh`、`pnpm run typecheck`、`pnpm i18n:lint` 和 `git diff --check`。
 
 当前输入基线：
 
@@ -53,6 +53,7 @@
 - 数据质量风险：188 条待复核动作，已具备应用内复核队列。
 - 最新静态扫描：`.ai/reports/static-scan/20260523-202310/summary.md`。
 - 命名空间元数据：`dataNamespace`、`reviewBatchId`、`assetScope`、`retentionPolicy` 已落到 safe-cleanup 动作、复核 API 和复核队列页面。
+- 数据源口径：`API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS`、`REVIEW_QUEUE_ACTIONS` 已落到全量验收输出、safe-cleanup 报告、复核 API 和复核队列页面。
 
 已完成的前置事项：
 
@@ -61,6 +62,7 @@
 - release-governance OpenSpec 已新增：`docs/openspec/specs/release-governance/spec.md`。
 - SA-002 数据质量复核队列已页面化：`frontend/src/views/data-quality/DataQualityReviewQueue.vue`。
 - SA-002 验收数据命名空间与保留策略已落地：`tasks/records/2026-05-23-sa-002-acceptance-data-namespace-retention.md`。
+- SA-002 验收脚本与应用 API 数据源口径已统一：`tasks/records/2026-05-23-sa-002-data-source-boundary-alignment.md`。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`。
 
 非目标：

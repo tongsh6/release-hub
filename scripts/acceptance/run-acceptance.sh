@@ -535,13 +535,14 @@ curl -s -o /dev/null "$FRONTEND" 2>/dev/null && ok "前端 $FRONTEND" || warn "�
 h2 "SA-002: 1. 存量数据审计"
 
 # 1.1 数据资产统计
+API_VISIBLE_METRIC="API_VISIBLE_ASSETS"
 STATS=$(curl -s "$BACKEND/api/v1/runs/paged?size=1" -H "$AUTH")
 RUN_TOTAL=$(echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('page', {}).get('total', 0))" 2>/dev/null || echo 0)
 GROUP_COUNT=$(curl -s "$BACKEND/api/v1/groups" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo 0)
 REPO_COUNT=$(curl -s "$BACKEND/api/v1/repositories" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo 0)
 WINDOW_COUNT=$(curl -s "$BACKEND/api/v1/release-windows" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo 0)
 ITER_COUNT=$(curl -s "$BACKEND/api/v1/iterations" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo 0)
-info "Groups:$GROUP_COUNT  Repos:$REPO_COUNT  Windows:$WINDOW_COUNT  Iterations:$ITER_COUNT  Runs:$RUN_TOTAL"
+info "$API_VISIBLE_METRIC: Groups=$GROUP_COUNT Repos=$REPO_COUNT Windows=$WINDOW_COUNT Iterations=$ITER_COUNT Runs=$RUN_TOTAL"
 
 # 1.2 Flyway 版本
 FLYWAY_V=$(docker exec releasehub-postgres psql -U postgres -d release_hub -t -c \
@@ -2695,7 +2696,7 @@ fi
 # ---- 11. 汇总 ----
 h2 "11. 验收汇总"
 echo ""
-echo "  数据资产: $GROUP_COUNT groups | $REPO_COUNT repos | $WINDOW_COUNT windows | $ITER_COUNT iterations | $RUN_TOTAL runs"
+echo "  $API_VISIBLE_METRIC: $GROUP_COUNT groups | $REPO_COUNT repos | $WINDOW_COUNT windows | $ITER_COUNT iterations | $RUN_TOTAL runs"
 echo "  Token 安全: 加密=$ENCRYPTED_COUNT | 明文=$PLAINTEXT_COUNT | Flyway=$FLYWAY_V"
 echo "  本轮结果: PASS=$PASS | FAIL=$FAIL | SKIP=$SKIP"
 echo ""
