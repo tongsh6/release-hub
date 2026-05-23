@@ -27,22 +27,21 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-001 | 场景矩阵清账与下一阶段候选排序 | `scenario-acceptance-matrix.md` 当前推进队列 | 空仓库真实 GitLab 证据已闭环；Phase 2 缺口池和 Top Priority 中仍有历史 stale 表述，需要产品级清账并产出下一阶段唯一可执行 HEAD |
+| 1 | HEAD | SA-001 | 全量场景验收基线复跑与发布候选判定 | `scenario-acceptance-matrix.md` 当前推进队列 | Phase 2 存量缺口已按已闭环和暂缓清账；近期 focused slices 需要回到全链路验收和静态扫描，确认产品整体仍可运行 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-001 场景矩阵清账与下一阶段候选排序。
+任务：SA-001 全量场景验收基线复跑与发布候选判定。
 
 验收出口：
 
-- 逐项复核 `scenario-acceptance-matrix.md` Phase 2 缺口池、当前推进队列、场景详情缺口和最新验证记录。
-- 逐项复核 `docs/project-ledger.md` Top Priority、关键证据索引和进行中事项，移除已闭环或已暂缓事项的 stale 表述。
-- 明确下一阶段唯一 `HEAD`：必须对应真实用户价值、明确验收出口、可执行证据路径和非目标。
-- 不得把“后续保持回归”的事项重新作为执行任务。
-- 如果发现仍缺真实产品能力，先落地中文任务记录和 spec；如果只是文档清账，不做代码实现。
-- 完成后同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`。
+- 运行 `bash scripts/acceptance/run-acceptance.sh`，证明当前核心场景仍能在真实后端、真实 GitLab 和持久化数据上闭环。
+- 运行 `bash scripts/dev/static-scan-topn.sh 10`，确认静态扫描没有新增阻断。
+- 复核本轮 focused slices 的关键证据是否仍被全量验收覆盖或可由 focused 证据补充。
+- 如果全量验收失败，按失败 SA 场景重新立唯一 `HEAD`，并写清失败证据、用户影响和非目标。
+- 如果全量验收通过，更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`，给出下一阶段候选排序。
 - 完成后运行 `bash scripts/dev/check-roadmap.sh`，确保下一个 `HEAD` 唯一且可追溯。
 
 非目标：

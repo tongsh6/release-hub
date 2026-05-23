@@ -175,7 +175,7 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| P1 | SA-001 场景矩阵清账与下一阶段候选排序 | SA-014 空仓库真实证据闭环后，Phase 2 缺口池剩余项多为已闭环或明确暂缓；需要按产品视角清理 stale 缺口、Top Priority 和下一阶段队列 | 矩阵、台账和路线图只保留真实待推进项；下一 HEAD 必须有明确用户价值、验收出口和证据路径 |
+| P1 | SA-001 全量场景验收基线复跑与发布候选判定 | Phase 2 存量缺口已按已闭环/暂缓清账；近期 focused slices 需要回到全链路验收脚本和静态扫描，确认产品整体仍可运行 | `run-acceptance.sh` 和静态扫描通过；矩阵、台账和任务记录记录全量结果；若失败，以失败场景重新立队首 |
 
 ---
 
@@ -183,7 +183,7 @@
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-23 SA-014 空仓库版本解析真实 GitLab 证据已补：focused 验收 23 PASS / 0 FAIL；当前执行队列见 `docs/execution-roadmap.md` |
+| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-23 SA-001 Phase 2 缺口池已清账；当前执行队列见 `docs/execution-roadmap.md` |
 | 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-20 Slice-1 回归：11 PASS / 0 FAIL / 0 SKIP；新增 SA-003 资源创建叶子分组断言，保留 SA-010 解除挂载 UI 旅程。2026-05-20 Slice-2 回归：23 PASS / 0 FAIL / 0 SKIP；新增 SA-011 Git 访问异常前端旅程；入口 `cd frontend && pnpm run test:e2e` |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
