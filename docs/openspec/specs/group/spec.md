@@ -27,11 +27,18 @@
 - **THEN** 返回对应分页数据与 total 元信息
 
 ### Requirement: Code 自动生成
-系统 SHALL 在分组创建时若未提供 code 则自动生成全局唯一的 code 值。
+系统 SHALL 在分组创建时若未提供 code 或 code 为空白，则按同级分组顺序自动生成全局唯一的 code 值。
 
-#### Scenario: 自动生成 code
-- **WHEN** 用户创建分组时未提供 code
-- **THEN** 系统生成唯一 code（如 UUID 短码或时间戳派生）
+#### Scenario: 自动生成顶层分组 code
+- **WHEN** 用户创建顶层分组时未提供 code 或 code 为空白
+- **THEN** 系统按顶层已有三位数字 code 的最大值递增生成三位数字 code
+- **AND** 非三位数字的自定义 code 不参与递增序列
+- **AND** code 在系统中全局唯一
+
+#### Scenario: 自动生成子分组 code
+- **WHEN** 用户在父分组下创建子分组且未提供 code 或 code 为空白
+- **THEN** 系统按同一父分组下已有子分组 code 的序列递增生成 code
+- **AND** 生成值以父分组 code 为前缀，并追加三位数字序号
 - **AND** code 在系统中全局唯一
 
 ### Requirement: 叶子节点约束
