@@ -558,7 +558,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-001 全量场景验收基线复跑与发布候选判定 | Phase 2 存量缺口已按已闭环/暂缓清账；近期 focused slices 需要回到全链路验收脚本和静态扫描，证明系统仍能作为一个产品整体运行 | 运行全量场景验收和静态扫描，更新矩阵、台账和任务记录；若失败，按失败场景重新立队首而不是继续堆叠局部脚本 |
+| P1 | SA-002 验收脏数据报告与复核口径收敛 | 全量验收通过但暴露大量历史 DRAFT 窗口残留告警；当前 safe-cleanup dry-run 和全量验收脏数据检测口径不一致，容易让用户误判存量噪声规模 | 对齐全量验收脏数据检测、safe-cleanup 报告和人工复核入口的统计口径；仍不得直接自动清库，必须保留应用入口、执行前检查、执行后复核和人工决策 |
+| P1 | SA-001 全量场景验收基线复跑与发布候选判定 | 全量场景验收通过：170 PASS / 0 FAIL / 0 SKIP；静态扫描通过，报告 `.ai/reports/static-scan/20260523-193829/summary.md` | 后续保持回归 |
 | P1 | SA-001 场景矩阵清账与下一阶段候选排序 | Phase 2 缺口池、Top Priority 和执行路线图已清账；已闭环事项不再作为当前执行任务，暂缓事项不重新进入队列 | 后续保持回归 |
 | P2 | SA-014 空仓库版本解析真实 GitLab 证据 | 真实 GitLab 空仓库 focused 验收通过：创建空项目、系统纳管、创建后解析、重新解析和仓库列表可见性共 23 PASS / 0 FAIL；报告 `.ai/reports/sa014-empty-repo-version/20260523-113039/summary.md` | 后续保持回归 |
 | P2 | SA-016 release 分支累积冲突清理执行保护证据 | dry-run、execute 和重复 execute 证据已补；脚本只清理固定种子仓库的非种子分支，保留 main 与 seed feature 分支，并输出结构化报告 | 后续保持回归 |
@@ -571,6 +572,29 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-001 全量场景验收基线复跑与发布候选判定
+
+命令：
+
+```bash
+bash scripts/acceptance/run-acceptance.sh
+bash scripts/dev/static-scan-topn.sh 10
+bash scripts/dev/check-roadmap.sh
+git diff --check
+```
+
+结果：
+
+- 全量场景验收通过：170 PASS / 0 FAIL / 0 SKIP。
+- 数据资产：359 groups / 134 repos / 358 windows / 541 iterations / 532 runs。
+- 验收覆盖真实 GitLab Settings 重启持久化、三层分组叶子资源约束、Attach/Detach release 分支创建与归档、冲突强证据、部分失败 retry、版本更新单模块/多模块/Gradle/批量部分失败、关闭后 GitLab merge/tag/archive 收尾和分支创建模式。
+- 静态扫描通过：SpotBugs 0 bugs、frontend lint PASS、frontend typecheck PASS；报告 `.ai/reports/static-scan/20260523-193829/summary.md`。
+- 全量验收仍报告大量历史 DRAFT 窗口残留和 1 条 `branch_created=false` 记录；这些不阻塞本轮验收，但与 safe-cleanup dry-run 历史报告数量口径不一致，下一队首转向 SA-002 脏数据报告与复核口径收敛。
+
+结论：
+
+- Phase 2 focused slices 回到整体产品链路后仍成立；当前执行队列转向 SA-002 验收脏数据报告与复核口径收敛。
 
 ### 2026-05-23 SA-014 空仓库版本解析真实 GitLab 证据脚本
 

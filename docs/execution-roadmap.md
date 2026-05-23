@@ -27,21 +27,22 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-001 | 全量场景验收基线复跑与发布候选判定 | `scenario-acceptance-matrix.md` 当前推进队列 | Phase 2 存量缺口已按已闭环和暂缓清账；近期 focused slices 需要回到全链路验收和静态扫描，确认产品整体仍可运行 |
+| 1 | HEAD | SA-002 | 验收脏数据报告与复核口径收敛 | `scenario-acceptance-matrix.md` 当前推进队列 | 全量验收通过但暴露大量历史 DRAFT 窗口残留告警；脏数据检测、dry-run 报告和人工复核入口的统计口径需要对齐 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-001 全量场景验收基线复跑与发布候选判定。
+任务：SA-002 验收脏数据报告与复核口径收敛。
 
 验收出口：
 
-- 运行 `bash scripts/acceptance/run-acceptance.sh`，证明当前核心场景仍能在真实后端、真实 GitLab 和持久化数据上闭环。
-- 运行 `bash scripts/dev/static-scan-topn.sh 10`，确认静态扫描没有新增阻断。
-- 复核本轮 focused slices 的关键证据是否仍被全量验收覆盖或可由 focused 证据补充。
-- 如果全量验收失败，按失败 SA 场景重新立唯一 `HEAD`，并写清失败证据、用户影响和非目标。
-- 如果全量验收通过，更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`，给出下一阶段候选排序。
+- 对比 `run-acceptance.sh` 脏数据检测、`scripts/acceptance/sa002-safe-cleanup.sh` dry-run 报告和 `POST /api/v1/data-quality/cleanup-review` 的资源/风险口径。
+- 让 dry-run 报告能解释全量验收暴露的历史 DRAFT 窗口残留和 `branch_created=false` 记录，避免只报告一小部分导致风险规模失真。
+- 每条复核动作仍必须包含应用入口、执行前检查、执行后复核和人工复核决策。
+- 不允许直接自动删除、关闭窗口、修改数据库或触碰 GitLab 远端资源。
+- 更新中文 spec、场景矩阵、项目台账和任务记录。
+- 覆盖必要单测、脚本 dry-run 证据、`bash scripts/dev/check-roadmap.sh` 和静态扫描。
 - 完成后运行 `bash scripts/dev/check-roadmap.sh`，确保下一个 `HEAD` 唯一且可追溯。
 
 非目标：
