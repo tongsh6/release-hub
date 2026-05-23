@@ -94,8 +94,8 @@ SUMMARY_MD="$REPORT_DIR/summary.md"
 cat > "$ACTIONS_MD" <<'EOF'
 # SA-002 存量数据安全清理动作清单
 
-| 资源类型 | 资源 ID | 风险类型 | 建议动作 | 已执行 |
-|---|---|---|---|---|
+| 资源类型 | 资源 ID | 风险类型 | 应用入口 | 建议动作 | 执行前检查 | 执行后复核 | 复核决策 | 已执行 |
+|---|---|---|---|---|---|---|---|---|
 EOF
 
 ACTION_COUNT=0
@@ -107,15 +107,21 @@ append_action() {
     local suggested_action=$4
     local executed=$5
     local source=$6
+    local application_entry=$7
+    local pre_execution_check=$8
+    local post_execution_verification=$9
+    local review_decision="PENDING"
 
     ACTION_COUNT=$((ACTION_COUNT + 1))
-    printf '| `%s` | `%s` | `%s` | %s | `%s` |\n' \
-        "$resource_type" "$resource_id" "$risk_type" "$suggested_action" "$executed" >> "$ACTIONS_MD"
-    python3 - "$resource_type" "$resource_id" "$risk_type" "$suggested_action" "$executed" "$source" >> "$ACTIONS_JSONL" <<'PY'
+    printf '| `%s` | `%s` | `%s` | `%s` | %s | %s | %s | `%s` | `%s` |\n' \
+        "$resource_type" "$resource_id" "$risk_type" "$application_entry" "$suggested_action" \
+        "$pre_execution_check" "$post_execution_verification" "$review_decision" "$executed" >> "$ACTIONS_MD"
+    python3 - "$resource_type" "$resource_id" "$risk_type" "$suggested_action" "$executed" "$source" \
+        "$application_entry" "$pre_execution_check" "$post_execution_verification" "$review_decision" >> "$ACTIONS_JSONL" <<'PY'
 import json
 import sys
 
-resource_type, resource_id, risk_type, suggested_action, executed, source = sys.argv[1:]
+resource_type, resource_id, risk_type, suggested_action, executed, source, application_entry, pre_check, post_verify, review_decision = sys.argv[1:]
 print(json.dumps({
     "resourceType": resource_type,
     "resourceId": resource_id,
@@ -123,6 +129,11 @@ print(json.dumps({
     "suggestedAction": suggested_action,
     "executed": executed == "true",
     "source": source,
+    "applicationEntry": application_entry,
+    "preExecutionCheck": pre_check,
+    "postExecutionVerification": post_verify,
+    "manualReviewRequired": True,
+    "reviewDecision": review_decision,
 }, ensure_ascii=False))
 PY
 }
@@ -148,7 +159,10 @@ while IFS=$'\t' read -r repo_id repo_name; do
         "REPO_TOKEN_PLAINTEXT" \
         "通过仓库设置入口重新保存 token，让应用层透明加密后覆盖旧值；报告不输出 token 明文。" \
         "false" \
-        "code_repository.git_token:$repo_name"
+        "code_repository.git_token:$repo_name" \
+        "/repositories/{resourceId}" \
+        "确认仓库仍存在，且当前 token 仍为明文或需要重新保存。" \
+        "仓库保存后重新运行 SA-002 审计，仓库 token 明文数量应为 0。"
 done < <(psql_tsv "SELECT id, COALESCE(name, '') FROM code_repository WHERE git_token IS NOT NULL AND git_token <> '' AND git_token ~ '^(glpat-|ghp_|github_pat_)' ORDER BY id;" 2>/dev/null || true)
 
 while IFS=$'\t' read -r settings_id; do
@@ -159,7 +173,10 @@ while IFS=$'\t' read -r settings_id; do
         "SETTINGS_TOKEN_PLAINTEXT" \
         "通过系统设置页重新保存 GitLab token，让应用层透明加密后覆盖旧值；报告不输出 token 明文。" \
         "false" \
-        "system_settings.gitlab_token"
+        "system_settings.gitlab_token" \
+        "/settings/gitlab" \
+        "确认 GitLab Settings 仍存在，且 token 需要通过系统设置重新保存。" \
+        "系统设置保存后重新运行 SA-002 审计，Settings token 明文数量应为 0。"
 done < <(psql_tsv "SELECT id FROM system_settings WHERE gitlab_token IS NOT NULL AND gitlab_token <> '' AND gitlab_token ~ '^(glpat-|ghp_|github_pat_)' ORDER BY id;" 2>/dev/null || true)
 
 while IFS=$'\t' read -r iteration_key repo_id branch_mode; do
@@ -170,8 +187,11 @@ while IFS=$'\t' read -r iteration_key repo_id branch_mode; do
         "BRANCH_CREATION_MODE_MISSING_OR_INVALID" \
         "复核该迭代仓库的分支创建策略；通过迭代业务入口或后续迁移服务按真实语义补齐，不直接默认覆盖为 AUTO。" \
         "false" \
-        "iteration_repo.branch_creation_mode:$branch_mode"
-done < <(psql_tsv "SELECT iteration_key, repo_id, COALESCE(branch_creation_mode, '<NULL>') FROM iteration_repo WHERE branch_creation_mode IS NULL OR branch_creation_mode NOT IN ('AUTO', 'MANUAL') ORDER BY iteration_key, repo_id;" 2>/dev/null || true)
+        "iteration_repo.branch_creation_mode:$branch_mode" \
+        "受控迁移服务: iteration_repo.branch_creation_mode" \
+        "确认 iterationKey/repoId 仍存在，且分支模式缺失或不在 AUTO、NAMED、EXISTING 范围内。" \
+        "复核 version-info 返回的 branchCreationMode 已按真实业务语义补齐。"
+done < <(psql_tsv "SELECT iteration_key, repo_id, COALESCE(branch_creation_mode, '<NULL>') FROM iteration_repo WHERE branch_creation_mode IS NULL OR branch_creation_mode NOT IN ('AUTO', 'NAMED', 'EXISTING') ORDER BY iteration_key, repo_id;" 2>/dev/null || true)
 
 while IFS=$'\t' read -r iteration_key repo_id; do
     [ -z "${iteration_key:-}" ] && continue
@@ -181,7 +201,10 @@ while IFS=$'\t' read -r iteration_key repo_id; do
         "FEATURE_BRANCH_MISSING" \
         "打开迭代详情复核仓库版本信息；必要时通过迭代仓库同步、重新追加仓库或受控服务生成 featureBranch。" \
         "false" \
-        "iteration_repo.feature_branch"
+        "iteration_repo.feature_branch" \
+        "/iterations/{iterationKey}" \
+        "确认迭代仓库关联仍存在，且 featureBranch 仍缺失。" \
+        "复核迭代详情 version-info 中 featureBranch 已恢复且符合分支规则。"
 done < <(psql_tsv "SELECT iteration_key, repo_id FROM iteration_repo WHERE feature_branch IS NULL ORDER BY iteration_key, repo_id;" 2>/dev/null || true)
 
 while IFS=$'\t' read -r repo_id clone_url; do
@@ -192,7 +215,10 @@ while IFS=$'\t' read -r repo_id clone_url; do
         "CLONE_URL_INVALID" \
         "通过仓库编辑入口修正 cloneUrl，复用现有重复校验和格式校验；不得直接改库绕过唯一性约束。" \
         "false" \
-        "code_repository.clone_url:$clone_url"
+        "code_repository.clone_url:$clone_url" \
+        "/repositories/{resourceId}" \
+        "确认仓库仍存在，且 cloneUrl 仍无法通过格式和重复纳管校验。" \
+        "仓库编辑保存后重新运行 SA-002 审计，cloneUrl 异常数量应减少。"
 done < <(psql_tsv "SELECT id, COALESCE(clone_url, '') FROM code_repository WHERE clone_url LIKE 'http://http://%' OR clone_url !~ '^(https?://[^/]+/.+|git@[^:]+:.+)(\\.git)?$' ORDER BY id;" 2>/dev/null || true)
 
 while IFS=$'\t' read -r window_id window_name; do
@@ -203,7 +229,10 @@ while IFS=$'\t' read -r window_id window_name; do
         "DRAFT_WINDOW_REMAINS" \
         "在发布窗口页按业务判断继续发布、关闭或删除；仅空 DRAFT 窗口可通过应用层删除保护删除。" \
         "false" \
-        "release_window.status:$window_name"
+        "release_window.status:$window_name" \
+        "/release-windows/{resourceId}" \
+        "确认发布窗口仍为 DRAFT，并由发布经理判断继续发布、关闭或删除。" \
+        "复核窗口状态已符合业务决策；如删除，仅通过应用层删除保护完成。"
 done < <(psql_tsv "SELECT id, COALESCE(name, '') FROM release_window WHERE status = 'DRAFT' ORDER BY updated_at DESC, id;" 2>/dev/null || true)
 
 while IFS=$'\t' read -r window_id iteration_key; do
@@ -214,11 +243,14 @@ while IFS=$'\t' read -r window_id iteration_key; do
         "ATTACH_BRANCH_NOT_CREATED" \
         "复核发布窗口挂载结果和 Git 分支状态；通过发布窗口或迭代业务流程重新挂载/修正，不直接伪造 branch_created。" \
         "false" \
-        "window_iteration.branch_created"
+        "window_iteration.branch_created" \
+        "/release-windows/{windowId}" \
+        "确认窗口挂载关系仍存在，且 branchCreated 仍为 false。" \
+        "复核窗口发布计划和 Git 分支状态一致，不伪造 branchCreated。"
 done < <(psql_tsv "SELECT window_id, iteration_key FROM window_iteration WHERE branch_created = false ORDER BY window_id, iteration_key;" 2>/dev/null || true)
 
 if [ "$ACTION_COUNT" -eq 0 ]; then
-    echo "| _无_ | _无_ | _无待处理风险_ | 当前审计未发现需要清理的存量数据动作。 | \`false\` |" >> "$ACTIONS_MD"
+    echo "| _无_ | _无_ | _无待处理风险_ | _无_ | 当前审计未发现需要清理的存量数据动作。 | _无_ | _无_ | \`PENDING\` | \`false\` |" >> "$ACTIONS_MD"
 fi
 
 {
@@ -231,6 +263,7 @@ fi
     echo "- 待复核动作数：$ACTION_COUNT"
     echo "- 动作 JSONL：$ACTIONS_JSONL"
     echo "- 动作 Markdown：$ACTIONS_MD"
+    echo "- 动作字段：resourceType、resourceId、riskType、suggestedAction、executed、source、applicationEntry、preExecutionCheck、postExecutionVerification、manualReviewRequired、reviewDecision"
     echo
     echo "## BranchCreationMode 分布"
     echo
@@ -251,6 +284,7 @@ fi
     echo "- 不直接 UPDATE/DELETE 数据库。"
     echo "- 不删除 GitLab 远端分支、仓库或发布窗口。"
     echo "- 需要执行修复时，优先使用应用层入口或人工复核后的受控迁移服务。"
+    echo '- `reviewDecision` 默认是 `PENDING`；人工复核后只允许进入应用层入口，不允许脚本直接执行清理。'
 } > "$SUMMARY_MD"
 
 info "SA-002 dry-run cleanup report generated:"
