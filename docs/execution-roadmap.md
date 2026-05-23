@@ -27,21 +27,33 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-001 | 发布候选收口报告与下一阶段路线图 | `scenario-acceptance-matrix.md` 当前推进队列 | Phase 2 focused slices、全量验收和脏数据复核口径均已收口；需要形成发布候选判断和下一阶段候选排序 |
+| 1 | HEAD | SA-002 | 数据质量复核队列页面化 | `scenario-acceptance-matrix.md` 当前推进队列 | dry-run 已能生成 188 条人工复核动作，但仍停留在 Markdown/JSONL；需要产品化复核队列承接人工决策 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-001 发布候选收口报告与下一阶段路线图。
+任务：SA-002 数据质量复核队列页面化。
 
 验收出口：
 
-- 形成中文发布候选收口报告，列出当前可发布能力、验收证据索引、数据质量状态和残留非目标。
-- 给出下一阶段候选排序，至少覆盖产品体验、运维治理和技术债三类，并说明为什么不是当前阶段继续做。
+- 从最新 dry-run 动作清单形成应用内复核队列，保留 `resourceType`、`resourceId`、`riskType`、`applicationEntry`、`suggestedAction`、`preExecutionCheck`、`postExecutionVerification`、`manualReviewRequired` 和人工决策状态。
+- 提供按风险类型、资源类型和复核状态筛选的最小页面/API，支持发布经理或运维人员逐项复核。
+- 复核决策必须继续走应用层入口，保留审计字段；直接执行、自动执行或绕过应用层的请求必须拒绝。
+- 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md`、`docs/openspec/specs/` 和 `tasks/records/`。
+- 完成后运行相关后端/API/前端专项测试，并至少运行 `bash scripts/dev/check-roadmap.sh` 和 `git diff --check`。
+
+当前输入基线：
+
+- dry-run 报告：`.ai/reports/sa002-safe-cleanup/20260523-aligned-baseline/summary.md`。
+- 待复核动作：188 条；`DRAFT_WINDOW_REMAINS=187`、`ATTACH_BRANCH_NOT_CREATED=1`。
+- 当前动作清单只读可信源：`scripts/acceptance/sa002-safe-cleanup.sh` 输出的 `actions.jsonl` / `actions.md`。
+
+已完成的前置事项：
+
+- SA-001 发布候选收口报告已形成：`docs/reports/release-candidate-2026-05-23.md`。
+- release-governance OpenSpec 已新增：`docs/openspec/specs/release-governance/spec.md`。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`。
-- 不新增业务代码；如果发现新的阻断缺口，必须回到对应 SA 场景重新立队首。
-- 完成后运行 `bash scripts/dev/check-roadmap.sh`，确保下一个 `HEAD` 唯一且可追溯。
 
 非目标：
 
@@ -49,8 +61,10 @@
 - 不做通知。
 - 不做批量组织重构或资源迁移向导。
 - 不做仓库自动拆分、跨分组批量迁移或自动容量规划。
+- 不自动关闭 DRAFT 发布窗口。
+- 不直接修改数据库，不删除或迁移业务数据。
+- 不触碰 GitLab 远端资源。
 - 不改变分支创建、发布编排、关闭窗口、CI 触发状态、retry、Maven/Gradle 或已有版本更新写回语义。
-- 不把种子分支清理脚本扩展成通用生产分支清理工具。
 - 不引入新的全局工具安装或系统级依赖；若需要新依赖，必须先按本机策略确认。
 - 不通过数据库脚本绕过应用层不变量来执行清理动作。
 - 不把 PDF 导出、RBAC、通知或批量组织迁移重新塞入当前阶段，除非清账结果明确将其列为下一阶段候选并写清验收标准。
