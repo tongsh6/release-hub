@@ -18,6 +18,13 @@
 - **AND** 默认模式不修改数据库、不删除发布窗口、不触碰 GitLab 远端分支或仓库
 - **AND** 报告不得输出 token 明文
 
+#### Scenario: dry-run 口径对齐验收可见数据
+
+- **WHEN** 全量验收脚本通过后端 API 报告 DRAFT 发布窗口残留
+- **THEN** SA-002 dry-run SHALL 使用同一后端 API 口径生成 DRAFT 发布窗口复核动作
+- **AND** 报告同时输出应用 API 资产统计和数据库直查资产统计，避免操作者混淆用户可见数据与底层审计数据
+- **AND** token 明文、BranchCreationMode、featureBranch、cloneUrl 和 branchCreated 等底层字段仍可通过数据库只读审计补充
+
 #### Scenario: 拒绝自动执行危险清理
 
 - **WHEN** 操作者尝试使用自动执行模式批量清理存量数据

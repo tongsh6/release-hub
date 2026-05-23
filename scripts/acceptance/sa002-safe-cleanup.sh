@@ -6,6 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+BACKEND="${BACKEND_URL:-http://localhost:8080}"
 TS="${SA002_REPORT_TS:-$(date -u +%Y%m%d-%H%M%S)}"
 REPORT_DIR="$PROJECT_ROOT/.ai/reports/sa002-safe-cleanup/$TS"
 DRY_RUN=true
@@ -85,6 +86,16 @@ if ! psql_scalar "SELECT 1;" >/dev/null 2>&1; then
     die "Cannot query release_hub in releasehub-postgres."
 fi
 
+if ! curl -s -o /dev/null "$BACKEND/actuator/health"; then
+    die "Backend is not reachable at $BACKEND. Start the local environment before generating the cleanup plan."
+fi
+
+AUTH_TOKEN=$(curl -s -X POST "$BACKEND/api/v1/auth/login" \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin"}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('token',''))")
+[ -n "$AUTH_TOKEN" ] || die "Cannot authenticate against $BACKEND."
+AUTH="Authorization: Bearer $AUTH_TOKEN"
+
 mkdir -p "$REPORT_DIR"
 ACTIONS_JSONL="$REPORT_DIR/actions.jsonl"
 ACTIONS_MD="$REPORT_DIR/actions.md"
@@ -143,11 +154,33 @@ count_or_zero() {
     psql_scalar "SELECT COUNT(*) FROM $table;" 2>/dev/null || printf '0'
 }
 
-GROUP_COUNT=$(count_or_zero groups)
-REPO_COUNT=$(count_or_zero code_repository)
-WINDOW_COUNT=$(count_or_zero release_window)
-ITER_COUNT=$(count_or_zero iteration)
-RUN_COUNT=$(count_or_zero run)
+api_count() {
+    local path=$1
+    curl -s "$BACKEND$path" -H "$AUTH" | python3 -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(0)
+    raise SystemExit
+if 'page' in d:
+    print((d.get('page') or {}).get('total', 0))
+else:
+    data = d.get('data') or []
+    print(len(data) if isinstance(data, list) else 0)
+"
+}
+
+GROUP_COUNT=$(api_count "/api/v1/groups")
+REPO_COUNT=$(api_count "/api/v1/repositories")
+WINDOW_COUNT=$(api_count "/api/v1/release-windows")
+ITER_COUNT=$(api_count "/api/v1/iterations")
+RUN_COUNT=$(api_count "/api/v1/runs/paged?size=1")
+DB_GROUP_COUNT=$(count_or_zero groups)
+DB_REPO_COUNT=$(count_or_zero code_repository)
+DB_WINDOW_COUNT=$(count_or_zero release_window)
+DB_ITER_COUNT=$(count_or_zero iteration)
+DB_RUN_COUNT=$(count_or_zero run)
 FLYWAY_VERSION=$(psql_scalar "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1;" 2>/dev/null || true)
 BRANCH_MODE_DISTRIBUTION=$(psql_tsv "SELECT COALESCE(branch_creation_mode, '<NULL>'), COUNT(*) FROM iteration_repo GROUP BY branch_creation_mode ORDER BY 1;" 2>/dev/null || true)
 
@@ -233,7 +266,17 @@ while IFS=$'\t' read -r window_id window_name; do
         "/release-windows/{resourceId}" \
         "确认发布窗口仍为 DRAFT，并由发布经理判断继续发布、关闭或删除。" \
         "复核窗口状态已符合业务决策；如删除，仅通过应用层删除保护完成。"
-done < <(psql_tsv "SELECT id, COALESCE(name, '') FROM release_window WHERE status = 'DRAFT' ORDER BY updated_at DESC, id;" 2>/dev/null || true)
+done < <(curl -s "$BACKEND/api/v1/release-windows" -H "$AUTH" | python3 -c "
+import sys,json
+try:
+    windows = (json.load(sys.stdin).get('data') or [])
+except Exception:
+    windows = []
+for window in windows:
+    if window.get('status') == 'DRAFT':
+        name = (window.get('name') or '').replace('\t', ' ')
+        print(f\"{window.get('id','')}\t{name}\")
+")
 
 while IFS=$'\t' read -r window_id iteration_key; do
     [ -z "${window_id:-}" ] && continue
@@ -259,7 +302,9 @@ fi
     echo "- 模式：dry-run，只读数据库，不修改业务数据。"
     echo "- 生成时间：$TS"
     echo "- Flyway 最新迁移：${FLYWAY_VERSION:-unknown}"
-    echo "- 资产统计：Groups=$GROUP_COUNT, Repos=$REPO_COUNT, Windows=$WINDOW_COUNT, Iterations=$ITER_COUNT, Runs=$RUN_COUNT"
+    echo "- 后端：$BACKEND"
+    echo "- 应用 API 资产统计：Groups=$GROUP_COUNT, Repos=$REPO_COUNT, Windows=$WINDOW_COUNT, Iterations=$ITER_COUNT, Runs=$RUN_COUNT"
+    echo "- 数据库直查资产统计：Groups=$DB_GROUP_COUNT, Repos=$DB_REPO_COUNT, Windows=$DB_WINDOW_COUNT, Iterations=$DB_ITER_COUNT, Runs=$DB_RUN_COUNT"
     echo "- 待复核动作数：$ACTION_COUNT"
     echo "- 动作 JSONL：$ACTIONS_JSONL"
     echo "- 动作 Markdown：$ACTIONS_MD"
