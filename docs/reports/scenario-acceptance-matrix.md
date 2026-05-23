@@ -486,6 +486,7 @@ P0 验收焦点：
 - Run 列表已支持分组筛选，Playwright 在 UI 创建出的分组下生成失败版本更新 Run 后，按 `windowKey` + 分组 + `FAILED` 复核同一条 Run。
 - Run 详情页和抽屉已兼容 export JSON 的 `runId`、`repo`、`startAt/endAt` 字段，并默认展开 RunStep 明细。
 - 后端冲突检测对 mock/不可抽取版本的仓库不再把版本读取失败升级为阻断异常；mock 仓库版本更新按本地路径执行，能真实落失败 Run。
+- 2026-05-23 复跑确认 `MOCK` provider 是 SA-015 本地前端旅程的产品边界：UI 创建仓库时选择 `MOCK`，分支生命周期走本地 Mock 适配器，版本更新按本地路径执行并真实生成 `VERSION_UPDATE_FAILED` Run；避免误降级为 GitLab 后被真实远端冲突预检阻断。
 - Playwright 已补窗口详情冲突证据复核：复用同一个 serial UI 旅程创建出的发布窗口、迭代和仓库，从窗口详情复核 `MERGE_CONFLICT`、`BRANCH_NONCOMPLIANT`、`CROSS_REPO_VERSION_MISMATCH` 类型分布、分支/版本详情、建议处理方式和外部处理语义，并确认不会误触发版本同步接口。
 - Playwright 已补 Run 详情部分失败复核：复用同一个 serial UI 旅程创建出的窗口标识，从 Run 列表筛出部分失败 Run，并在 Run 详情页复核成功仓库项、失败仓库项、`MERGE_BLOCKED` 结果、失败任务重试次数和错误信息。
 - `run-acceptance.sh` 5.9 已补真实 GitLab 部分失败重试证据：同一 attach Run 内构造一个 `MERGED` 仓库项和一个 `MERGE_BLOCKED` 仓库项，再调用 retry API 验证新 Run 只包含选中的失败项。
@@ -560,7 +561,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-015 更完整的前端场景复跑与证据更新 | 当前 P0 已覆盖，但最近新增发布候选评审、数据质量复核队列和数据源边界展示后，需要复跑关键页面旅程并明确真实用户旅程与组件回归证据边界 | 复跑 Run/窗口详情复核、数据质量复核队列和发布候选评审相关前端场景；不把 route-level stub 或 API 造数误记为完整场景验收 |
+| P1 | SA-001 受控发布候选 dogfood/staging 验证 | Phase 2 缺口池已清账，SA-015 前端复跑已确认关键页面旅程仍成立；发布候选报告判定当前分支可进入受控环境 / dogfood / staging，但不是无条件 GA | 在受控环境按发布候选报告执行 dogfood/staging 验证，复核发布候选评审、数据质量只读复核、核心发布链路和回滚/停止边界 |
+| P1 | SA-015 更完整的前端场景复跑与证据更新 | Slice-2 完整复跑 23 PASS / 0 FAIL；已明确真实 UI 旅程、route-level stub 和后端/GitLab 强证据边界；`MOCK` provider 本地验收边界已恢复 | 后续保持回归 |
 | P1 | SA-002 验收脚本与应用 API 数据源口径统一 | 全量验收、safe-cleanup 与应用复核队列已统一使用 `API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS` 和 `REVIEW_QUEUE_ACTIONS`；复核 API 返回资产边界说明和资产范围计数 | 后续保持回归 |
 | P1 | SA-002 验收数据命名空间与保留策略 | dry-run 报告、actions.jsonl、复核 API 和数据质量复核队列已补 `dataNamespace`、`reviewBatchId`、`assetScope`、`retentionPolicy`；页面可按资产范围筛选 | 后续保持回归 |
 | P1 | SA-001 发布候选评审页 / 发布经理检查清单 | 发布候选评审页已补，支持聚合候选结论、验收证据、数据质量风险、检查清单和人工签核记录 | 后续保持回归 |
@@ -580,6 +582,37 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-015 前端场景复跑与证据边界更新
+
+命令：
+
+```bash
+mvn -pl releasehub-domain,releasehub-infrastructure -am -Dtest=CodeRepositoryTest,CodeRepositoryPersistenceAdapterTest,GitBranchAdapterFactoryImplTest -Dsurefire.failIfNoSpecifiedTests=false test
+pnpm run typecheck
+pnpm i18n:lint
+pnpm exec playwright test e2e/tests/slice-2-full-flow.spec.ts
+pnpm exec vitest run src/views/run/__tests__/RunDetail.spec.ts src/views/data-quality/__tests__/DataQualityReviewQueue.spec.ts src/views/release-governance/__tests__/ReleaseCandidateReview.spec.ts src/views/release-window/__tests__/ReleaseWindowDetail.spec.ts
+bash scripts/dev/check-roadmap.sh
+git diff --check
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 后端领域/基础设施专项测试通过：12 PASS / 0 FAIL / 0 SKIP。
+- 前端 typecheck 通过，i18n lint 通过。
+- Slice-2 完整复跑通过：23 PASS / 0 FAIL。
+- 相关组件回归通过：17 PASS / 0 FAIL。
+- roadmap 检查通过，唯一 HEAD 指向 SA-001；`git diff --check` 通过。
+- 静态扫描通过：`.ai/reports/static-scan/20260523-212419/summary.md`；SpotBugs 0，frontend lint PASS，typecheck PASS。
+- SA-013 真实 UI 旅程继续由页面创建分组、仓库、迭代和发布窗口，并提交编排请求。
+- SA-015 真实 UI 旅程继续由窗口详情触发失败版本更新，后端真实创建 `VERSION_UPDATE_FAILED` Run，Run 列表可按 `windowKey + group + FAILED` 复核失败步骤和缺失 POM 路径。
+- route-level stub 用例继续只作为冲突面板、Git 访问风险、部分失败 Run 和请求契约的前端观察证据，不替代后端/GitLab 强证据。
+
+结论：
+
+- SA-015 更完整前端场景复跑已完成；`MOCK` provider 本地验收边界已恢复，避免 mock 仓库误降级为 GitLab 后被真实远端冲突预检阻断。当前执行队列转向 SA-001 受控发布候选 dogfood/staging 验证。
 
 ### 2026-05-23 SA-002 验收脚本与应用 API 数据源口径统一
 

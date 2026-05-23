@@ -1,5 +1,5 @@
 ## Purpose
-代码仓库（CodeRepository）是 ReleaseHub 管理的核心资源，承载分支、MR、版本等元信息，支撑发布窗口与迭代的版本管理流程。仓库支持 GitLab/GitHub 双 Provider 接入，提供分支/MR 统计、健康检查（合规/不合规分支）、Git 配置管理、手动同步和 gate 概览。仓库 name 和 cloneUrl 在系统内全局唯一。
+代码仓库（CodeRepository）是 ReleaseHub 管理的核心资源，承载分支、MR、版本等元信息，支撑发布窗口与迭代的版本管理流程。仓库支持 GitLab/GitHub Provider 接入，并保留本地验收用 MOCK Provider，提供分支/MR 统计、健康检查（合规/不合规分支）、Git 配置管理、手动同步和 gate 概览。仓库 name 和 cloneUrl 在系统内全局唯一。
 
 ## Requirements
 
@@ -39,6 +39,13 @@
 #### Scenario: 表单校验
 - **WHEN** 用户创建或编辑仓库
 - **THEN** 表单校验 projectId、gitlabProjectId、name、cloneUrl、defaultBranch、monoRepo，失败弹出提示；成功后关闭弹窗并刷新列表
+
+#### Scenario: 本地验收 Mock Provider
+
+- **WHEN** 用户在仓库表单选择 `MOCK` Provider
+- **THEN** 系统保存并返回 `gitProvider=MOCK`
+- **AND** 分支生命周期操作 SHALL 使用本地 Mock 适配器，不访问真实 GitLab/GitHub
+- **AND** 发布窗口版本更新在 `MOCK` 仓库上 SHALL 按用户提交的本地路径执行，用于生成可复核的本地失败 Run
 
 ### Requirement: 仓库版本解析异常可追溯
 
