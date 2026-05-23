@@ -69,7 +69,8 @@ public class DataQualityCleanupReviewAppService {
             CleanupActionReview review = reviewAction(action);
             if (!matchesFilter(review.resourceType(), command.resourceTypeFilter())
                     || !matchesFilter(review.riskType(), command.riskTypeFilter())
-                    || !matchesFilter(review.reviewStatus(), command.reviewStatusFilter())) {
+                    || !matchesFilter(review.reviewStatus(), command.reviewStatusFilter())
+                    || !matchesFilter(review.assetScope(), command.assetScopeFilter())) {
                 continue;
             }
             reviews.add(review);
@@ -99,39 +100,54 @@ public class DataQualityCleanupReviewAppService {
         String riskType = trim(action.riskType());
         ActionContract contract = CONTRACTS.get(key(resourceType, riskType));
         if (isBlank(resourceType) || isBlank(resourceId) || isBlank(riskType)) {
-            return rejected(resourceType, resourceId, riskType, contract, "资源类型、资源 ID 和风险类型不能为空");
+            return rejected(action, resourceType, resourceId, riskType, contract, "资源类型、资源 ID 和风险类型不能为空");
         }
         if (contract == null) {
-            return rejected(resourceType, resourceId, riskType, null, "未登记的资源/风险组合，不能进入受控清理闭环");
+            return rejected(action, resourceType, resourceId, riskType, null, "未登记的资源/风险组合，不能进入受控清理闭环");
         }
         if (Boolean.TRUE.equals(action.executed())) {
-            return rejected(resourceType, resourceId, riskType, contract, "dry-run 动作进入复核前不得标记为已执行");
+            return rejected(action, resourceType, resourceId, riskType, contract, "dry-run 动作进入复核前不得标记为已执行");
         }
         String decision = normalizeDecision(action.reviewDecision());
         if (DIRECT_EXECUTION_DECISIONS.contains(decision)) {
-            return rejected(resourceType, resourceId, riskType, contract, "SA-002 不允许直接执行或自动执行清理动作");
+            return rejected(action, resourceType, resourceId, riskType, contract, "SA-002 不允许直接执行或自动执行清理动作");
         }
         if (requiresField(action.preExecutionCheck(), contract.preExecutionCheck())
                 || requiresField(action.postExecutionVerification(), contract.postExecutionVerification())
                 || requiresField(action.applicationEntry(), contract.applicationEntry())) {
-            return rejected(resourceType, resourceId, riskType, contract, "动作缺少应用入口、执行前检查或执行后复核口径");
+            return rejected(action, resourceType, resourceId, riskType, contract, "动作缺少应用入口、执行前检查或执行后复核口径");
         }
         if (PENDING.equals(decision) || isBlank(decision)) {
-            return new CleanupActionReview(resourceType, resourceId, riskType, "PENDING",
+            return new CleanupActionReview(resourceType, resourceId, riskType,
+                    trim(action.dataNamespace()), trim(action.reviewBatchId()), normalizeOptional(action.assetScope()),
+                    trim(action.retentionPolicy()), "PENDING",
                     "等待人工复核确认进入应用层入口", contract.applicationEntry(),
                     contract.preExecutionCheck(), contract.postExecutionVerification(), false);
         }
         if (!APPROVE.equals(decision)) {
-            return rejected(resourceType, resourceId, riskType, contract, "不支持的人工复核决策: " + decision);
+            return rejected(action, resourceType, resourceId, riskType, contract, "不支持的人工复核决策: " + decision);
         }
-        return new CleanupActionReview(resourceType, resourceId, riskType, "ACCEPTED",
+        return new CleanupActionReview(resourceType, resourceId, riskType,
+                trim(action.dataNamespace()), trim(action.reviewBatchId()), normalizeOptional(action.assetScope()),
+                trim(action.retentionPolicy()), "ACCEPTED",
                 "已通过人工复核，可进入指定应用层入口继续处理；本接口不执行清理",
                 contract.applicationEntry(), contract.preExecutionCheck(), contract.postExecutionVerification(), false);
     }
 
     private CleanupActionReview rejected(String resourceType, String resourceId, String riskType,
                                          ActionContract contract, String reason) {
-        return new CleanupActionReview(resourceType, resourceId, riskType, "REJECTED", reason,
+        return new CleanupActionReview(resourceType, resourceId, riskType, null, null, null, null, "REJECTED", reason,
+                contract == null ? null : contract.applicationEntry(),
+                contract == null ? null : contract.preExecutionCheck(),
+                contract == null ? null : contract.postExecutionVerification(),
+                false);
+    }
+
+    private CleanupActionReview rejected(CleanupActionInput action, String resourceType, String resourceId, String riskType,
+                                         ActionContract contract, String reason) {
+        return new CleanupActionReview(resourceType, resourceId, riskType,
+                trim(action.dataNamespace()), trim(action.reviewBatchId()), normalizeOptional(action.assetScope()),
+                trim(action.retentionPolicy()), "REJECTED", reason,
                 contract == null ? null : contract.applicationEntry(),
                 contract == null ? null : contract.preExecutionCheck(),
                 contract == null ? null : contract.postExecutionVerification(),
@@ -148,6 +164,10 @@ public class DataQualityCleanupReviewAppService {
 
     private static String normalizeDecision(String value) {
         return trim(value).toUpperCase(Locale.ROOT);
+    }
+
+    private static String normalizeOptional(String value) {
+        return isBlank(value) ? "" : trim(value).toUpperCase(Locale.ROOT);
     }
 
     private static String key(String resourceType, String riskType) {

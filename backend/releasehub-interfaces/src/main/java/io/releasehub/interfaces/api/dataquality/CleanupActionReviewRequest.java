@@ -20,6 +20,10 @@ public class CleanupActionReviewRequest {
     private String suggestedAction;
     private Boolean executed;
     private String source;
+    private String dataNamespace;
+    private String reviewBatchId;
+    private String assetScope;
+    private String retentionPolicy;
     private String applicationEntry;
     private String preExecutionCheck;
     private String postExecutionVerification;
@@ -33,6 +37,10 @@ public class CleanupActionReviewRequest {
                 suggestedAction,
                 executed,
                 source,
+                dataNamespace,
+                reviewBatchId,
+                assetScope,
+                retentionPolicy,
                 applicationEntry,
                 preExecutionCheck,
                 postExecutionVerification,

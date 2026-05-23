@@ -60,6 +60,30 @@ class DataQualityCleanupReviewAppServiceTest {
     }
 
     @Test
+    void shouldCarryNamespaceBatchScopeAndRetentionPolicy() {
+        CleanupReviewResult result = service.review(new CleanupReviewCommand(
+                "qa",
+                "report",
+                List.of(validDraftWindowAction(
+                        "APPROVE_FOR_APPLICATION_ENTRY",
+                        "acceptance",
+                        "sa002-20260523",
+                        "HISTORICAL_ACCEPTANCE",
+                        "manual-review-then-archive")),
+                null,
+                null,
+                "ACCEPTED",
+                "HISTORICAL_ACCEPTANCE"));
+
+        assertThat(result.total()).isEqualTo(1);
+        CleanupActionReview review = result.actions().get(0);
+        assertThat(review.dataNamespace()).isEqualTo("acceptance");
+        assertThat(review.reviewBatchId()).isEqualTo("sa002-20260523");
+        assertThat(review.assetScope()).isEqualTo("HISTORICAL_ACCEPTANCE");
+        assertThat(review.retentionPolicy()).isEqualTo("manual-review-then-archive");
+    }
+
+    @Test
     void shouldRejectDirectExecutionDecision() {
         CleanupReviewResult result = service.review(new CleanupReviewCommand(
                 "qa",
@@ -117,6 +141,11 @@ class DataQualityCleanupReviewAppServiceTest {
     }
 
     private CleanupActionInput validDraftWindowAction(String decision) {
+        return validDraftWindowAction(decision, null, null, null, null);
+    }
+
+    private CleanupActionInput validDraftWindowAction(String decision, String dataNamespace, String reviewBatchId,
+                                                      String assetScope, String retentionPolicy) {
         return new CleanupActionInput(
                 "release_window",
                 "window-1",
@@ -124,6 +153,10 @@ class DataQualityCleanupReviewAppServiceTest {
                 "在发布窗口页按业务判断继续发布、关闭或删除；仅空 DRAFT 窗口可通过应用层删除保护删除。",
                 false,
                 "release_window.status:验收窗口",
+                dataNamespace,
+                reviewBatchId,
+                assetScope,
+                retentionPolicy,
                 "/release-windows/{resourceId}",
                 "确认发布窗口仍为 DRAFT，并由发布经理判断继续发布、关闭或删除。",
                 "复核窗口状态已符合业务决策；如删除，仅通过应用层删除保护完成。",

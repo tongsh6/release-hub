@@ -10,6 +10,10 @@ export interface CleanupActionInput {
   suggestedAction?: string
   executed?: boolean
   source?: string
+  dataNamespace?: string
+  reviewBatchId?: string
+  assetScope?: string
+  retentionPolicy?: string
   applicationEntry?: string
   preExecutionCheck?: string
   postExecutionVerification?: string
@@ -20,6 +24,10 @@ export interface CleanupActionReview {
   resourceType: string
   resourceId: string
   riskType: string
+  dataNamespace?: string
+  reviewBatchId?: string
+  assetScope?: string
+  retentionPolicy?: string
   reviewStatus: CleanupReviewStatus
   reason: string
   applicationEntry?: string
@@ -34,6 +42,7 @@ export interface CleanupReviewRequest {
   resourceTypeFilter?: string
   riskTypeFilter?: string
   reviewStatusFilter?: CleanupReviewStatus | string
+  assetScopeFilter?: string
   actions: CleanupActionInput[]
 }
 

@@ -70,6 +70,10 @@ describe('DataQualityReviewQueue', () => {
           resourceType: 'release_window',
           resourceId: 'window-1',
           riskType: 'DRAFT_WINDOW_REMAINS',
+          dataNamespace: 'acceptance',
+          reviewBatchId: 'sa002-20260523',
+          assetScope: 'HISTORICAL_ACCEPTANCE',
+          retentionPolicy: 'manual-review-then-archive',
           reviewStatus: 'ACCEPTED',
           reason: 'ok',
           applicationEntry: '/release-windows/{resourceId}',
@@ -87,6 +91,10 @@ describe('DataQualityReviewQueue', () => {
         resourceType: 'release_window',
         resourceId: 'window-1',
         riskType: 'DRAFT_WINDOW_REMAINS',
+        dataNamespace: 'acceptance',
+        reviewBatchId: 'sa002-20260523',
+        assetScope: 'HISTORICAL_ACCEPTANCE',
+        retentionPolicy: 'manual-review-then-archive',
         applicationEntry: '/release-windows/{resourceId}',
         preExecutionCheck: 'check',
         postExecutionVerification: 'verify'
@@ -95,6 +103,10 @@ describe('DataQualityReviewQueue', () => {
         resourceType: 'window_iteration',
         resourceId: 'window-1::repo-1::ITER-1',
         riskType: 'ATTACH_BRANCH_NOT_CREATED',
+        dataNamespace: 'acceptance',
+        reviewBatchId: 'sa002-20260523',
+        assetScope: 'HISTORICAL_ACCEPTANCE',
+        retentionPolicy: 'manual-review-then-archive',
         applicationEntry: '/release-windows/{windowId}',
         preExecutionCheck: 'check',
         postExecutionVerification: 'verify'
@@ -105,6 +117,7 @@ describe('DataQualityReviewQueue', () => {
     vm.markAllApproved()
     vm.filters.resourceType = 'release_window'
     vm.filters.reviewStatus = 'ACCEPTED'
+    vm.filters.assetScope = 'HISTORICAL_ACCEPTANCE'
     await vm.reviewQueue()
 
     expect(vm.queueActions).toHaveLength(2)
@@ -114,9 +127,11 @@ describe('DataQualityReviewQueue', () => {
       resourceTypeFilter: 'release_window',
       riskTypeFilter: undefined,
       reviewStatusFilter: 'ACCEPTED',
+      assetScopeFilter: 'HISTORICAL_ACCEPTANCE',
       actions: [
         expect.objectContaining({
           resourceType: 'release_window',
+          assetScope: 'HISTORICAL_ACCEPTANCE',
           reviewDecision: 'APPROVE_FOR_APPLICATION_ENTRY'
         }),
         expect.objectContaining({

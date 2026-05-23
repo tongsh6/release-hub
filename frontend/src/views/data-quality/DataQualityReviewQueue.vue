@@ -66,6 +66,12 @@
             <el-option label="REJECTED" value="REJECTED" />
           </el-select>
         </el-form-item>
+        <el-form-item :label="t('dataQuality.review.assetScope')">
+          <el-select v-model="filters.assetScope" clearable class="filter-select">
+            <el-option :label="t('common.all')" value="" />
+            <el-option v-for="item in assetScopeOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="reviewing" :disabled="queueActions.length === 0" @click="reviewQueue">
             {{ t('dataQuality.review.reviewQueue') }}
@@ -84,6 +90,10 @@
         <el-table-column prop="resourceType" :label="t('dataQuality.review.resourceType')" width="160" />
         <el-table-column prop="resourceId" :label="t('dataQuality.review.resourceId')" min-width="220" show-overflow-tooltip />
         <el-table-column prop="riskType" :label="t('dataQuality.review.riskType')" width="220" />
+        <el-table-column prop="dataNamespace" :label="t('dataQuality.review.dataNamespace')" width="160" />
+        <el-table-column prop="reviewBatchId" :label="t('dataQuality.review.reviewBatchId')" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="assetScope" :label="t('dataQuality.review.assetScope')" width="210" />
+        <el-table-column prop="retentionPolicy" :label="t('dataQuality.review.retentionPolicy')" min-width="220" show-overflow-tooltip />
         <el-table-column :label="t('dataQuality.review.decision')" width="240">
           <template #default="{ row }">
             <el-select
@@ -139,11 +149,13 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const filters = ref({
   resourceType: '',
   riskType: '',
-  reviewStatus: ''
+  reviewStatus: '',
+  assetScope: ''
 })
 
 const resourceTypeOptions = computed(() => unique(queueActions.value.map(item => item.resourceType)))
 const riskTypeOptions = computed(() => unique(queueActions.value.map(item => item.riskType)))
+const assetScopeOptions = computed(() => unique(queueActions.value.map(item => item.assetScope)))
 const displayRows = computed<DisplayRow[]>(() => reviewResult.value?.actions ?? queueActions.value)
 
 function unique(values: Array<string | undefined>) {
@@ -201,6 +213,7 @@ async function reviewQueue() {
       resourceTypeFilter: filters.value.resourceType || undefined,
       riskTypeFilter: filters.value.riskType || undefined,
       reviewStatusFilter: filters.value.reviewStatus || undefined,
+      assetScopeFilter: filters.value.assetScope || undefined,
       actions: queueActions.value
     })
     ElMessage.success(t('dataQuality.review.reviewComplete', { count: reviewResult.value.total }))

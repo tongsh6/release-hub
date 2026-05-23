@@ -19,6 +19,7 @@ public class CleanupReviewRequest {
     private String resourceTypeFilter;
     private String riskTypeFilter;
     private String reviewStatusFilter;
+    private String assetScopeFilter;
 
     @Valid
     @NotEmpty
@@ -31,6 +32,7 @@ public class CleanupReviewRequest {
                 actions.stream().map(CleanupActionReviewRequest::toCommand).toList(),
                 resourceTypeFilter,
                 riskTypeFilter,
-                reviewStatusFilter);
+                reviewStatusFilter,
+                assetScopeFilter);
     }
 }

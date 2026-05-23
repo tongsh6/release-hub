@@ -34,6 +34,7 @@ class DataQualityCleanupApiTest {
                   "sourceReport": ".ai/reports/sa002-safe-cleanup/manual/actions.jsonl",
                   "resourceTypeFilter": "release_window",
                   "riskTypeFilter": "DRAFT_WINDOW_REMAINS",
+                  "assetScopeFilter": "HISTORICAL_ACCEPTANCE",
                   "actions": [
                     {
                       "resourceType": "release_window",
@@ -42,6 +43,10 @@ class DataQualityCleanupApiTest {
                       "suggestedAction": "在发布窗口页按业务判断继续发布、关闭或删除；仅空 DRAFT 窗口可通过应用层删除保护删除。",
                       "executed": false,
                       "source": "release_window.status:验收窗口",
+                      "dataNamespace": "acceptance",
+                      "reviewBatchId": "sa002-20260523",
+                      "assetScope": "HISTORICAL_ACCEPTANCE",
+                      "retentionPolicy": "manual-review-then-archive",
                       "applicationEntry": "/release-windows/{resourceId}",
                       "preExecutionCheck": "确认发布窗口仍为 DRAFT，并由发布经理判断继续发布、关闭或删除。",
                       "postExecutionVerification": "复核窗口状态已符合业务决策；如删除，仅通过应用层删除保护完成。",
@@ -54,6 +59,10 @@ class DataQualityCleanupApiTest {
                       "suggestedAction": "在发布窗口页按业务判断继续发布、关闭或删除；仅空 DRAFT 窗口可通过应用层删除保护删除。",
                       "executed": false,
                       "source": "release_window.status:验收窗口",
+                      "dataNamespace": "acceptance",
+                      "reviewBatchId": "sa002-20260523",
+                      "assetScope": "HISTORICAL_ACCEPTANCE",
+                      "retentionPolicy": "manual-review-then-archive",
                       "applicationEntry": "/release-windows/{resourceId}",
                       "preExecutionCheck": "确认发布窗口仍为 DRAFT，并由发布经理判断继续发布、关闭或删除。",
                       "postExecutionVerification": "复核窗口状态已符合业务决策；如删除，仅通过应用层删除保护完成。",
@@ -72,6 +81,10 @@ class DataQualityCleanupApiTest {
                 .andExpect(jsonPath("$.data.accepted").value(1))
                 .andExpect(jsonPath("$.data.rejected").value(1))
                 .andExpect(jsonPath("$.data.actions[0].reviewStatus").value("ACCEPTED"))
+                .andExpect(jsonPath("$.data.actions[0].dataNamespace").value("acceptance"))
+                .andExpect(jsonPath("$.data.actions[0].reviewBatchId").value("sa002-20260523"))
+                .andExpect(jsonPath("$.data.actions[0].assetScope").value("HISTORICAL_ACCEPTANCE"))
+                .andExpect(jsonPath("$.data.actions[0].retentionPolicy").value("manual-review-then-archive"))
                 .andExpect(jsonPath("$.data.actions[0].executionPermitted").value(false))
                 .andExpect(jsonPath("$.data.actions[1].reviewStatus").value("REJECTED"));
     }

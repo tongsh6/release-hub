@@ -9,6 +9,10 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BACKEND="${BACKEND_URL:-http://localhost:8080}"
 TS="${SA002_REPORT_TS:-$(date -u +%Y%m%d-%H%M%S)}"
 REPORT_DIR="$PROJECT_ROOT/.ai/reports/sa002-safe-cleanup/$TS"
+DATA_NAMESPACE="${SA002_DATA_NAMESPACE:-acceptance}"
+REVIEW_BATCH_ID="${SA002_REVIEW_BATCH_ID:-sa002-$TS}"
+CURRENT_BATCH_MARKER="${SA002_CURRENT_BATCH_MARKER:-$TS}"
+RETENTION_POLICY="${SA002_RETENTION_POLICY:-manual-review-then-archive}"
 DRY_RUN=true
 
 usage() {
@@ -23,6 +27,11 @@ windows, or touch remote GitLab repositories.
 Options:
   --dry-run        Explicitly run in dry-run mode. This is the default.
   --report-dir    Directory for generated summary.md and actions.jsonl.
+  Environment:
+    SA002_DATA_NAMESPACE       Data namespace label, default: acceptance.
+    SA002_REVIEW_BATCH_ID      Review batch id, default: sa002-<timestamp>.
+    SA002_CURRENT_BATCH_MARKER Marker used to classify current-run assets.
+    SA002_RETENTION_POLICY     Retention policy label for review actions.
   -h, --help      Show this help.
 EOF
 }
@@ -105,11 +114,24 @@ SUMMARY_MD="$REPORT_DIR/summary.md"
 cat > "$ACTIONS_MD" <<'EOF'
 # SA-002 存量数据安全清理动作清单
 
-| 资源类型 | 资源 ID | 风险类型 | 应用入口 | 建议动作 | 执行前检查 | 执行后复核 | 复核决策 | 已执行 |
-|---|---|---|---|---|---|---|---|---|
+| 资源类型 | 资源 ID | 风险类型 | 数据命名空间 | 复核批次 | 资产范围 | 保留策略 | 应用入口 | 建议动作 | 执行前检查 | 执行后复核 | 复核决策 | 已执行 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
 EOF
 
 ACTION_COUNT=0
+
+classify_asset_scope() {
+    local source_text="${1:-} ${2:-} ${3:-}"
+    if [ -n "$CURRENT_BATCH_MARKER" ] && [[ "$source_text" == *"$CURRENT_BATCH_MARKER"* ]]; then
+        printf 'CURRENT_BATCH'
+    elif [[ "$source_text" == *"验收"* ]] || [[ "$source_text" == *"SA-"* ]] || [[ "$source_text" == *"sa0"* ]]; then
+        printf 'HISTORICAL_ACCEPTANCE'
+    elif [[ "$source_text" == *"customer"* ]] || [[ "$source_text" == *"业务"* ]]; then
+        printf 'USER_BUSINESS'
+    else
+        printf 'UNKNOWN_LEGACY'
+    fi
+}
 
 append_action() {
     local resource_type=$1
@@ -122,17 +144,20 @@ append_action() {
     local pre_execution_check=$8
     local post_execution_verification=$9
     local review_decision="PENDING"
+    local asset_scope
+    asset_scope=$(classify_asset_scope "$source" "$resource_id" "$suggested_action")
 
     ACTION_COUNT=$((ACTION_COUNT + 1))
-    printf '| `%s` | `%s` | `%s` | `%s` | %s | %s | %s | `%s` | `%s` |\n' \
-        "$resource_type" "$resource_id" "$risk_type" "$application_entry" "$suggested_action" \
+    printf '| `%s` | `%s` | `%s` | `%s` | `%s` | `%s` | `%s` | `%s` | %s | %s | %s | `%s` | `%s` |\n' \
+        "$resource_type" "$resource_id" "$risk_type" "$DATA_NAMESPACE" "$REVIEW_BATCH_ID" "$asset_scope" "$RETENTION_POLICY" "$application_entry" "$suggested_action" \
         "$pre_execution_check" "$post_execution_verification" "$review_decision" "$executed" >> "$ACTIONS_MD"
     python3 - "$resource_type" "$resource_id" "$risk_type" "$suggested_action" "$executed" "$source" \
+        "$DATA_NAMESPACE" "$REVIEW_BATCH_ID" "$asset_scope" "$RETENTION_POLICY" \
         "$application_entry" "$pre_execution_check" "$post_execution_verification" "$review_decision" >> "$ACTIONS_JSONL" <<'PY'
 import json
 import sys
 
-resource_type, resource_id, risk_type, suggested_action, executed, source, application_entry, pre_check, post_verify, review_decision = sys.argv[1:]
+resource_type, resource_id, risk_type, suggested_action, executed, source, data_namespace, review_batch_id, asset_scope, retention_policy, application_entry, pre_check, post_verify, review_decision = sys.argv[1:]
 print(json.dumps({
     "resourceType": resource_type,
     "resourceId": resource_id,
@@ -140,6 +165,10 @@ print(json.dumps({
     "suggestedAction": suggested_action,
     "executed": executed == "true",
     "source": source,
+    "dataNamespace": data_namespace,
+    "reviewBatchId": review_batch_id,
+    "assetScope": asset_scope,
+    "retentionPolicy": retention_policy,
     "applicationEntry": application_entry,
     "preExecutionCheck": pre_check,
     "postExecutionVerification": post_verify,
@@ -293,7 +322,7 @@ while IFS=$'\t' read -r window_id iteration_key; do
 done < <(psql_tsv "SELECT window_id, iteration_key FROM window_iteration WHERE branch_created = false ORDER BY window_id, iteration_key;" 2>/dev/null || true)
 
 if [ "$ACTION_COUNT" -eq 0 ]; then
-    echo "| _无_ | _无_ | _无待处理风险_ | _无_ | 当前审计未发现需要清理的存量数据动作。 | _无_ | _无_ | \`PENDING\` | \`false\` |" >> "$ACTIONS_MD"
+    echo "| _无_ | _无_ | _无待处理风险_ | \`$DATA_NAMESPACE\` | \`$REVIEW_BATCH_ID\` | \`CURRENT_BATCH\` | \`$RETENTION_POLICY\` | _无_ | 当前审计未发现需要清理的存量数据动作。 | _无_ | _无_ | \`PENDING\` | \`false\` |" >> "$ACTIONS_MD"
 fi
 
 {
@@ -301,6 +330,11 @@ fi
     echo
     echo "- 模式：dry-run，只读数据库，不修改业务数据。"
     echo "- 生成时间：$TS"
+    echo "- 数据命名空间：$DATA_NAMESPACE"
+    echo "- 复核批次：$REVIEW_BATCH_ID"
+    echo "- 当前批次标识：$CURRENT_BATCH_MARKER"
+    echo "- 保留策略：$RETENTION_POLICY"
+    echo "- 资产范围口径：CURRENT_BATCH=本轮批次可识别资产；HISTORICAL_ACCEPTANCE=历史验收资产；USER_BUSINESS=用户业务资产；UNKNOWN_LEGACY=无法从命名推断的历史资产。"
     echo "- Flyway 最新迁移：${FLYWAY_VERSION:-unknown}"
     echo "- 后端：$BACKEND"
     echo "- 应用 API 资产统计：Groups=$GROUP_COUNT, Repos=$REPO_COUNT, Windows=$WINDOW_COUNT, Iterations=$ITER_COUNT, Runs=$RUN_COUNT"
@@ -308,7 +342,7 @@ fi
     echo "- 待复核动作数：$ACTION_COUNT"
     echo "- 动作 JSONL：$ACTIONS_JSONL"
     echo "- 动作 Markdown：$ACTIONS_MD"
-    echo "- 动作字段：resourceType、resourceId、riskType、suggestedAction、executed、source、applicationEntry、preExecutionCheck、postExecutionVerification、manualReviewRequired、reviewDecision"
+    echo "- 动作字段：resourceType、resourceId、riskType、suggestedAction、executed、source、dataNamespace、reviewBatchId、assetScope、retentionPolicy、applicationEntry、preExecutionCheck、postExecutionVerification、manualReviewRequired、reviewDecision"
     echo
     echo "## BranchCreationMode 分布"
     echo
