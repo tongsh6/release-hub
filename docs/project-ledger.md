@@ -166,7 +166,7 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| P1/P2 | SA-002 存量数据安全清理 | 数据质量审计已可见，token 明文、BranchCreationMode、feature_branch 缺失、cloneUrl 异常和 DRAFT 残留均可报告；矩阵仍保留一键安全清理脚本缺口 | 设计并补齐最小安全清理能力，要求默认 dry-run、可审计输出、不会绕过业务约束 |
+| P2 | SA-014 版本解析异常样本治理 | Maven 单模块、多模块、Gradle 真实写回、批量版本更新、部分失败和 retry 已闭环；风险池仍保留空仓库、无版本文件和异常版本号样本 | 版本解析异常样本具备用户可见状态、可追溯失败原因和验收证据，不把异常仓库表现成不明失败 |
 
 ---
 
@@ -179,6 +179,7 @@
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
 | 验收脚本 | `scripts/acceptance/run-acceptance.sh` + `scripts/acceptance/sa009-remove-repo-gitlab-evidence.sh` | 全量脚本含服务生命周期、SA-010/SA-011/SA-014/SA-015/SA-016 强证据；SA-009 专用脚本固定复核移除仓库 feature 分支归档和已挂窗锁定保护 |
+| 存量数据安全清理 | `scripts/acceptance/sa002-safe-cleanup.sh` | 2026-05-23 SA-002 dry-run 清理报告入口；输出 `summary.md`、`actions.md`、`actions.jsonl`，拒绝自动执行 |
 | 本地统一启停脚本 | `scripts/dev/start-local-env.sh` | `start|hold|stop|restart|status`；推荐用 `hold` 托管前后端联调环境 |
 | 种子初始化 | `scripts/e2e/init-gitlab.sh` | 幂等，3 个种子仓库 |
 | 种子分支清理 | `scripts/e2e/reset-gitlab-seed-branches.sh` | 默认 dry-run；`--execute` 清理非种子分支，保留 main 与 seed feature 分支 |

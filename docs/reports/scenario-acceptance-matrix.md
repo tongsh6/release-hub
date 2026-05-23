@@ -117,11 +117,12 @@ P0 验收焦点：
 当前覆盖：
 
 - `run-acceptance.sh` 场景 1.x 已覆盖。
-- 只报告不清理，符合本地持久化验收原则。
+- `scripts/acceptance/sa002-safe-cleanup.sh` 已补独立 dry-run 清理报告：输出资产统计、BranchCreationMode 分布、`actions.md` 和 `actions.jsonl`，每条动作包含资源类型、资源 ID、风险类型、建议动作和已执行标记。
+- 脚本拒绝 `--execute`，不直接修改数据库、不删除发布窗口、不触碰 GitLab 远端资源，符合本地持久化验收原则。
 
 缺口：
 
-- 一键安全清理脚本作为 P1/P2，不进入本轮 P0。
+- 自动执行修复不进入当前阶段；如需真实修复，应从 dry-run 动作清单进入应用层入口或人工复核后的受控迁移服务。
 
 ### SA-003：管理员建立组织分组树
 
@@ -552,7 +553,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1/P2 | SA-002 存量数据安全清理 | 数据质量审计已可见，token 明文、BranchCreationMode、feature_branch 缺失、cloneUrl 异常和 DRAFT 残留均可报告；矩阵仍保留一键安全清理脚本缺口 | 设计并补齐最小安全清理能力，要求默认 dry-run、可审计输出、不会绕过业务约束 |
+| P2 | SA-014 版本解析异常样本治理 | Maven 单模块、多模块、Gradle 真实写回、批量版本更新、部分失败和 retry 已闭环；风险池仍保留空仓库、无版本文件和异常版本号样本 | 设计并补齐版本解析异常样本的用户可见状态与验收证据，避免异常仓库把版本更新入口表现成不明失败 |
 | P1 | SA-013 发布编排结果复核与失败 Run 观察 | 无阻塞冲突后 Run 创建和冲突未解决时拒绝已有后端证据；窗口详情最新 Run 复核、失败上下文和最近 Run 倒序已补 | 后续保持回归 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
@@ -561,6 +562,28 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-002 存量数据安全清理 dry-run
+
+命令：
+
+```bash
+bash -n scripts/acceptance/sa002-safe-cleanup.sh
+scripts/acceptance/sa002-safe-cleanup.sh --report-dir .ai/reports/sa002-safe-cleanup/manual-verify
+scripts/acceptance/sa002-safe-cleanup.sh --execute
+```
+
+结果：
+
+- dry-run 报告生成成功：`.ai/reports/sa002-safe-cleanup/manual-verify/summary.md`、`actions.md`、`actions.jsonl`。
+- 本地数据资产统计：Groups=10、Repos=8、Windows=6、Iterations=8、Runs=11；BranchCreationMode 分布为 `AUTO=7`。
+- 本地 dry-run 发现 3 条待复核动作：2 个 DRAFT 发布窗口残留、1 个 `window_iteration.branch_created=false`；报告未输出 token 明文。
+- `--execute` 按设计拒绝执行，避免绕过业务约束或自动批量删除。
+
+结论：
+
+- SA-002 已从“审计可见”补齐为“独立 dry-run 清理计划可生成”；自动执行修复继续排除在当前阶段之外。
+- 当前执行队列转向 SA-014 版本解析异常样本治理。
 
 ### 2026-05-23 SA-016 发布报告制品包归档
 
