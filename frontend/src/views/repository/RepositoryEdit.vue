@@ -46,6 +46,7 @@
         <el-select v-model="form.gitProvider" :placeholder="t('repository.git.providerPlaceholder')" style="width: 100%;">
           <el-option :label="t('repository.git.providers.GITHUB')" value="GITHUB" />
           <el-option :label="t('repository.git.providers.GITLAB')" value="GITLAB" />
+          <el-option :label="t('repository.git.providers.MOCK')" value="MOCK" />
         </el-select>
       </el-form-item>
       <el-form-item :label="t('repository.git.token')" prop="gitAccessToken">

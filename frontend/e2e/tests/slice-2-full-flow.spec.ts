@@ -188,6 +188,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'group.createTop', 'group.name', 'group.code',
       'repository.addOrSync', 'repository.columns.repo', 'repository.columns.cloneUrl',
       'repository.columns.defaultBranch', 'repository.columns.initialVersion',
+      'repository.git.provider', 'repository.git.providers.MOCK',
       'iteration.new', 'iteration.columns.name', 'iteration.detail.addRepos',
       'releaseWindow.create', 'releaseWindow.name', 'releaseWindow.publish',
       'releaseWindow.statusText.PUBLISHED',
@@ -213,6 +214,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'orchestration.executeFinish',
       'conflict.rescan',
       'conflict.resolveVersion',
+      'conflict.acceptRepoVersion',
       'conflict.resolveBranch',
       'conflict.resolveInGit',
       'conflict.resolveGitAccess',
@@ -297,6 +299,8 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await repoInputs.nth(2).fill('main')
     await repoInputs.nth(3).fill('1.4.0')
     await selectLeafGroup(page, repoDialog)
+    await repoDialog.getByRole('combobox', { name: L['repository.git.provider'] }).click(FORCE)
+    await page.getByRole('option', { name: L['repository.git.providers.MOCK'] }).click(FORCE)
     await confirmDialog(page)
     await searchByKeyword(page, repoName)
     await expect(page.locator('.el-table__body tr').filter({ hasText: repoName }).last()).toBeVisible()
@@ -364,7 +368,8 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
 
     await page.getByRole('button', { name: L['releaseWindow.publish'] }).click(FORCE)
     await confirmMessageBox(page)
-    await expect(page.locator('.el-descriptions')).toContainText(L['releaseWindow.statusText.PUBLISHED'], { timeout: 10000 })
+    await expect(page.locator('.release-window-detail-page .el-descriptions').first())
+      .toContainText(L['releaseWindow.statusText.PUBLISHED'], { timeout: 10000 })
 
     let orchestrateBody: any
     await page.route('**/api/v1/release-windows/*/orchestrate', async (route) => {
@@ -376,7 +381,11 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       })
     })
 
-    await page.getByRole('button', { name: L['orchestration.executeFinish'] }).click(FORCE)
+    const finishPanel = page.locator('.orchestration-panel .action-panel').filter({ hasText: L['orchestration.executeFinish'] })
+    const finishButton = finishPanel.getByRole('button', { name: L['orchestration.executeFinish'] })
+    await expect(finishButton).toBeVisible({ timeout: 10000 })
+    await expect(finishButton).toBeEnabled({ timeout: 10000 })
+    await finishButton.click()
     await confirmMessageBox(page)
 
     expect(orchestrateBody).toMatchObject({
@@ -463,6 +472,23 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     expect(windowKey).toContain('RW-')
     expect(createdRepoId).toBeTruthy()
 
+    await page.route('**/api/v1/release-windows/*/conflicts', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'OK',
+          message: 'OK',
+          data: {
+            windowId: windowKey,
+            checkedAt: new Date().toISOString(),
+            hasConflicts: false,
+            totalCount: 0,
+            conflicts: []
+          }
+        })
+      })
+    })
     await page.goto(windowDetailUrl)
     const versionUpdateButton = page.getByRole('button', { name: L['releaseWindow.versionUpdate.execute'] })
     await expect(versionUpdateButton).toBeVisible({ timeout: 5000 })
@@ -951,7 +977,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await expect(conflictPanel).toContainText('1.4.0 ≠ 1.5.0')
     await expect(conflictPanel).toContainText('Repository version is ahead of the ReleaseHub recorded version')
     await expect(conflictPanel).toContainText('Sync the ReleaseHub version before continuing the release.')
-    await expect(conflictPanel.getByRole('button', { name: L['conflict.resolveVersion'] })).toBeVisible()
+    await expect(conflictPanel.getByRole('button', { name: L['conflict.acceptRepoVersion'] })).toBeVisible()
 
     await selectConflictType(conflictPanel, 'SYSTEM_AHEAD')
     await expect(conflictPanel).toContainText(L['conflict.types.SYSTEM_AHEAD'])

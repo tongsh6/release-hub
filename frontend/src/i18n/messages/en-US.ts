@@ -449,7 +449,8 @@ export default {
       currentToken: 'Current Token: {token}',
       providers: {
         GITHUB: 'GitHub',
-        GITLAB: 'GitLab'
+        GITLAB: 'GitLab',
+        MOCK: 'Mock'
       }
     },
     gateSummaryLabels: {

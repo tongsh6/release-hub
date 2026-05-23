@@ -16,8 +16,8 @@ import static org.mockito.Mockito.when;
 class CodeRepositoryPersistenceAdapterTest {
 
     @Test
-    @DisplayName("历史 git_provider 为空或未知时按 GITLAB 兼容读取，避免仓库列表整体失败")
-    void shouldDefaultLegacyGitProviderToGitLabWhenReadingRepositories() {
+    @DisplayName("历史 git_provider 为空时按 GITLAB 兼容读取，MOCK 仍按本地 Mock provider 保留")
+    void shouldDefaultMissingProviderToGitLabAndKeepMockProviderWhenReadingRepositories() {
         CodeRepositoryJpaRepository repository = mock(CodeRepositoryJpaRepository.class);
         CodeRepositoryPersistenceAdapter adapter = new CodeRepositoryPersistenceAdapter(repository);
         Instant now = Instant.parse("2026-05-22T10:00:00Z");
@@ -29,7 +29,7 @@ class CodeRepositoryPersistenceAdapterTest {
 
         assertEquals(2, repos.size());
         assertEquals(GitProvider.GITLAB, repos.get(0).getGitProvider());
-        assertEquals(GitProvider.GITLAB, repos.get(1).getGitProvider());
+        assertEquals(GitProvider.MOCK, repos.get(1).getGitProvider());
     }
 
     private static CodeRepositoryJpaEntity entity(String id, String gitProvider, Instant now) {
