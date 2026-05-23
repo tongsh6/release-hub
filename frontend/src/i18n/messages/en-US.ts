@@ -196,7 +196,8 @@ export default {
       export: 'Export Report',
       csv: 'CSV',
       json: 'JSON',
-      markdown: 'Markdown'
+      markdown: 'Markdown',
+      artifactPackage: 'Artifact Package'
     },
     releasePlan: {
       title: 'Release Plan',

@@ -196,7 +196,8 @@ export default {
       export: '导出报告',
       csv: 'CSV',
       json: 'JSON',
-      markdown: 'Markdown'
+      markdown: 'Markdown',
+      artifactPackage: '制品包'
     },
     releasePlan: {
       title: '发布计划',

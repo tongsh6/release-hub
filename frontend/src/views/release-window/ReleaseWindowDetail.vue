@@ -54,6 +54,7 @@
               <el-dropdown-item command="csv">{{ t('releaseWindow.report.csv') }}</el-dropdown-item>
               <el-dropdown-item command="json">{{ t('releaseWindow.report.json') }}</el-dropdown-item>
               <el-dropdown-item command="md">{{ t('releaseWindow.report.markdown') }}</el-dropdown-item>
+              <el-dropdown-item command="zip">{{ t('releaseWindow.report.artifactPackage') }}</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -395,7 +396,7 @@ const openVersionUpdate = () => {
   versionUpdateDialogRef.value?.open(form.value.id, iterations.value.flatMap(iter => iter.repos || []))
 }
 
-const handleExportReport = (format: 'csv' | 'json' | 'md' = 'csv') => {
+const handleExportReport = (format: 'csv' | 'json' | 'md' | 'zip' = 'csv') => {
   if (!form.value?.id) return
   if (!hasPerm('release-window:read')) {
     ElMessage.warning(t('common.permissionDenied'))

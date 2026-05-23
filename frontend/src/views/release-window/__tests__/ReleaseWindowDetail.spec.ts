@@ -94,6 +94,7 @@ const stubs = {
         <button type="button" class="export-csv" @click="$emit('command', 'csv')">csv</button>
         <button type="button" class="export-json" @click="$emit('command', 'json')">json</button>
         <button type="button" class="export-md" @click="$emit('command', 'md')">md</button>
+        <button type="button" class="export-zip" @click="$emit('command', 'zip')">zip</button>
       </div>
     `
   },
@@ -300,6 +301,16 @@ describe('ReleaseWindowDetail', () => {
 
     expect(openSpy).toHaveBeenCalledWith('/api/v1/release-windows/window-1/report.json', '_blank')
     expect(openSpy).toHaveBeenCalledWith('/api/v1/release-windows/window-1/report.md', '_blank')
+  })
+
+  it('exports the release window evidence package from the detail page', async () => {
+    const wrapper = mountReleaseWindowDetail()
+    await flushPromises()
+    await flushPromises()
+
+    await wrapper.find('.export-zip').trigger('click')
+
+    expect(openSpy).toHaveBeenCalledWith('/api/v1/release-windows/window-1/report.zip', '_blank')
   })
 
   it('hides release plan mutation controls after publish', async () => {
