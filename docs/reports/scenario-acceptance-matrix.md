@@ -117,12 +117,14 @@ P0 验收焦点：
 当前覆盖：
 
 - `run-acceptance.sh` 场景 1.x 已覆盖。
-- `scripts/acceptance/sa002-safe-cleanup.sh` 已补独立 dry-run 清理报告：输出资产统计、BranchCreationMode 分布、`actions.md` 和 `actions.jsonl`，每条动作包含资源类型、资源 ID、风险类型、建议动作和已执行标记。
+- `scripts/acceptance/sa002-safe-cleanup.sh` 已补独立 dry-run 清理报告：输出资产统计、BranchCreationMode 分布、`actions.md` 和 `actions.jsonl`，每条动作包含资源类型、资源 ID、风险类型、应用入口、建议动作、执行前检查、执行后复核、人工复核决策和已执行标记。
+- `POST /api/v1/data-quality/cleanup-review` 已补人工复核入口：只接收 dry-run 动作进入应用层入口，返回 `ACCEPTED/PENDING/REJECTED`，且所有结果 `executionPermitted=false`。
+- 应用层复核服务登记受支持的资源/风险组合，拒绝缺少应用入口、执行前检查、执行后复核、不受支持风险、已执行动作和 `EXECUTE_DIRECTLY` / `AUTO_EXECUTE` 越权决策。
 - 脚本拒绝 `--execute`，不直接修改数据库、不删除发布窗口、不触碰 GitLab 远端资源，符合本地持久化验收原则。
 
 缺口：
 
-- 自动执行修复不进入当前阶段；如需真实修复，应从 dry-run 动作清单进入应用层入口或人工复核后的受控迁移服务。
+- 自动执行修复不进入当前阶段；真实修复必须从人工复核后的应用层入口继续处理，或另建受控迁移服务并保留同等审计字段。
 
 ### SA-003：管理员建立组织分组树
 
@@ -546,7 +548,6 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 - 版本策略分组/仓库作用域继承。
 - release 分支累积冲突的一键清理脚本。
 - 合并冲突制造、解决和 Run retry。
-- 存量数据清理动作人工复核闭环。
 - 多窗口并行发布。
 - 空仓库、无版本文件、异常版本号。
 - 批量窗口和大规模迭代。
@@ -557,7 +558,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P2 | SA-002 存量数据清理动作人工复核闭环 | dry-run 清理报告已能输出资产统计、风险动作清单和拒绝自动执行；当前仍缺动作清单进入应用层入口或人工复核后的受控迁移服务闭环 | 设计并补齐每条清理动作的人工复核输入、执行前检查、执行后复核和越权拒绝证据 |
+| P2 | SA-016 release 分支累积冲突清理执行保护证据 | 种子分支清理脚本已有 dry-run 与 `--execute` 开关；当前仍缺执行前候选、执行后 GitLab 分支状态和保护边界的场景化证据 | 复核清理脚本只删除非种子临时分支，保留 main 与 seed feature 分支，并留下 dry-run/execute 对照证据 |
+| P2 | SA-002 存量数据清理动作人工复核闭环 | dry-run 清理报告、应用入口、人工复核输入、执行前检查、执行后复核和越权拒绝证据已补齐；接口不执行清理，脚本仍拒绝 `--execute` | 后续保持回归 |
 | P1 | SA-013 发布编排结果复核与失败 Run 观察 | 无阻塞冲突后 Run 创建和冲突未解决时拒绝已有后端证据；窗口详情最新 Run 复核、失败上下文和最近 Run 倒序已补 | 后续保持回归 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
@@ -566,6 +568,35 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-002 存量清理人工复核入口
+
+命令：
+
+```bash
+mvn -f backend/pom.xml -pl releasehub-application -am -Dtest=DataQualityCleanupReviewAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -f backend/pom.xml -pl releasehub-bootstrap -am -Dtest=DataQualityCleanupApiTest -Dsurefire.failIfNoSpecifiedTests=false test
+bash -n scripts/acceptance/sa002-safe-cleanup.sh
+scripts/acceptance/sa002-safe-cleanup.sh --report-dir .ai/reports/sa002-safe-cleanup/manual-review
+while IFS= read -r line; do printf '%s\n' "$line" | python3 -m json.tool >/dev/null || exit 1; done < .ai/reports/sa002-safe-cleanup/manual-review/actions.jsonl
+scripts/acceptance/sa002-safe-cleanup.sh --execute
+bash scripts/dev/check-roadmap.sh
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- `DataQualityCleanupReviewAppServiceTest` 通过：6 PASS / 0 FAIL / 0 SKIP；覆盖人工复核通过、待复核、直接执行拒绝、缺少执行前/后检查拒绝、不支持风险拒绝和 reviewer 必填。
+- `DataQualityCleanupApiTest` 通过：1 PASS / 0 FAIL / 0 SKIP；`POST /api/v1/data-quality/cleanup-review` 能接收人工复核动作，同时拒绝 `EXECUTE_DIRECTLY`。
+- dry-run 脚本语法检查通过；本地报告生成到 `.ai/reports/sa002-safe-cleanup/manual-review/summary.md`、`actions.md`、`actions.jsonl`。
+- 本地 dry-run 发现 3 条待复核动作：2 个 DRAFT 发布窗口残留、1 个 `window_iteration.branch_created=false`；每条动作均包含应用入口、执行前检查、执行后复核和默认 `PENDING` 决策。
+- `actions.jsonl` 按行 JSON 校验通过；`--execute` 继续按设计拒绝执行。
+- 路线图检查通过，唯一 HEAD 指向 SA-016；静态扫描通过，报告：`.ai/reports/static-scan/20260523-152446/summary.md`。
+
+结论：
+
+- SA-002 已从“独立 dry-run 清理计划”推进到“人工复核入口闭环”：动作清单可进入应用层复核，越权执行被服务/API 拒绝，脚本仍不修改数据库或 GitLab 资源。
+- 当前执行队列转向 SA-016 release 分支累积冲突清理执行保护证据。
 
 ### 2026-05-23 SA-016 关闭后 GitLab 收尾证据
 
