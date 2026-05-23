@@ -357,7 +357,8 @@ export default {
       alreadyAdded: 'Already Added',
       selectedCount: '{count} new repositories selected',
       noNewRepos: 'Please select at least one new repository',
-      repoScopeLocked: 'This iteration is attached to a release window, so its repository scope is locked'
+      repoScopeLocked: 'This iteration is attached to a release window, so its repository scope is locked',
+      repoPageSummary: 'Showing {shown} of {total} repositories'
     },
     branchCreationMode: {
       label: 'Feature Branch Creation Mode',

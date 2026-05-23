@@ -42,7 +42,7 @@
     <el-card style="margin-top: 16px;">
       <template #header>
         <div class="card-header">
-          <span class="title">{{ t('iteration.detail.associatedRepos') }} ({{ repos.length }})</span>
+          <span class="title">{{ t('iteration.detail.associatedRepos') }} ({{ repoPage.total }})</span>
           <div class="actions">
             <el-button
               v-if="canChangeRepos"
@@ -64,58 +64,62 @@
         show-icon
         :title="t('iteration.detail.repoScopeLocked')"
       />
+      <div class="repo-page-summary">
+        {{ t('iteration.detail.repoPageSummary', { shown: repoRows.length, total: repoPage.total }) }}
+      </div>
       <el-table v-if="repoRows.length > 0" v-loading="reposLoading" :data="repoRows" stripe>
-        <el-table-column prop="name" :label="t('repository.columns.name')" min-width="140">
+        <el-table-column prop="repoName" :label="t('repository.columns.name')" min-width="140">
           <template #default="{ row }">
-            <span class="repo-name">{{ row.name }}</span>
+            <span class="repo-name">{{ row.repoName || row.repoId }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="cloneUrl" :label="t('repository.columns.cloneUrl')" min-width="200">
           <template #default="{ row }">
-            <el-link type="primary" :href="row.cloneUrl" target="_blank" :underline="false" class="clone-url">
+            <el-link v-if="row.cloneUrl" type="primary" :href="row.cloneUrl" target="_blank" :underline="false" class="clone-url">
               {{ row.cloneUrl }}
             </el-link>
+            <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('iteration.branchCreationMode.label')" width="120">
           <template #default="{ row }">
-            <el-tag v-if="row.versionInfo?.branchCreationMode" size="small">
-              {{ branchCreationModeLabel(row.versionInfo.branchCreationMode) }}
+            <el-tag v-if="row.branchCreationMode" size="small">
+              {{ branchCreationModeLabel(row.branchCreationMode) }}
             </el-tag>
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('iteration.version.featureBranch')" width="180">
           <template #default="{ row }">
-            <el-tag v-if="row.versionInfo?.featureBranch" size="small" type="info">
-              {{ row.versionInfo.featureBranch }}
+            <el-tag v-if="row.featureBranch" size="small" type="info">
+              {{ row.featureBranch }}
             </el-tag>
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('iteration.version.baseVersion')" width="110">
           <template #default="{ row }">
-            <span>{{ row.versionInfo?.baseVersion || '-' }}</span>
+            <span>{{ row.baseVersion || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('iteration.version.devVersion')" width="110">
           <template #default="{ row }">
-            <span class="version-dev">{{ row.versionInfo?.devVersion || '-' }}</span>
+            <span class="version-dev">{{ row.devVersion || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('iteration.version.targetVersion')" width="110">
           <template #default="{ row }">
-            <span class="version-target">{{ row.versionInfo?.targetVersion || '-' }}</span>
+            <span class="version-target">{{ row.targetVersion || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('iteration.version.source')" width="100">
           <template #default="{ row }">
-            <span>{{ row.versionInfo?.versionSource || '-' }}</span>
+            <span>{{ row.versionSource || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('iteration.version.syncedAt')" width="160">
           <template #default="{ row }">
-            <span>{{ formatDateTime(row.versionInfo?.versionSyncedAt) }}</span>
+            <span>{{ formatDateTime(row.versionSyncedAt) }}</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('common.actions')" width="150" fixed="right">
@@ -125,8 +129,8 @@
               link 
               type="primary" 
               size="small" 
-              :loading="syncingRepos[row.id]"
-              @click="handleSyncVersion(row.id)"
+              :loading="syncingRepos[row.repoId]"
+              @click="handleSyncVersion(row.repoId)"
             >
               {{ t('iteration.version.sync') }}
             </el-button>
@@ -136,14 +140,26 @@
               link 
               type="danger" 
               size="small" 
-              @click="handleRemoveRepo(row.id)"
+              @click="handleRemoveRepo(row.repoId)"
             >
               {{ t('common.remove') }}
             </el-button>
           </template>
         </el-table-column>
       </el-table>
-      <el-empty v-else :description="t('iteration.detail.noRepos')" />
+      <el-pagination
+        v-if="repoPage.total > repoPage.pageSize"
+        class="repo-pagination"
+        background
+        layout="total, sizes, prev, pager, next"
+        :current-page="repoPage.page"
+        :page-size="repoPage.pageSize"
+        :page-sizes="[10, 20, 50]"
+        :total="repoPage.total"
+        @current-change="handleRepoPageChange"
+        @size-change="handleRepoPageSizeChange"
+      />
+      <el-empty v-if="!reposLoading && repoRows.length === 0" :description="t('iteration.detail.noRepos')" />
     </el-card>
 
     <!-- 操作卡片 -->
@@ -168,8 +184,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { iterationApi, type Iteration, type IterationRepoVersionInfo } from '@/api/iterationApi'
-import { repositoryApi, type Repository } from '@/api/repositoryApi'
+import { iterationApi, type Iteration, type IterationRepoDetail, type IterationRepoVersionInfo } from '@/api/iterationApi'
 import { handleError } from '@/utils/error'
 import AttachWindowDialog from './AttachWindowDialog.vue'
 import AddReposDialog from './AddReposDialog.vue'
@@ -190,17 +205,18 @@ const goBack = () => {
 const loading = ref(false)
 const reposLoading = ref(false)
 const iteration = ref<Iteration | null>(null)
-const repos = ref<Repository[]>([])
-const versionMap = reactive<Record<string, IterationRepoVersionInfo>>({})
+const repos = ref<IterationRepoDetail[]>([])
+const repoPage = reactive({
+  page: 1,
+  pageSize: 10,
+  total: 0
+})
 const syncingRepos = reactive<Record<string, boolean>>({})
 const attachRef = ref<InstanceType<typeof AttachWindowDialog>>()
 const addReposRef = ref<InstanceType<typeof AddReposDialog>>()
 const conflictDialogRef = ref<InstanceType<typeof VersionConflictDialog>>()
 const canChangeRepos = computed(() => !iteration.value?.attachedToWindow)
-const repoRows = computed(() => repos.value.map(repo => ({
-  ...repo,
-  versionInfo: versionMap[repo.id]
-})))
+const repoRows = computed(() => repos.value)
 
 function branchCreationModeLabel(mode?: IterationRepoVersionInfo['branchCreationMode']) {
   return mode ? t(`iteration.branchCreationMode.${mode}`) : '-'
@@ -213,10 +229,7 @@ const fetchDetail = async () => {
   try {
     const res = await iterationApi.get(iterationKey)
     iteration.value = res
-    // 获取仓库详细信息
-    if (res.repoIds && res.repoIds.length > 0) {
-      await fetchRepoDetails(res.repoIds)
-    }
+    await fetchRepoDetails()
   } catch (err) {
     handleError(err)
   } finally {
@@ -224,34 +237,20 @@ const fetchDetail = async () => {
   }
 }
 
-const fetchRepoDetails = async (repoIds: string[]) => {
+const fetchRepoDetails = async () => {
   reposLoading.value = true
   try {
-    const repoDetails = await Promise.all(
-      repoIds.map(id => repositoryApi.get(id).catch(() => null))
-    )
-    repos.value = repoDetails.filter((r): r is Repository => r !== null)
-    
-    // 获取每个仓库的版本信息
-    await fetchVersionInfo(repoIds)
+    const result = await iterationApi.listRepoDetails({
+      key: iterationKey,
+      page: repoPage.page,
+      pageSize: repoPage.pageSize
+    })
+    repos.value = result.list
+    repoPage.total = result.total
   } catch (err) {
     handleError(err)
   } finally {
     reposLoading.value = false
-  }
-}
-
-const fetchVersionInfo = async (repoIds: string[]) => {
-  for (const repoId of repoIds) {
-    try {
-      const versionInfo = await iterationApi.getRepoVersionInfo(iterationKey, repoId)
-      if (versionInfo) {
-        versionMap[repoId] = versionInfo
-      }
-    } catch (err) {
-      // 忽略单个仓库版本获取失败
-      console.warn(`Failed to fetch version info for repo ${repoId}:`, err)
-    }
   }
 }
 
@@ -265,7 +264,7 @@ const handleSyncVersion = async (repoId: string) => {
   try {
     const versionInfo = await iterationApi.syncVersionFromRepo(iterationKey, repoId)
     if (versionInfo) {
-      versionMap[repoId] = versionInfo
+      await fetchRepoDetails()
       ElMessage.success(t('iteration.version.syncSuccess'))
     }
   } catch (err) {
@@ -273,6 +272,17 @@ const handleSyncVersion = async (repoId: string) => {
   } finally {
     syncingRepos[repoId] = false
   }
+}
+
+const handleRepoPageChange = async (page: number) => {
+  repoPage.page = page
+  await fetchRepoDetails()
+}
+
+const handleRepoPageSizeChange = async (pageSize: number) => {
+  repoPage.pageSize = pageSize
+  repoPage.page = 1
+  await fetchRepoDetails()
 }
 
 onMounted(fetchDetail)
@@ -297,8 +307,8 @@ const handleRemoveRepo = async (repoId: string) => {
     return
   }
   
-  const repo = repos.value.find(r => r.id === repoId)
-  const repoName = repo?.name || repoId
+  const repo = repos.value.find(r => r.repoId === repoId)
+  const repoName = repo?.repoName || repoId
   
   try {
     await ElMessageBox.confirm(
@@ -309,7 +319,7 @@ const handleRemoveRepo = async (repoId: string) => {
     
     await iterationApi.removeRepos(iterationKey, [repoId])
     ElMessage.success(t('common.success'))
-    fetchDetail()
+    await fetchDetail()
   } catch (error) {
     if (error !== 'cancel') {
       handleError(error)
@@ -331,6 +341,18 @@ const handleRemoveRepo = async (repoId: string) => {
 
 .scope-lock-alert {
   margin-bottom: 12px;
+}
+
+.repo-page-summary {
+  color: #606266;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.repo-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 .operations {

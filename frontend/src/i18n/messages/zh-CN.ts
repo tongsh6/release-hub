@@ -357,7 +357,8 @@ export default {
       alreadyAdded: '已添加',
       selectedCount: '已选择 {count} 个新仓库',
       noNewRepos: '请至少选择一个新仓库',
-      repoScopeLocked: '迭代已挂载发布窗口，仓库集合不可修改'
+      repoScopeLocked: '迭代已挂载发布窗口，仓库集合不可修改',
+      repoPageSummary: '当前页显示 {shown} 个，共 {total} 个仓库'
     },
     branchCreationMode: {
       label: 'Feature 分支创建方式',

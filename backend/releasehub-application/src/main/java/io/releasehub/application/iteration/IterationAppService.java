@@ -37,8 +37,10 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -379,6 +381,44 @@ public class IterationAppService {
     public java.util.Set<String> listRepos(String key) {
         Iteration existing = get(key);
         return existing.getRepos().stream().map(RepoId::value).collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+    }
+
+    public PageResult<IterationRepoDetailView> listRepoDetailsPaged(String key, int page, int size) {
+        Iteration existing = get(key);
+        List<String> repoIds = existing.getRepos().stream()
+                .map(RepoId::value)
+                .sorted()
+                .toList();
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.max(size, 1);
+        int fromIndex = Math.min((safePage - 1) * safeSize, repoIds.size());
+        int toIndex = Math.min(fromIndex + safeSize, repoIds.size());
+        List<IterationRepoDetailView> rows = repoIds.subList(fromIndex, toIndex).stream()
+                .map(repoId -> toRepoDetailView(existing.getId(), repoId))
+                .sorted(Comparator.comparing(IterationRepoDetailView::repoId))
+                .toList();
+        return new PageResult<>(rows, repoIds.size());
+    }
+
+    private IterationRepoDetailView toRepoDetailView(IterationKey iterationKey, String repoId) {
+        Optional<CodeRepository> repo = codeRepositoryPort.findById(RepoId.of(repoId));
+        Optional<IterationRepoVersionInfo> versionInfo = iterationRepoPort.getVersionInfo(iterationKey.value(), repoId);
+        return new IterationRepoDetailView(
+                repoId,
+                repo.map(CodeRepository::getName).orElse(null),
+                repo.map(CodeRepository::getCloneUrl).orElse(null),
+                repo.map(CodeRepository::getGroupCode).orElse(null),
+                repo.map(CodeRepository::getDefaultBranch).orElse(null),
+                repo.map(CodeRepository::getRepoType).map(Enum::name).orElse(null),
+                repo.map(CodeRepository::isMonoRepo).orElse(null),
+                versionInfo.map(IterationRepoVersionInfo::getBranchCreationMode).map(Enum::name).orElse(null),
+                versionInfo.map(IterationRepoVersionInfo::getFeatureBranch).orElse(null),
+                versionInfo.map(IterationRepoVersionInfo::getBaseVersion).orElse(null),
+                versionInfo.map(IterationRepoVersionInfo::getDevVersion).orElse(null),
+                versionInfo.map(IterationRepoVersionInfo::getTargetVersion).orElse(null),
+                versionInfo.map(IterationRepoVersionInfo::getVersionSource).map(Enum::name).orElse(null),
+                versionInfo.map(IterationRepoVersionInfo::getVersionSyncedAt).orElse(null)
+        );
     }
 
     @Transactional

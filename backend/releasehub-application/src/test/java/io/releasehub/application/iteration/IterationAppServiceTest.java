@@ -13,6 +13,7 @@ import io.releasehub.application.version.VersionUpdateAppService;
 import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
 import io.releasehub.application.window.WindowIterationPort;
+import io.releasehub.common.paging.PageResult;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.common.exception.ValidationException;
@@ -597,6 +598,62 @@ class IterationAppServiceTest {
         verify(gitBranchAdapterFactory, never()).getAdapter(any());
         verify(iterationRepoPort, never()).saveWithVersion(anyString(), anyString(),
                 anyString(), anyString(), anyString(), anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("分页读取迭代仓库详情时只加载当前页仓库和版本信息")
+    void shouldPageRepoDetailsWithVersionMetadata() {
+        Instant now = Instant.now();
+        Set<RepoId> repoIds = java.util.stream.IntStream.rangeClosed(1, 25)
+                .mapToObj(index -> RepoId.of(String.format("repo-%02d", index)))
+                .collect(java.util.stream.Collectors.toSet());
+        Iteration existing = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", repoIds, IterationStatus.ACTIVE, now, now);
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
+        for (int index = 11; index <= 20; index++) {
+            String repoId = String.format("repo-%02d", index);
+            when(codeRepositoryPort.findById(RepoId.of(repoId))).thenReturn(Optional.of(createRepo(repoId, "git@gitlab.com:test/" + repoId + ".git")));
+            when(iterationRepoPort.getVersionInfo("ITER-1", repoId)).thenReturn(Optional.of(
+                    IterationRepoVersionInfo.builder()
+                            .repoId(repoId)
+                            .baseVersion("1.0.0")
+                            .devVersion("1.1.0-SNAPSHOT")
+                            .targetVersion("1.1.0")
+                            .featureBranch("feature/ITER-1")
+                            .branchCreationMode(BranchCreationMode.AUTO)
+                            .versionSource(VersionSource.SYSTEM)
+                            .versionSyncedAt(now)
+                            .build()
+            ));
+        }
+
+        PageResult<IterationRepoDetailView> result = iterationAppService.listRepoDetailsPaged("ITER-1", 2, 10);
+
+        assertThat(result.total()).isEqualTo(25);
+        assertThat(result.items()).hasSize(10);
+        assertThat(result.items().get(0))
+                .extracting(
+                        IterationRepoDetailView::repoId,
+                        IterationRepoDetailView::repoName,
+                        IterationRepoDetailView::branchCreationMode,
+                        IterationRepoDetailView::featureBranch,
+                        IterationRepoDetailView::baseVersion,
+                        IterationRepoDetailView::devVersion,
+                        IterationRepoDetailView::targetVersion,
+                        IterationRepoDetailView::versionSource
+                )
+                .containsExactly(
+                        "repo-11",
+                        "Repo-repo-11",
+                        "AUTO",
+                        "feature/ITER-1",
+                        "1.0.0",
+                        "1.1.0-SNAPSHOT",
+                        "1.1.0",
+                        "SYSTEM"
+                );
+        verify(codeRepositoryPort, never()).findById(RepoId.of("repo-01"));
+        verify(iterationRepoPort, never()).getVersionInfo("ITER-1", "repo-01");
     }
 
     // ==== 辅助方法 ====

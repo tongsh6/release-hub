@@ -2,7 +2,6 @@ import { flushPromises, shallowMount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import IterationDetail from '../IterationDetail.vue'
 import { iterationApi } from '@/api/iterationApi'
-import { repositoryApi } from '@/api/repositoryApi'
 
 vi.mock('vue-i18n', () => ({
   createI18n: () => ({
@@ -34,15 +33,10 @@ vi.mock('element-plus', () => ({
 vi.mock('@/api/iterationApi', () => ({
   iterationApi: {
     get: vi.fn(),
+    listRepoDetails: vi.fn(),
     getRepoVersionInfo: vi.fn(),
     syncVersionFromRepo: vi.fn(),
     removeRepos: vi.fn()
-  }
-}))
-
-vi.mock('@/api/repositoryApi', () => ({
-  repositoryApi: {
-    get: vi.fn()
   }
 }))
 
@@ -85,6 +79,7 @@ const stubs = {
   },
   ElTable: true,
   ElTableColumn: true,
+  ElPagination: true,
   ElEmpty: true,
   AttachWindowDialog: true,
   AddReposDialog: true,
@@ -94,8 +89,9 @@ const stubs = {
 describe('IterationDetail', () => {
   beforeEach(() => {
     vi.mocked(iterationApi.get).mockReset()
+    vi.mocked(iterationApi.listRepoDetails).mockReset()
     vi.mocked(iterationApi.getRepoVersionInfo).mockReset()
-    vi.mocked(repositoryApi.get).mockReset()
+    vi.mocked(iterationApi.listRepoDetails).mockResolvedValue({ list: [], total: 0 })
   })
 
   it('locks repository scope controls after the iteration is attached to a release window', async () => {
@@ -147,34 +143,26 @@ describe('IterationDetail', () => {
       createdAt: '',
       updatedAt: ''
     })
-    vi.mocked(repositoryApi.get).mockResolvedValue({
-      id: 'repo-1',
-      name: 'repo-one',
-      cloneUrl: 'git@gitlab.com:test/repo-one.git',
-      defaultBranch: 'main',
-      groupCode: 'G001',
-      repoType: 'SERVICE',
-      monoRepo: false,
-      branchCount: 0,
-      activeBranchCount: 0,
-      nonCompliantBranchCount: 0,
-      mrCount: 0,
-      openMrCount: 0,
-      mergedMrCount: 0,
-      closedMrCount: 0,
-      lastSyncAt: '',
-      createdAt: '',
-      updatedAt: ''
-    })
-    vi.mocked(iterationApi.getRepoVersionInfo).mockResolvedValue({
-      repoId: 'repo-1',
-      baseVersion: '1.0.0',
-      devVersion: '1.1.0-SNAPSHOT',
-      targetVersion: '1.1.0',
-      featureBranch: 'feature/custom',
-      branchCreationMode: 'NAMED',
-      versionSource: 'SYSTEM',
-      versionSyncedAt: '2026-05-21T10:00:00Z'
+    vi.mocked(iterationApi.listRepoDetails).mockResolvedValue({
+      total: 1,
+      list: [
+        {
+          repoId: 'repo-1',
+          repoName: 'repo-one',
+          cloneUrl: 'git@gitlab.com:test/repo-one.git',
+          defaultBranch: 'main',
+          groupCode: 'G001',
+          repoType: 'SERVICE',
+          monoRepo: false,
+          baseVersion: '1.0.0',
+          devVersion: '1.1.0-SNAPSHOT',
+          targetVersion: '1.1.0',
+          featureBranch: 'feature/custom',
+          branchCreationMode: 'NAMED',
+          versionSource: 'SYSTEM',
+          versionSyncedAt: '2026-05-21T10:00:00Z'
+        }
+      ]
     })
 
     const wrapper = shallowMount(IterationDetail, {
@@ -188,7 +176,12 @@ describe('IterationDetail', () => {
     })
     await flushPromises()
 
-    expect((wrapper.vm as any).repoRows[0].versionInfo).toMatchObject({
+    expect(iterationApi.listRepoDetails).toHaveBeenCalledWith({
+      key: 'ITER-1',
+      page: 1,
+      pageSize: 10
+    })
+    expect((wrapper.vm as any).repoRows[0]).toMatchObject({
       branchCreationMode: 'NAMED',
       featureBranch: 'feature/custom',
       baseVersion: '1.0.0',
@@ -197,5 +190,60 @@ describe('IterationDetail', () => {
       versionSource: 'SYSTEM'
     })
     expect((wrapper.vm as any).branchCreationModeLabel('NAMED')).toBe('iteration.branchCreationMode.NAMED')
+  })
+
+  it('loads the requested repository page for large iteration scopes', async () => {
+    vi.mocked(iterationApi.get).mockResolvedValue({
+      iterationKey: 'ITER-1',
+      name: 'Iteration 1',
+      description: '',
+      expectedReleaseAt: null,
+      groupCode: 'G001',
+      repoIds: Array.from({ length: 25 }, (_, index) => `repo-${index + 1}`),
+      repoCount: 25,
+      attachedToWindow: false,
+      attachedWindowIds: [],
+      mountedWindows: '',
+      attachAt: '',
+      createdAt: '',
+      updatedAt: ''
+    })
+    vi.mocked(iterationApi.listRepoDetails).mockResolvedValue({
+      total: 25,
+      list: [
+        {
+          repoId: 'repo-1',
+          repoName: 'Repo 1',
+          branchCreationMode: 'AUTO',
+          featureBranch: 'feature/ITER-1',
+          baseVersion: '1.0.0',
+          devVersion: '1.1.0-SNAPSHOT',
+          targetVersion: '1.1.0',
+          versionSource: 'SYSTEM'
+        }
+      ]
+    })
+
+    const wrapper = shallowMount(IterationDetail, {
+      global: {
+        stubs,
+        directives: {
+          loading: {},
+          perm: {}
+        }
+      }
+    })
+    await flushPromises()
+
+    expect((wrapper.vm as any).repoPage.total).toBe(25)
+    expect((wrapper.vm as any).repoRows).toHaveLength(1)
+
+    await (wrapper.vm as any).handleRepoPageChange(2)
+
+    expect(iterationApi.listRepoDetails).toHaveBeenLastCalledWith({
+      key: 'ITER-1',
+      page: 2,
+      pageSize: 10
+    })
   })
 })
