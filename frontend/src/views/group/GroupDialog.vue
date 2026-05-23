@@ -21,15 +21,17 @@
           <div v-if="mode === 'create'" class="form-tip">{{ t('group.codeAutoGenTip') }}</div>
         </el-form-item>
         <el-form-item :label="t('group.parentCode')" prop="parentCode">
-          <el-input
+          <GroupTreeSelect
             v-model="form.parentCode"
-            clearable
+            :placeholder="t('group.parentPlaceholder')"
             :disabled="!!presetParentCode"
-            :placeholder="t('common.pleaseEnter') + t('group.parentCode')"
+            :leaf-only="false"
+            :disabled-codes="disabledParentCodes"
           />
           <div v-if="presetParentName" class="preset-tip">
             <el-tag type="info">{{ presetParentName }}</el-tag>
           </div>
+          <div v-if="mode === 'edit'" class="form-tip">{{ t('group.parentMoveTip') }}</div>
         </el-form-item>
       </el-form>
     </template>
@@ -37,11 +39,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import EntityDialog from '@/components/common/EntityDialog.vue'
+import GroupTreeSelect from '@/components/common/GroupTreeSelect.vue'
 import { groupApi, type GroupView } from '@/api/modules/group'
 import { useDialogForm } from '@/composables/crud/useDialogForm'
 import { handleError } from '@/utils/error'
@@ -54,8 +57,10 @@ const entityRef = ref<InstanceType<typeof EntityDialog>>()
 const formRef = ref<FormInstance>()
 const presetParentName = ref<string | undefined>(undefined)
 const presetParentCode = ref<string | undefined>(undefined)
+const editingCode = ref<string | undefined>(undefined)
 
 type GroupForm = Pick<GroupView, 'name' | 'code' | 'parentCode'>
+const disabledParentCodes = computed(() => editingCode.value ? [editingCode.value] : [])
 
 const {
   mode,
@@ -126,6 +131,7 @@ const rules: FormRules = {
 }
 
 const openWithPreset = (opts?: { parentCode?: string; parentName?: string }) => {
+  editingCode.value = undefined
   presetParentName.value = opts?.parentName
   presetParentCode.value = opts?.parentCode
   open({ mode: 'create', preset: { parentCode: opts?.parentCode } })
@@ -138,6 +144,7 @@ const openWithPreset = (opts?: { parentCode?: string; parentName?: string }) => 
 const openEdit = (code: string) => {
   presetParentName.value = undefined
   presetParentCode.value = undefined
+  editingCode.value = code
   open({ mode: 'edit', id: code })
   entityRef.value?.open()
 }

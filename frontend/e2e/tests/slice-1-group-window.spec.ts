@@ -13,6 +13,8 @@ test.describe.serial('Slice-1: Group + Window', () => {
   const p = tcName('GP')
   const c = tcName('GC')
   const leaf = tcName('GL')
+  const moveTarget = tcName('GMT')
+  const moveLeaf = tcName('GML')
   const selectableLeaf = '001'
   let windowName: string
 
@@ -21,7 +23,7 @@ test.describe.serial('Slice-1: Group + Window', () => {
     await ensureLoggedIn(page)
     L = await loadLabels(page, [
       'group.createTop', 'group.createChild', 'group.name', 'group.code', 'group.parentCode', 'group.hasChildren',
-      'common.search', 'common.delete', 'common.keyword', 'common.confirm', 'common.cancel',
+      'common.search', 'common.delete', 'common.edit', 'common.keyword', 'common.confirm', 'common.cancel',
       'iteration.new', 'iteration.columns.name',
       'repository.addOrSync',
       'releaseWindow.create', 'releaseWindow.name',
@@ -59,8 +61,10 @@ test.describe.serial('Slice-1: Group + Window', () => {
     await dialog.locator('.el-tree-select, .el-select').first().click(FORCE)
     await page.waitForTimeout(800)
     const option = page.getByRole('option').filter({ hasText: groupCode }).first()
-    await expect(option).toBeVisible({ timeout: 5000 })
-    await option.click(FORCE)
+    const treeItem = page.locator('.el-popper:visible').last().getByRole('treeitem').filter({ hasText: groupCode }).first()
+    const target = await option.count() > 0 ? option : treeItem
+    await expect(target).toBeVisible({ timeout: 5000 })
+    await target.click(FORCE)
     await page.waitForTimeout(500)
   }
 
@@ -149,7 +153,8 @@ test.describe.serial('Slice-1: Group + Window', () => {
     await page.locator('.detail-card .el-button--success').filter({ hasText: L['group.createChild'] }).click(FORCE)
     await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 3000 })
     const d2 = page.locator('.el-dialog').last()
-    await expect(d2.getByRole('textbox', { name: L['group.parentCode'] })).toHaveValue(p)
+    await expect(d2.locator('.el-select').first()).toBeVisible()
+    await expect(d2.getByRole('combobox', { name: L['group.parentCode'] })).toBeDisabled()
     await d2.getByRole('textbox', { name: L['group.name'] }).fill('E2E-Team')
     await d2.getByRole('textbox', { name: L['group.code'], exact: true }).fill(c)
     await confirmDialog(page)
@@ -159,7 +164,8 @@ test.describe.serial('Slice-1: Group + Window', () => {
     await page.locator('.detail-card .el-button--success').filter({ hasText: L['group.createChild'] }).click(FORCE)
     await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 3000 })
     const d3 = page.locator('.el-dialog').last()
-    await expect(d3.getByRole('textbox', { name: L['group.parentCode'] })).toHaveValue(c)
+    await expect(d3.locator('.el-select').first()).toBeVisible()
+    await expect(d3.getByRole('combobox', { name: L['group.parentCode'] })).toBeDisabled()
     await d3.getByRole('textbox', { name: L['group.name'] }).fill('E2E-Project')
     await d3.getByRole('textbox', { name: L['group.code'], exact: true }).fill(leaf)
     await confirmDialog(page)
@@ -185,6 +191,37 @@ test.describe.serial('Slice-1: Group + Window', () => {
     // Detail panel should show leaf group info after selection
     await expect(page.locator('.detail-card')).toBeVisible()
     await expect(page.locator('.detail-card')).toContainText(leaf)
+  })
+
+  test('2.1 — move empty leaf group with parent tree selector', async ({ page }) => {
+    await ensureLoggedIn(page)
+    await page.goto('/groups')
+    await page.waitForTimeout(1000)
+
+    await page.getByRole('button', { name: L['group.createTop'] }).click(FORCE)
+    await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 3000 })
+    const targetDialog = page.locator('.el-dialog').last()
+    await targetDialog.getByRole('textbox', { name: L['group.name'] }).fill('E2E-Move-Target')
+    await targetDialog.getByRole('textbox', { name: L['group.code'], exact: true }).fill(moveTarget)
+    await confirmDialog(page)
+
+    await page.getByRole('button', { name: L['group.createTop'] }).click(FORCE)
+    await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 3000 })
+    const leafDialog = page.locator('.el-dialog').last()
+    await leafDialog.getByRole('textbox', { name: L['group.name'] }).fill('E2E-Move-Leaf')
+    await leafDialog.getByRole('textbox', { name: L['group.code'], exact: true }).fill(moveLeaf)
+    await confirmDialog(page)
+
+    await selectGroupFromTree(page, moveLeaf)
+    await page.locator('.detail-card .el-button').filter({ hasText: L['common.edit'] }).click(FORCE)
+    await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 3000 })
+    const editDialog = page.locator('.el-dialog').last()
+    await selectGroupInDialog(page, editDialog, moveTarget)
+    await confirmDialog(page)
+
+    await selectGroupFromTree(page, moveTarget)
+    const targetNode = page.getByRole('treeitem').filter({ hasText: moveTarget }).last()
+    await expect(targetNode).toContainText(moveLeaf, { timeout: 5000 })
   })
 
   // ══════════════ Group + Window Constraints ══════════════
@@ -351,12 +388,14 @@ test.describe.serial('Slice-1: Group + Window', () => {
       response.url().includes('/api/v1/release-windows/') &&
       response.url().endsWith('/detach')
     )
-    await page
+    const detachButton = page
       .locator('.el-collapse-item')
       .filter({ hasText: iterationKey })
       .locator('button.detach-iteration-button')
       .filter({ hasText: L['common.remove'] })
-      .click(FORCE)
+      .last()
+    await expect(detachButton).toBeVisible({ timeout: 5000 })
+    await detachButton.evaluate((el: HTMLElement) => el.click())
     await confirmMessageBox(page)
     expect((await detachResponse).ok()).toBeTruthy()
     await page.locator('.el-loading-mask').last().waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})

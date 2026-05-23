@@ -636,6 +636,8 @@ export default {
     parentCode: '父级编码',
     codePlaceholder: '留空自动生成',
     codeAutoGenTip: '留空时系统自动生成编码（如 001、001001）',
+    parentPlaceholder: '选择父分组；清空表示顶层分组',
+    parentMoveTip: '仅未挂资源且无子分组的空叶子分组可以移动',
     searchPlaceholder: '按名称或编码筛选',
     selectGroup: '请选择分组',
     hasChildren: '有子分组',

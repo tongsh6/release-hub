@@ -69,8 +69,21 @@ const ElFormStub = defineComponent({
   }
 })
 
+const GroupTreeSelectStub = defineComponent({
+  name: 'GroupTreeSelect',
+  props: {
+    modelValue: String,
+    placeholder: String,
+    disabled: Boolean,
+    leafOnly: Boolean,
+    disabledCodes: Array
+  },
+  template: '<div class="group-tree-select-stub" />'
+})
+
 const stubs = {
   EntityDialog: EntityDialogStub,
+  GroupTreeSelect: GroupTreeSelectStub,
   ElForm: ElFormStub,
   ElFormItem: {
     template: '<label><slot /></label>'
@@ -121,5 +134,25 @@ describe('GroupDialog', () => {
     })
     expect(ElMessage.warning).toHaveBeenCalledWith('group.moveBlockedByReference')
     expect(handleError).not.toHaveBeenCalled()
+  })
+
+  it('uses the shared group tree selector for parent movement and disables self', async () => {
+    vi.mocked(groupApi.get).mockResolvedValue({
+      id: 'G001',
+      code: 'G001',
+      name: 'Group',
+      parentCode: 'ROOT'
+    })
+    const wrapper = mount(GroupDialog, { global: { stubs } })
+
+    ;(wrapper.vm as any).openEdit('G001')
+    await flushPromises()
+
+    const selector = wrapper.findComponent(GroupTreeSelectStub)
+    expect(selector.props('modelValue')).toBe('ROOT')
+    expect(selector.props('placeholder')).toBe('group.parentPlaceholder')
+    expect(selector.props('leafOnly')).toBe(false)
+    expect(selector.props('disabledCodes')).toEqual(['G001'])
+    expect(wrapper.text()).toContain('group.parentMoveTip')
   })
 })

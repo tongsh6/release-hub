@@ -636,6 +636,8 @@ export default {
     parentCode: 'Parent Code',
     codePlaceholder: 'Leave empty for auto-generation',
     codeAutoGenTip: 'Auto-generated if left empty (e.g., 001, 001001)',
+    parentPlaceholder: 'Select parent group; clear for top-level',
+    parentMoveTip: 'Only empty leaf groups without resources can be moved',
     searchPlaceholder: 'Filter by name or code',
     selectGroup: 'Select a group',
     hasChildren: 'Has children',
