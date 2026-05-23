@@ -71,7 +71,7 @@
 | SA-005 | 管理员在仓库页纳管分组仓库并查看详情 | 仓库创建校验、叶子分组归属、重复/错误 URL 校验；仓库列表支持按组织及子组织范围筛选；详情页/抽屉展示组织路径和版本解析状态；仓库仍被迭代引用、分组仍有子分组或仍被仓库/迭代/发布窗口引用时拒绝删除 | 真实 GitLab cloneUrl、默认分支、token 安全审计；初始版本来源 `versionSource` 可复核 | Clone URL 格式校验、规范化重复纳管保护、版本解析失败修复引导、按组织筛选和删除保护已补；后续保持回归 |
 | SA-006 | 管理员在分支规则页配置命名规范 | BranchRule 校验、AUTO/NAMED/EXISTING 分支模式约束；GLOBAL/PROJECT/SUB_PROJECT 作用域按最具体规则解析；feature/release 分支创建和冲突扫描传入仓库上下文；不合规 NAMED 在迭代仓库写入和 GitLab 创建前拒绝，手动 release 分支在 GitLab 创建前拒绝；仓库维度可只读列出活跃历史不合规分支 | 创建出的 feature/hotfix/release 分支名称符合规则；真实 GitLab 直查可证明合规分支存在、不合规分支不存在；归档分支不会进入历史不合规治理清单 | P0 已覆盖：规则作用域表单校验、页面单测、Playwright 真实页面管理旅程、scoped check API、核心分支链路 scoped compliance、PROJECT/GLOBAL/SUB_PROJECT 真实 GitLab 前置拒绝证据、历史不合规分支只读治理入口已补；后续保持回归 |
 | SA-007 | 管理员在版本策略页配置版本演进规则 | SemVer 校验、PATCH/MINOR/MAJOR 推导；版本策略支持 GLOBAL/PROJECT/SUB_PROJECT 作用域元数据和可继承策略查询，前端可创建/编辑/删除 scoped policy，版本更新入口按仓库范围默认选取继承策略并推导目标版本 | Maven/Gradle 写回前置条件可验证 | P0 已覆盖：策略作用域元数据、PostgreSQL 迁移、scoped policy 创建/编辑/删除/applicable API、前端 scoped policy 创建/编辑/删除表单与单测、版本更新入口继承策略默认选择已补；外部 Playwright 已在真实前后端页面实跑 GLOBAL/PROJECT/SUB_PROJECT 创建、编辑、删除和项目级必填校验 |
-| SA-008 | 发布经理在窗口页创建发布窗口并查看列表/日历 | 发布窗口创建、DRAFT 状态、空窗口发布拒绝；分页接口支持按组织及子组织范围筛选；冻结草稿隐藏发布计划变更入口；仅空草稿窗口允许删除 | windowKey 唯一且关联叶子分组；非空草稿或非草稿窗口不会被删除 | 列表组织路径、组织范围筛选、后端 API、冻结限制和删除保护前端证据已补；后续保持回归 |
+| SA-008 | 发布经理在窗口页创建发布窗口并查看列表/日历 | 发布窗口创建、DRAFT 状态、空窗口发布拒绝；分页接口支持按组织及子组织范围筛选；冻结草稿隐藏发布计划变更入口；仅空草稿窗口允许删除；同组活跃并行窗口可观察 | windowKey 唯一且关联叶子分组；非空草稿或非草稿窗口不会被删除；并行窗口的迭代、仓库和发布计划按 `windowId/windowKey` 隔离 | 列表组织路径、组织范围筛选、后端 API、冻结限制、删除保护前端证据和多窗口并行发布可观测性已补；后续保持回归 |
 | SA-009 | 技术负责人在迭代页创建迭代并选择仓库 | 同分组仓库选择、iterationKey、分支模式记录；创建、更新和追加仓库写入前均拒绝跨分组仓库；已挂窗口后禁止变更仓库集合或迭代分组；分支创建模式写入 `iteration_repo` 并在版本信息 API 返回 | feature 分支和版本信息落库并可追踪；跨分组仓库不会触发分支创建、版本记录或迭代保存副作用；未挂窗移除仓库会把原 feature 分支归档到 `archive/unpublished/...`，已挂窗口后不会归档 feature 分支或污染发布计划 | P0 已覆盖：同分组候选过滤、后端跨分组拒绝、已挂窗口修改限制、迭代删除保护提示、迭代详情版本/分支/模式可观察性，以及移除仓库真实 GitLab 归档证据均已补 |
 | SA-010 | 发布经理在窗口详情页挂载迭代并查看发布计划 | attach/detach 细粒度结果、状态流转、冲突阻断；解除挂载已有前端详情页入口、后端约束、外部 Playwright 页面复核候选用例和真实 GitLab 分支归档复核；发布后计划变更已锁定 | release 分支真实创建，WindowIteration 状态一致；detach 后原 release 分支删除且 `archive/unpublished/release-<windowKey>` 存在；部分失败重试已有后端/GitLab 证据 | 发布计划已有最小前端观察；解除挂载已补 Vitest、Slice-1 Playwright 页面复核候选用例和真实 GitLab 分支归档证据；发布后 attach/detach 已有后端拒绝和前端隐藏入口；Run 详情已补部分成功/失败汇总和失败项重试复核；发布计划面板已补分支状态汇总与风险提示，后续保持回归 |
 | SA-011 | 测试人员在窗口详情页触发/查看风险扫描 | 冲突总数、类型分布、阻塞发布；`MERGE_CONFLICT`、`CROSS_REPO_VERSION_MISMATCH`、`REPO_AHEAD`、`SYSTEM_AHEAD`、`GIT_PERMISSION_DENIED`、`GIT_UNAVAILABLE` 已有后端冲突扫描证据和前端展示 | 冲突与 GitLab 分支/版本状态可对应；`MERGE_CONFLICT` 已有真实 feature/release 分支和冲突提交证据；`CROSS_REPO_VERSION_MISMATCH` 已有真实 feature/release 分支、两仓 targetVersion 差异和冲突扫描证据；`REPO_AHEAD`/`SYSTEM_AHEAD` 已有真实 feature 分支 `pom.xml` 版本差异和冲突扫描证据；`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 已有真实 GitLab 权限不足和不可达探针证据 | 严重级别、建议处理方式、合并冲突、跨仓版本不一致、仓库版本较新、系统版本较新、Git 权限不足和 Git 不可达均已有前端观察；后续保持回归 |
@@ -287,6 +287,7 @@ P0 验收焦点：
 - 发布窗口列表支持按组织及子组织范围筛选，并展示组织路径；`ReleaseWindowPageApiTest` 和 `ReleaseWindowList.spec.ts` 覆盖。
 - 冻结草稿窗口隐藏关联迭代、代码合并等发布计划变更入口，仅保留解冻入口；`ReleaseWindowList.spec.ts` 和 `ReleaseWindowDetail.spec.ts` 覆盖。
 - 发布窗口删除保护已补齐：仅空 DRAFT 窗口可删除；已关联迭代或非 DRAFT 窗口以 `RW_014` 拒绝删除，发布窗口列表对该错误展示明确阻断提示。
+- 多窗口并行发布可观测性已补齐：`GET /api/v1/release-windows/{id}/parallel-scope` 返回同组活跃窗口、迭代数、仓库数和发布计划项；列表与日历展示同组活跃窗口 Key，详情页展示并行窗口表；`ReleaseWindowPageApiTest` 覆盖同组两个窗口与其他组织窗口隔离，`ReleaseWindowList.spec.ts` 和 `ReleaseWindowDetail.spec.ts` 覆盖前端展示契约。
 
 缺口：
 - 后续保持回归。
@@ -553,7 +554,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P2 | SA-008 多窗口并行发布可观测性 | 发布窗口创建、DRAFT/PUBLISHED/CLOSED、列表/日历、组织筛选、冻结和删除保护已闭环；风险池仍保留多窗口并行发布样本 | 设计并补齐同一组织多发布窗口并行存在时的列表、日历、详情与发布计划互不污染证据 |
+| P2 | SA-009 大规模迭代仓库可观测性 | 同分组仓库选择、跨分组拒绝、已挂窗口锁定和移除仓库归档已闭环；风险池仍保留批量窗口和大规模迭代样本 | 设计并补齐单个迭代关联较多仓库时的分页、摘要、详情与版本/分支记录可追溯证据 |
 | P1 | SA-013 发布编排结果复核与失败 Run 观察 | 无阻塞冲突后 Run 创建和冲突未解决时拒绝已有后端证据；窗口详情最新 Run 复核、失败上下文和最近 Run 倒序已补 | 后续保持回归 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
@@ -562,6 +563,35 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-008 多窗口并行发布可观测性
+
+命令：
+
+```bash
+mvn -pl releasehub-bootstrap -am -Dtest=ReleaseWindowPageApiTest -Dsurefire.failIfNoSpecifiedTests=false test
+pnpm exec vitest run src/views/release-window/__tests__/ReleaseWindowList.spec.ts src/views/release-window/__tests__/ReleaseWindowDetail.spec.ts
+pnpm run typecheck
+pnpm i18n:lint
+git diff --check
+bash scripts/dev/check-roadmap.sh
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 后端新增并行窗口读模型：发布窗口详情可通过 `parallel-scope` 返回同一组织下 DRAFT/PUBLISHED 窗口、各窗口迭代数、仓库数和发布计划项。
+- MockMvc 构造同一叶子分组两个发布窗口和另一个组织窗口，断言当前 scope 只包含同组两个窗口，并且每个窗口的 `iterationKey/repoId/windowKey` 不串到另一个窗口。
+- 发布窗口列表 DTO 返回 `parallelActiveWindowCount` 和 `parallelActiveWindowKeys`，用于列表和日历展示同组活跃并行窗口线索。
+- 前端详情页新增同组并行窗口表，展示当前窗口、组织编码、活跃窗口数、迭代数、仓库数和发布计划项；列表和日历展示窗口 Key 与并行摘要。
+- `ReleaseWindowPageApiTest` 通过：5 PASS / 0 FAIL / 0 SKIP。
+- `ReleaseWindowList.spec.ts` 与 `ReleaseWindowDetail.spec.ts` 通过：14 PASS / 0 FAIL / 0 SKIP。
+- 前端 typecheck、i18n lint、diff 检查、路线图检查和最终静态扫描均通过；静态扫描报告：`.ai/reports/static-scan/20260523-142409/summary.md`，SpotBugs 0 bugs。
+
+结论：
+
+- SA-008 已从窗口创建、列表/日历、组织筛选、冻结和删除保护扩展到同组多窗口并行发布观察；同一组织多个活跃窗口可按 `windowId/windowKey` 追溯各自迭代、仓库和发布计划。
+- 当前执行队列转向 SA-009 大规模迭代仓库可观测性。
 
 ### 2026-05-23 SA-014 版本解析异常样本治理
 
