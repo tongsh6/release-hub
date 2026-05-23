@@ -313,6 +313,7 @@ P0 验收焦点：
 - 已挂载发布窗口的迭代不能再追加、移除仓库，也不能通过更新接口变更仓库集合或分组；详情 API 返回 `attachedToWindow`，前端隐藏添加/移除仓库入口并展示锁定状态。
 - 迭代仍关联仓库或已挂载发布窗口时，后端以 `ITER_002` 拒绝删除；迭代列表识别该错误并展示明确删除保护提示，避免落入通用错误处理。
 - `iteration_repo.branch_creation_mode` 已由新增/追加仓库路径写入并从版本信息 API 返回；迭代详情关联仓库表展示分支创建模式、feature 分支、基础/开发/目标版本、版本来源和同步时间。
+- `GET /api/v1/iterations/{key}/repos/paged` 已补齐大规模迭代仓库分页详情：返回当前页仓库基础信息、分支创建模式、feature 分支、基准/开发/目标版本、版本来源和同步时间；应用层 25 仓库样本、MockMvc 12 仓库样本和迭代详情 Vitest 覆盖分页摘要与翻页请求契约。
 - `scripts/acceptance/sa009-remove-repo-gitlab-evidence.sh` 已用真实后端和真实 GitLab 覆盖：未挂载发布窗口的迭代移除仓库后，原 `feature/<iterationKey>` 分支不再作为活跃分支存在，`archive/unpublished/feature-<iterationKey>` 归档分支存在；已挂载发布窗口的迭代移除仓库被拒绝，原 feature 分支保持活跃且不会产生归档分支。
 
 缺口：
@@ -554,7 +555,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P2 | SA-009 大规模迭代仓库可观测性 | 同分组仓库选择、跨分组拒绝、已挂窗口锁定和移除仓库归档已闭环；风险池仍保留批量窗口和大规模迭代样本 | 设计并补齐单个迭代关联较多仓库时的分页、摘要、详情与版本/分支记录可追溯证据 |
+| P2 | SA-016 关闭窗口后 tag/merge/archive 真实 GitLab 收尾证据 | 关闭、重复关闭、关闭后关键操作禁止、收尾 Run、报告制品和 CI 触发状态已补；风险池仍保留关闭后的 tag、merge to main、分支归档真实 GitLab 验证 | 设计并补齐关闭窗口后可按 windowKey/iterationKey/repoId 追溯 tag、目标分支合并和归档分支状态的真实 GitLab 证据 |
 | P1 | SA-013 发布编排结果复核与失败 Run 观察 | 无阻塞冲突后 Run 创建和冲突未解决时拒绝已有后端证据；窗口详情最新 Run 复核、失败上下文和最近 Run 倒序已补 | 后续保持回归 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
@@ -592,6 +593,33 @@ bash scripts/dev/static-scan-topn.sh 10
 
 - SA-008 已从窗口创建、列表/日历、组织筛选、冻结和删除保护扩展到同组多窗口并行发布观察；同一组织多个活跃窗口可按 `windowId/windowKey` 追溯各自迭代、仓库和发布计划。
 - 当前执行队列转向 SA-009 大规模迭代仓库可观测性。
+
+### 2026-05-23 SA-009 大规模迭代仓库可观测性
+
+命令：
+
+```bash
+mvn -pl releasehub-application -am -Dtest=IterationAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl releasehub-bootstrap -am -Dtest=IterationRepoApiTest -Dsurefire.failIfNoSpecifiedTests=false test
+pnpm exec vitest run src/views/iteration/__tests__/IterationDetail.spec.ts
+pnpm run typecheck
+pnpm i18n:lint
+git diff --check
+bash scripts/dev/check-roadmap.sh
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 后端新增迭代仓库分页详情读模型和 `GET /api/v1/iterations/{key}/repos/paged`，按 `iterationKey` 返回当前页仓库基础信息、分支创建模式、feature 分支、基准/开发/目标版本、版本来源和同步时间。
+- 应用层单测构造 25 个关联仓库，断言第 2 页只加载 `repo-11` 到 `repo-20` 的仓库和版本信息，并验证第 1 页仓库不会被读取。
+- MockMvc 构造 12 个已纳管仓库并关联到同一迭代，断言 `page=2&size=5` 返回 5 条、`page.total=12`，且每条可追溯分支模式和版本记录。
+- 迭代详情页改为读取服务端分页仓库详情，展示当前页数量/总数摘要和分页控件；Vitest 覆盖初始加载和大规模迭代翻页请求契约。
+
+结论：
+
+- SA-009 已从同分组选择、跨分组拒绝、已挂窗口锁定和移除仓库归档扩展到大规模迭代仓库分页可观测性；单个迭代关联较多仓库时，列表、详情、分页摘要和版本/分支记录均具备可追溯验收证据。
+- 当前执行队列转向 SA-016 关闭窗口后 tag/merge/archive 真实 GitLab 收尾证据。
 
 ### 2026-05-23 SA-014 版本解析异常样本治理
 

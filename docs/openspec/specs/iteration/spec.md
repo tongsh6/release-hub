@@ -99,6 +99,18 @@
   - 目标版本（target_version）：发布时的正式版本
   - 版本来源（version_source）：SYSTEM / REPO
 
+### Requirement: 大规模迭代仓库分页可观测性
+
+系统 SHALL 为单个迭代关联较多仓库的场景提供服务端分页仓库详情，分页结果必须保留仓库基础信息、分支创建模式和版本记录。
+
+#### Scenario: 分页查看迭代仓库详情
+
+- **GIVEN** 一个迭代关联了 12 个仓库
+- **WHEN** 用户按 `page=2&size=5` 请求该迭代仓库详情
+- **THEN** 系统只返回第 2 页的 5 条仓库详情
+- **AND** `page.total` 返回该迭代关联仓库总数 12
+- **AND** 每条仓库详情包含 `repoId`、仓库名称、分支创建模式、feature 分支、基准版本、开发版本、目标版本和版本来源
+
 ### Requirement: 迭代列表分页与筛选
 系统 SHALL 提供迭代列表的服务端分页查询，使用 1-based `page` 与 `size`，并支持关键字匹配迭代 key/name/description。
 
@@ -106,4 +118,3 @@
 - **WHEN** 用户按 `page=1&size=20&keyword=foo` 请求迭代列表
 - **THEN** 返回对应分页结果
 - **AND** `page.total` 为总条数且 `page` 为 1-based
-
