@@ -27,33 +27,35 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-001 | 发布候选评审页 / 发布经理检查清单 | `scenario-acceptance-matrix.md` 当前推进队列 | 发布候选报告已形成，但人工评审入口仍分散在报告、矩阵和台账中；需要产品化检查清单承接发布经理签核 |
+| 1 | HEAD | SA-002 | 验收数据命名空间与保留策略 | `scenario-acceptance-matrix.md` 当前推进队列 | 复核队列和候选评审页已补，但验收资产仍缺少稳定批次口径，会继续制造历史残留判断噪音 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-001 发布候选评审页 / 发布经理检查清单。
+任务：SA-002 验收数据命名空间与保留策略。
 
 验收出口：
 
-- 提供发布候选评审页面或最小 API + 页面入口，聚合发布候选结论、全量验收状态、静态扫描状态、数据质量风险和残留非目标。
-- 页面必须引用现有真源：`docs/reports/release-candidate-2026-05-23.md`、场景矩阵、项目台账和最新任务记录；不得复制出不可维护的长篇证据。
-- 支持发布经理记录人工检查项状态和签核备注；签核只记录评审结论，不改变发布窗口、仓库、GitLab 或数据质量动作状态。
-- 明确展示阻断风险、非阻断风险和暂缓项，不把 RBAC、通知或批量迁移重新纳入当前阶段。
+- 形成验收数据 batch/namespace/retention 的产品口径，说明如何区分本轮验收资产、历史验收资产和用户业务资产。
+- 将该口径落到脚本输出、数据质量 safe-cleanup 报告或应用复核入口中的至少一个可执行面，避免后续全量验收继续只以 DRAFT 残留数量判断质量风险。
+- 保留现有安全边界：不直接删除数据库记录，不关闭发布窗口，不触碰 GitLab 远端资源，不绕过应用层不变量。
+- 能在报告或页面中按批次识别本轮资产与历史资产，并说明哪些资产进入人工复核、哪些资产仅作为历史噪音保留。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md`、`docs/openspec/specs/` 和 `tasks/records/`。
-- 完成后运行相关后端/API/前端专项测试，并至少运行 `bash scripts/dev/check-roadmap.sh` 和 `git diff --check`。
+- 完成后运行相关脚本/后端/API/前端专项测试，并至少运行 `bash scripts/dev/check-roadmap.sh` 和 `git diff --check`。
 
 当前输入基线：
 
 - 发布候选报告：`docs/reports/release-candidate-2026-05-23.md`。
+- 发布候选评审页：`frontend/src/views/release-governance/ReleaseCandidateReview.vue`。
 - 全量验收基线：170 PASS / 0 FAIL / 0 SKIP。
-- 静态扫描基线：`.ai/reports/static-scan/20260523-193829/summary.md`。
 - 数据质量风险：188 条待复核动作，已具备应用内复核队列。
+- 最新静态扫描：`.ai/reports/static-scan/20260523-202310/summary.md`。
 
 已完成的前置事项：
 
 - SA-001 发布候选收口报告已形成：`docs/reports/release-candidate-2026-05-23.md`。
+- SA-001 发布候选评审页 / 发布经理检查清单已页面化：`frontend/src/views/release-governance/ReleaseCandidateReview.vue`。
 - release-governance OpenSpec 已新增：`docs/openspec/specs/release-governance/spec.md`。
 - SA-002 数据质量复核队列已页面化：`frontend/src/views/data-quality/DataQualityReviewQueue.vue`。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`。
