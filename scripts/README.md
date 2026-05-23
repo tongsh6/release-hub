@@ -9,7 +9,7 @@
 | [acceptance/run-acceptance.sh](acceptance/run-acceptance.sh) | **全链路验收脚本 v3**（11 场景 / 25+ 验收项） | **验收前必须先运行此脚本**，不要手工逐 API 调试验收 |
 | [acceptance/sa002-safe-cleanup.sh](acceptance/sa002-safe-cleanup.sh) | SA-002 存量数据安全清理 dry-run 报告，输出带应用入口、执行前检查、执行后复核和人工复核决策的动作清单，不直接改库 | 验收前需要把 token 明文、BranchCreationMode、featureBranch、cloneUrl、DRAFT 残留转成可进入 `POST /api/v1/data-quality/cleanup-review` 的复核计划时 |
 | [e2e/init-gitlab.sh](e2e/init-gitlab.sh) | GitLab 种子数据初始化（幂等） | 首次验收或 GitLab 数据被清空后 |
-| [e2e/reset-gitlab-seed-branches.sh](e2e/reset-gitlab-seed-branches.sh) | 清理 GitLab 种子仓库累积分支，默认 dry-run，`--execute` 才删除 | release/feature 临时分支累积影响 clean-room 复现时 |
+| [e2e/reset-gitlab-seed-branches.sh](e2e/reset-gitlab-seed-branches.sh) | 清理 GitLab 种子仓库累积分支，默认 dry-run，`--execute` 才删除，并输出 `summary.md`、`branches.md`、`branches.jsonl` | release/feature 临时分支累积影响 clean-room 复现，且需要保留 dry-run/execute/复跑证据时 |
 | [e2e/run-vertical-slices.sh](e2e/run-vertical-slices.sh) | CI 环境垂直切片测试 | CI 流水线 |
 
 ### 为什么必须先运行 run-acceptance.sh？

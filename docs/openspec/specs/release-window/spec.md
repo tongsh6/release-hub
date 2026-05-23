@@ -128,6 +128,22 @@
 - **AND** 原 release 分支不再作为活跃分支存在，`archive/released/release-RW-20260115-ABCD` 可查询
 - **AND** 收尾 Run 记录 `MERGE_TO_MASTER`、`CREATE_TAG`、`TRIGGER_CI` 和两个 `ARCHIVE_BRANCH` 步骤
 
+### Requirement: GitLab 种子仓库分支清理保护
+系统 SHALL 提供本地验收 GitLab 种子仓库的受控分支清理入口，避免历史 release/feature 分支累积影响 clean-room 复现。
+
+#### Scenario: dry-run 生成候选清单
+- **WHEN** 操作者以默认模式运行种子分支清理脚本
+- **THEN** 系统生成 `summary.md`、`branches.md` 和 `branches.jsonl`
+- **AND** 每条分支事件包含仓库、Project ID、分支、动作、HTTP 状态和保护原因
+- **AND** 默认模式不得删除任何 GitLab 分支
+
+#### Scenario: execute 只删除非种子分支
+- **WHEN** 操作者显式传入 `--execute`
+- **THEN** 系统只删除固定种子仓库中的非种子分支
+- **AND** `main` 与脚本内置 seed feature 分支必须保留
+- **AND** 执行后报告必须记录 `POST_KEEP` 和 `POST_REMOVED` 复核事件
+- **AND** 重复执行不得产生新的删除动作
+
 ### Requirement: 发布窗口列表分页与筛选
 系统 SHALL 提供发布窗口列表的服务端分页查询，使用 1-based `page` 与 `size`，并支持名称筛选。
 

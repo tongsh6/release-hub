@@ -91,7 +91,7 @@
 | SA-014 版本更新失败重试 | 已验证 | `RunAppService.retry` + `RunItem` metadata + `RunDetail.vue` | 后端单测 + MockMvc/JPA + Vitest | 版本更新失败项可从 Run 详情重试；后端只重放 `VERSION_UPDATE_FAILED` 项，并通过 metadata 保留 retry 来源 |
 | Maven surefire/failsafe 插件版本显式化 | 已验证 | `backend/pom.xml` | `mvn -pl releasehub-bootstrap -DskipTests validate` + `mvn -pl releasehub-application -Dtest=ConflictDetectionAppServiceTest test` | malformed POM 中插件版本缺失警告已关闭 |
 | acc-v0.1.10 验收报告归档 | 已完成 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 文档引用复核 | v0.1.10 已被 v0.1.11 和场景矩阵覆盖，顶层 reports 目录瘦身 |
-| 累积冲突清理脚本 | 已实现 | `scripts/e2e/reset-gitlab-seed-branches.sh` | dry-run 语法/帮助验证 | 默认 dry-run，`--execute` 才删除非种子分支，保留 main 与 seed feature 分支 |
+| SA-016 种子分支清理执行保护 | 已验证 | `scripts/e2e/reset-gitlab-seed-branches.sh` | dry-run + execute + repeat execute 真实 GitLab 证据 | 默认 dry-run 输出候选清单；`--execute` 删除 799 个非种子分支并确认移除，7 个 main/seed feature 分支保留；复跑删除 0 个分支 |
 
 ---
 
@@ -136,6 +136,7 @@
 | SA-016 发布报告制品包归档 | `mvn -pl releasehub-bootstrap -am -Dtest=WindowRunApiTest -Dsurefire.failIfNoSpecifiedTests=false test` + `pnpm exec vitest run src/views/release-window/__tests__/ReleaseWindowDetail.spec.ts` + `pnpm run typecheck` + `pnpm i18n:lint` + 静态扫描 | `tasks/records/2026-05-23-sa-016-report-artifact-package.md` | 后端 **1 PASS / 0 FAIL / 0 SKIP**；前端 **8 PASS / 0 FAIL / 0 SKIP**；ZIP 包内 manifest、JSON、CSV、Markdown 可解包复核；静态扫描报告 `.ai/reports/static-scan/20260523-134733/summary.md` |
 | SA-016 CI pipeline 触发状态 | `mvn -pl releasehub-application -am -Dtest=RunAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test` | `tasks/records/2026-05-21-sa-016-ci-trigger-status.md` | 后端 **12 PASS / 0 FAIL / 0 SKIP**；`CI_TRIGGERED` 保留 pipeline id，`CI_NOT_CONFIGURED` 不伪装成 `SUCCESS` |
 | SA-016 关闭后 GitLab 收尾证据 | `mvn -pl releasehub-application -am -Dtest=RunAppServiceTest,IterationAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test` + `bash -n scripts/acceptance/run-acceptance.sh` + `bash scripts/acceptance/run-acceptance.sh` + 静态扫描 | `tasks/records/2026-05-23-sa-016-close-gitlab-evidence.md` | 后端 **37 PASS / 0 FAIL / 0 SKIP**；真实 GitLab 验收 **169 PASS / 0 FAIL / 0 SKIP**；关闭后真实 GitLab merge/tag/archive 复核通过，SA-011 Git 访问异常探针不再因 setup 外部 I/O 异常 500；静态扫描报告 `.ai/reports/static-scan/20260523-150144/summary.md` |
+| SA-016 种子分支清理执行保护 | `bash -n scripts/e2e/reset-gitlab-seed-branches.sh` + `scripts/e2e/reset-gitlab-seed-branches.sh --report-dir .ai/reports/gitlab-seed-branch-reset/sa016-dry-run-before` + `scripts/e2e/reset-gitlab-seed-branches.sh --execute --report-dir .ai/reports/gitlab-seed-branch-reset/sa016-execute` + `scripts/e2e/reset-gitlab-seed-branches.sh --execute --report-dir .ai/reports/gitlab-seed-branch-reset/sa016-execute-repeat` + 静态扫描 | `tasks/records/2026-05-23-sa-016-seed-branch-cleanup-evidence.md` | dry-run 候选 **799**；execute 删除 **799** 且 `POST_REMOVED=799`；repeat execute 删除 **0**；7 个 seed branch 全程保留，JSONL 按行合法；静态扫描报告 `.ai/reports/static-scan/20260523-154248/summary.md` |
 | URL 双重 encode 修复连带 release 分支创建 | 同上场景 4 | 同上 | 1/3 → **3/3** |
 | Listener 异常隔离 | 同上后端日志 | 同上 | UnexpectedRollback 出现次数 2 → **0** |
 | 前端 Playwright E2E 基线刷新 | `cd frontend && pnpm run test:e2e` | 本会话 2026-05-15 | **29 PASS / 0 FAIL / 0 SKIP**；登录、Slice-1、Slice-2 可跑通，历史显式 skip 已清零 |
@@ -150,7 +151,7 @@
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| 场景矩阵驱动推进 | 2026-05-23 已补 SA-002 存量清理人工复核入口：dry-run 动作清单保留应用入口、执行前检查、执行后复核和人工复核决策，`POST /api/v1/data-quality/cleanup-review` 可接收人工复核输入并拒绝直接执行、不完整动作和未知风险，脚本仍拒绝 `--execute`。同日已补 SA-016 关闭后 GitLab 收尾证据：关闭收尾按 release 合并默认分支、创建 tag、触发 CI、归档 feature/release 分支执行，验收脚本可按 windowKey/iterationKey/repoId 复核 merge commit、tag 和 `archive/released/...` 分支。同日已补 SA-009 大规模迭代仓库可观测性：单个迭代关联较多仓库时，服务端分页返回当前页仓库、分支模式和版本记录，详情页展示分页摘要和翻页控件，应用层、MockMvc 和 Vitest 已补追溯证据。同日已补 SA-008 多窗口并行发布可观测性：同组活跃窗口可按 windowId/windowKey 追溯迭代、仓库和发布计划，列表、日历、详情均展示并行窗口线索，MockMvc 与 Vitest 已补互不污染证据。同日已补 SA-016 发布报告制品包归档、SA-003 code 自动生成、SA-003 分组父级树选择、SA-003 受控空叶子分组移动、SA-013 发布编排 Run 页面内复核、SA-006 历史不合规分支治理入口、SA-004 GitLab 连接异常诊断展示、SA-009 移除仓库真实 GitLab 归档证据和 SA-007 版本策略真实页面验收；2026-05-22 已补 SA-006 scoped 分支规则真实 GitLab 前置拒绝证据和分支规则真实页面管理旅程；2026-05-21 已补 SA-016 CI pipeline 触发状态、SA-012 `REPO_AHEAD` 接受仓库版本解决路径、SA-014 版本更新失败重试、SA-005 删除保护扩展、仓库组织筛选、版本解析失败修复引导、Clone URL 纳管保护和 SA-009 已挂窗口后迭代仓库集合锁定；2026-05-20 已补 SA-014 批量版本更新多仓部分失败、Maven 多模块/Gradle 真实写回、批量版本更新前端入口、SA-015 Run 详情失败项重试前端闭环、SA-010 发布后发布计划变更锁定、同分组挂载范围约束、SA-003 资源创建叶子分组前端断言、SA-010 解除挂载真实 GitLab 分支归档证据、SA-011 Git 访问异常真实 GitLab/Playwright 证据 | 按 `docs/execution-roadmap.md` 当前 HEAD 转向 SA-016 release 分支累积冲突清理执行保护证据 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
+| 场景矩阵驱动推进 | 2026-05-23 已补 SA-016 种子分支清理执行保护：`reset-gitlab-seed-branches.sh` 输出 summary/branches Markdown/JSONL，dry-run 发现 799 个非种子候选，execute 删除 799 个并确认移除，repeat execute 删除 0 个，7 个 main/seed feature 分支全程保留。同日已补 SA-002 存量清理人工复核入口：dry-run 动作清单保留应用入口、执行前检查、执行后复核和人工复核决策，`POST /api/v1/data-quality/cleanup-review` 可接收人工复核输入并拒绝直接执行、不完整动作和未知风险，脚本仍拒绝 `--execute`。同日已补 SA-016 关闭后 GitLab 收尾证据：关闭收尾按 release 合并默认分支、创建 tag、触发 CI、归档 feature/release 分支执行，验收脚本可按 windowKey/iterationKey/repoId 复核 merge commit、tag 和 `archive/released/...` 分支。同日已补 SA-009 大规模迭代仓库可观测性、SA-008 多窗口并行发布可观测性、SA-016 发布报告制品包归档、SA-003 code 自动生成、SA-003 分组父级树选择、SA-003 受控空叶子分组移动、SA-013 发布编排 Run 页面内复核、SA-006 历史不合规分支治理入口、SA-004 GitLab 连接异常诊断展示、SA-009 移除仓库真实 GitLab 归档证据和 SA-007 版本策略真实页面验收；2026-05-22 已补 SA-006 scoped 分支规则真实 GitLab 前置拒绝证据和分支规则真实页面管理旅程；2026-05-21 已补 SA-016 CI pipeline 触发状态、SA-012 `REPO_AHEAD` 接受仓库版本解决路径、SA-014 版本更新失败重试、SA-005 删除保护扩展、仓库组织筛选、版本解析失败修复引导、Clone URL 纳管保护和 SA-009 已挂窗口后迭代仓库集合锁定 | 按 `docs/execution-roadmap.md` 当前 HEAD 转向 SA-014 空仓库版本解析真实 GitLab 证据 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
 | 前端用户旅程自动化验证 | 2026-05-23 SA-013 编排面板已补最新 Run 复核 Vitest 证据，确认触发编排后加载返回 Run、展示状态/执行项/失败项，失败 Run 展示发布窗口/仓库/迭代上下文、失败步骤和失败原因；2026-05-21 SA-012 冲突面板已补 `REPO_AHEAD` 接受仓库版本 Vitest 证据，确认按钮文案、`USE_REPO` 请求语义和解决后刷新；同日 SA-014 Run 详情已补版本更新失败项重试 Vitest 证据，确认 `VERSION_UPDATE_SUCCESS` 不会被重复提交、`VERSION_UPDATE_FAILED` 会进入 retry；同日 SA-009 迭代详情已补已挂窗口后仓库集合锁定 Vitest 证据，确认隐藏添加仓库入口并展示锁定状态；同日 SA-009 添加仓库弹窗已补同分组候选过滤 Vitest 证据；2026-05-20 SA-015 Run 详情页已补失败项重试 Vitest 证据，确认只提交失败/阻塞 item 并跳转到 retry 新 Run；同日 SA-010 窗口详情已补发布后隐藏挂载和解除挂载入口的 Vitest 证据；同日 SA-010 挂载弹窗已补发布窗口分组读取、迭代分组展示和非同分组行禁选；同日 SA-003 已补资源创建叶子分组 Playwright 断言，仓库、迭代、发布窗口创建弹窗均验证非叶子节点禁用；同日 SA-011 已补 Git 访问异常 Playwright 用户旅程，冲突面板展示 `GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布、阻断级别、建议处理方式和外部 Git 访问处理入口，且不会误触发版本同步；2026-05-19 SA-010 窗口详情已补解除挂载按钮、确认、调用 `detach` API 与刷新关联迭代列表的 Vitest 证据，并补 Slice-1 Playwright 旅程：UI 创建迭代、挂载到窗口、详情页解除挂载、断言关联列表为空且发布计划隐藏；2026-05-20 Slice-1 回归 11/0/0，Slice-2 回归 23/0/0，已覆盖 SA-011 `REPO_AHEAD` / `SYSTEM_AHEAD` 和 Git 访问异常前端专项观察；2026-05-15 完整 Playwright 回归 30/0/0，CLOSED 窗口隐藏挂载入口已覆盖；SA-016 详情页已提供发布报告 CSV 导出入口；SA-015 已由 UI 真实生成失败 Run，并可按 `windowKey` + 分组 + `FAILED` 复核 Run 抽屉证据，也可在窗口详情复核 `MERGE_CONFLICT`、`BRANCH_NONCOMPLIANT`、`CROSS_REPO_VERSION_MISMATCH` 冲突类型分布、分支/版本详情和建议处理方式，并可在 Run 详情复核一个 Run 内成功项与失败项并存、失败任务重试次数和错误信息；SA-015/SA-016 已补真实 GitLab 部分失败重试后端证据，确认 retry 只选择失败项且不重复执行成功项；SA-012 冲突面板已展示版本冲突同步路径、接受仓库版本路径、分支名不合规和 release 分支已存在外部处理路径、阻断级别和建议处理方式，发布计划已展示 feature 分支缺失状态；SA-012 feature 缺失已有 GitLab 直查、`branch-status` 和 Orchestrate RunStep 强证据；SA-012 release 分支已存在已有 GitLab 预置/直查、`branch-status` 和 Attach RunStep 强证据；SA-012 分支名不合规已有 GitLab 分支直查、BranchRule check 和 `BRANCH_NONCOMPLIANT` 冲突扫描强证据；SA-011 `MERGE_CONFLICT` 已有 GitLab 分支直查、冲突提交、Attach Run `MERGE_BLOCKED` 和冲突扫描强证据，`CROSS_REPO_VERSION_MISMATCH` 已有两仓 targetVersion 差异、GitLab feature/release 分支直查和冲突扫描强证据，`REPO_AHEAD`/`SYSTEM_AHEAD` 已有真实 feature 分支版本差异和冲突扫描强证据；SA-010 发布计划面板已展示计划顺序、迭代、仓库和分支状态，解除挂载真实 GitLab 分支归档证据已由验收脚本补齐 | 后续保持回归 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
 
 ---
@@ -173,7 +174,7 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| P2 | SA-016 release 分支累积冲突清理执行保护证据 | 种子分支清理脚本已有 dry-run 与 `--execute` 开关；当前仍缺执行前候选、执行后 GitLab 分支状态和保护边界的场景化证据 | 只删除非种子临时分支，保留 main 与 seed feature 分支，并留下 dry-run/execute 对照证据 |
+| P2 | SA-014 空仓库版本解析真实 GitLab 证据 | 无版本文件、异常版本号和读取失败已有应用层/API/页面证据；当前仍缺真实 GitLab 空仓库样本的版本解析状态和用户可见诊断证据 | 空仓库必须返回明确错误类型、默认分支、检查路径和页面诊断，不伪造版本 |
 
 ---
 
@@ -181,7 +182,7 @@
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-23 SA-002 存量清理人工复核入口已补：动作清单可进入应用层复核且越权执行被拒绝；当前执行队列见 `docs/execution-roadmap.md` |
+| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-23 SA-016 种子分支清理执行保护已补：dry-run、execute 和 repeat execute 真实 GitLab 证据均已归档；当前执行队列见 `docs/execution-roadmap.md` |
 | 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-20 Slice-1 回归：11 PASS / 0 FAIL / 0 SKIP；新增 SA-003 资源创建叶子分组断言，保留 SA-010 解除挂载 UI 旅程。2026-05-20 Slice-2 回归：23 PASS / 0 FAIL / 0 SKIP；新增 SA-011 Git 访问异常前端旅程；入口 `cd frontend && pnpm run test:e2e` |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
@@ -190,7 +191,7 @@
 | 版本解析异常诊断 | `GET /api/v1/repositories/{id}/initial-version` | 2026-05-23 SA-014 异常样本治理；返回 `VERSION_FILE_MISSING` / `VERSION_DECL_MISSING` / `VERSION_INVALID` / `VERSION_READ_ERROR`、默认分支、检查路径和说明文案 |
 | 本地统一启停脚本 | `scripts/dev/start-local-env.sh` | `start|hold|stop|restart|status`；推荐用 `hold` 托管前后端联调环境 |
 | 种子初始化 | `scripts/e2e/init-gitlab.sh` | 幂等，3 个种子仓库 |
-| 种子分支清理 | `scripts/e2e/reset-gitlab-seed-branches.sh` | 默认 dry-run；`--execute` 清理非种子分支，保留 main 与 seed feature 分支 |
+| 种子分支清理 | `scripts/e2e/reset-gitlab-seed-branches.sh` | 默认 dry-run 并输出 `summary.md`、`branches.md`、`branches.jsonl`；`--execute` 清理非种子分支，保留 main 与 seed feature 分支，并记录执行后 `POST_KEEP/POST_REMOVED` |
 | 启动脚本 | `backend/scripts/run.sh` | `mvn spring-boot:run -pl releasehub-bootstrap` |
 | 本地容器 | `releasehub-postgres`(5433) + `releasehub-gitlab`(9080) | 模式 A 常驻；端口策略见 memory `feedback_mode_a_b_port_isolation.md` |
 | Flyway 最新迁移 | `V28__add_branch_creation_mode.sql` | local profile 下 flyway disabled，靠 `ddl-auto: update` |

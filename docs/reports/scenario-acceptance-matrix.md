@@ -515,6 +515,7 @@ P0 验收焦点：
 - CI 触发结果已补应用层证据：provider 返回 pipeline id 时 `TRIGGER_CI/CI_TRIGGERED` 记录 id 与 ref；未配置 CI 时 `TRIGGER_CI/CI_NOT_CONFIGURED` 写入步骤且 RunItem finalResult 不伪装为 `SUCCESS`。
 - 关闭收尾顺序已收敛为 release 合并到默认分支、创建 tag、触发 CI、归档 feature 分支和 release 分支；应用层单测断言 tag/CI 之后才执行两个归档动作。
 - `run-acceptance.sh` 已补关闭窗口后真实 GitLab 复核：按 `windowKey/iterationKey/repoId` 验证 release 合并到 main 的 commit、tag 存在、feature/release 原分支不再活跃，且 `archive/released/...` 归档分支存在。
+- `scripts/e2e/reset-gitlab-seed-branches.sh` 已补受控清理证据：默认 dry-run 输出候选清单，`--execute` 只删除三个种子仓库中的非种子分支，执行后记录 `POST_KEEP/POST_REMOVED`，重复执行删除 0 个分支。
 - 前端已在 CLOSED 状态隐藏列表页和详情页的挂载入口；编排面板按真实 `windowKey` 加载最近 Run。
 - `run-acceptance.sh` 5.9 已补真实部分失败重试后端/GitLab 强证据：部分成功/部分阻塞 attach Run 可选择失败项重试，成功项不会被重复执行。
 - 发布窗口报告导出已补：`GET /api/v1/release-windows/{id}/report.json` 返回窗口级结构化报告，`GET /api/v1/release-windows/{id}/report.csv` 返回可下载 CSV，`GET /api/v1/release-windows/{id}/report.md` 返回可归档 Markdown，`GET /api/v1/release-windows/{id}/report.zip` 返回包含 manifest、JSON、CSV、Markdown 的可归档制品包；前端发布窗口详情页可选择 CSV、JSON、Markdown 或制品包。
@@ -546,7 +547,6 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 - 仓库重复、错误 URL、版本解析失败状态。
 - 历史不合规分支治理。
 - 版本策略分组/仓库作用域继承。
-- release 分支累积冲突的一键清理脚本。
 - 合并冲突制造、解决和 Run retry。
 - 多窗口并行发布。
 - 空仓库、无版本文件、异常版本号。
@@ -558,7 +558,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P2 | SA-016 release 分支累积冲突清理执行保护证据 | 种子分支清理脚本已有 dry-run 与 `--execute` 开关；当前仍缺执行前候选、执行后 GitLab 分支状态和保护边界的场景化证据 | 复核清理脚本只删除非种子临时分支，保留 main 与 seed feature 分支，并留下 dry-run/execute 对照证据 |
+| P2 | SA-014 空仓库版本解析真实 GitLab 证据 | 无版本文件、异常版本号和读取失败已有应用层/API/页面证据；当前仍缺真实 GitLab 空仓库样本的版本解析状态和用户可见诊断证据 | 构造真实空仓库或空分支样本，复核版本解析返回明确错误类型、检查路径和页面诊断，不阻塞已纳管仓库列表 |
+| P2 | SA-016 release 分支累积冲突清理执行保护证据 | dry-run、execute 和重复 execute 证据已补；脚本只清理固定种子仓库的非种子分支，保留 main 与 seed feature 分支，并输出结构化报告 | 后续保持回归 |
 | P2 | SA-002 存量数据清理动作人工复核闭环 | dry-run 清理报告、应用入口、人工复核输入、执行前检查、执行后复核和越权拒绝证据已补齐；接口不执行清理，脚本仍拒绝 `--execute` | 后续保持回归 |
 | P1 | SA-013 发布编排结果复核与失败 Run 观察 | 无阻塞冲突后 Run 创建和冲突未解决时拒绝已有后端证据；窗口详情最新 Run 复核、失败上下文和最近 Run 倒序已补 | 后续保持回归 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
@@ -568,6 +569,44 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-016 种子分支清理执行保护证据
+
+命令：
+
+```bash
+bash -n scripts/e2e/reset-gitlab-seed-branches.sh
+scripts/e2e/reset-gitlab-seed-branches.sh --help
+scripts/e2e/reset-gitlab-seed-branches.sh --report-dir .ai/reports/gitlab-seed-branch-reset/sa016-dry-run-before
+scripts/e2e/reset-gitlab-seed-branches.sh --execute --report-dir .ai/reports/gitlab-seed-branch-reset/sa016-execute
+scripts/e2e/reset-gitlab-seed-branches.sh --execute --report-dir .ai/reports/gitlab-seed-branch-reset/sa016-execute-repeat
+python3 - <<'PY'
+import json
+for path in [
+    ".ai/reports/gitlab-seed-branch-reset/sa016-dry-run-before/branches.jsonl",
+    ".ai/reports/gitlab-seed-branch-reset/sa016-execute/branches.jsonl",
+    ".ai/reports/gitlab-seed-branch-reset/sa016-execute-repeat/branches.jsonl",
+]:
+    with open(path) as f:
+        for line in f:
+            json.loads(line)
+PY
+bash scripts/dev/check-roadmap.sh
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- dry-run 报告生成：`.ai/reports/gitlab-seed-branch-reset/sa016-dry-run-before/summary.md`；发现 799 个非种子分支候选，保留 7 个种子分支，缺失种子分支为 0。
+- execute 报告生成：`.ai/reports/gitlab-seed-branch-reset/sa016-execute/summary.md`；实际删除 799 个非种子分支，执行后确认 799 个均已移除，7 个种子分支 `POST_KEEP`，缺失种子分支为 0。
+- 重复 execute 报告生成：`.ai/reports/gitlab-seed-branch-reset/sa016-execute-repeat/summary.md`；实际删除 0 个分支，7 个种子分支继续 `POST_KEEP`，证明清理后幂等。
+- 三份 `branches.jsonl` 按行 JSON 校验通过，未出现 `DELETE_FAILED`、`POST_UNEXPECTED_PRESENT` 或 `POST_MISSING_SEED`。
+- 路线图检查通过，唯一 HEAD 指向 SA-014；静态扫描通过，报告：`.ai/reports/static-scan/20260523-154248/summary.md`。
+
+结论：
+
+- SA-016 release 分支累积冲突清理已从“脚本存在”推进到“执行保护证据闭环”：清理范围限定在固定种子仓库，默认 dry-run，显式 execute 后保留 main 与 seed feature 分支，并留下执行前、执行后和复跑证据。
+- 当前执行队列转向 SA-014 空仓库版本解析真实 GitLab 证据。
 
 ### 2026-05-23 SA-002 存量清理人工复核入口
 
