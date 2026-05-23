@@ -27,20 +27,20 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-016 | 关闭窗口后 tag/merge/archive 真实 GitLab 收尾证据 | `scenario-acceptance-matrix.md` Phase 2 缺口池 | SA-016 已覆盖关闭、重复关闭、关闭后关键操作禁止、收尾 Run、报告制品和 CI 触发状态；当前仍缺关闭窗口后 tag、merge to main 和分支归档的真实 GitLab 可复核证据 |
+| 1 | HEAD | SA-002 | 存量数据清理动作人工复核闭环 | `scenario-acceptance-matrix.md` SA-002 缺口 | SA-002 已能生成 dry-run 清理动作清单；当前仍缺从动作清单进入应用层入口及人工复核受控迁移服务的闭环设计与证据 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-016 关闭窗口后 tag/merge/archive 真实 GitLab 收尾证据。
+任务：SA-002 存量数据清理动作人工复核闭环。
 
 验收出口：
 
-- 定义关闭窗口后 tag、merge to main 和 release/feature 分支归档的真实 GitLab 观察口径。
-- 样本必须能按 `windowKey`、`iterationKey` 和 `repoId` 追溯关闭前后的 tag、目标分支、release 分支和归档分支状态。
-- 验收证据应优先覆盖后端应用服务或真实 GitLab 验收脚本；如页面已有闭环，本轮不强行扩展 UI。
-- 不改变已闭环的关闭幂等、关闭后关键操作禁止、报告导出、CI 触发状态和 retry 语义。
+- 定义 `sa002-safe-cleanup.sh` 产出的动作清单如何进入应用层入口或人工复核后的受控迁移服务。
+- 每条清理动作必须保留资源类型、资源 ID、风险类型、建议动作、执行前检查和执行后复核口径。
+- 验收证据应覆盖 dry-run 报告、人工复核输入和应用层/迁移服务拒绝越权动作的测试。
+- 不允许直接修改数据库、跳过应用层不变量或自动删除远端 GitLab 资源。
 - 覆盖必要门禁；如果本轮只完成设计，必须把方案、非目标和后续 Slice 写入中文任务记录与 spec。
 - 完成后同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md` 和 `tasks/records/`。
 - 完成后运行 `bash scripts/dev/check-roadmap.sh`，确保下一个 `HEAD` 唯一且可追溯。
@@ -53,7 +53,7 @@
 - 不做仓库自动拆分、跨分组批量迁移或自动容量规划。
 - 不改变分支创建、发布编排、关闭窗口、CI 触发状态和 retry 语义。
 - 不引入新的全局工具安装或系统级依赖；若需要新依赖，必须先按本机策略确认。
-- 不通过数据库脚本绕过应用层不变量来伪造关闭后 GitLab 状态。
+- 不通过数据库脚本绕过应用层不变量来执行清理动作。
 
 ---
 

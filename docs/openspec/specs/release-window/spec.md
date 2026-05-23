@@ -97,9 +97,11 @@
 
 系统 SHALL 支持以下收尾任务类型，按顺序执行：
 
-1. MERGE_RELEASE_TO_MASTER - release 分支合并到 master
-2. ARCHIVE_BRANCHES - 归档 feature/hotfix 分支（归档原因为 released）
-3. ARCHIVE_ITERATION - 归档关联迭代
+1. MERGE_RELEASE_TO_MASTER - release 分支合并到默认分支
+2. CREATE_TAG - 在默认分支创建发布 tag
+3. TRIGGER_CI - 在 release 分支仍可访问时触发收尾 CI
+4. ARCHIVE_BRANCHES - 归档 feature/hotfix 分支与 release 分支（归档原因为 released）
+5. ARCHIVE_ITERATION - 归档关联迭代
 
 #### Scenario: 任务按顺序执行
 - **GIVEN** 一个已创建的 Run，包含多个 RunTask
@@ -112,6 +114,19 @@
 - **WHEN** 某个 RunTask 执行失败且重试次数已达上限
 - **THEN** 后续任务不再执行
 - **AND** Run 状态变为 FAILED
+
+### Requirement: 关闭窗口后的 GitLab 收尾证据
+系统 SHALL 在发布窗口关闭后留下可按 `windowKey`、`iterationKey` 和 `repoId` 复核的真实 GitLab 状态。
+
+#### Scenario: 关闭窗口后复核 GitLab 状态
+- **GIVEN** 一个已发布窗口 RW-20260115-ABCD 关联迭代 ITER-20260110-XYZ 和仓库 A
+- **AND** 仓库 A 已存在 feature 分支和 release/RW-20260115-ABCD 分支
+- **WHEN** 用户关闭发布窗口
+- **THEN** release 分支合并到仓库默认分支
+- **AND** 默认分支上创建对应发布 tag
+- **AND** 原 feature 分支不再作为活跃分支存在，`archive/released/feature-ITER-20260110-XYZ` 可查询
+- **AND** 原 release 分支不再作为活跃分支存在，`archive/released/release-RW-20260115-ABCD` 可查询
+- **AND** 收尾 Run 记录 `MERGE_TO_MASTER`、`CREATE_TAG`、`TRIGGER_CI` 和两个 `ARCHIVE_BRANCH` 步骤
 
 ### Requirement: 发布窗口列表分页与筛选
 系统 SHALL 提供发布窗口列表的服务端分页查询，使用 1-based `page` 与 `size`，并支持名称筛选。

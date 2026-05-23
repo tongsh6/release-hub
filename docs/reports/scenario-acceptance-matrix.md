@@ -79,7 +79,7 @@
 | SA-013 | 技术负责人在窗口详情页触发发布编排 | 无阻塞冲突后 Run COMPLETED/SUCCESS，冲突未解决时拒绝；Run 分页按开始时间倒序返回，窗口详情能复核最新发布编排 Run | RunItem/RunStep、GitLab 分支状态一致；失败 Run 可追溯到发布窗口、仓库、迭代、失败步骤和失败原因 | P0 已闭环；UI 侧执行后结果复核和失败 Run 观察已补；后续保持回归 |
 | SA-014 | 技术负责人在版本操作入口执行版本更新 | 版本更新 Run COMPLETED/SUCCESS，失败原因可见；多仓窗口可从版本更新弹窗提交批量版本更新请求；批量版本更新可保留成功项并暴露失败项原因；Run 详情可只选择失败版本更新项重试 | `pom.xml` / `gradle.properties` 在 release 分支真实 commit；批量请求按仓库生成 repoPath 并调用既有后端批量端点；批量部分失败 RunItem 可追溯到成功仓库、失败仓库和失败 POM 路径；retry 新 Run 通过 metadata 追溯原失败 RunItem | P0 Maven 单模块已闭环；批量版本更新前端入口、Maven 多模块、Gradle 真实写回、多仓部分失败后端/GitLab 证据和版本更新失败项重试已补；后续保持回归 |
 | SA-015 | 测试人员在 Run/窗口详情复核执行证据 | Run 列表、Run 详情、窗口详情返回完整状态；UI 触发失败版本更新后可按窗口、状态和分组筛选并复核失败 Run；窗口详情可复核冲突类型分布、分支/版本详情和建议处理方式；Run 详情可复核一个 Run 内成功项与失败项并存，并可直接重试失败项；后端/GitLab 证据可复核真实部分失败重试只选择失败项；窗口报告 CSV/JSON/Markdown 可导出最近 Run 与迭代/仓库明细 | RunItem/RunStep 可追溯到窗口、迭代、仓库和失败 POM 路径；Run 分页接口支持按发布窗口分组过滤；retry 新 Run 保留选中失败项且不重复执行成功项；报告端点按窗口聚合 Run 和 WindowIteration 明细 | P0 已闭环；Run 详情失败项重试前端入口、部分失败重试后端/GitLab 强证据与发布报告制品导出已补 |
-| SA-016 | 发布经理在窗口详情页关闭窗口并查看收尾结果 | CLOSED 状态、关闭后关键操作禁止、重复关闭幂等；窗口详情可触发报告导出；收尾 Run 可记录 CI 触发结果 | tag、merge、归档和收尾 Run 可追踪；报告导出包含窗口状态、迭代、仓库和最近 Run 证据；未配置 CI 时记录 `CI_NOT_CONFIGURED`，已触发时记录 pipeline id | P0 已闭环；真实部分失败重试后端/GitLab 证据、发布报告制品导出和 CI 触发状态证据已补 |
+| SA-016 | 发布经理在窗口详情页关闭窗口并查看收尾结果 | CLOSED 状态、关闭后关键操作禁止、重复关闭幂等；窗口详情可触发报告导出；收尾 Run 可记录 CI 触发结果；关闭后真实 GitLab 可复核 merge/tag/archive 状态 | tag、merge、归档和收尾 Run 可追踪；报告导出包含窗口状态、迭代、仓库和最近 Run 证据；未配置 CI 时记录 `CI_NOT_CONFIGURED`，已触发时记录 pipeline id；关闭后按 `windowKey/iterationKey/repoId` 追溯 tag、默认分支合并和 feature/release 归档分支 | P0 已闭环；真实部分失败重试后端/GitLab 证据、发布报告制品导出、CI 触发状态证据和关闭后 GitLab 收尾证据已补 |
 
 ## 四、场景详情
 
@@ -511,13 +511,15 @@ P0 验收焦点：
 - `run-acceptance.sh` 已补重复关闭幂等断言：首次关闭后再次关闭仍返回成功，状态保持 `CLOSED`。
 - 收尾 Run 已能按窗口 `windowKey` 查询，并包含 `ARCHIVE_BRANCH`、`MERGE_TO_MASTER`、`CREATE_TAG`、`TRIGGER_CI` 等步骤证据。
 - CI 触发结果已补应用层证据：provider 返回 pipeline id 时 `TRIGGER_CI/CI_TRIGGERED` 记录 id 与 ref；未配置 CI 时 `TRIGGER_CI/CI_NOT_CONFIGURED` 写入步骤且 RunItem finalResult 不伪装为 `SUCCESS`。
+- 关闭收尾顺序已收敛为 release 合并到默认分支、创建 tag、触发 CI、归档 feature 分支和 release 分支；应用层单测断言 tag/CI 之后才执行两个归档动作。
+- `run-acceptance.sh` 已补关闭窗口后真实 GitLab 复核：按 `windowKey/iterationKey/repoId` 验证 release 合并到 main 的 commit、tag 存在、feature/release 原分支不再活跃，且 `archive/released/...` 归档分支存在。
 - 前端已在 CLOSED 状态隐藏列表页和详情页的挂载入口；编排面板按真实 `windowKey` 加载最近 Run。
 - `run-acceptance.sh` 5.9 已补真实部分失败重试后端/GitLab 强证据：部分成功/部分阻塞 attach Run 可选择失败项重试，成功项不会被重复执行。
 - 发布窗口报告导出已补：`GET /api/v1/release-windows/{id}/report.json` 返回窗口级结构化报告，`GET /api/v1/release-windows/{id}/report.csv` 返回可下载 CSV，`GET /api/v1/release-windows/{id}/report.md` 返回可归档 Markdown，`GET /api/v1/release-windows/{id}/report.zip` 返回包含 manifest、JSON、CSV、Markdown 的可归档制品包；前端发布窗口详情页可选择 CSV、JSON、Markdown 或制品包。
 
 缺口：
 
-- 发布报告制品包归档已闭环；PDF 留作后续扩展，不进入当前队首。
+- 后续保持回归；PDF 留作后续扩展，不进入当前队首。
 
 ## 五、第一批落地顺序
 
@@ -544,7 +546,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 - 版本策略分组/仓库作用域继承。
 - release 分支累积冲突的一键清理脚本。
 - 合并冲突制造、解决和 Run retry。
-- 关闭窗口后的 tag、merge to main、分支归档真实 GitLab 验证。
+- 存量数据清理动作人工复核闭环。
 - 多窗口并行发布。
 - 空仓库、无版本文件、异常版本号。
 - 批量窗口和大规模迭代。
@@ -555,7 +557,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P2 | SA-016 关闭窗口后 tag/merge/archive 真实 GitLab 收尾证据 | 关闭、重复关闭、关闭后关键操作禁止、收尾 Run、报告制品和 CI 触发状态已补；风险池仍保留关闭后的 tag、merge to main、分支归档真实 GitLab 验证 | 设计并补齐关闭窗口后可按 windowKey/iterationKey/repoId 追溯 tag、目标分支合并和归档分支状态的真实 GitLab 证据 |
+| P2 | SA-002 存量数据清理动作人工复核闭环 | dry-run 清理报告已能输出资产统计、风险动作清单和拒绝自动执行；当前仍缺动作清单进入应用层入口或人工复核后的受控迁移服务闭环 | 设计并补齐每条清理动作的人工复核输入、执行前检查、执行后复核和越权拒绝证据 |
 | P1 | SA-013 发布编排结果复核与失败 Run 观察 | 无阻塞冲突后 Run 创建和冲突未解决时拒绝已有后端证据；窗口详情最新 Run 复核、失败上下文和最近 Run 倒序已补 | 后续保持回归 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
@@ -564,6 +566,31 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-016 关闭后 GitLab 收尾证据
+
+命令：
+
+```bash
+mvn -pl releasehub-application -am -Dtest=RunAppServiceTest,IterationAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test
+bash -n scripts/acceptance/run-acceptance.sh
+bash scripts/acceptance/run-acceptance.sh
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 关闭收尾顺序调整为 release 合并到默认分支、创建 tag、触发 CI、归档 feature 分支、归档 release 分支。
+- `RunAppServiceTest` 新增断言：`MERGE_TO_MASTER`、`CREATE_TAG`、`TRIGGER_CI` 之后才执行 feature/release 两个归档动作，且 RunItem 留下两个 `ARCHIVE_BRANCH` 步骤。
+- `IterationAppServiceTest` 新增断言：Git feature 分支创建遇到外部 I/O 异常时，迭代仓库版本记录仍会保存，后续冲突扫描可继续暴露 Git 访问风险。
+- `run-acceptance.sh` 新增 SA-016 真实 GitLab 复核：关闭窗口后检查 release 合并到 main 的 commit、tag、feature/release 原分支删除，以及 `archive/released/...` 归档分支存在。
+- 真实 GitLab 全量验收通过：`PASS=169 / FAIL=0 / SKIP=0`；SA-011 Git 权限不足/不可达探针、SA-016 close 后 merge/tag/archive 证据均通过。
+- 静态扫描通过，报告：`.ai/reports/static-scan/20260523-150144/summary.md`。
+
+结论：
+
+- SA-016 不再只依赖 Run 步骤文本证明收尾；关闭窗口后可从真实 GitLab 侧按 `windowKey/iterationKey/repoId` 复核 tag、merge 和归档状态。
+- 当前执行队列转向 SA-002 存量数据清理动作人工复核闭环。
 
 ### 2026-05-23 SA-008 多窗口并行发布可观测性
 
