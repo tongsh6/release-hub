@@ -27,32 +27,35 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-002 | 数据质量复核队列页面化 | `scenario-acceptance-matrix.md` 当前推进队列 | dry-run 已能生成 188 条人工复核动作，但仍停留在 Markdown/JSONL；需要产品化复核队列承接人工决策 |
+| 1 | HEAD | SA-001 | 发布候选评审页 / 发布经理检查清单 | `scenario-acceptance-matrix.md` 当前推进队列 | 发布候选报告已形成，但人工评审入口仍分散在报告、矩阵和台账中；需要产品化检查清单承接发布经理签核 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-002 数据质量复核队列页面化。
+任务：SA-001 发布候选评审页 / 发布经理检查清单。
 
 验收出口：
 
-- 从最新 dry-run 动作清单形成应用内复核队列，保留 `resourceType`、`resourceId`、`riskType`、`applicationEntry`、`suggestedAction`、`preExecutionCheck`、`postExecutionVerification`、`manualReviewRequired` 和人工决策状态。
-- 提供按风险类型、资源类型和复核状态筛选的最小页面/API，支持发布经理或运维人员逐项复核。
-- 复核决策必须继续走应用层入口，保留审计字段；直接执行、自动执行或绕过应用层的请求必须拒绝。
+- 提供发布候选评审页面或最小 API + 页面入口，聚合发布候选结论、全量验收状态、静态扫描状态、数据质量风险和残留非目标。
+- 页面必须引用现有真源：`docs/reports/release-candidate-2026-05-23.md`、场景矩阵、项目台账和最新任务记录；不得复制出不可维护的长篇证据。
+- 支持发布经理记录人工检查项状态和签核备注；签核只记录评审结论，不改变发布窗口、仓库、GitLab 或数据质量动作状态。
+- 明确展示阻断风险、非阻断风险和暂缓项，不把 RBAC、通知或批量迁移重新纳入当前阶段。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md`、`docs/openspec/specs/` 和 `tasks/records/`。
 - 完成后运行相关后端/API/前端专项测试，并至少运行 `bash scripts/dev/check-roadmap.sh` 和 `git diff --check`。
 
 当前输入基线：
 
-- dry-run 报告：`.ai/reports/sa002-safe-cleanup/20260523-aligned-baseline/summary.md`。
-- 待复核动作：188 条；`DRAFT_WINDOW_REMAINS=187`、`ATTACH_BRANCH_NOT_CREATED=1`。
-- 当前动作清单只读可信源：`scripts/acceptance/sa002-safe-cleanup.sh` 输出的 `actions.jsonl` / `actions.md`。
+- 发布候选报告：`docs/reports/release-candidate-2026-05-23.md`。
+- 全量验收基线：170 PASS / 0 FAIL / 0 SKIP。
+- 静态扫描基线：`.ai/reports/static-scan/20260523-193829/summary.md`。
+- 数据质量风险：188 条待复核动作，已具备应用内复核队列。
 
 已完成的前置事项：
 
 - SA-001 发布候选收口报告已形成：`docs/reports/release-candidate-2026-05-23.md`。
 - release-governance OpenSpec 已新增：`docs/openspec/specs/release-governance/spec.md`。
+- SA-002 数据质量复核队列已页面化：`frontend/src/views/data-quality/DataQualityReviewQueue.vue`。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`。
 
 非目标：
@@ -64,6 +67,7 @@
 - 不自动关闭 DRAFT 发布窗口。
 - 不直接修改数据库，不删除或迁移业务数据。
 - 不触碰 GitLab 远端资源。
+- 不引入 RBAC、通知或新的审批工作流引擎。
 - 不改变分支创建、发布编排、关闭窗口、CI 触发状态、retry、Maven/Gradle 或已有版本更新写回语义。
 - 不引入新的全局工具安装或系统级依赖；若需要新依赖，必须先按本机策略确认。
 - 不通过数据库脚本绕过应用层不变量来执行清理动作。

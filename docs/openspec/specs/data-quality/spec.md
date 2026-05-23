@@ -49,6 +49,31 @@
 - **AND** 响应说明拒绝原因
 - **AND** 动作不会进入执行状态
 
+### Requirement: 存量数据复核队列页面化
+
+系统 SHALL 提供面向发布经理或运维人员的应用内复核队列，用来承接 SA-002 dry-run 动作清单。
+
+#### Scenario: 导入 dry-run 动作形成复核队列
+
+- **WHEN** 操作者导入 `actions.jsonl` 内容
+- **THEN** 页面 SHALL 将每行 dry-run 动作解析为复核队列项
+- **AND** 队列项 SHALL 展示资源类型、资源 ID、风险类型、应用入口、建议动作和人工决策
+- **AND** 解析阶段不得触发清理执行
+
+#### Scenario: 按资源、风险和状态筛选复核动作
+
+- **WHEN** 操作者选择资源类型、风险类型或复核状态筛选条件
+- **THEN** 系统 SHALL 将筛选条件提交到应用层复核 API
+- **AND** API SHALL 只返回匹配筛选条件的复核结果
+- **AND** 复核摘要 SHALL 展示通过、待复核和拒绝数量
+
+#### Scenario: 人工决策仍不执行清理
+
+- **WHEN** 操作者将动作标记为待复核或批准进入应用入口并提交复核
+- **THEN** 系统 SHALL 返回每条动作的复核状态、原因、应用入口、执行前检查和执行后复核口径
+- **AND** 所有复核结果 SHALL 保持 `executionPermitted=false`
+- **AND** 页面不得提供直接执行、自动执行或绕过应用层的清理按钮
+
 ### Requirement: 存量数据风险类型
 
 系统 SHALL 至少识别仓库 token 明文、系统设置 token 明文、BranchCreationMode 缺失或非法、featureBranch 缺失、cloneUrl 异常、DRAFT 发布窗口残留和挂载分支未创建。

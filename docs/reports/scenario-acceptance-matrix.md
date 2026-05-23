@@ -121,6 +121,7 @@ P0 验收焦点：
 - `POST /api/v1/data-quality/cleanup-review` 已补人工复核入口：只接收 dry-run 动作进入应用层入口，返回 `ACCEPTED/PENDING/REJECTED`，且所有结果 `executionPermitted=false`。
 - 应用层复核服务登记受支持的资源/风险组合，拒绝缺少应用入口、执行前检查、执行后复核、不受支持风险、已执行动作和 `EXECUTE_DIRECTLY` / `AUTO_EXECUTE` 越权决策。
 - dry-run 报告已对齐全量验收可见口径：DRAFT 发布窗口残留使用后端 API 统计并生成逐项复核动作，底层 token、BranchCreationMode、featureBranch、cloneUrl 和 branchCreated 风险继续通过数据库只读审计补充。
+- 数据质量复核队列页面已补：可导入 `actions.jsonl`，按资源类型、风险类型和复核状态筛选，批量标记待复核或批准进入应用入口，并调用受控复核 API 返回摘要和逐项复核结果。
 - 脚本拒绝 `--execute`，不直接修改数据库、不删除发布窗口、不触碰 GitLab 远端资源，符合本地持久化验收原则。
 
 缺口：
@@ -559,7 +560,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-002 数据质量复核队列页面化 | dry-run 已能生成 188 条人工复核动作，但用户仍要阅读 Markdown/JSONL；需要产品化复核队列承接人工决策 | 从 dry-run 动作形成应用内复核队列，支持筛选、人工决策和审计导出；继续拒绝自动执行 |
+| P1 | SA-001 发布候选评审页 / 发布经理检查清单 | 发布候选报告已形成，但评审入口仍分散在报告、矩阵和台账中；需要产品化检查清单承接人工签核 | 页面聚合发布候选结论、验收状态、数据质量风险和人工签核记录；不引入 RBAC 或通知 |
+| P1 | SA-002 数据质量复核队列页面化 | 复核队列页面已补，支持导入 dry-run JSONL、筛选、人工决策和受控复核 API；直接执行和自动执行仍被拒绝 | 后续保持回归 |
 | P1 | SA-001 发布候选收口报告与下一阶段路线图 | 发布候选收口报告已形成，release-governance OpenSpec 已新增；当前分支可进入受控发布候选评审，不建议继续扩大 Phase 2 范围 | 后续保持回归 |
 | P1 | SA-002 验收脏数据报告与复核口径收敛 | dry-run 已对齐全量验收可见口径：当前报告 188 条待复核动作，其中 DRAFT_WINDOW_REMAINS=187、ATTACH_BRANCH_NOT_CREATED=1；报告 `.ai/reports/sa002-safe-cleanup/20260523-aligned-baseline/summary.md` | 后续保持回归 |
 | P1 | SA-001 全量场景验收基线复跑与发布候选判定 | 全量场景验收通过：170 PASS / 0 FAIL / 0 SKIP；静态扫描通过，报告 `.ai/reports/static-scan/20260523-193829/summary.md` | 后续保持回归 |
@@ -575,6 +577,32 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-002 数据质量复核队列页面化
+
+命令：
+
+```bash
+mvn -f backend/pom.xml -pl releasehub-application -am -Dtest=DataQualityCleanupReviewAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -f backend/pom.xml -pl releasehub-bootstrap -am -Dtest=DataQualityCleanupApiTest -Dsurefire.failIfNoSpecifiedTests=false test
+pnpm exec vitest run src/views/data-quality/__tests__/DataQualityReviewQueue.spec.ts
+pnpm run typecheck
+pnpm i18n:lint
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 应用层复核服务通过：7 PASS / 0 FAIL / 0 SKIP；新增按资源类型、风险类型和复核状态筛选复核结果。
+- API 复核入口通过：1 PASS / 0 FAIL / 0 SKIP；请求可携带筛选条件，所有结果仍保持 `executionPermitted=false`。
+- 前端数据质量复核队列通过：2 PASS / 0 FAIL；页面可导入 dry-run JSONL、批量标记人工决策、提交筛选复核并展示摘要。
+- 前端 typecheck 通过，i18n lint 通过。
+- 浏览器冒烟通过：`/data-quality/review` 可打开，导入 1 条 dry-run JSONL 后提交受控复核，页面显示 `ACCEPTED` 且允许执行为“否”。
+- 静态扫描通过：`.ai/reports/static-scan/20260523-200508/summary.md`；SpotBugs 0，typecheck PASS，frontend lint 仍有 8 个既有 warning。
+
+结论：
+
+- SA-002 已从“报告文件 + API 复核入口”推进为“应用内复核队列”。当前执行队列转向发布候选评审页 / 发布经理检查清单。
 
 ### 2026-05-23 SA-001 发布候选收口报告与下一阶段路线图
 
