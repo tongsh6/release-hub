@@ -120,6 +120,7 @@ P0 验收焦点：
 - `scripts/acceptance/sa002-safe-cleanup.sh` 已补独立 dry-run 清理报告：输出资产统计、BranchCreationMode 分布、`actions.md` 和 `actions.jsonl`，每条动作包含资源类型、资源 ID、风险类型、应用入口、建议动作、执行前检查、执行后复核、人工复核决策和已执行标记。
 - `POST /api/v1/data-quality/cleanup-review` 已补人工复核入口：只接收 dry-run 动作进入应用层入口，返回 `ACCEPTED/PENDING/REJECTED`，且所有结果 `executionPermitted=false`。
 - 应用层复核服务登记受支持的资源/风险组合，拒绝缺少应用入口、执行前检查、执行后复核、不受支持风险、已执行动作和 `EXECUTE_DIRECTLY` / `AUTO_EXECUTE` 越权决策。
+- dry-run 报告已对齐全量验收可见口径：DRAFT 发布窗口残留使用后端 API 统计并生成逐项复核动作，底层 token、BranchCreationMode、featureBranch、cloneUrl 和 branchCreated 风险继续通过数据库只读审计补充。
 - 脚本拒绝 `--execute`，不直接修改数据库、不删除发布窗口、不触碰 GitLab 远端资源，符合本地持久化验收原则。
 
 缺口：
@@ -558,7 +559,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-002 验收脏数据报告与复核口径收敛 | 全量验收通过但暴露大量历史 DRAFT 窗口残留告警；当前 safe-cleanup dry-run 和全量验收脏数据检测口径不一致，容易让用户误判存量噪声规模 | 对齐全量验收脏数据检测、safe-cleanup 报告和人工复核入口的统计口径；仍不得直接自动清库，必须保留应用入口、执行前检查、执行后复核和人工决策 |
+| P1 | SA-001 发布候选收口报告与下一阶段路线图 | Phase 2 存量缺口清账、全量基线复跑和 SA-002 脏数据复核口径收敛均已完成；需要形成发布候选收口报告和下一阶段产品路线图 | 汇总当前可发布能力、残留非目标、验收证据索引和下一阶段候选，不新增业务代码 |
+| P1 | SA-002 验收脏数据报告与复核口径收敛 | dry-run 已对齐全量验收可见口径：当前报告 188 条待复核动作，其中 DRAFT_WINDOW_REMAINS=187、ATTACH_BRANCH_NOT_CREATED=1；报告 `.ai/reports/sa002-safe-cleanup/20260523-aligned-baseline/summary.md` | 后续保持回归 |
 | P1 | SA-001 全量场景验收基线复跑与发布候选判定 | 全量场景验收通过：170 PASS / 0 FAIL / 0 SKIP；静态扫描通过，报告 `.ai/reports/static-scan/20260523-193829/summary.md` | 后续保持回归 |
 | P1 | SA-001 场景矩阵清账与下一阶段候选排序 | Phase 2 缺口池、Top Priority 和执行路线图已清账；已闭环事项不再作为当前执行任务，暂缓事项不重新进入队列 | 后续保持回归 |
 | P2 | SA-014 空仓库版本解析真实 GitLab 证据 | 真实 GitLab 空仓库 focused 验收通过：创建空项目、系统纳管、创建后解析、重新解析和仓库列表可见性共 23 PASS / 0 FAIL；报告 `.ai/reports/sa014-empty-repo-version/20260523-113039/summary.md` | 后续保持回归 |
@@ -572,6 +574,43 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-002 验收脏数据报告与复核口径收敛
+
+命令：
+
+```bash
+bash -n scripts/acceptance/sa002-safe-cleanup.sh
+scripts/acceptance/sa002-safe-cleanup.sh --report-dir .ai/reports/sa002-safe-cleanup/20260523-aligned-baseline
+python3 - <<'PY'
+import json, collections
+path = ".ai/reports/sa002-safe-cleanup/20260523-aligned-baseline/actions.jsonl"
+counts = collections.Counter()
+with open(path) as f:
+    for line in f:
+        d = json.loads(line)
+        counts[d["riskType"]] += 1
+print(dict(counts))
+print("total", sum(counts.values()))
+PY
+scripts/acceptance/sa002-safe-cleanup.sh --execute
+bash scripts/dev/check-roadmap.sh
+git diff --check
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- dry-run 生成 `.ai/reports/sa002-safe-cleanup/20260523-aligned-baseline/summary.md`、`actions.md`、`actions.jsonl`。
+- 应用 API 资产统计：359 groups / 136 repos / 372 windows / 557 iterations / 554 runs。
+- 数据库直查资产统计：10 groups / 8 repos / 6 windows / 8 iterations / 11 runs；报告显式区分两类口径。
+- 待复核动作：188 条；`DRAFT_WINDOW_REMAINS=187`、`ATTACH_BRANCH_NOT_CREATED=1`。
+- 每条动作继续包含应用入口、执行前检查、执行后复核和默认 `PENDING` 人工复核决策；`--execute` 继续拒绝。
+- 静态扫描通过：`.ai/reports/static-scan/20260523-194658/summary.md`。
+
+结论：
+
+- SA-002 已从“只按数据库口径输出少量 dry-run 动作”收敛为“按用户可见 API 口径解释全量验收脏数据告警，同时保留数据库只读审计补充”。当前执行队列转向 SA-001 发布候选收口报告与下一阶段路线图。
 
 ### 2026-05-23 SA-001 全量场景验收基线复跑与发布候选判定
 

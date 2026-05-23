@@ -27,22 +27,20 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-002 | 验收脏数据报告与复核口径收敛 | `scenario-acceptance-matrix.md` 当前推进队列 | 全量验收通过但暴露大量历史 DRAFT 窗口残留告警；脏数据检测、dry-run 报告和人工复核入口的统计口径需要对齐 |
+| 1 | HEAD | SA-001 | 发布候选收口报告与下一阶段路线图 | `scenario-acceptance-matrix.md` 当前推进队列 | Phase 2 focused slices、全量验收和脏数据复核口径均已收口；需要形成发布候选判断和下一阶段候选排序 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-002 验收脏数据报告与复核口径收敛。
+任务：SA-001 发布候选收口报告与下一阶段路线图。
 
 验收出口：
 
-- 对比 `run-acceptance.sh` 脏数据检测、`scripts/acceptance/sa002-safe-cleanup.sh` dry-run 报告和 `POST /api/v1/data-quality/cleanup-review` 的资源/风险口径。
-- 让 dry-run 报告能解释全量验收暴露的历史 DRAFT 窗口残留和 `branch_created=false` 记录，避免只报告一小部分导致风险规模失真。
-- 每条复核动作仍必须包含应用入口、执行前检查、执行后复核和人工复核决策。
-- 不允许直接自动删除、关闭窗口、修改数据库或触碰 GitLab 远端资源。
-- 更新中文 spec、场景矩阵、项目台账和任务记录。
-- 覆盖必要单测、脚本 dry-run 证据、`bash scripts/dev/check-roadmap.sh` 和静态扫描。
+- 形成中文发布候选收口报告，列出当前可发布能力、验收证据索引、数据质量状态和残留非目标。
+- 给出下一阶段候选排序，至少覆盖产品体验、运维治理和技术债三类，并说明为什么不是当前阶段继续做。
+- 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`。
+- 不新增业务代码；如果发现新的阻断缺口，必须回到对应 SA 场景重新立队首。
 - 完成后运行 `bash scripts/dev/check-roadmap.sh`，确保下一个 `HEAD` 唯一且可追溯。
 
 非目标：
