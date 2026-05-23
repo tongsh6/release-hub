@@ -26,6 +26,9 @@
           >
             {{ t('repository.syncVersion') }}
           </el-button>
+          <div v-if="versionDiagnostic" class="version-diagnostic">
+            {{ versionDiagnostic }}
+          </div>
         </el-descriptions-item>
         <el-descriptions-item :label="t('repository.columns.cloneUrl')">{{ detail?.cloneUrl || '-' }}</el-descriptions-item>
       </el-descriptions>
@@ -121,7 +124,7 @@ const versionSourceLabel = computed(() => {
 
 const versionSourceTagType = computed(() => {
   const source = initialVersion.value?.versionSource
-  if (source === 'VERSION_UNRESOLVED') {
+  if (source?.startsWith('VERSION_')) {
     return 'danger'
   }
   return source ? 'success' : 'info'
@@ -131,6 +134,21 @@ const canSyncInitialVersion = computed(() => {
   const versionInfo = initialVersion.value
   if (!versionInfo) return false
   return !versionInfo.version || versionInfo.versionSource === 'VERSION_UNRESOLVED'
+    || Boolean(versionInfo.errorType)
+})
+
+const versionDiagnostic = computed(() => {
+  const versionInfo = initialVersion.value
+  if (!versionInfo?.errorType) return ''
+  const paths = versionInfo.checkedPaths?.length ? versionInfo.checkedPaths.join(', ') : '-'
+  const branch = versionInfo.branch || detail.value?.defaultBranch || '-'
+  const message = versionInfo.message || t('repository.versionDiagnostics.defaultMessage')
+  return t('repository.versionDiagnostics.summary', {
+    errorType: versionInfo.errorType,
+    branch,
+    paths,
+    message
+  })
 })
 
 /**
@@ -236,5 +254,12 @@ onMounted(() => {
 
 .version-sync-button {
   margin-left: 8px;
+}
+
+.version-diagnostic {
+  margin-top: 6px;
+  color: var(--el-color-danger);
+  font-size: 12px;
+  line-height: 18px;
 }
 </style>

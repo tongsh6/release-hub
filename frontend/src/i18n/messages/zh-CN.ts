@@ -401,8 +401,16 @@ export default {
       GRADLE: 'Gradle',
       SYSTEM: '系统记录',
       REPO: '仓库读取',
+      VERSION_FILE_MISSING: '缺少版本文件',
+      VERSION_DECL_MISSING: '缺少版本声明',
+      VERSION_INVALID: '版本号异常',
+      VERSION_READ_ERROR: '读取失败',
       VERSION_UNRESOLVED: '解析失败',
       NOT_SET: '未设置'
+    },
+    versionDiagnostics: {
+      summary: '{message}；分支：{branch}；检查路径：{paths}；错误类型：{errorType}',
+      defaultMessage: '版本解析失败'
     },
     repoTypes: {
       SERVICE: '服务',

@@ -113,7 +113,11 @@ class RepositorySyncApiTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.version").value("1.2.3"))
-                .andExpect(jsonPath("$.data.versionSource").value("MANUAL"));
+                .andExpect(jsonPath("$.data.versionSource").value("MANUAL"))
+                .andExpect(jsonPath("$.data.branch").value("main"))
+                .andExpect(jsonPath("$.data.checkedPaths").isArray())
+                .andExpect(jsonPath("$.data.errorType").doesNotExist())
+                .andExpect(jsonPath("$.data.message").doesNotExist());
     }
 
     @Test

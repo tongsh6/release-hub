@@ -401,8 +401,16 @@ export default {
       GRADLE: 'Gradle',
       SYSTEM: 'System',
       REPO: 'Repository',
+      VERSION_FILE_MISSING: 'Version file missing',
+      VERSION_DECL_MISSING: 'Version declaration missing',
+      VERSION_INVALID: 'Invalid version',
+      VERSION_READ_ERROR: 'Read failed',
       VERSION_UNRESOLVED: 'Unresolved',
       NOT_SET: 'Not Set'
+    },
+    versionDiagnostics: {
+      summary: '{message}; branch: {branch}; checked paths: {paths}; error type: {errorType}',
+      defaultMessage: 'Version parsing failed'
     },
     repoTypes: {
       SERVICE: 'Service',

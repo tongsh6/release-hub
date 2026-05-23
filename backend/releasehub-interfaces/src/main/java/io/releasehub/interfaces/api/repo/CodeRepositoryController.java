@@ -144,14 +144,31 @@ public class CodeRepositoryController {
     @Operation(summary = "Get repository initial version")
     public ApiResponse<InitialVersionView> getInitialVersion(@PathVariable("id") String id) {
         var info = appService.getInitialVersionInfo(id);
-        return ApiResponse.success(new InitialVersionView(id, info.version(), info.versionSource()));
+        return ApiResponse.success(new InitialVersionView(
+                id,
+                info.version(),
+                info.versionSource(),
+                info.branch(),
+                info.checkedPaths(),
+                info.errorType(),
+                info.message()
+        ));
     }
 
     @PutMapping("/{id}/initial-version")
     @Operation(summary = "Set repository initial version manually")
     public ApiResponse<InitialVersionView> setInitialVersion(@PathVariable("id") String id, @RequestBody @Valid SetInitialVersionRequest request) {
         appService.setInitialVersion(id, request.getVersion());
-        return ApiResponse.success(new InitialVersionView(id, request.getVersion(), "MANUAL"));
+        var info = appService.getInitialVersionInfo(id);
+        return ApiResponse.success(new InitialVersionView(
+                id,
+                request.getVersion(),
+                "MANUAL",
+                info.branch(),
+                info.checkedPaths(),
+                info.errorType(),
+                info.message()
+        ));
     }
 
     @PostMapping("/{id}/sync-version")
@@ -159,7 +176,15 @@ public class CodeRepositoryController {
     public ApiResponse<InitialVersionView> syncInitialVersion(@PathVariable("id") String id) {
         String version = appService.syncInitialVersionFromRepo(id);
         var info = appService.getInitialVersionInfo(id);
-        return ApiResponse.success(new InitialVersionView(id, version, info.versionSource()));
+        return ApiResponse.success(new InitialVersionView(
+                id,
+                version,
+                info.versionSource(),
+                info.branch(),
+                info.checkedPaths(),
+                info.errorType(),
+                info.message()
+        ));
     }
 
     @PostMapping("/{id}/sync")

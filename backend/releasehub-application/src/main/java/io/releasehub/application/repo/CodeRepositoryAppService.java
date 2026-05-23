@@ -5,6 +5,9 @@ import io.releasehub.application.group.GroupPort;
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.settings.SettingsPort;
 import io.releasehub.application.version.VersionExtractorUseCase;
+import io.releasehub.application.version.VersionExtractorUseCase.VersionInspection;
+import io.releasehub.application.version.VersionExtractorUseCase.VersionInspectionError;
+import io.releasehub.application.version.VersionExtractorUseCase.VersionInspectionStatus;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.common.exception.ValidationException;
@@ -57,22 +60,7 @@ public class CodeRepositoryAppService {
             codeRepositoryPort.updateInitialVersion(repo.getId().value(), initialVersion.trim(), VersionSource.MANUAL.name());
             log.info("Manually set initial version {} for repo {}", initialVersion.trim(), name);
         } else {
-            // 尝试从仓库获取初始版本号
-            try {
-                versionExtractorUseCase.extractVersion(parsedCloneUrl.value(), normalizedBranch)
-                                .ifPresent(versionInfo -> {
-                                    codeRepositoryPort.updateInitialVersion(
-                                            repo.getId().value(),
-                                            versionInfo.version(),
-                                            versionInfo.source().name()
-                                    );
-                                    log.info("Extracted initial version {} from {} for repo {}",
-                                            versionInfo.version(), versionInfo.source(), name);
-                                });
-            } catch (Exception e) {
-                log.warn("Failed to extract initial version for repo {}: {}", name, e.getMessage());
-                codeRepositoryPort.updateInitialVersion(repo.getId().value(), null, "VERSION_UNRESOLVED");
-            }
+            inspectAndStoreInitialVersion(repo, normalizedBranch);
         }
 
         return repo;
@@ -253,10 +241,15 @@ public class CodeRepositoryAppService {
      * 获取仓库初始版本和来源，用于前端呈现版本解析状态。
      */
     public InitialVersionInfo getInitialVersionInfo(String repoId) {
-        get(repoId);
+        CodeRepository repo = get(repoId);
+        String versionSource = codeRepositoryPort.getInitialVersionSource(repoId).orElse(null);
         return new InitialVersionInfo(
                 codeRepositoryPort.getInitialVersion(repoId).orElse(null),
-                codeRepositoryPort.getInitialVersionSource(repoId).orElse(null)
+                versionSource,
+                repo.getDefaultBranch(),
+                checkedPathsForVersionSource(versionSource),
+                errorTypeForVersionSource(versionSource),
+                messageForVersionSource(versionSource)
         );
     }
 
@@ -266,14 +259,87 @@ public class CodeRepositoryAppService {
     @Transactional
     public String syncInitialVersionFromRepo(String repoId) {
         CodeRepository repo = get(repoId);
-        return versionExtractorUseCase.extractVersion(repo.getCloneUrl(), repo.getDefaultBranch())
-                               .map(versionInfo -> {
-                                   codeRepositoryPort.updateInitialVersion(repoId, versionInfo.version(), versionInfo.source().name());
-                                   log.info("Synced initial version {} from {} for repo {}",
-                                           versionInfo.version(), versionInfo.source(), repo.getName());
-                                   return versionInfo.version();
-                               })
-                               .orElse(null);
+        VersionInspection inspection = inspectVersion(repo.getCloneUrl(), repo.getDefaultBranch());
+        storeInitialVersionInspection(repo, inspection);
+        return inspection.version();
+    }
+
+    private void inspectAndStoreInitialVersion(CodeRepository repo, String branch) {
+        VersionInspection inspection = inspectVersion(repo.getCloneUrl(), branch);
+        storeInitialVersionInspection(repo, inspection);
+    }
+
+    private VersionInspection inspectVersion(String cloneUrl, String branch) {
+        try {
+            VersionInspection inspection = versionExtractorUseCase.inspectVersion(cloneUrl, branch);
+            if (inspection != null) {
+                return inspection;
+            }
+            return versionExtractorUseCase.extractVersion(cloneUrl, branch)
+                    .map(info -> VersionInspection.resolved(info.version(), info.source(), branch, List.of("pom.xml", "gradle.properties")))
+                    .orElseGet(() -> VersionInspection.unresolved(
+                            VersionInspectionError.VERSION_UNRESOLVED,
+                            branch,
+                            List.of("pom.xml", "gradle.properties"),
+                            "未能从仓库解析版本号"
+                    ));
+        } catch (Exception e) {
+            log.warn("Failed to inspect initial version for branch {}: {}", branch, e.getMessage());
+            return VersionInspection.unresolved(
+                    VersionInspectionError.VERSION_READ_ERROR,
+                    branch,
+                    List.of("pom.xml", "gradle.properties"),
+                    "读取版本文件失败: " + e.getMessage()
+            );
+        }
+    }
+
+    private void storeInitialVersionInspection(CodeRepository repo, VersionInspection inspection) {
+        if (inspection.status() == VersionInspectionStatus.RESOLVED) {
+            codeRepositoryPort.updateInitialVersion(
+                    repo.getId().value(),
+                    inspection.version(),
+                    inspection.source().name()
+            );
+            log.info("Extracted initial version {} from {} for repo {}",
+                    inspection.version(), inspection.source(), repo.getName());
+            return;
+        }
+
+        String errorType = inspection.errorType() != null
+                ? inspection.errorType().name()
+                : VersionInspectionError.VERSION_UNRESOLVED.name();
+        codeRepositoryPort.updateInitialVersion(repo.getId().value(), null, errorType);
+        log.info("Initial version unresolved for repo {}, errorType={}, branch={}, checkedPaths={}",
+                repo.getName(), errorType, inspection.branch(), inspection.checkedPaths());
+    }
+
+    private List<String> checkedPathsForVersionSource(String versionSource) {
+        if (versionSource == null || !versionSource.startsWith("VERSION_")) {
+            return List.of();
+        }
+        return List.of("pom.xml", "gradle.properties");
+    }
+
+    private String errorTypeForVersionSource(String versionSource) {
+        if (versionSource == null || !versionSource.startsWith("VERSION_")) {
+            return null;
+        }
+        return versionSource;
+    }
+
+    private String messageForVersionSource(String versionSource) {
+        if (versionSource == null) {
+            return null;
+        }
+        return switch (versionSource) {
+            case "VERSION_FILE_MISSING" -> "未找到 pom.xml 或 gradle.properties";
+            case "VERSION_DECL_MISSING" -> "版本文件存在，但未找到项目版本号声明";
+            case "VERSION_INVALID" -> "版本号格式异常，请检查版本文件中的 version 值";
+            case "VERSION_READ_ERROR" -> "读取版本文件失败，请检查 Git 访问权限、仓库地址和默认分支";
+            case "VERSION_UNRESOLVED" -> "未能从仓库解析版本号";
+            default -> null;
+        };
     }
 
     @Transactional
@@ -307,6 +373,21 @@ public class CodeRepositoryAppService {
                                 int mergedMrs, int closedMrs) {
     }
 
-    public record InitialVersionInfo(String version, String versionSource) {
+    public record InitialVersionInfo(
+            String version,
+            String versionSource,
+            String branch,
+            List<String> checkedPaths,
+            String errorType,
+            String message
+    ) {
+        public InitialVersionInfo {
+            checkedPaths = checkedPaths == null ? List.of() : List.copyOf(checkedPaths);
+        }
+
+        @Override
+        public List<String> checkedPaths() {
+            return List.copyOf(checkedPaths);
+        }
     }
 }

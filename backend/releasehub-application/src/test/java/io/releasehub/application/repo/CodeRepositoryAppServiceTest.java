@@ -100,8 +100,8 @@ class CodeRepositoryAppServiceTest {
     }
 
     @Test
-    @DisplayName("版本解析失败时标记 VERSION_UNRESOLVED")
-    void shouldMarkVersionUnresolvedWhenExtractorThrows() {
+    @DisplayName("版本解析失败时标记可追溯错误类型")
+    void shouldMarkVersionReadErrorWhenExtractorThrows() {
         ArgumentCaptor<CodeRepository> captor = ArgumentCaptor.forClass(CodeRepository.class);
         when(versionExtractorUseCase.extractVersion(anyString(), anyString())).thenThrow(new RuntimeException("boom"));
         when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L)));
@@ -111,7 +111,28 @@ class CodeRepositoryAppServiceTest {
 
         verify(codeRepositoryPort).save(captor.capture());
         String repoId = captor.getValue().getId().value();
-        verify(codeRepositoryPort).updateInitialVersion(repoId, null, "VERSION_UNRESOLVED");
+        verify(codeRepositoryPort).updateInitialVersion(repoId, null, "VERSION_READ_ERROR");
+    }
+
+    @Test
+    @DisplayName("版本解析无版本文件时保存具体异常状态")
+    void shouldStoreVersionFileMissingWhenExtractorReportsIt() {
+        ArgumentCaptor<CodeRepository> captor = ArgumentCaptor.forClass(CodeRepository.class);
+        when(versionExtractorUseCase.inspectVersion(anyString(), anyString())).thenReturn(
+                VersionExtractorUseCase.VersionInspection.unresolved(
+                        VersionExtractorUseCase.VersionInspectionError.VERSION_FILE_MISSING,
+                        "main",
+                        List.of("pom.xml", "gradle.properties"),
+                        "未找到 pom.xml 或 gradle.properties"
+                )
+        );
+        when(groupPort.findByCode("G001")).thenReturn(Optional.of(Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L)));
+        when(groupPort.countChildren("G001")).thenReturn(0L);
+
+        appService.create("Repo", "git@gitlab.com:test/repo.git", "main", null, false, null, "G001");
+
+        verify(codeRepositoryPort).save(captor.capture());
+        verify(codeRepositoryPort).updateInitialVersion(captor.getValue().getId().value(), null, "VERSION_FILE_MISSING");
     }
 
     @Test

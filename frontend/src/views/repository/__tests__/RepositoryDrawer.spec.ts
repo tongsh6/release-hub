@@ -164,6 +164,27 @@ describe('RepositoryDrawer', () => {
     expect(wrapper.text()).toContain('repository.versionSources.MANUAL')
   })
 
+  it('shows version parsing diagnostic in repository drawer', async () => {
+    vi.mocked(repositoryApi.getInitialVersion).mockResolvedValue({
+      repoId: 'repo-1',
+      version: null,
+      versionSource: 'VERSION_DECL_MISSING',
+      branch: 'main',
+      checkedPaths: ['pom.xml', 'gradle.properties'],
+      errorType: 'VERSION_DECL_MISSING',
+      message: 'version declaration missing'
+    } as any)
+    const wrapper = mount(RepositoryDrawer, {
+      global: { stubs }
+    })
+
+    await (wrapper.vm as any).open('repo-1')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('repository.versionSources.VERSION_DECL_MISSING')
+    expect(wrapper.text()).toContain('repository.versionDiagnostics.summary')
+  })
+
   it('shows historical non-compliant branches with manual governance boundary', async () => {
     vi.mocked(repositoryApi.getNonCompliantBranches).mockResolvedValue([
       {

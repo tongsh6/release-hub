@@ -46,6 +46,10 @@ export interface InitialVersionView {
   repoId: string
   version: string | null
   versionSource?: string | null
+  branch?: string | null
+  checkedPaths?: string[]
+  errorType?: string | null
+  message?: string | null
 }
 
 export interface NonCompliantBranch {

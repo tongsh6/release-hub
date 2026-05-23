@@ -163,7 +163,11 @@ describe('RepositoryDetail', () => {
     vi.mocked(repositoryApi.getInitialVersion).mockResolvedValue({
       repoId: 'repo-1',
       version: null,
-      versionSource: 'VERSION_UNRESOLVED'
+      versionSource: 'VERSION_FILE_MISSING',
+      branch: 'main',
+      checkedPaths: ['pom.xml', 'gradle.properties'],
+      errorType: 'VERSION_FILE_MISSING',
+      message: 'version files missing'
     })
     vi.mocked(repositoryApi.syncInitialVersion).mockResolvedValue({
       repoId: 'repo-1',
@@ -186,6 +190,26 @@ describe('RepositoryDetail', () => {
     expect(ElMessage.success).toHaveBeenCalledWith('repository.versionSyncSuccess')
     expect(wrapper.text()).toContain('1.2.3')
     expect(wrapper.text()).toContain('repository.versionSources.POM')
+  })
+
+  it('shows version parsing diagnostic context when repository version is unresolved', async () => {
+    vi.mocked(repositoryApi.getInitialVersion).mockResolvedValue({
+      repoId: 'repo-1',
+      version: null,
+      versionSource: 'VERSION_INVALID',
+      branch: 'release/RW-1',
+      checkedPaths: ['pom.xml'],
+      errorType: 'VERSION_INVALID',
+      message: 'invalid version in pom.xml'
+    })
+
+    const wrapper = shallowMount(RepositoryDetail, {
+      global: { stubs }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('repository.versionSources.VERSION_INVALID')
+    expect(wrapper.text()).toContain('repository.versionDiagnostics.summary')
   })
 
   it('hides version rescan action when the initial version is resolved', async () => {
