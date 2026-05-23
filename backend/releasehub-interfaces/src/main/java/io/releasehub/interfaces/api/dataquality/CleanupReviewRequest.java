@@ -16,6 +16,9 @@ public class CleanupReviewRequest {
     private String reviewer;
 
     private String sourceReport;
+    private String resourceTypeFilter;
+    private String riskTypeFilter;
+    private String reviewStatusFilter;
 
     @Valid
     @NotEmpty
@@ -25,6 +28,9 @@ public class CleanupReviewRequest {
         return new CleanupReviewCommand(
                 reviewer,
                 sourceReport,
-                actions.stream().map(CleanupActionReviewRequest::toCommand).toList());
+                actions.stream().map(CleanupActionReviewRequest::toCommand).toList(),
+                resourceTypeFilter,
+                riskTypeFilter,
+                reviewStatusFilter);
     }
 }

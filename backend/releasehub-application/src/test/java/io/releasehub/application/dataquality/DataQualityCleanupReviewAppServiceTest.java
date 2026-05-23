@@ -41,6 +41,25 @@ class DataQualityCleanupReviewAppServiceTest {
     }
 
     @Test
+    void shouldFilterReviewQueueByResourceRiskAndStatus() {
+        CleanupReviewResult result = service.review(new CleanupReviewCommand(
+                "qa",
+                "report",
+                List.of(
+                        validDraftWindowAction("APPROVE_FOR_APPLICATION_ENTRY"),
+                        validWindowIterationAction("PENDING")),
+                "window_iteration",
+                "ATTACH_BRANCH_NOT_CREATED",
+                "PENDING"));
+
+        assertThat(result.total()).isEqualTo(1);
+        assertThat(result.pending()).isEqualTo(1);
+        assertThat(result.actions().get(0).resourceType()).isEqualTo("window_iteration");
+        assertThat(result.actions().get(0).riskType()).isEqualTo("ATTACH_BRANCH_NOT_CREATED");
+        assertThat(result.actions().get(0).reviewStatus()).isEqualTo("PENDING");
+    }
+
+    @Test
     void shouldRejectDirectExecutionDecision() {
         CleanupReviewResult result = service.review(new CleanupReviewCommand(
                 "qa",
@@ -108,6 +127,20 @@ class DataQualityCleanupReviewAppServiceTest {
                 "/release-windows/{resourceId}",
                 "确认发布窗口仍为 DRAFT，并由发布经理判断继续发布、关闭或删除。",
                 "复核窗口状态已符合业务决策；如删除，仅通过应用层删除保护完成。",
+                decision);
+    }
+
+    private CleanupActionInput validWindowIterationAction(String decision) {
+        return new CleanupActionInput(
+                "window_iteration",
+                "window-1::repo-1::ITER-1",
+                "ATTACH_BRANCH_NOT_CREATED",
+                "在发布窗口页复核挂载关系与分支状态；不得直接改写 branchCreated。",
+                false,
+                "window_iteration.branch_created:window-1",
+                "/release-windows/{windowId}",
+                "确认窗口挂载关系仍存在，且 branchCreated 仍为 false。",
+                "复核窗口发布计划和 Git 分支状态一致，不伪造 branchCreated。",
                 decision);
     }
 }

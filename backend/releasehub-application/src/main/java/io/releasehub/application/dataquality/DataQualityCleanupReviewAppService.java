@@ -67,6 +67,11 @@ public class DataQualityCleanupReviewAppService {
         int rejected = 0;
         for (CleanupActionInput action : command.actions()) {
             CleanupActionReview review = reviewAction(action);
+            if (!matchesFilter(review.resourceType(), command.resourceTypeFilter())
+                    || !matchesFilter(review.riskType(), command.riskTypeFilter())
+                    || !matchesFilter(review.reviewStatus(), command.reviewStatusFilter())) {
+                continue;
+            }
             reviews.add(review);
             switch (review.reviewStatus()) {
                 case "ACCEPTED" -> accepted++;
@@ -131,6 +136,10 @@ public class DataQualityCleanupReviewAppService {
                 contract == null ? null : contract.preExecutionCheck(),
                 contract == null ? null : contract.postExecutionVerification(),
                 false);
+    }
+
+    private static boolean matchesFilter(String actual, String expected) {
+        return isBlank(expected) || trim(actual).equalsIgnoreCase(trim(expected));
     }
 
     private static boolean requiresField(String actual, String expected) {

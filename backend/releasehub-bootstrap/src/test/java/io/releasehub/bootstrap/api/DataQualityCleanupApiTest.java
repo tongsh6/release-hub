@@ -32,6 +32,8 @@ class DataQualityCleanupApiTest {
                 {
                   "reviewer": "qa-owner",
                   "sourceReport": ".ai/reports/sa002-safe-cleanup/manual/actions.jsonl",
+                  "resourceTypeFilter": "release_window",
+                  "riskTypeFilter": "DRAFT_WINDOW_REMAINS",
                   "actions": [
                     {
                       "resourceType": "release_window",

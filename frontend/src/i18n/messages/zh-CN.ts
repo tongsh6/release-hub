@@ -18,6 +18,7 @@ export default {
     iterations: '迭代',
     repositories: '仓库',
     runs: '执行记录',
+    dataQualityReview: '数据质量复核',
     blockBoard: '阻塞看板',
     settings: '配置',
     groups: '分组设置'
@@ -743,6 +744,39 @@ export default {
       MERGE_CONFLICT: '合并冲突',
       GIT_PERMISSION_DENIED: 'Git 权限不足',
       GIT_UNAVAILABLE: 'Git 不可达'
+    }
+  },
+  dataQuality: {
+    review: {
+      title: '数据质量复核队列',
+      executionBoundary: '只复核，不执行',
+      reviewer: '复核人',
+      sourceReport: '来源报告',
+      importFile: '导入文件',
+      loadQueue: '载入队列',
+      jsonlPlaceholder: '粘贴 actions.jsonl 内容',
+      queueTitle: '待复核动作',
+      markAllPending: '全部待复核',
+      markAllApproved: '全部批准入口',
+      reviewQueue: '提交复核',
+      resourceType: '资源类型',
+      resourceId: '资源 ID',
+      riskType: '风险类型',
+      reviewStatus: '复核状态',
+      decision: '人工决策',
+      applicationEntry: '应用入口',
+      reason: '原因',
+      executionPermitted: '允许执行',
+      imported: '已导入',
+      accepted: '已通过',
+      pending: '待复核',
+      rejected: '已拒绝',
+      approve: '批准进入应用入口',
+      parseFailed: '解析失败',
+      emptyInput: '请先导入 dry-run 动作',
+      invalidLine: '第 {line} 行缺少资源类型、资源 ID 或风险类型',
+      queueLoaded: '已载入 {count} 条动作',
+      reviewComplete: '已复核 {count} 条动作'
     }
   },
   orchestration: {

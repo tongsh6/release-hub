@@ -18,6 +18,7 @@ export default {
     iterations: 'Iterations',
     repositories: 'Repositories',
     runs: 'Runs',
+    dataQualityReview: 'Data Quality Review',
     blockBoard: 'Blocks',
     settings: 'Settings',
     groups: 'Groups'
@@ -743,6 +744,39 @@ export default {
       MERGE_CONFLICT: 'Merge Conflict',
       GIT_PERMISSION_DENIED: 'Git Permission Denied',
       GIT_UNAVAILABLE: 'Git Unavailable'
+    }
+  },
+  dataQuality: {
+    review: {
+      title: 'Data Quality Review Queue',
+      executionBoundary: 'Review only, no execution',
+      reviewer: 'Reviewer',
+      sourceReport: 'Source Report',
+      importFile: 'Import File',
+      loadQueue: 'Load Queue',
+      jsonlPlaceholder: 'Paste actions.jsonl content',
+      queueTitle: 'Review Actions',
+      markAllPending: 'Mark Pending',
+      markAllApproved: 'Approve All',
+      reviewQueue: 'Submit Review',
+      resourceType: 'Resource Type',
+      resourceId: 'Resource ID',
+      riskType: 'Risk Type',
+      reviewStatus: 'Review Status',
+      decision: 'Manual Decision',
+      applicationEntry: 'Application Entry',
+      reason: 'Reason',
+      executionPermitted: 'Execution Permitted',
+      imported: 'Imported',
+      accepted: 'Accepted',
+      pending: 'Pending',
+      rejected: 'Rejected',
+      approve: 'Approve for Application Entry',
+      parseFailed: 'Parse failed',
+      emptyInput: 'Import dry-run actions first',
+      invalidLine: 'Line {line} is missing resource type, resource ID, or risk type',
+      queueLoaded: '{count} actions loaded',
+      reviewComplete: '{count} actions reviewed'
     }
   },
   orchestration: {
