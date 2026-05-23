@@ -457,10 +457,11 @@ P0 验收焦点：
 - 真实 GitLab 验收已验证 Maven 单模块 `pom.xml` 在 release 分支产生 `ReleaseHub: Update` commit。
 - Playwright 已覆盖前端真实旅程：复用同一个 serial UI 旅程创建出的发布窗口、迭代和仓库，从窗口详情打开“执行版本更新”，提交目标版本、仓库路径和 POM 路径，并断言最终版本更新请求体正确。
 - 版本解析异常样本已具备可追溯状态：`VERSION_FILE_MISSING`、`VERSION_DECL_MISSING`、`VERSION_INVALID`、`VERSION_READ_ERROR`，初始版本接口返回默认分支、检查路径、错误类型和说明文案；仓库详情页和抽屉展示诊断并保留重新解析入口。
+- `scripts/acceptance/sa014-empty-repo-version-evidence.sh` 已补真实 GitLab 空仓库样本证据：空项目分支数为 0，经系统纳管后创建后解析和重新解析均返回 `VERSION_FILE_MISSING`，不填充假版本且不阻塞仓库列表；报告：`.ai/reports/sa014-empty-repo-version/20260523-113039/summary.md`。
 
 缺口：
 
-- Maven 多模块、Gradle 真实写回、多仓部分失败、版本更新失败重试和解析异常诊断已补；后续保持回归。
+- Maven 多模块、Gradle 真实写回、多仓部分失败、版本更新失败重试、解析异常诊断和真实 GitLab 空仓库样本均已补；后续保持回归。
 
 ### SA-015：测试人员复核发布状态和执行证据
 
@@ -558,7 +559,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P2 | SA-014 空仓库版本解析真实 GitLab 证据 | 无版本文件、异常版本号和读取失败已有应用层/API/页面证据；已补 focused 验收脚本 `scripts/acceptance/sa014-empty-repo-version-evidence.sh`，当前仍待在本机网络权限下执行真实 GitLab 空仓库样本复核 | 运行 focused 脚本并生成 `.ai/reports/sa014-empty-repo-version/...` 证据，复核版本解析返回明确错误类型、检查路径和页面诊断，不阻塞已纳管仓库列表 |
+| P1 | SA-001 场景矩阵清账与下一阶段候选排序 | SA-014 真实 GitLab 空仓库证据已补，当前 Phase 2 缺口池中多项已在后续切片闭环或明确暂缓；矩阵、台账和路线图需要做一次产品级清账，避免继续从历史 stale 缺口中挑任务 | 逐项复核 Phase 2 缺口池、Top Priority、场景详情和关键证据索引，产出下一阶段唯一 HEAD；不得把“后续保持回归”或已暂缓事项重新放回执行队列 |
+| P2 | SA-014 空仓库版本解析真实 GitLab 证据 | 真实 GitLab 空仓库 focused 验收通过：创建空项目、系统纳管、创建后解析、重新解析和仓库列表可见性共 23 PASS / 0 FAIL；报告 `.ai/reports/sa014-empty-repo-version/20260523-113039/summary.md` | 后续保持回归 |
 | P2 | SA-016 release 分支累积冲突清理执行保护证据 | dry-run、execute 和重复 execute 证据已补；脚本只清理固定种子仓库的非种子分支，保留 main 与 seed feature 分支，并输出结构化报告 | 后续保持回归 |
 | P2 | SA-002 存量数据清理动作人工复核闭环 | dry-run 清理报告、应用入口、人工复核输入、执行前检查、执行后复核和越权拒绝证据已补齐；接口不执行清理，脚本仍拒绝 `--execute` | 后续保持回归 |
 | P1 | SA-013 发布编排结果复核与失败 Run 观察 | 无阻塞冲突后 Run 创建和冲突未解决时拒绝已有后端证据；窗口详情最新 Run 复核、失败上下文和最近 Run 倒序已补 | 后续保持回归 |
@@ -587,11 +589,12 @@ scripts/acceptance/sa014-empty-repo-version-evidence.sh
 - 脚本语法检查通过。
 - 应用层版本解析回归通过：`VersionExtractorTest` / `CodeRepositoryAppServiceTest` 共 22 PASS / 0 FAIL / 0 SKIP。
 - 仓库详情页/抽屉诊断展示回归通过：`RepositoryDetail.spec.ts` / `RepositoryDrawer.spec.ts` 共 6 PASS / 0 FAIL / 0 SKIP。
-- 当前会话 sandbox 内直接运行脚本时无法访问本机 `localhost:8080`；按策略申请本机网络权限运行被自动审批额度限制拒绝，因此真实 GitLab 空仓库执行证据仍待复核，SA-014 不出队。
+- 真实 GitLab 空仓库 focused 验收通过：23 PASS / 0 FAIL。
+- 证据报告：`.ai/reports/sa014-empty-repo-version/20260523-113039/summary.md`；GitLab 项目 `e2e-user/sa014-empty-20260523-113039`，分支数 0；ReleaseHub 仓库 ID `daa74c37-73c8-4ee2-a680-bc3b021042b8`。
 
 结论：
 
-- SA-014 已具备可重复执行的真实 GitLab 空仓库证据入口和离线回归基线；当前缺口收敛为运行 focused 脚本并归档 `.ai/reports/sa014-empty-repo-version/...`。
+- SA-014 空仓库版本解析真实 GitLab 证据已闭环；当前执行队列转向 SA-001 场景矩阵清账与下一阶段候选排序。
 
 ### 2026-05-23 SA-016 种子分支清理执行保护证据
 

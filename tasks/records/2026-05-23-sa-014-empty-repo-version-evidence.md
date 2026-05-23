@@ -41,13 +41,11 @@ scripts/acceptance/sa014-empty-repo-version-evidence.sh
 - 脚本语法检查通过。
 - `VersionExtractorTest` / `CodeRepositoryAppServiceTest`：22 PASS / 0 FAIL / 0 SKIP。
 - `RepositoryDetail.spec.ts` / `RepositoryDrawer.spec.ts`：6 PASS / 0 FAIL / 0 SKIP。
-- 当前会话 sandbox 内直接运行脚本时无法访问本机 `localhost:8080`。
-- 按策略申请本机网络权限运行脚本时，自动审批因额度限制拒绝；本轮不绕过该限制。
+- `scripts/acceptance/sa014-empty-repo-version-evidence.sh`：23 PASS / 0 FAIL。
+- 真实 GitLab 项目：`e2e-user/sa014-empty-20260523-113039`，分支数 0。
+- ReleaseHub 仓库 ID：`daa74c37-73c8-4ee2-a680-bc3b021042b8`。
+- 证据报告：`.ai/reports/sa014-empty-repo-version/20260523-113039/summary.md`。
 
 ## 结论
 
-SA-014 已补齐真实 GitLab 空仓库证据的可重复执行入口和离线回归基线，但真实本机 GitLab 执行证据尚未归档。当前路线图 HEAD 继续保留 SA-014，下一步需要在本机网络权限可用后运行：
-
-```bash
-scripts/acceptance/sa014-empty-repo-version-evidence.sh
-```
+SA-014 空仓库版本解析真实 GitLab 证据已闭环。空仓库不会被误判为正常版本，不会填充假版本，重新解析仍返回明确诊断，且仓库列表仍可见。当前路线图 HEAD 转向 SA-001 场景矩阵清账与下一阶段候选排序。
