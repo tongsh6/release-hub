@@ -105,6 +105,18 @@ export default {
     publish: 'Publish',
     close: 'Close',
     groupPath: 'Group Path',
+    parallelScope: {
+      title: 'Same-Group Parallel Windows',
+      shortTitle: 'Parallel Windows',
+      single: 'No parallel windows',
+      summary: '{count} active: {keys}',
+      activeCount: '{count} active windows',
+      currentWindow: 'Current Window',
+      groupCode: 'Group Code',
+      iterationCount: 'Iterations',
+      repoCount: 'Repositories',
+      planItems: 'Release Plan'
+    },
     configureTime: 'Configure Time',
     confirmFreeze: 'Confirm to freeze this release window?',
     confirmPublish: 'Confirm to publish this release window?',

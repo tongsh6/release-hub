@@ -105,6 +105,18 @@ export default {
     publish: '发布',
     close: '关闭',
     groupPath: '组织路径',
+    parallelScope: {
+      title: '同组并行发布窗口',
+      shortTitle: '并行窗口',
+      single: '无并行窗口',
+      summary: '{count} 个活跃：{keys}',
+      activeCount: '{count} 个活跃窗口',
+      currentWindow: '当前窗口',
+      groupCode: '组织编码',
+      iterationCount: '迭代数',
+      repoCount: '仓库数',
+      planItems: '发布计划'
+    },
     configureTime: '配置时间',
     confirmFreeze: '确认冻结此发布窗口？',
     confirmPublish: '确认发布此发布窗口？',
