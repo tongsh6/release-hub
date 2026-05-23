@@ -60,6 +60,41 @@ class GroupAppServiceValidationTest {
     }
 
     @Test
+    void createShouldAutoGenerateSequentialTopLevelCodes() {
+        Group first = svc.create("First", null, null);
+        Group second = svc.create("Second", "", null);
+
+        assertEquals("001", first.getCode());
+        assertEquals("002", second.getCode());
+        assertNull(first.getParentCode());
+        assertNull(second.getParentCode());
+    }
+
+    @Test
+    void createShouldAutoGenerateHierarchicalChildCodes() {
+        port.save(Group.create("Parent", "PARENT", null, now));
+
+        Group first = svc.create("Child 1", null, "PARENT");
+        Group second = svc.create("Child 2", " ", "PARENT");
+
+        assertEquals("PARENT001", first.getCode());
+        assertEquals("PARENT002", second.getCode());
+        assertEquals("PARENT", first.getParentCode());
+        assertEquals("PARENT", second.getParentCode());
+    }
+
+    @Test
+    void createShouldContinueFromExistingNumericSiblings() {
+        port.save(Group.create("First", "001", null, now));
+        port.save(Group.create("Custom", "CUSTOM", null, now));
+        port.save(Group.create("Ninth", "009", null, now));
+
+        Group next = svc.create("Next", null, null);
+
+        assertEquals("010", next.getCode());
+    }
+
+    @Test
     void updateShouldFailWhenParentIsSelf() {
         port.save(Group.create("Self", "SELF", null, now));
 

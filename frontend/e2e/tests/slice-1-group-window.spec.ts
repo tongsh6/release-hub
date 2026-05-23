@@ -57,6 +57,19 @@ test.describe.serial('Slice-1: Group + Window', () => {
     await expect(page.locator('.detail-card')).toContainText(groupCode, { timeout: 5000 })
   }
 
+  async function selectGroupFromTreeByName(page: Page, groupName: string) {
+    const node = page.locator('.el-tree-node__content').filter({ hasText: groupName }).last()
+    await expect(node).toBeVisible({ timeout: 5000 })
+    await node.click({ position: { x: 24, y: 12 } })
+    await expect(page.locator('.detail-card')).toContainText(groupName, { timeout: 5000 })
+  }
+
+  async function groupCodeFromTreeNode(page: Page, groupName: string) {
+    const node = page.locator('.el-tree-node__content').filter({ hasText: groupName }).last()
+    await expect(node).toBeVisible({ timeout: 5000 })
+    return (await node.locator('.node-code').innerText()).trim()
+  }
+
   async function selectGroupInDialog(page: Page, dialog: ReturnType<Page['locator']>, groupCode: string) {
     await dialog.locator('.el-tree-select, .el-select').first().click(FORCE)
     await page.waitForTimeout(800)
@@ -193,7 +206,38 @@ test.describe.serial('Slice-1: Group + Window', () => {
     await expect(page.locator('.detail-card')).toContainText(leaf)
   })
 
-  test('2.1 — move empty leaf group with parent tree selector', async ({ page }) => {
+  test('2.1 — create groups with auto-generated codes via UI', async ({ page }) => {
+    const autoParentName = tcName('AUTO-P')
+    const autoChildName = tcName('AUTO-C')
+
+    await ensureLoggedIn(page)
+    await page.goto('/groups')
+    await page.waitForTimeout(1000)
+
+    await page.getByRole('button', { name: L['group.createTop'] }).click(FORCE)
+    await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 3000 })
+    const parentDialog = page.locator('.el-dialog').last()
+    await parentDialog.getByRole('textbox', { name: L['group.name'] }).fill(autoParentName)
+    await expect(parentDialog.getByRole('textbox', { name: L['group.code'], exact: true })).toBeEmpty()
+    await confirmDialog(page)
+
+    await selectGroupFromTreeByName(page, autoParentName)
+    const autoParentCode = await groupCodeFromTreeNode(page, autoParentName)
+    expect(autoParentCode).toMatch(/^\d{3}$/)
+
+    await page.locator('.detail-card .el-button--success').filter({ hasText: L['group.createChild'] }).click(FORCE)
+    await expect(page.locator('.el-dialog').last()).toBeVisible({ timeout: 3000 })
+    const childDialog = page.locator('.el-dialog').last()
+    await childDialog.getByRole('textbox', { name: L['group.name'] }).fill(autoChildName)
+    await expect(childDialog.getByRole('textbox', { name: L['group.code'], exact: true })).toBeEmpty()
+    await confirmDialog(page)
+
+    await selectGroupFromTreeByName(page, autoChildName)
+    const autoChildCode = await groupCodeFromTreeNode(page, autoChildName)
+    expect(autoChildCode).toMatch(new RegExp(`^${autoParentCode}\\d{3}$`))
+  })
+
+  test('2.2 — move empty leaf group with parent tree selector', async ({ page }) => {
     await ensureLoggedIn(page)
     await page.goto('/groups')
     await page.waitForTimeout(1000)
