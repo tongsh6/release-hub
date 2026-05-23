@@ -32,6 +32,7 @@ import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
 import io.releasehub.domain.window.WindowIteration;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -51,6 +52,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -129,6 +131,7 @@ class RunAppServiceTest {
         when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch)))
                 .thenReturn(GitBranchPort.BranchStatus.present("def456"));
         when(gitBranchPort.archiveBranch(any(), any(), eq(featureBranch), eq("released"))).thenReturn(true);
+        when(gitBranchPort.archiveBranch(any(), any(), eq(releaseBranch), eq("released"))).thenReturn(true);
         when(gitBranchPort.mergeBranch(any(), any(), eq(releaseBranch), eq("main"), any()))
                 .thenReturn(GitBranchPort.MergeResult.success());
         when(gitBranchPort.createTag(any(), any(), eq("v1.2.0"), eq("main"), eq("Release v1.2.0"))).thenReturn(true);
@@ -448,6 +451,31 @@ class RunAppServiceTest {
                 assertThat(step.message()).contains("pipeline-42", releaseBranch);
             });
             verify(gitBranchPort).triggerPipeline(any(), any(), eq(releaseBranch));
+            verify(runPort).save(any(Run.class));
+        }
+
+        @Test
+        @DisplayName("关闭收尾在 tag 与 CI 之后归档 feature 和 release 分支")
+        void shouldArchiveFeatureAndReleaseBranchesAfterTagAndCi() {
+            setupCleanupRun();
+            when(gitBranchPort.triggerPipeline(any(), any(), eq(releaseBranch))).thenReturn("pipeline-42");
+
+            Run result = service.executeCleanup(windowId, "system");
+
+            RunItem item = result.getItems().get(0);
+            assertThat(item.getFinalResult()).isEqualTo(RunItemResult.SUCCESS);
+            assertThat(item.getSteps())
+                    .filteredOn(step -> step.actionType() == ActionType.ARCHIVE_BRANCH)
+                    .hasSize(2)
+                    .anySatisfy(step -> assertThat(step.message()).contains("Archived feature branch: " + featureBranch))
+                    .anySatisfy(step -> assertThat(step.message()).contains("Archived release branch: " + releaseBranch));
+
+            InOrder order = inOrder(gitBranchPort);
+            order.verify(gitBranchPort).mergeBranch(any(), any(), eq(releaseBranch), eq("main"), any());
+            order.verify(gitBranchPort).createTag(any(), any(), eq("v1.2.0"), eq("main"), eq("Release v1.2.0"));
+            order.verify(gitBranchPort).triggerPipeline(any(), any(), eq(releaseBranch));
+            order.verify(gitBranchPort).archiveBranch(any(), any(), eq(featureBranch), eq("released"));
+            order.verify(gitBranchPort).archiveBranch(any(), any(), eq(releaseBranch), eq("released"));
             verify(runPort).save(any(Run.class));
         }
     }

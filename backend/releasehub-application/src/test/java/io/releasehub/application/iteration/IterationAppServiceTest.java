@@ -176,6 +176,34 @@ class IterationAppServiceTest {
     }
 
     @Test
+    @DisplayName("addRepos 时 Git 建分支异常不阻断版本信息保存")
+    void shouldSaveVersionInfoWhenFeatureBranchSetupThrows() {
+        Instant now = Instant.now();
+        Iteration existing = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.<RepoId>of(), IterationStatus.ACTIVE, now, now);
+        CodeRepository repo = CodeRepository.rehydrate(
+                RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git",
+                "master", "G001", RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(existing));
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+        when(codeRepositoryPort.getInitialVersion("repo-1")).thenReturn(Optional.of("1.0.0"));
+        when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
+        when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
+        when(branchRuleUseCase.isCompliant("feature/ITER-1", "G001", "repo-1")).thenReturn(true);
+        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
+        when(gitBranchPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/ITER-1", "master"))
+                .thenThrow(new RuntimeException("I/O error"));
+
+        iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.AUTO, null);
+
+        verify(iterationRepoPort).saveWithVersion(
+                eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
+                eq("feature/ITER-1"), eq("SYSTEM"), any(Instant.class), eq(BranchCreationMode.AUTO));
+        verify(iterationPort).save(any(Iteration.class));
+    }
+
+    @Test
     @DisplayName("addRepos 时拒绝跨分组仓库且不创建分支或版本记录")
     void shouldRejectAddReposWhenRepositoryBelongsToDifferentGroup() {
         Instant now = Instant.now();

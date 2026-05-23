@@ -238,9 +238,13 @@ public class IterationAppService {
 
         if (plan.mode != BranchCreationMode.EXISTING) {
             var gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-            boolean branchCreated = gitPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), featureBranch, repo.getDefaultBranch());
-            if (!branchCreated) {
-                log.warn("Feature branch {} already exists or failed to create for repo {}", featureBranch, repoId.value());
+            try {
+                boolean branchCreated = gitPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), featureBranch, repo.getDefaultBranch());
+                if (!branchCreated) {
+                    log.warn("Feature branch {} already exists or failed to create for repo {}", featureBranch, repoId.value());
+                }
+            } catch (RuntimeException e) {
+                log.warn("Feature branch {} setup failed for repo {}: {}", featureBranch, repoId.value(), e.getMessage());
             }
         }
 
