@@ -39,3 +39,25 @@
 #### Scenario: 表单校验
 - **WHEN** 用户创建或编辑仓库
 - **THEN** 表单校验 projectId、gitlabProjectId、name、cloneUrl、defaultBranch、monoRepo，失败弹出提示；成功后关闭弹窗并刷新列表
+
+### Requirement: 仓库版本解析异常可追溯
+
+系统 SHALL 在仓库初始版本解析失败时返回可追溯诊断，避免只展示笼统的解析失败。
+
+#### Scenario: 版本解析缺少版本文件
+
+- **WHEN** 仓库默认分支没有 `pom.xml` 和 `gradle.properties`
+- **THEN** `GET /api/v1/repositories/{id}/initial-version` 返回 `versionSource=VERSION_FILE_MISSING`
+- **AND** 返回默认分支、检查路径、错误类型和用户可见说明
+
+#### Scenario: 版本文件存在但缺少版本声明
+
+- **WHEN** 仓库默认分支存在版本文件但没有项目版本号声明
+- **THEN** 初始版本接口返回 `versionSource=VERSION_DECL_MISSING`
+- **AND** 仓库详情页和仓库抽屉展示错误类型、分支和检查路径
+
+#### Scenario: 版本号格式异常
+
+- **WHEN** 仓库版本文件中的版本值不是 ReleaseHub 支持的版本值
+- **THEN** 初始版本接口返回 `versionSource=VERSION_INVALID`
+- **AND** 前端保留“重新解析版本”入口，允许用户修复仓库文件后重新同步

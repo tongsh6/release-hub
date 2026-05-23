@@ -166,7 +166,7 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| P2 | SA-014 版本解析异常样本治理 | Maven 单模块、多模块、Gradle 真实写回、批量版本更新、部分失败和 retry 已闭环；风险池仍保留空仓库、无版本文件和异常版本号样本 | 版本解析异常样本具备用户可见状态、可追溯失败原因和验收证据，不把异常仓库表现成不明失败 |
+| P2 | SA-008 多窗口并行发布可观测性 | 发布窗口创建、DRAFT/PUBLISHED/CLOSED、列表/日历、组织筛选、冻结和删除保护已闭环；风险池仍保留多窗口并行发布样本 | 同一组织多个发布窗口并行存在时，列表、日历、详情和发布计划具备互不污染的验收证据 |
 
 ---
 
@@ -180,6 +180,7 @@
 | 上轮验收报告 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
 | 验收脚本 | `scripts/acceptance/run-acceptance.sh` + `scripts/acceptance/sa009-remove-repo-gitlab-evidence.sh` | 全量脚本含服务生命周期、SA-010/SA-011/SA-014/SA-015/SA-016 强证据；SA-009 专用脚本固定复核移除仓库 feature 分支归档和已挂窗锁定保护 |
 | 存量数据安全清理 | `scripts/acceptance/sa002-safe-cleanup.sh` | 2026-05-23 SA-002 dry-run 清理报告入口；输出 `summary.md`、`actions.md`、`actions.jsonl`，拒绝自动执行 |
+| 版本解析异常诊断 | `GET /api/v1/repositories/{id}/initial-version` | 2026-05-23 SA-014 异常样本治理；返回 `VERSION_FILE_MISSING` / `VERSION_DECL_MISSING` / `VERSION_INVALID` / `VERSION_READ_ERROR`、默认分支、检查路径和说明文案 |
 | 本地统一启停脚本 | `scripts/dev/start-local-env.sh` | `start|hold|stop|restart|status`；推荐用 `hold` 托管前后端联调环境 |
 | 种子初始化 | `scripts/e2e/init-gitlab.sh` | 幂等，3 个种子仓库 |
 | 种子分支清理 | `scripts/e2e/reset-gitlab-seed-branches.sh` | 默认 dry-run；`--execute` 清理非种子分支，保留 main 与 seed feature 分支 |

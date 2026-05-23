@@ -452,11 +452,11 @@ P0 验收焦点：
 - SA-014 已优先绑定干净窗口；干净窗口存在时，版本更新或 GitLab commit 验证失败计为 FAIL。
 - 真实 GitLab 验收已验证 Maven 单模块 `pom.xml` 在 release 分支产生 `ReleaseHub: Update` commit。
 - Playwright 已覆盖前端真实旅程：复用同一个 serial UI 旅程创建出的发布窗口、迭代和仓库，从窗口详情打开“执行版本更新”，提交目标版本、仓库路径和 POM 路径，并断言最终版本更新请求体正确。
+- 版本解析异常样本已具备可追溯状态：`VERSION_FILE_MISSING`、`VERSION_DECL_MISSING`、`VERSION_INVALID`、`VERSION_READ_ERROR`，初始版本接口返回默认分支、检查路径、错误类型和说明文案；仓库详情页和抽屉展示诊断并保留重新解析入口。
 
 缺口：
 
-- Maven 多模块、Gradle 真实写回、多仓部分失败和版本更新失败重试已补。
-- 失败原因分类和版本更新重试幂等为 P1。
+- Maven 多模块、Gradle 真实写回、多仓部分失败、版本更新失败重试和解析异常诊断已补；后续保持回归。
 
 ### SA-015：测试人员复核发布状态和执行证据
 
@@ -553,7 +553,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P2 | SA-014 版本解析异常样本治理 | Maven 单模块、多模块、Gradle 真实写回、批量版本更新、部分失败和 retry 已闭环；风险池仍保留空仓库、无版本文件和异常版本号样本 | 设计并补齐版本解析异常样本的用户可见状态与验收证据，避免异常仓库把版本更新入口表现成不明失败 |
+| P2 | SA-008 多窗口并行发布可观测性 | 发布窗口创建、DRAFT/PUBLISHED/CLOSED、列表/日历、组织筛选、冻结和删除保护已闭环；风险池仍保留多窗口并行发布样本 | 设计并补齐同一组织多发布窗口并行存在时的列表、日历、详情与发布计划互不污染证据 |
 | P1 | SA-013 发布编排结果复核与失败 Run 观察 | 无阻塞冲突后 Run 创建和冲突未解决时拒绝已有后端证据；窗口详情最新 Run 复核、失败上下文和最近 Run 倒序已补 | 后续保持回归 |
 | P1 | SA-010 发布计划与解除挂载收口 | attach、同分组挂载约束、真实 release 分支、冲突阻断、解除挂载 release 分支归档已有后端/GitLab 证据；发布计划、挂载弹窗非同分组禁选、解除挂载入口与解除挂载 Slice-1 外部 Playwright 页面复核候选用例、发布后计划变更锁定、冲突严重级别、建议处理方式以及 `MERGE_CONFLICT`/`CROSS_REPO_VERSION_MISMATCH`/`REPO_AHEAD`/`SYSTEM_AHEAD`/`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 类型分布和详情已补前端观察；上述六类冲突均已补真实 GitLab 后端强证据；Run 详情失败项重试前端入口已补 | 后续保持回归 |
 | P1 | SA-015 复核扩展 | P0 已能由 UI 生成失败 Run，并按窗口、分组和失败状态复核失败步骤；窗口详情冲突证据复核、Run 详情部分失败复核、Run 详情失败项重试入口、真实部分失败重试后端/GitLab 证据和发布报告 JSON/CSV/Markdown 导出已补 | 后续保持回归 |
@@ -562,6 +562,27 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-014 版本解析异常样本治理
+
+命令：
+
+```bash
+mvn -pl releasehub-application -Dtest=VersionExtractorTest,CodeRepositoryAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl releasehub-bootstrap -am -Dtest=RepositorySyncApiTest -Dsurefire.failIfNoSpecifiedTests=false test
+pnpm exec vitest run src/views/repository/__tests__/RepositoryDetail.spec.ts src/views/repository/__tests__/RepositoryDrawer.spec.ts
+```
+
+结果：
+
+- `VersionExtractorTest` / `CodeRepositoryAppServiceTest`：22 PASS，覆盖缺少版本文件、缺少版本声明、版本号格式异常和读取失败落库状态。
+- `RepositorySyncApiTest`：3 PASS，初始版本接口继续兼容手动版本来源，并返回默认分支、检查路径和空错误诊断。
+- 仓库详情页和仓库抽屉 Vitest：6 PASS，覆盖解析异常诊断展示和重新解析入口。
+
+结论：
+
+- SA-014 异常样本不再只表现为“不明失败”或笼统解析失败；API 和页面均能追溯到错误类型、分支和检查路径。
+- 当前执行队列转向 SA-008 多窗口并行发布可观测性。
 
 ### 2026-05-23 SA-002 存量数据安全清理 dry-run
 
