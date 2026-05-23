@@ -50,6 +50,13 @@
 - **THEN** `GET /api/v1/repositories/{id}/initial-version` 返回 `versionSource=VERSION_FILE_MISSING`
 - **AND** 返回默认分支、检查路径、错误类型和用户可见说明
 
+#### Scenario: 真实 GitLab 空仓库可诊断
+
+- **WHEN** 系统纳管一个真实 GitLab 空仓库，且默认分支没有任何提交
+- **THEN** 初始版本解析 SHALL 返回 `versionSource=VERSION_FILE_MISSING` 和 `errorType=VERSION_FILE_MISSING`
+- **AND** 返回仓库默认分支、`pom.xml` / `gradle.properties` 检查路径和用户可理解诊断文案
+- **AND** 不得填充假版本、不得阻塞仓库列表、不得要求用户通过数据库脚本修复
+
 #### Scenario: 版本文件存在但缺少版本声明
 
 - **WHEN** 仓库默认分支存在版本文件但没有项目版本号声明
