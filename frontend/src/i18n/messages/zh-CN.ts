@@ -19,6 +19,7 @@ export default {
     repositories: '仓库',
     runs: '执行记录',
     dataQualityReview: '数据质量复核',
+    releaseCandidateReview: '发布候选评审',
     blockBoard: '阻塞看板',
     settings: '配置',
     groups: '分组设置'
@@ -744,6 +745,33 @@ export default {
       MERGE_CONFLICT: '合并冲突',
       GIT_PERMISSION_DENIED: 'Git 权限不足',
       GIT_UNAVAILABLE: 'Git 不可达'
+    }
+  },
+  releaseGovernance: {
+    review: {
+      title: '发布候选评审',
+      boundary: '只记录签核，不执行发布',
+      evidence: '验收证据',
+      risks: '风险与边界',
+      checklist: '发布经理检查清单',
+      signoff: '人工签核',
+      item: '事项',
+      status: '状态',
+      result: '结果',
+      source: '真源',
+      checkItem: '检查项',
+      note: '备注',
+      reviewer: '签核人',
+      decision: '结论',
+      confirmed: '已确认',
+      needsFollowUp: '需跟进',
+      notApplicable: '不适用',
+      markAllConfirmed: '全部确认',
+      approve: '进入受控评审',
+      hold: '暂缓跟进',
+      submit: '记录签核',
+      signoffSaved: '签核记录已保存',
+      latestSignoff: '最近签核：{reviewer} / {decision} / {createdAt}'
     }
   },
   dataQuality: {

@@ -7,6 +7,7 @@ import iterationsRoutes from './modules/iterations'
 import repositoriesRoutes from './modules/repositories'
 import runsRoutes from './modules/runs'
 import dataQualityRoutes from './modules/data-quality'
+import releaseGovernanceRoutes from './modules/release-governance'
 import settingsRoutes from './modules/settings'
 import groupsRoutes from './modules/groups'
 import calendarRoutes from './modules/calendar'
@@ -38,6 +39,7 @@ export const constantRoutes: RouteRecordRaw[] = [
       ...repositoriesRoutes,
       ...runsRoutes,
       ...dataQualityRoutes,
+      ...releaseGovernanceRoutes,
       ...settingsRoutes,
       ...groupsRoutes
     ]

@@ -19,6 +19,7 @@ export default {
     repositories: 'Repositories',
     runs: 'Runs',
     dataQualityReview: 'Data Quality Review',
+    releaseCandidateReview: 'Release Candidate Review',
     blockBoard: 'Blocks',
     settings: 'Settings',
     groups: 'Groups'
@@ -744,6 +745,33 @@ export default {
       MERGE_CONFLICT: 'Merge Conflict',
       GIT_PERMISSION_DENIED: 'Git Permission Denied',
       GIT_UNAVAILABLE: 'Git Unavailable'
+    }
+  },
+  releaseGovernance: {
+    review: {
+      title: 'Release Candidate Review',
+      boundary: 'Signoff only, no release action',
+      evidence: 'Evidence',
+      risks: 'Risks and Boundaries',
+      checklist: 'Release Manager Checklist',
+      signoff: 'Manual Signoff',
+      item: 'Item',
+      status: 'Status',
+      result: 'Result',
+      source: 'Source',
+      checkItem: 'Check Item',
+      note: 'Note',
+      reviewer: 'Reviewer',
+      decision: 'Decision',
+      confirmed: 'Confirmed',
+      needsFollowUp: 'Needs Follow-up',
+      notApplicable: 'Not Applicable',
+      markAllConfirmed: 'Confirm All',
+      approve: 'Approve Controlled Review',
+      hold: 'Hold for Follow-up',
+      submit: 'Record Signoff',
+      signoffSaved: 'Signoff saved',
+      latestSignoff: 'Latest signoff: {reviewer} / {decision} / {createdAt}'
     }
   },
   dataQuality: {

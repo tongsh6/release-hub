@@ -82,6 +82,7 @@ const getIcon = (name: string) => {
     case 'Repositories': return Folder
     case 'Runs': return TrendCharts
     case 'DataQualityReview': return Warning
+    case 'ReleaseCandidateReview': return Monitor
     case 'BlockBoard': return Warning
     default: return IconMenu
   }
