@@ -552,7 +552,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | 已闭环 | 合并冲突制造、解决和 Run retry；多窗口并行发布；批量窗口和大规模迭代 | 风险强证据、冲突解决路径、Run 失败项重试、多窗口并行发布观察、大规模迭代仓库分页和发布报告制品包均已补 |
 | 暂缓 | 批量组织重构、批量资源迁移向导 | 当前阶段不进入执行队列；后续若重新进入，必须先形成独立设计和验收出口 |
 
-当前 Phase 2 存量缺口已清账，发布候选收口报告和发布经理评审页均已形成；下一阶段优先治理验收数据命名空间与保留策略，避免验收资产继续以历史残留形式污染后续判断。
+当前 Phase 2 存量缺口已清账，发布候选收口报告、发布经理评审页和验收数据命名空间口径均已形成；下一阶段优先统一验收脚本与应用 API 的数据源口径，避免报告继续在 API 可见资产和数据库审计资产之间漂移。
 
 ## 七、当前推进队列
 
@@ -560,7 +560,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-002 验收数据命名空间与保留策略 | 数据质量复核队列与发布候选评审页已补，但验收脚本生成的数据仍缺少稳定命名空间、批次和保留策略，后续全量验收会继续制造 DRAFT 残留判断噪音 | 形成并实现验收数据 batch/namespace/retention 元数据或等价应用口径；全量验收、safe-cleanup 报告和复核队列都能按批次识别本轮资产与历史资产 |
+| P1 | SA-002 验收脚本与应用 API 数据源口径统一 | safe-cleanup 已能按命名空间、复核批次、资产范围和保留策略标注动作，但全量验收、safe-cleanup 与应用页面仍可能分别使用 API 资产统计和数据库审计统计 | 统一并记录 API 可见资产、数据库审计资产和复核队列资产的取数边界；报告不再让操作者误把底层审计总量当成用户可见风险 |
+| P1 | SA-002 验收数据命名空间与保留策略 | dry-run 报告、actions.jsonl、复核 API 和数据质量复核队列已补 `dataNamespace`、`reviewBatchId`、`assetScope`、`retentionPolicy`；页面可按资产范围筛选 | 后续保持回归 |
 | P1 | SA-001 发布候选评审页 / 发布经理检查清单 | 发布候选评审页已补，支持聚合候选结论、验收证据、数据质量风险、检查清单和人工签核记录 | 后续保持回归 |
 | P1 | SA-002 数据质量复核队列页面化 | 复核队列页面已补，支持导入 dry-run JSONL、筛选、人工决策和受控复核 API；直接执行和自动执行仍被拒绝 | 后续保持回归 |
 | P1 | SA-001 发布候选收口报告与下一阶段路线图 | 发布候选收口报告已形成，release-governance OpenSpec 已新增；当前分支可进入受控发布候选评审，不建议继续扩大 Phase 2 范围 | 后续保持回归 |
@@ -578,6 +579,34 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-23 SA-002 验收数据命名空间与保留策略
+
+命令：
+
+```bash
+mvn -f backend/pom.xml -pl releasehub-application -am -Dtest=DataQualityCleanupReviewAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -f backend/pom.xml -pl releasehub-bootstrap -am -Dtest=DataQualityCleanupApiTest -Dsurefire.failIfNoSpecifiedTests=false test
+pnpm exec vitest run src/views/data-quality/__tests__/DataQualityReviewQueue.spec.ts
+bash -n scripts/acceptance/sa002-safe-cleanup.sh
+pnpm run typecheck
+pnpm i18n:lint
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 应用层复核服务通过：8 PASS / 0 FAIL / 0 SKIP；新增命名空间、复核批次、资产范围和保留策略保留与资产范围筛选。
+- API 复核入口通过：1 PASS / 0 FAIL / 0 SKIP；请求可携带 `assetScopeFilter`，响应保留动作元数据，所有结果仍保持 `executionPermitted=false`。
+- 前端数据质量复核队列通过：2 PASS / 0 FAIL；页面展示数据命名空间、复核批次、资产范围和保留策略，并可按资产范围提交筛选复核。
+- `sa002-safe-cleanup.sh` 语法检查通过；dry-run 输出格式已增加 `dataNamespace`、`reviewBatchId`、`assetScope`、`retentionPolicy`。
+- 前端 typecheck 通过，i18n lint 通过。
+- 浏览器冒烟通过：`/data-quality/review` 可打开，导入带命名空间元数据的 dry-run JSONL 后提交复核，页面显示 `HISTORICAL_ACCEPTANCE`、`manual-review-then-archive` 且允许执行为“否”。
+- 静态扫描通过：`.ai/reports/static-scan/20260523-203458/summary.md`；SpotBugs 0，frontend lint PASS，typecheck PASS。
+
+结论：
+
+- SA-002 已具备验收数据命名空间与保留策略口径。当前仍只做 dry-run 与人工复核，不自动删除数据库记录、不关闭发布窗口、不触碰 GitLab 远端资源。当前执行队列转向 SA-002 验收脚本与应用 API 数据源口径统一。
 
 ### 2026-05-23 SA-001 发布候选评审页 / 发布经理检查清单
 

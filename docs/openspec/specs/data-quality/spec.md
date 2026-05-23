@@ -74,6 +74,26 @@
 - **AND** 所有复核结果 SHALL 保持 `executionPermitted=false`
 - **AND** 页面不得提供直接执行、自动执行或绕过应用层的清理按钮
 
+### Requirement: 验收数据命名空间与保留策略
+
+系统 SHALL 为 SA-002 dry-run 动作提供数据命名空间、复核批次、资产范围和保留策略元数据，避免操作者只按 DRAFT 残留数量判断数据质量风险。
+
+#### Scenario: dry-run 动作携带批次与资产范围
+
+- **WHEN** 操作者生成 SA-002 dry-run 报告
+- **THEN** `summary.md` SHALL 记录数据命名空间、复核批次、当前批次标识、保留策略和资产范围口径
+- **AND** `actions.md` 与 `actions.jsonl` 中的每条动作 SHALL 包含 `dataNamespace`、`reviewBatchId`、`assetScope` 和 `retentionPolicy`
+- **AND** `assetScope` SHALL 至少区分 `CURRENT_BATCH`、`HISTORICAL_ACCEPTANCE`、`USER_BUSINESS` 和 `UNKNOWN_LEGACY`
+- **AND** 默认保留策略 SHALL 只允许人工复核后进入应用层入口，不允许脚本自动删除或迁移业务数据
+
+#### Scenario: 应用内复核保留命名空间元数据
+
+- **WHEN** 操作者把带命名空间元数据的 `actions.jsonl` 导入复核队列并提交复核
+- **THEN** 复核 API SHALL 在每条结果中保留数据命名空间、复核批次、资产范围和保留策略
+- **AND** 页面 SHALL 展示这些字段，并允许按资产范围筛选
+- **AND** 筛选后的复核摘要 SHALL 仍只统计匹配动作
+- **AND** 复核接口 SHALL 继续保持 `executionPermitted=false`
+
 ### Requirement: 存量数据风险类型
 
 系统 SHALL 至少识别仓库 token 明文、系统设置 token 明文、BranchCreationMode 缺失或非法、featureBranch 缺失、cloneUrl 异常、DRAFT 发布窗口残留和挂载分支未创建。

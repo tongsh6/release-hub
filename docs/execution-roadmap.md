@@ -27,20 +27,21 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-002 | 验收数据命名空间与保留策略 | `scenario-acceptance-matrix.md` 当前推进队列 | 复核队列和候选评审页已补，但验收资产仍缺少稳定批次口径，会继续制造历史残留判断噪音 |
+| 1 | HEAD | SA-002 | 验收脚本与应用 API 数据源口径统一 | `scenario-acceptance-matrix.md` 当前推进队列 | 命名空间和保留策略已落地，但验收报告仍需要统一 API 可见资产、数据库审计资产和复核队列资产的取数边界 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-002 验收数据命名空间与保留策略。
+任务：SA-002 验收脚本与应用 API 数据源口径统一。
 
 验收出口：
 
-- 形成验收数据 batch/namespace/retention 的产品口径，说明如何区分本轮验收资产、历史验收资产和用户业务资产。
-- 将该口径落到脚本输出、数据质量 safe-cleanup 报告或应用复核入口中的至少一个可执行面，避免后续全量验收继续只以 DRAFT 残留数量判断质量风险。
+- 形成并落地 API 可见资产、数据库审计资产、复核队列资产的取数边界说明，避免操作者把底层审计总量误读为用户可见风险。
+- 对齐全量验收、safe-cleanup 报告和数据质量复核队列中的资产统计命名，让同一指标在不同入口含义一致。
+- 保留命名空间、复核批次、资产范围和保留策略字段，不回退到只看 DRAFT 残留总数。
 - 保留现有安全边界：不直接删除数据库记录，不关闭发布窗口，不触碰 GitLab 远端资源，不绕过应用层不变量。
-- 能在报告或页面中按批次识别本轮资产与历史资产，并说明哪些资产进入人工复核、哪些资产仅作为历史噪音保留。
+- 能在报告或页面中说明哪些资产属于用户可见风险、哪些仅是底层审计资产、哪些进入人工复核队列。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md`、`docs/openspec/specs/` 和 `tasks/records/`。
 - 完成后运行相关脚本/后端/API/前端专项测试，并至少运行 `bash scripts/dev/check-roadmap.sh` 和 `git diff --check`。
 
@@ -51,6 +52,7 @@
 - 全量验收基线：170 PASS / 0 FAIL / 0 SKIP。
 - 数据质量风险：188 条待复核动作，已具备应用内复核队列。
 - 最新静态扫描：`.ai/reports/static-scan/20260523-202310/summary.md`。
+- 命名空间元数据：`dataNamespace`、`reviewBatchId`、`assetScope`、`retentionPolicy` 已落到 safe-cleanup 动作、复核 API 和复核队列页面。
 
 已完成的前置事项：
 
@@ -58,6 +60,7 @@
 - SA-001 发布候选评审页 / 发布经理检查清单已页面化：`frontend/src/views/release-governance/ReleaseCandidateReview.vue`。
 - release-governance OpenSpec 已新增：`docs/openspec/specs/release-governance/spec.md`。
 - SA-002 数据质量复核队列已页面化：`frontend/src/views/data-quality/DataQualityReviewQueue.vue`。
+- SA-002 验收数据命名空间与保留策略已落地：`tasks/records/2026-05-23-sa-002-acceptance-data-namespace-retention.md`。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`。
 
 非目标：
