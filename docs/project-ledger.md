@@ -10,8 +10,8 @@
 
 ## 1. 当前阶段目标
 
-**v0.1.11 验证闭环 + 受控发布候选验证**。
-- 主线：按 `docs/reports/scenario-acceptance-matrix.md` 和 `docs/reports/release-candidate-2026-05-23.md` 推进；Phase 2 缺口池与 SA-015 前端复跑已清账，当前优先进入 SA-001 受控发布候选 dogfood/staging 验证
+**v0.1.11 受控发布候选验证 + 数据质量处置策略**。
+- 主线：按 `docs/reports/scenario-acceptance-matrix.md` 和 `docs/reports/release-candidate-2026-05-23.md` 推进；SA-001 受控发布候选 dogfood/staging 验证已完成，当前优先进入 SA-002 数据质量人工复核处置策略
 - 不做：新功能（RBAC、通知、CI 深集成）；不重构 Iteration 领域到 `repoAssociations`
 
 ### 场景化用户旅程自动化原则（AI 接手必读）
@@ -104,6 +104,7 @@
 | 全链路核心闭环 | 真实 GitLab 证据复核 v0.1.10 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS |
 | v0.1.11 全链路 + 三层关联 + 多 Provider + 设置持久化 | 真实 GitLab 证据复核 v0.1.11 终轮 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | **25 PASS / 0 FAIL / 1 SKIP**（SKIP 为业务正确拒绝） |
 | SA-001 全量场景验收基线复跑 | `bash scripts/acceptance/run-acceptance.sh` + `bash scripts/dev/static-scan-topn.sh 10` | `tasks/records/2026-05-23-sa-001-full-baseline-rerun.md` | 全量场景验收 **170 PASS / 0 FAIL / 0 SKIP**；静态扫描通过，报告 `.ai/reports/static-scan/20260523-193829/summary.md`；下一缺口为 SA-002 脏数据报告与复核口径收敛 |
+| SA-001 受控发布候选 dogfood/staging 验证 | 全量验收 + 前端 E2E 受控复跑 + 静态扫描 | `tasks/records/2026-05-24-sa-001-controlled-rc-validation.md` | 后端/真实 GitLab **170 PASS / 0 FAIL / 0 SKIP**；完整前端 E2E **49 PASS / 0 FAIL**；关键页面组件 **21 PASS / 0 FAIL**；静态扫描 `.ai/reports/static-scan/20260524-144034/summary.md`；路线图转向 SA-002 数据质量处置策略 |
 | SA-002 验收脏数据报告与复核口径收敛 | `scripts/acceptance/sa002-safe-cleanup.sh --report-dir .ai/reports/sa002-safe-cleanup/20260523-aligned-baseline` + `bash scripts/dev/static-scan-topn.sh 10` | `tasks/records/2026-05-23-sa-002-cleanup-scope-alignment.md` | dry-run 已按后端 API 口径解释全量验收 DRAFT 告警，生成 **188** 条待复核动作：`DRAFT_WINDOW_REMAINS=187`、`ATTACH_BRANCH_NOT_CREATED=1`；同时输出 API 与数据库资产统计，`--execute` 继续拒绝；静态扫描报告 `.ai/reports/static-scan/20260523-194658/summary.md` |
 | SA-001 发布候选收口报告与下一阶段路线图 | `bash scripts/dev/check-roadmap.sh` + `git diff --check` | `tasks/records/2026-05-23-sa-001-release-candidate-closeout.md` | 发布候选报告 `docs/reports/release-candidate-2026-05-23.md` 已形成；release-governance OpenSpec 已新增；当前分支可进入受控发布候选评审，路线图 HEAD 转向 SA-002 数据质量复核队列页面化 |
 | SA-002 数据质量复核队列页面化 | 应用层/API/前端专项测试 + typecheck/i18n + 浏览器冒烟 + 静态扫描 | `tasks/records/2026-05-23-sa-002-data-quality-review-queue.md` | 数据质量复核页面已补：导入 `actions.jsonl`、按资源/风险/状态筛选、批量标记人工决策并提交受控复核；所有结果仍 `executionPermitted=false`；静态扫描报告 `.ai/reports/static-scan/20260523-200508/summary.md` |
@@ -161,8 +162,8 @@
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| 场景矩阵驱动推进 | 2026-05-23 已完成 SA-015 前端场景复跑与证据边界更新：Slice-2 23 PASS / 0 FAIL，`MOCK` provider 本地验收边界恢复，UI 可真实触发 `VERSION_UPDATE_FAILED` Run 并按窗口、分组和失败状态复核。同日已完成 SA-002 验收脚本与应用 API 数据源口径统一、SA-002 验收数据命名空间与保留策略、SA-001 发布候选评审页 / 发布经理检查清单、SA-002 数据质量复核队列页面化、SA-001 发布候选收口报告与下一阶段路线图、SA-002 验收脏数据报告与复核口径收敛、SA-001 全量场景验收基线复跑、SA-014 空仓库版本解析真实 GitLab 证据、SA-016 种子分支清理执行保护、SA-002 存量清理人工复核入口、SA-016 关闭后 GitLab 收尾证据，以及 SA-009/SA-008/SA-003/SA-013/SA-006/SA-004/SA-007 等 Phase 2 清账项。2026-05-22 已补 SA-006 scoped 分支规则真实 GitLab 前置拒绝证据和分支规则真实页面管理旅程；2026-05-21 已补 SA-016 CI pipeline 触发状态、SA-012 `REPO_AHEAD` 接受仓库版本解决路径、SA-014 版本更新失败重试、SA-005 删除保护扩展、仓库组织筛选、版本解析失败修复引导、Clone URL 纳管保护和 SA-009 已挂窗口后迭代仓库集合锁定 | 按 `docs/execution-roadmap.md` 当前 HEAD 转向 SA-001 受控发布候选 dogfood/staging 验证 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
-| 前端用户旅程自动化验证 | 2026-05-23 Slice-2 完整复跑 23/0/0：UI 创建分组、仓库、迭代、发布窗口，`MOCK` provider 本地验收边界恢复，SA-015 由 UI 真实触发失败版本更新 Run 并复核 `VERSION_UPDATE_FAILED`、`UPDATE_VERSION` 和缺失 POM 路径；route-level stub 仅作为冲突面板、Git 风险、部分失败 Run 和版本更新请求语义回归。既有 SA-013 编排面板、SA-012 冲突解决、SA-014 版本更新重试、SA-009 迭代锁定、SA-010 发布计划/解除挂载、SA-011 Git 风险和 SA-015/SA-016 部分失败重试证据继续保持回归；后端/GitLab 强证据仍由验收脚本承担 | 后续保持回归 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
+| 场景矩阵驱动推进 | 2026-05-24 已完成 SA-001 受控发布候选 dogfood/staging 验证：后端/真实 GitLab 全量验收 170 PASS / 0 FAIL / 0 SKIP，完整前端 E2E 49 PASS / 0 FAIL，关键页面组件 21 PASS / 0 FAIL，静态扫描通过；验证中暴露的版本策略、窗口详情和 MOCK provider 选择路径稳定性问题已修复。2026-05-23 已完成 SA-015 前端场景复跑与证据边界更新、SA-002 验收脚本与应用 API 数据源口径统一、SA-002 验收数据命名空间与保留策略、SA-001 发布候选评审页、SA-002 数据质量复核队列、SA-001 发布候选收口报告和 Phase 2 清账项 | 按 `docs/execution-roadmap.md` 当前 HEAD 转向 SA-002 数据质量人工复核处置策略 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
+| 前端用户旅程自动化验证 | 2026-05-24 完整 E2E 49/0/0：登录、分支规则、版本策略继承、Slice-1 分组/窗口、Slice-2 发布编排、冲突、失败版本更新、Run/窗口复核和版本更新请求契约均通过。既有 route-level stub 仍只作为前端观察证据，不替代后端/GitLab 强证据 | 后续保持回归 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
 
 ---
 
@@ -184,7 +185,7 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| P1 | SA-001 受控发布候选 dogfood/staging 验证 | Phase 2 缺口池已清账，SA-015 前端场景复跑已通过；下一步应按发布候选报告进入受控环境验证，而不是继续扩大功能范围 | 复核发布候选评审、数据质量只读复核、核心发布链路、Run/窗口证据和停止/回滚边界 |
+| P1 | SA-002 数据质量人工复核处置策略 | 受控发布候选验证已通过；发布前仍需要把历史数据风险从只读复核推进到人工处置策略、验收出口和回滚边界 | 明确可处置/不可处置风险、应用层处置入口、执行前检查、执行后复核、失败回滚和审计记录，继续禁止自动删库、自动关闭窗口或触碰 GitLab 远端资源 |
 
 ---
 
@@ -192,11 +193,11 @@
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-23 SA-015 前端场景复跑与证据边界更新已完成，当前执行队列转向 SA-001 受控发布候选 dogfood/staging 验证 |
-| 发布候选收口报告 | `docs/reports/release-candidate-2026-05-23.md` | 当前分支可进入受控发布候选评审 / dogfood / staging；SA-002 的 188 条待复核动作进入下一阶段治理 |
+| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-24 SA-001 受控发布候选 dogfood/staging 验证已完成，当前执行队列转向 SA-002 数据质量人工复核处置策略 |
+| 发布候选收口报告 | `docs/reports/release-candidate-2026-05-23.md` | 当前分支已通过受控候选验证，可继续进入 dogfood/staging；SA-002 的 188 条待复核动作进入下一阶段治理 |
 | 发布候选评审页 | `frontend/src/views/release-governance/ReleaseCandidateReview.vue` + `GET /api/v1/release-governance/candidate-review` + `POST /api/v1/release-governance/candidate-review/signoffs` | 聚合候选结论、验收证据、风险边界、检查清单和人工签核；签核不触发发布、清理、GitLab 或数据状态变更 |
 | 数据质量复核队列 | `frontend/src/views/data-quality/DataQualityReviewQueue.vue` + `POST /api/v1/data-quality/cleanup-review` | 导入 dry-run JSONL 后可按资源、风险、状态和资产范围筛选；页面展示数据源口径、命名空间、复核批次、资产范围和保留策略；所有结果仍不允许直接执行 |
-| 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-23 Slice-2 回归：23 PASS / 0 FAIL；恢复 `MOCK` provider 本地验收边界，SA-015 可由 UI 真实触发失败版本更新 Run。2026-05-20 Slice-1 回归：11 PASS / 0 FAIL / 0 SKIP；新增 SA-003 资源创建叶子分组断言，保留 SA-010 解除挂载 UI 旅程。入口 `cd frontend && pnpm run test:e2e` |
+| 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-24 完整 E2E 回归：49 PASS / 0 FAIL；覆盖登录、版本策略继承、Slice-1 分组/窗口和 Slice-2 发布链路。入口 `cd frontend && pnpm run test:e2e` |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
 | 验收脚本 | `scripts/acceptance/run-acceptance.sh` + `scripts/acceptance/sa009-remove-repo-gitlab-evidence.sh` | 全量脚本含服务生命周期、SA-010/SA-011/SA-014/SA-015/SA-016 强证据；SA-009 专用脚本固定复核移除仓库 feature 分支归档和已挂窗锁定保护 |

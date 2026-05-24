@@ -561,7 +561,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-001 受控发布候选 dogfood/staging 验证 | Phase 2 缺口池已清账，SA-015 前端复跑已确认关键页面旅程仍成立；发布候选报告判定当前分支可进入受控环境 / dogfood / staging，但不是无条件 GA | 在受控环境按发布候选报告执行 dogfood/staging 验证，复核发布候选评审、数据质量只读复核、核心发布链路和回滚/停止边界 |
+| P1 | SA-002 数据质量人工复核处置策略 | 受控发布候选验证已通过；历史 DRAFT / attach 残留仍是发布前人工评审必须确认的非阻断风险 | 形成 dry-run 动作进入人工复核后的受控处置策略、验收出口和回滚边界，继续禁止自动删库、自动关闭窗口或触碰 GitLab 远端资源 |
+| P1 | SA-001 受控发布候选 dogfood/staging 验证 | 已完成；后端/真实 GitLab 全量验收 170 PASS，完整前端 E2E 49 PASS，验证中暴露的前端用户旅程稳定性问题已修复 | 后续保持回归 |
 | P1 | SA-015 更完整的前端场景复跑与证据更新 | Slice-2 完整复跑 23 PASS / 0 FAIL；已明确真实 UI 旅程、route-level stub 和后端/GitLab 强证据边界；`MOCK` provider 本地验收边界已恢复 | 后续保持回归 |
 | P1 | SA-002 验收脚本与应用 API 数据源口径统一 | 全量验收、safe-cleanup 与应用复核队列已统一使用 `API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS` 和 `REVIEW_QUEUE_ACTIONS`；复核 API 返回资产边界说明和资产范围计数 | 后续保持回归 |
 | P1 | SA-002 验收数据命名空间与保留策略 | dry-run 报告、actions.jsonl、复核 API 和数据质量复核队列已补 `dataNamespace`、`reviewBatchId`、`assetScope`、`retentionPolicy`；页面可按资产范围筛选 | 后续保持回归 |
@@ -582,6 +583,40 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-24 SA-001 受控发布候选 dogfood/staging 验证
+
+命令：
+
+```bash
+bash scripts/acceptance/run-acceptance.sh
+pnpm exec playwright test e2e/tests/version-update-policy.spec.ts
+pnpm exec playwright test e2e/tests/version-update-policy.spec.ts e2e/tests/slice-1-group-window.spec.ts e2e/tests/slice-2-full-flow.spec.ts
+pnpm run test:e2e
+pnpm exec vitest run src/views/run/__tests__/RunDetail.spec.ts src/views/data-quality/__tests__/DataQualityReviewQueue.spec.ts src/views/release-governance/__tests__/ReleaseCandidateReview.spec.ts src/views/release-window/__tests__/ReleaseWindowDetail.spec.ts src/views/release-window/__tests__/VersionUpdateDialog.spec.ts
+pnpm run typecheck
+pnpm i18n:lint
+bash scripts/dev/check-roadmap.sh
+git diff --check
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 后端/真实 GitLab 全量场景验收通过：170 PASS / 0 FAIL / 0 SKIP。
+- 首轮完整前端 E2E 暴露 2 个稳定失败和 1 个 flaky：版本更新策略用例未覆盖详情页 parallel-scope 并行加载、Slice-1 窗口详情断言误命中并行窗口摘要、Slice-2 MOCK provider 下拉项在完整套件中可能命中离视口 option。
+- 已修复上述前端验收路径稳定性问题，并保持业务断言不降级。
+- 版本策略专项复跑通过：1 PASS / 0 FAIL。
+- 前端三组重点旅程复跑通过：37 PASS / 0 FAIL。
+- 前端完整 E2E 复跑通过：49 PASS / 0 FAIL。
+- 关键页面组件回归通过：21 PASS / 0 FAIL。
+- typecheck、i18n lint、roadmap 检查和 `git diff --check` 通过；roadmap 唯一 HEAD 指向 SA-002。
+- 静态扫描通过：`.ai/reports/static-scan/20260524-144034/summary.md`；SpotBugs 0，frontend lint PASS，frontend typecheck PASS。
+
+结论：
+
+- SA-001 受控发布候选 dogfood/staging 验证已完成。当前分支可继续作为受控发布候选推进，但不是无条件 GA。
+- SA-002 历史 DRAFT / attach 残留继续保持只读 dry-run 与人工复核边界；下一队首转向数据质量人工复核后的受控处置策略。
 
 ### 2026-05-23 SA-015 前端场景复跑与证据边界更新
 
