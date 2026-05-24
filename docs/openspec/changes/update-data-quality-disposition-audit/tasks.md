@@ -26,6 +26,6 @@
 
 ## 4. 明确暂缓
 
-- [ ] BranchCreationMode 独立迁移服务另建 proposal。
-- [ ] 自动批量清理继续禁止。
-- [ ] RBAC、通知和审批流不进入当前阶段。
+- [x] BranchCreationMode 独立迁移服务另建 proposal：`docs/openspec/changes/add-branch-creation-mode-migration-service/`。
+- [x] 自动批量清理继续禁止。
+- [x] RBAC、通知和审批流不进入当前阶段。

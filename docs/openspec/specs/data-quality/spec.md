@@ -138,6 +138,13 @@
 - **AND** 系统 SHALL 禁止进入应用层执行状态
 - **AND** `MIGRATION_REQUIRED` 风险 SHALL 要求独立迁移服务 proposal、迁移范围、回滚计划和验收证据
 
+#### Scenario: BranchCreationMode 迁移服务必须先过设计门禁
+
+- **WHEN** `MIGRATION_REQUIRED` 风险类型为 `BRANCH_CREATION_MODE_MISSING_OR_INVALID`
+- **THEN** 系统 SHALL 先形成独立 OpenSpec proposal、迁移对象范围、候选分类、幂等策略、迁移前后快照、回滚计划和验收证据
+- **AND** proposal SHALL 明确只处理历史 `iteration_repo.branch_creation_mode` 缺失或非法记录
+- **AND** proposal SHALL 明确不得从复核队列、处置 case 或通用清理脚本直接修改数据库、发布窗口、迭代仓库集合或 GitLab 远端资源
+
 #### Scenario: 失败恢复和重复提交可审计
 
 - **WHEN** 处置 case 执行前检查失败、人工处理失败或执行后复核失败
