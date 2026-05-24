@@ -132,6 +132,21 @@
         <el-table-column :label="t('dataQuality.review.applicationEntry')" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">{{ row.applicationEntry }}</template>
         </el-table-column>
+        <el-table-column :label="t('dataQuality.review.dispositionLevel')" width="170">
+          <template #default="{ row }">
+            <el-tag v-if="row.dispositionLevel" type="warning">{{ row.dispositionLevel }}</el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('dataQuality.review.allowedAction')" min-width="260" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.allowedAction || '-' }}</template>
+        </el-table-column>
+        <el-table-column :label="t('dataQuality.review.rollbackBoundary')" min-width="260" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.rollbackBoundary || '-' }}</template>
+        </el-table-column>
+        <el-table-column :label="t('dataQuality.review.auditRecord')" min-width="260" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.auditRecord || '-' }}</template>
+        </el-table-column>
         <el-table-column :label="t('dataQuality.review.reason')" min-width="260" show-overflow-tooltip>
           <template #default="{ row }">{{ row.reason || row.suggestedAction }}</template>
         </el-table-column>

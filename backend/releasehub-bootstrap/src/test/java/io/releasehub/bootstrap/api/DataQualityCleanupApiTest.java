@@ -90,6 +90,10 @@ class DataQualityCleanupApiTest {
                 .andExpect(jsonPath("$.data.actions[0].reviewBatchId").value("sa002-20260523"))
                 .andExpect(jsonPath("$.data.actions[0].assetScope").value("HISTORICAL_ACCEPTANCE"))
                 .andExpect(jsonPath("$.data.actions[0].retentionPolicy").value("manual-review-then-archive"))
+                .andExpect(jsonPath("$.data.actions[0].dispositionLevel").value("APPLICATION_MANUAL"))
+                .andExpect(jsonPath("$.data.actions[0].allowedAction").value("发布经理在发布窗口页按业务判断继续发布、关闭或删除；仅空 DRAFT 窗口可走应用层删除保护。"))
+                .andExpect(jsonPath("$.data.actions[0].rollbackBoundary").value("如关闭、删除或继续发布失败，保持原窗口状态，并保留复核动作重新判断。"))
+                .andExpect(jsonPath("$.data.actions[0].auditRecord").value("记录 reviewer、sourceReport、windowId、业务决策、执行前状态和执行后窗口状态。"))
                 .andExpect(jsonPath("$.data.actions[0].executionPermitted").value(false))
                 .andExpect(jsonPath("$.data.actions[1].reviewStatus").value("REJECTED"));
     }

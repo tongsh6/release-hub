@@ -13,6 +13,10 @@ public record CleanupActionReview(
         String applicationEntry,
         String preExecutionCheck,
         String postExecutionVerification,
+        String dispositionLevel,
+        String allowedAction,
+        String rollbackBoundary,
+        String auditRecord,
         boolean executionPermitted
 ) {
     public CleanupActionReview(
@@ -27,6 +31,7 @@ public record CleanupActionReview(
             boolean executionPermitted
     ) {
         this(resourceType, resourceId, riskType, null, null, null, null,
-                reviewStatus, reason, applicationEntry, preExecutionCheck, postExecutionVerification, executionPermitted);
+                reviewStatus, reason, applicationEntry, preExecutionCheck, postExecutionVerification,
+                null, null, null, null, executionPermitted);
     }
 }

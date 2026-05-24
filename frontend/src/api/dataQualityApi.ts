@@ -33,6 +33,10 @@ export interface CleanupActionReview {
   applicationEntry?: string
   preExecutionCheck?: string
   postExecutionVerification?: string
+  dispositionLevel?: string
+  allowedAction?: string
+  rollbackBoundary?: string
+  auditRecord?: string
   executionPermitted: boolean
 }
 

@@ -25,6 +25,10 @@ class DataQualityCleanupReviewAppServiceTest {
         assertThat(result.rejected()).isZero();
         assertThat(result.actions().get(0).reviewStatus()).isEqualTo("ACCEPTED");
         assertThat(result.actions().get(0).applicationEntry()).isEqualTo("/release-windows/{resourceId}");
+        assertThat(result.actions().get(0).dispositionLevel()).isEqualTo("APPLICATION_MANUAL");
+        assertThat(result.actions().get(0).allowedAction()).contains("发布经理");
+        assertThat(result.actions().get(0).rollbackBoundary()).contains("保持原窗口状态");
+        assertThat(result.actions().get(0).auditRecord()).contains("windowId");
         assertThat(result.actions().get(0).executionPermitted()).isFalse();
     }
 
@@ -57,6 +61,23 @@ class DataQualityCleanupReviewAppServiceTest {
         assertThat(result.actions().get(0).resourceType()).isEqualTo("window_iteration");
         assertThat(result.actions().get(0).riskType()).isEqualTo("ATTACH_BRANCH_NOT_CREATED");
         assertThat(result.actions().get(0).reviewStatus()).isEqualTo("PENDING");
+        assertThat(result.actions().get(0).dispositionLevel()).isEqualTo("OBSERVE_ONLY");
+    }
+
+    @Test
+    void shouldReturnMigrationRequiredStrategyForBranchCreationModeRisk() {
+        CleanupReviewResult result = service.review(new CleanupReviewCommand(
+                "qa",
+                "report",
+                List.of(validBranchCreationModeAction("APPROVE_FOR_APPLICATION_ENTRY"))));
+
+        CleanupActionReview review = result.actions().get(0);
+        assertThat(review.reviewStatus()).isEqualTo("ACCEPTED");
+        assertThat(review.dispositionLevel()).isEqualTo("MIGRATION_REQUIRED");
+        assertThat(review.allowedAction()).contains("受控迁移服务");
+        assertThat(review.rollbackBoundary()).contains("回滚");
+        assertThat(review.auditRecord()).contains("迁移批次");
+        assertThat(review.executionPermitted()).isFalse();
     }
 
     @Test
@@ -180,6 +201,20 @@ class DataQualityCleanupReviewAppServiceTest {
                 "/release-windows/{windowId}",
                 "确认窗口挂载关系仍存在，且 branchCreated 仍为 false。",
                 "复核窗口发布计划和 Git 分支状态一致，不伪造 branchCreated。",
+                decision);
+    }
+
+    private CleanupActionInput validBranchCreationModeAction(String decision) {
+        return new CleanupActionInput(
+                "iteration_repo",
+                "ITER-1::repo-1",
+                "BRANCH_CREATION_MODE_MISSING_OR_INVALID",
+                "进入受控迁移服务前先确认真实业务语义；不得直接 update iteration_repo。",
+                false,
+                "iteration_repo.branch_creation_mode:ITER-1",
+                "受控迁移服务: iteration_repo.branch_creation_mode",
+                "确认 iterationKey/repoId 仍存在，且分支模式缺失或不在 AUTO、NAMED、EXISTING 范围内。",
+                "复核 version-info 返回的 branchCreationMode 已按真实业务语义补齐。",
                 decision);
     }
 }

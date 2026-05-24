@@ -89,6 +89,10 @@ describe('DataQualityReviewQueue', () => {
           applicationEntry: '/release-windows/{resourceId}',
           preExecutionCheck: 'check',
           postExecutionVerification: 'verify',
+          dispositionLevel: 'APPLICATION_MANUAL',
+          allowedAction: 'handle in release window page',
+          rollbackBoundary: 'keep original status on failure',
+          auditRecord: 'record reviewer and status transition',
           executionPermitted: false
         }
       ]
@@ -153,6 +157,8 @@ describe('DataQualityReviewQueue', () => {
     expect(vm.reviewResult.total).toBe(1)
     expect(vm.reviewResult.assetBoundaries[0].key).toBe('REVIEW_QUEUE_ACTIONS')
     expect(vm.reviewResult.assetScopeCounts[0].assetScope).toBe('HISTORICAL_ACCEPTANCE')
+    expect(vm.reviewResult.actions[0].dispositionLevel).toBe('APPLICATION_MANUAL')
+    expect(vm.reviewResult.actions[0].rollbackBoundary).toContain('original status')
     expect(ElMessage.success).toHaveBeenCalledWith('dataQuality.review.reviewComplete:{"count":1}')
   })
 
