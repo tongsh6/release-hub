@@ -98,6 +98,7 @@ const logout = () => {
 /* 整体高度占满视口 */
 .rh-layout {
   height: 100vh;
+  background-color: #f5f7fa;
 }
 
 /* 左侧侧边栏固定宽度，不允许被右侧内容挤压或撑宽 */
@@ -141,6 +142,7 @@ const logout = () => {
   min-width: 0;          /* 防止 flex 子项溢出 */
   display: flex;
   flex-direction: column;
+  background-color: #f5f7fa;
 }
 
 .el-header {
@@ -169,5 +171,6 @@ const logout = () => {
   min-width: 0;          /* 允许内容在容器内裁剪/滚动，而不是撑布局 */
   overflow: auto;        /* 右侧内容超出时滚动 */
   padding: 20px;
+  background-color: #f5f7fa;
 }
 </style>
