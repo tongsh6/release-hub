@@ -8,8 +8,9 @@
 - [x] 新建 data-quality delta spec，定义 `MIGRATION_REQUIRED` 风险进入独立迁移服务且复核队列不得执行迁移。
 - [x] 新建 iteration delta spec，定义历史 `branch_creation_mode` 只允许受控迁移服务补齐。
 - [x] 同步场景矩阵、项目台账、执行路线图和任务记录。
+- [x] 完成 proposal 评审，结论为 `APPROVE_DRY_RUN_ONLY`。
 
-## 2. 最小 dry-run 切片（等待 proposal 批准）
+## 2. 最小 dry-run 切片（已批准，只读）
 
 - [ ] 新增 BranchCreationMode migration dry-run 应用服务。
 - [ ] 只读扫描 `iteration_repo.branch_creation_mode` 缺失、空白、可规范化和非法值。

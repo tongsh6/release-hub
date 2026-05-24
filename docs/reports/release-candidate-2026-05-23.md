@@ -48,7 +48,7 @@ SA-001 发布候选交付证据已收口，当前可进入人工评审。
 - 完整前端 E2E：49 PASS / 0 FAIL。
 - 关键页面组件：21 PASS / 0 FAIL。
 - SA-002 数据质量处置 case 页面验收：1 PASS / 0 FAIL。
-- 最新静态扫描：`.ai/reports/static-scan/20260524-160003/summary.md`，SpotBugs 0，frontend lint PASS，frontend typecheck PASS。
+- 最新静态扫描：`.ai/reports/static-scan/20260524-160645/summary.md`，SpotBugs 0，frontend lint PASS，frontend typecheck PASS。
 - 发布候选评审页已可聚合候选结论、验收证据、数据质量风险、检查清单和人工签核记录。
 
 人工评审出口：
@@ -82,7 +82,7 @@ SA-001 发布候选交付证据已收口，当前可进入人工评审。
 | 静态扫描 | SpotBugs 0、frontend lint PASS、typecheck PASS | `.ai/reports/static-scan/20260523-193829/summary.md` |
 | SA-002 dry-run 复核口径 | 188 条待复核动作 | `.ai/reports/sa002-safe-cleanup/20260523-aligned-baseline/summary.md` |
 | SA-002 处置 case 页面验收 | 1 PASS / 0 FAIL | `tasks/records/2026-05-24-sa-002-disposition-case-ui-evidence.md` |
-| 最新静态扫描 | SpotBugs 0、frontend lint PASS、typecheck PASS | `.ai/reports/static-scan/20260524-160003/summary.md` |
+| 最新静态扫描 | SpotBugs 0、frontend lint PASS、typecheck PASS | `.ai/reports/static-scan/20260524-160645/summary.md` |
 | SA-014 空仓库真实 GitLab 证据 | 23 PASS / 0 FAIL | `.ai/reports/sa014-empty-repo-version/20260523-113039/summary.md` |
 | SA-016 种子分支清理执行保护 | dry-run / execute / repeat execute 均有报告 | `.ai/reports/gitlab-seed-branch-reset/sa016-execute/summary.md` |
 | 场景矩阵真源 | 最新队列、缺口清账、验证记录 | `docs/reports/scenario-acceptance-matrix.md` |
@@ -115,12 +115,12 @@ SA-002 当前不阻断受控发布候选，但必须明确运营边界：
 | 排序 | 类别 | 候选 | 为什么不是本阶段继续做 | 下一步验收出口 |
 |---|---|---|---|---|
 | 1 | 发布治理 | 发布候选交付证据收口与人工评审准备 | 受控验证、发布候选评审页、数据质量复核队列和处置 case 页面证据均已完成；需要把报告从“下一阶段待做”更新为当前交付真源 | 汇总当前可交付证据、非目标边界和人工评审出口；仍标记为 dogfood/staging 候选，不声明无条件 GA |
-| 2 | 运维治理 | BranchCreationMode 迁移服务 proposal 评审门禁 | 独立迁移服务设计已形成；贸然实现会越过 OpenSpec 审批和 SA-002 审计边界 | 评审迁移范围、候选分类、dry-run 优先级、回滚计划和验收证据；未批准前不实现执行器 |
+| 2 | 运维治理 | BranchCreationMode 最小 dry-run 实现 | proposal 评审结论为 `APPROVE_DRY_RUN_ONLY`；当前只允许只读扫描和报告，不允许执行 API 或数据库写入 | 输出四类候选、统计、推断依据、执行计划草案和拒绝原因；应用层测试证明不写库、不触碰 GitLab |
 | 3 | 产品体验 | 更强发布签核治理 | 当前发布候选评审页只记录签核，不含 RBAC 或通知 | 若人工评审要求更强约束，再单独设计权限、通知和审批流 |
 
 ## 建议路线
 
 1. 当前发布候选进入人工评审，不继续扩大 Phase 2 功能。
 2. SA-001 受控验证、发布候选评审页和 SA-002 数据质量处置 case 页面证据均已完成，交付证据包已可作为当前人工评审真源。
-3. BranchCreationMode 独立迁移服务设计已形成；下一开发 HEAD 转向 proposal 评审门禁，未批准前不得实现执行器、迁移 API 或数据库写入。
+3. BranchCreationMode 独立迁移服务 proposal 已完成评审，下一开发 HEAD 转向最小 dry-run；执行器、迁移 API 和数据库写入继续暂缓。
 4. 若发布评审要求更强签核，再另建权限、通知或审批流设计，而不是把 RBAC、通知或批量迁移混入当前阶段。

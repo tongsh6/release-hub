@@ -19,7 +19,7 @@ SA-002 数据质量 dry-run、人工复核队列和处置 case 已能识别 `BRA
 - [x] 设计明确迁移对象范围、排除范围、候选分类、幂等键、执行前后快照、审计记录、回滚计划和验收证据。
 - [x] delta spec 明确数据质量风险如何进入独立迁移服务，以及迭代领域如何保护 BranchCreationMode 语义。
 - [x] 场景矩阵、项目台账、执行路线图和任务记录同步到“设计门禁完成，等待 proposal 审批/实现决策”。
-- [ ] proposal 经过人工评审并明确是否进入最小 dry-run 实现。
+- [x] proposal 经过人工评审并明确进入最小 dry-run 实现。
 
 ## 技术方案
 
@@ -39,4 +39,5 @@ SA-002 数据质量 dry-run、人工复核队列和处置 case 已能识别 `BRA
 - [x] OpenSpec proposal、设计、任务清单和 delta spec 已形成。
 - [x] 上一条数据质量处置审计 change 中“BranchCreationMode 独立迁移服务另建 proposal”的遗留项已关闭。
 - [x] 场景矩阵、项目台账、路线图和任务记录已同步。
-- [ ] 等待 proposal 人工评审后再决定是否实现最小 dry-run。
+- [x] proposal 评审门禁已完成，结论为 `APPROVE_DRY_RUN_ONLY`。
+- [ ] 等待最小 dry-run 实现。

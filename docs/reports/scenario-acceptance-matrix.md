@@ -564,7 +564,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-002 BranchCreationMode 迁移服务 proposal 评审门禁 | BranchCreationMode 独立迁移服务 proposal 已形成；OpenSpec 规则要求实现前先完成人工评审和批准 | 评审 `add-branch-creation-mode-migration-service` 的迁移范围、候选分类、dry-run 优先级、回滚计划和验收证据；未批准前不实现执行器、不写数据库 |
+| P1 | SA-002 BranchCreationMode 最小 dry-run 实现 | proposal 评审结论为 `APPROVE_DRY_RUN_ONLY`；只允许进入只读扫描与报告，不允许执行 API 或数据库写入 | 只读扫描历史 `iteration_repo.branch_creation_mode` 风险，输出四类候选、统计、推断依据、执行计划草案和拒绝原因；应用层测试证明不写库、不触碰 GitLab |
+| P1 | SA-002 BranchCreationMode 迁移服务 proposal 评审门禁 | 已完成；评审记录、需求、proposal、矩阵、台账和路线图已同步，结论为 `APPROVE_DRY_RUN_ONLY` | 后续保持回归 |
 | P1 | SA-002 BranchCreationMode 独立迁移服务设计 | 已完成；需求、OpenSpec proposal、设计、data-quality/iteration delta spec、任务记录、矩阵、台账和路线图已同步 | 后续保持回归 |
 | P1 | SA-001 发布候选交付证据收口与人工评审准备 | 已完成；发布候选报告已汇总受控验证、前端 E2E、关键组件、SA-002 处置 case 页面验收、静态扫描、非目标边界和人工评审出口 | 后续保持回归 |
 | P1 | SA-002 数据质量处置 case 场景验收与证据归档 | 已完成；真实页面旅程覆盖导入 dry-run、提交复核、创建 case、查看详情、开始人工处置和记录复核通过；后置 API 只作证据复核 | 后续保持回归 |
@@ -592,6 +593,30 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-24 SA-002 BranchCreationMode 迁移服务 proposal 评审门禁
+
+命令：
+
+```bash
+bash scripts/dev/check-roadmap.sh
+git diff --check
+cd frontend && pnpm run typecheck
+cd frontend && pnpm i18n:lint
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- proposal 评审结论为 `APPROVE_DRY_RUN_ONLY`，只批准进入最小 dry-run 实现。
+- 执行 API、数据库写入、迁移审计表、前端执行入口和 GitLab 远端操作继续暂缓。
+- 当前执行队列转向 SA-002 BranchCreationMode 最小 dry-run 实现。
+- roadmap 检查、`git diff --check`、frontend typecheck 和 i18n lint 均通过。
+- 静态扫描通过：`.ai/reports/static-scan/20260524-160645/summary.md`；SpotBugs 0，frontend lint PASS，frontend typecheck PASS。
+
+结论：
+
+- SA-002 BranchCreationMode proposal 评审门禁已完成；下一步只实现只读 dry-run 报告。
 
 ### 2026-05-24 SA-002 BranchCreationMode 独立迁移服务设计
 

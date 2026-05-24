@@ -14,6 +14,14 @@ SA-002 已把 `BRANCH_CREATION_MODE_MISSING_OR_INVALID` 识别为 `MIGRATION_REQ
 - 定义验收证据：dry-run 统计、执行计划、执行后 API/version-info 复核、数据库只读审计、回滚演练或失败记录。
 - 保留实现前审批门禁：本 change 当前只完成 proposal，不启动执行器或数据库写入实现。
 
+## Review Decision
+
+2026-05-24 评审结论：`APPROVE_DRY_RUN_ONLY`。
+
+评审记录：`docs/openspec/changes/add-branch-creation-mode-migration-service/review.md`。
+
+只批准下一切片实现最小 dry-run：只读扫描、候选分类、Markdown/JSON 报告和应用层测试。不批准执行 API、数据库写入、迁移审计表、前端执行入口或 GitLab 远端操作。
+
 ## Complete Target Blueprint
 
 ### Final Behavior
@@ -77,6 +85,7 @@ SA-002 已把 `BRANCH_CREATION_MODE_MISSING_OR_INVALID` 识别为 `MIGRATION_REQ
 | 设计覆盖迁移范围、候选分类、审计、回滚和验收证据 | 人工复核 `design.md` | 1 | Done |
 | delta spec 定义 `MIGRATION_REQUIRED` 进入独立迁移服务，且复核队列不能执行迁移 | 人工复核 `specs/data-quality/spec.md` | 1 | Done |
 | iteration delta spec 明确只允许受控服务补齐 `branch_creation_mode` | 人工复核 `specs/iteration/spec.md` | 1 | Done |
+| proposal 评审明确下一步是否进入 dry-run | `review.md` + 任务记录 | 1 | Done: APPROVE_DRY_RUN_ONLY |
 | OpenSpec CLI 严格校验 | `openspec validate add-branch-creation-mode-migration-service --strict` | 1 | Not run: 本机无 `openspec` 命令 |
 | dry-run 报告生成候选分类与统计 | 后续专项测试 | 2 | Not started |
 | 受控执行只更新 `branch_creation_mode` 且可幂等重跑 | 后续应用层/集成测试 | 4 | Not started |
