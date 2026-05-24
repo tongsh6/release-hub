@@ -55,6 +55,7 @@
 | SA-002 BranchCreationMode 独立迁移服务设计 | 已验证 | `docs/openspec/changes/add-branch-creation-mode-migration-service/` + `docs/requirements/in-progress/SA-002-BranchCreationMode独立迁移服务设计.md` | 需求/OpenSpec/路线图检查 + typecheck/i18n + 静态扫描 | 已定义迁移对象、候选分类、dry-run、执行计划、受控执行、复核和回滚边界；当前不实现执行器、不写数据库、不触碰 GitLab；静态扫描 `.ai/reports/static-scan/20260524-160003/summary.md` |
 | SA-002 BranchCreationMode 迁移服务 proposal 评审门禁 | 已验证 | `docs/openspec/changes/add-branch-creation-mode-migration-service/review.md` + `tasks/records/2026-05-24-sa-002-branch-mode-migration-proposal-review.md` | proposal 评审 + roadmap 检查 + typecheck/i18n + 静态扫描 | 结论为 `APPROVE_DRY_RUN_ONLY`；只批准最小 dry-run，不批准执行 API、数据库写入、迁移审计表、前端执行入口或 GitLab 操作；静态扫描 `.ai/reports/static-scan/20260524-160645/summary.md` |
 | SA-002 BranchCreationMode 最小 dry-run 实现 | 已验证 | `BranchCreationModeMigrationDryRunAppService` + `POST /api/v1/data-quality/branch-creation-mode-migrations/dry-run` | 应用层/API 测试 + roadmap 检查 + typecheck/i18n + 静态扫描 | dry-run 输出四类候选、统计、JSON 结构和 Markdown 报告，且 `executionPermitted=false`；不写数据库、不触碰 GitLab；静态扫描 `.ai/reports/static-scan/20260524-162409/summary.md` |
+| 本地开发库可重复清理脚本 | 已验证 | `scripts/dev/cleanup-dev-database.sh` + `docs/context/tech/conventions/database.md` | 脚本语法检查 + 本地 dry-run 报告 + 静态扫描 | 本地开发阶段可随时 dry-run 或显式 `--execute` 清理业务表；默认限定 `releasehub-postgres/release_hub`，覆盖 `release_hub` 与历史 `public` schema，保留 Flyway、用户和系统设置；dry-run 识别 27 张候选表、5382 行候选数据；静态扫描 `.ai/reports/static-scan/20260524-194230/summary.md` |
 | Attach Run 追踪 | 已实现 | `AttachAppService` + RunItem | acc-v0.1.10 修复表 | 闭环 |
 | 冲突检测（7 种）| 已实现 | `ConflictDetectionAppService` | acc-v0.1.10 #11 + acc-v0.1.11 #5 | 闭环 |
 | 远程版本更新 | 已验证 | commit `bbbae46` + `MavenVersionUpdaterAdapter` + `GradleVersionUpdaterAdapter` + `run-acceptance.sh` SA-014 | 单测 + 真实 GitLab 验收 | Maven 单模块、多模块和 Gradle release 分支 commit 已验证 |
@@ -221,6 +222,7 @@
 | 上轮验收报告 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
 | 验收脚本 | `scripts/acceptance/run-acceptance.sh` + `scripts/acceptance/sa009-remove-repo-gitlab-evidence.sh` | 全量脚本含服务生命周期、SA-010/SA-011/SA-014/SA-015/SA-016 强证据；SA-009 专用脚本固定复核移除仓库 feature 分支归档和已挂窗锁定保护 |
 | 存量数据安全清理 | `scripts/acceptance/sa002-safe-cleanup.sh` + `POST /api/v1/data-quality/cleanup-review` | SA-002 dry-run 清理报告、人工复核入口和处置策略；输出 `summary.md`、`actions.md`、`actions.jsonl`，`summary.md` 使用 `API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS`、`REVIEW_QUEUE_ACTIONS` 区分应用可见资产、数据库审计资产和复核队列动作；接口拒绝越权执行，响应保留处置等级、允许动作、回滚边界和审计记录 |
+| 本地开发库清理 | `scripts/dev/cleanup-dev-database.sh` | 本地开发阶段可重复执行的业务数据清理入口；默认 dry-run，`--execute` 才清理候选业务表；仅允许 `releasehub-postgres/release_hub`，不删除 schema、Flyway 元数据、用户和系统设置，不触碰 GitLab 远端 |
 | 版本解析异常诊断 | `GET /api/v1/repositories/{id}/initial-version` | 2026-05-23 SA-014 异常样本治理；返回 `VERSION_FILE_MISSING` / `VERSION_DECL_MISSING` / `VERSION_INVALID` / `VERSION_READ_ERROR`、默认分支、检查路径和说明文案 |
 | 本地统一启停脚本 | `scripts/dev/start-local-env.sh` | `start|hold|stop|restart|status`；推荐用 `hold` 托管前后端联调环境 |
 | 种子初始化 | `scripts/e2e/init-gitlab.sh` | 幂等，3 个种子仓库 |

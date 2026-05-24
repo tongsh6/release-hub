@@ -29,6 +29,7 @@
 | 脚本 | 用途 |
 |------|------|
 | [dev/start-local-env.sh](dev/start-local-env.sh) | 统一启停本地开发环境（`start|hold|stop|restart|status`，Docker + Backend + Frontend） |
+| [dev/cleanup-dev-database.sh](dev/cleanup-dev-database.sh) | 本地开发库业务数据清理脚本，默认 dry-run，`--execute` 后清理 `release_hub` 与历史 `public` schema 中的业务表，保留 Flyway 元数据、用户和系统设置 |
 | [dev/static-scan-topn.sh](dev/static-scan-topn.sh) | 静态代码扫描（SpotBugs + ESLint + typecheck） |
 
 ## CI
