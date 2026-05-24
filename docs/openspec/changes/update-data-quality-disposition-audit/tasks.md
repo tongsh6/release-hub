@@ -8,15 +8,15 @@
 - [x] 新建 data-quality delta spec。
 - [x] 同步场景矩阵、项目台账、执行路线图和任务记录。
 
-## 2. 最小实现切片（下一步）
+## 2. 最小实现切片
 
-- [ ] 后端新增处置 case 应用模型和端口。
-- [ ] 基础设施新增持久化表与 JPA adapter。
-- [ ] API 新增 create/list/detail/start/verify/fail/cancel。
-- [ ] 前端复核队列增加创建/查看 case 入口。
-- [ ] 前端新增 case 列表与详情复核视图。
-- [ ] 补应用层、API 和前端组件测试。
-- [ ] 运行 typecheck、i18n lint、roadmap 检查、diff 检查和静态扫描。
+- [x] 后端新增处置 case 应用模型和端口。
+- [x] 基础设施新增持久化表与 JPA adapter。
+- [x] API 新增 create/list/detail/start/verify/fail/cancel。
+- [x] 前端复核队列增加创建/查看 case 入口。
+- [x] 前端在复核队列内展示 case 列表与详情复核抽屉。
+- [x] 补应用层、API 和前端组件测试。
+- [x] 运行 typecheck、i18n lint、roadmap 检查、diff 检查和静态扫描。
 
 ## 3. 明确暂缓
 

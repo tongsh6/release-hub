@@ -56,8 +56,8 @@ SA-002 已能识别、复核并展示存量数据风险的处置策略，但还�
 | Slice | Blueprint Area | Goal | Dependency | This Change? | Tracking Location |
 |---|---|---|---|---|---|
 | 1 | 设计门禁 | 形成需求、OpenSpec proposal、设计、delta spec 和任务记录 | SA-002 处置策略 | Yes | 本 change |
-| 2 | 最小审计模型 | 创建/list case，记录 action 快照、幂等键和状态，不执行清理 | Slice 1 | No | `docs/execution-roadmap.md` 下一 HEAD |
-| 3 | 页面化 | 复核队列创建 case，case 列表/详情可见，支持记录复核结果 | Slice 2 | No | 后续任务记录 |
+| 2 | 最小审计模型 | 创建/list/detail/start/verify/fail/cancel case，记录 action 快照、幂等键和状态，不执行清理 | Slice 1 | Yes | `tasks/records/2026-05-24-sa-002-disposition-case-minimal-implementation.md` |
+| 3 | 页面化 | 复核队列创建 case，case 列表/详情可见，支持记录复核结果 | Slice 2 | Yes | `tasks/records/2026-05-24-sa-002-disposition-case-minimal-implementation.md` |
 | 4 | 受控处置扩展 | 对个别应用层人工处置补执行前快照与执行后复核模板 | Slice 3 | No | 后续 OpenSpec/tasks |
 | 5 | 独立迁移服务 | 若需要处理 BranchCreationMode 风险，另建迁移服务 proposal | Slice 1 | No | 单独 change |
 
@@ -69,8 +69,8 @@ SA-002 已能识别、复核并展示存量数据风险的处置策略，但还�
 | 设计覆盖动作来源、前后快照、失败恢复、幂等和验收证据 | 人工复核 `design.md` | 1 | Done |
 | delta spec 定义处置 case 行为和禁止边界 | 人工复核 `specs/data-quality/spec.md` | 1 | Done |
 | OpenSpec CLI 严格校验 | `openspec validate update-data-quality-disposition-audit --strict` | 1 | Not run: 本机无 `openspec` 命令 |
-| 最小 case API 不修改业务数据 | 应用层/API 测试 | 2 | Not started |
-| 前端可创建/查看 case 且无执行清理按钮 | Vitest + i18n/typecheck | 3 | Not started |
+| 最小 case API 不修改业务数据 | 应用层/API 测试 | 2 | Done |
+| 前端可创建/查看 case 且无执行清理按钮 | Vitest + i18n/typecheck | 3 | Done |
 
 ### Risks / Rollback
 

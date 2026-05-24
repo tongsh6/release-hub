@@ -27,23 +27,22 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-002 | 数据质量受控处置执行审计最小实现 | `scenario-acceptance-matrix.md` 当前推进队列 | 执行审计设计已完成；下一步实现处置 case 审计模型和页面入口，仍不得直接修改业务资源 |
+| 1 | HEAD | SA-002 | 数据质量处置 case 场景验收与证据归档 | `scenario-acceptance-matrix.md` 当前推进队列 | 处置 case 最小实现已完成；下一步需要从真实页面旅程复核创建、查看和状态记录体验，并固化证据边界 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-002 数据质量受控处置执行审计最小实现。
+任务：SA-002 数据质量处置 case 场景验收与证据归档。
 
 验收出口：
 
-- 基于 `docs/openspec/changes/update-data-quality-disposition-audit/` 和现有 SA-002 dry-run / 复核队列能力，实现处置 case 最小审计模型。
-- 支持从 `ACCEPTED` 复核动作创建/list/detail/start/verify/fail/cancel 处置 case。
-- case 必须记录动作来源、执行前快照、执行记录、执行后复核、失败恢复、幂等防重和重复提交处理。
-- `APPLICATION_MANUAL` 只允许跳转既有应用入口并记录审计状态；`OBSERVE_ONLY`、`MIGRATION_REQUIRED` 和暂缓风险不得进入执行状态。
+- 基于已完成的处置 case 最小实现，从前端真实页面入口复核导入 dry-run 动作、提交复核、创建处置 case、查看 case 列表/详情和记录状态。
+- 页面验收必须证明 case 入口不会提供直接清理、自动关闭窗口、数据库迁移或 GitLab 远端操作。
+- 后端/API 证据继续证明 create/list/detail/start/verify/fail/cancel 只更新审计记录。
 - 继续禁止脚本自动删除数据库记录、自动关闭发布窗口、自动迁移业务数据或触碰 GitLab 远端资源。
 - 保持场景化用户旅程原则：ReleaseHub 业务数据不得用 API 或数据库脚本偷造后再声称完成完整用户旅程；API、数据库和 GitLab 查询只能作为复核证据。
-- 实现前不得扩大到 BranchCreationMode 独立迁移服务、RBAC、通知或审批流。
+- 不得扩大到 BranchCreationMode 独立迁移服务、RBAC、通知或审批流。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md`、`docs/openspec/specs/` 和 `tasks/records/`。
 - 完成后运行相关验收、前端 E2E/组件测试，并至少运行 `bash scripts/dev/check-roadmap.sh`、`pnpm run typecheck`、`pnpm i18n:lint` 和 `git diff --check`。
 
@@ -61,6 +60,7 @@
 - 数据源口径：`API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS`、`REVIEW_QUEUE_ACTIONS` 已落到全量验收输出、safe-cleanup 报告、复核 API 和复核队列页面。
 - 处置策略：`dispositionLevel`、`allowedAction`、`rollbackBoundary`、`auditRecord` 已落到复核 API 和复核队列页面；所有结果仍 `executionPermitted=false`。
 - 执行审计设计：`docs/openspec/changes/update-data-quality-disposition-audit/` 已形成；本机 `openspec` CLI 不可用，未安装新工具。
+- 处置 case 最小实现：`POST/GET /api/v1/data-quality/disposition-cases` 及 start/verify/fail/cancel 已落地；前端复核队列可创建和查看 case。
 - 最新前端场景复跑：Slice-2 23 PASS / 0 FAIL；`MOCK` provider 本地验收边界已恢复。
 
 已完成的前置事项：
@@ -73,6 +73,7 @@
 - SA-002 验收脚本与应用 API 数据源口径已统一：`tasks/records/2026-05-23-sa-002-data-source-boundary-alignment.md`。
 - SA-002 数据质量人工复核处置策略已完成：`tasks/records/2026-05-24-sa-002-cleanup-disposition-strategy.md`。
 - SA-002 数据质量受控处置执行审计设计已完成：`tasks/records/2026-05-24-sa-002-disposition-execution-audit-design.md`。
+- SA-002 数据质量受控处置 case 最小实现已完成：`tasks/records/2026-05-24-sa-002-disposition-case-minimal-implementation.md`。
 - SA-015 前端场景复跑与证据边界已完成：`tasks/records/2026-05-23-sa-015-frontend-scenario-rerun.md`。
 - SA-001 受控发布候选 dogfood/staging 验证已完成：`tasks/records/2026-05-24-sa-001-controlled-rc-validation.md`。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`。

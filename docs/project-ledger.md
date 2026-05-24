@@ -10,8 +10,8 @@
 
 ## 1. 当前阶段目标
 
-**v0.1.11 受控发布候选验证 + 数据质量受控处置执行审计最小实现**。
-- 主线：按 `docs/reports/scenario-acceptance-matrix.md` 和 `docs/reports/release-candidate-2026-05-23.md` 推进；SA-001 受控发布候选 dogfood/staging 验证已完成，SA-002 数据质量人工复核处置策略和受控处置执行审计设计已完成，当前优先进入 SA-002 处置 case 最小实现
+**v0.1.11 受控发布候选验证 + 数据质量处置 case 场景验收**。
+- 主线：按 `docs/reports/scenario-acceptance-matrix.md` 和 `docs/reports/release-candidate-2026-05-23.md` 推进；SA-001 受控发布候选 dogfood/staging 验证已完成，SA-002 数据质量人工复核处置策略、受控处置执行审计设计和处置 case 最小实现已完成，当前优先进入 SA-002 处置 case 场景验收与证据归档
 - 不做：新功能（RBAC、通知、CI 深集成）；不重构 Iteration 领域到 `repoAssociations`
 
 ### 场景化用户旅程自动化原则（AI 接手必读）
@@ -51,6 +51,7 @@
 | SA-002 验收脚本与应用 API 数据源口径统一 | 已验证 | `CleanupReviewResult.assetBoundaries` + `DataQualityReviewQueue.vue` + `run-acceptance.sh` + `sa002-safe-cleanup.sh` | 应用层/API/前端专项测试 + 浏览器冒烟 + 静态扫描 | 全量验收、safe-cleanup 报告和复核队列统一使用 `API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS`、`REVIEW_QUEUE_ACTIONS`，避免把数据库审计总量误读为用户可见风险 |
 | SA-002 数据质量人工复核处置策略 | 已验证 | `DataQualityCleanupReviewAppService` + `CleanupActionReview` + `DataQualityReviewQueue.vue` | 应用层/API/前端专项测试 + typecheck/i18n + 静态扫描 | 复核结果返回处置等级、允许动作、失败回滚边界和审计记录口径；应用层人工处置、独立迁移服务和只读观察三类风险边界可见；所有结果仍 `executionPermitted=false` |
 | SA-002 数据质量受控处置执行审计设计 | 已验证 | `docs/openspec/changes/update-data-quality-disposition-audit/` + `docs/requirements/in-progress/SA-002-数据质量受控处置执行审计.md` | 需求/OpenSpec/路线图检查 + typecheck/i18n | 已定义处置 case、状态机、幂等键、脱敏快照、失败恢复和处置等级边界；最小实现仍不得直接修改业务资源 |
+| SA-002 数据质量受控处置 case 最小实现 | 已验证 | `DataQualityDispositionCaseAppService` + `DataQualityDispositionCaseController` + `DataQualityReviewQueue.vue` | 应用层/API/前端专项测试 + typecheck/i18n + 静态扫描 | 支持处置 case create/list/detail/start/verify/fail/cancel；前端可创建、查看和记录状态；所有接口只更新审计记录，不修改业务资源 |
 | Attach Run 追踪 | 已实现 | `AttachAppService` + RunItem | acc-v0.1.10 修复表 | 闭环 |
 | 冲突检测（7 种）| 已实现 | `ConflictDetectionAppService` | acc-v0.1.10 #11 + acc-v0.1.11 #5 | 闭环 |
 | 远程版本更新 | 已验证 | commit `bbbae46` + `MavenVersionUpdaterAdapter` + `GradleVersionUpdaterAdapter` + `run-acceptance.sh` SA-014 | 单测 + 真实 GitLab 验收 | Maven 单模块、多模块和 Gradle release 分支 commit 已验证 |
@@ -115,6 +116,7 @@
 | SA-002 验收脚本与应用 API 数据源口径统一 | 应用层/API/前端专项测试 + 脚本语法检查 + typecheck/i18n + 浏览器冒烟 + 静态扫描 | `tasks/records/2026-05-23-sa-002-data-source-boundary-alignment.md` | 全量验收、safe-cleanup 和数据质量复核队列统一 `API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS`、`REVIEW_QUEUE_ACTIONS`；复核 API 返回资产边界说明和资产范围计数；所有结果仍 `executionPermitted=false`；静态扫描报告 `.ai/reports/static-scan/20260523-204621/summary.md` |
 | SA-002 数据质量人工复核处置策略 | 应用层/API/前端专项测试 + typecheck/i18n + roadmap 检查 + 静态扫描 | `tasks/records/2026-05-24-sa-002-cleanup-disposition-strategy.md` | 应用层 **9 PASS / 0 FAIL / 0 SKIP**；API **1 PASS / 0 FAIL / 0 SKIP**；前端 **2 PASS / 0 FAIL**；复核 API 和页面返回处置等级、允许动作、回滚边界和审计记录，仍不执行清理；静态扫描 `.ai/reports/static-scan/20260524-145408/summary.md` |
 | SA-002 数据质量受控处置执行审计设计 | OpenSpec 手工校验 + typecheck/i18n + roadmap 检查 | `tasks/records/2026-05-24-sa-002-disposition-execution-audit-design.md` | 需求文档、OpenSpec proposal/design/tasks/delta spec 已形成；roadmap/typecheck/i18n/diff 检查通过；`openspec` CLI 本机不可用，未安装新工具 |
+| SA-002 数据质量受控处置 case 最小实现 | 应用层/API/前端专项测试 + typecheck/i18n + roadmap 检查 + 静态扫描 | `tasks/records/2026-05-24-sa-002-disposition-case-minimal-implementation.md` | 应用层 **6 PASS / 0 FAIL / 0 SKIP**；API **2 PASS / 0 FAIL / 0 SKIP**；前端 **3 PASS / 0 FAIL**；处置 case 只更新审计状态，不执行清理；静态扫描 `.ai/reports/static-scan/20260524-152044/summary.md` |
 | 场景化验收矩阵基线复验 | `bash scripts/acceptance/run-acceptance.sh` | `docs/reports/scenario-acceptance-matrix.md` | **159 PASS / 0 FAIL / 0 SKIP**；新增 SA-014 批量版本更新多仓部分失败真实 GitLab 强证据 |
 | SA-014 空仓库版本解析真实 GitLab 证据 | `scripts/acceptance/sa014-empty-repo-version-evidence.sh` + `mvn -pl releasehub-application -Dtest=VersionExtractorTest,CodeRepositoryAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test` + `pnpm exec vitest run src/views/repository/__tests__/RepositoryDetail.spec.ts src/views/repository/__tests__/RepositoryDrawer.spec.ts` | `tasks/records/2026-05-23-sa-014-empty-repo-version-evidence.md` | 真实 GitLab focused 验收 **23 PASS / 0 FAIL**，报告 `.ai/reports/sa014-empty-repo-version/20260523-113039/summary.md`；应用层 22 PASS，页面组件 6 PASS；空仓库不填充假版本、不阻塞仓库列表 |
 | SA-002 存量清理人工复核入口 | `mvn -f backend/pom.xml -pl releasehub-application -am -Dtest=DataQualityCleanupReviewAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test` + `mvn -f backend/pom.xml -pl releasehub-bootstrap -am -Dtest=DataQualityCleanupApiTest -Dsurefire.failIfNoSpecifiedTests=false test` + `scripts/acceptance/sa002-safe-cleanup.sh --report-dir .ai/reports/sa002-safe-cleanup/manual-review` + 静态扫描 | `tasks/records/2026-05-23-sa-002-cleanup-review-entry.md` | 应用层 **6 PASS / 0 FAIL / 0 SKIP**；API **1 PASS / 0 FAIL / 0 SKIP**；dry-run 报告生成 3 条待复核动作，动作 JSONL 按行合法，`--execute` 继续拒绝；静态扫描报告 `.ai/reports/static-scan/20260523-152446/summary.md` |
@@ -166,7 +168,7 @@
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| 场景矩阵驱动推进 | 2026-05-24 已完成 SA-001 受控发布候选 dogfood/staging 验证：后端/真实 GitLab 全量验收 170 PASS / 0 FAIL / 0 SKIP，完整前端 E2E 49 PASS / 0 FAIL，关键页面组件 21 PASS / 0 FAIL，静态扫描通过；验证中暴露的版本策略、窗口详情和 MOCK provider 选择路径稳定性问题已修复。同日完成 SA-002 数据质量人工复核处置策略和受控处置执行审计设计：复核 API 和页面可见处置等级、允许动作、失败回滚边界和审计记录，OpenSpec 已定义处置 case 审计模型；仍不执行清理。2026-05-23 已完成 SA-015 前端场景复跑与证据边界更新、SA-002 验收脚本与应用 API 数据源口径统一、SA-002 验收数据命名空间与保留策略、SA-001 发布候选评审页、SA-002 数据质量复核队列、SA-001 发布候选收口报告和 Phase 2 清账项 | 按 `docs/execution-roadmap.md` 当前 HEAD 转向 SA-002 数据质量受控处置执行审计最小实现 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
+| 场景矩阵驱动推进 | 2026-05-24 已完成 SA-001 受控发布候选 dogfood/staging 验证：后端/真实 GitLab 全量验收 170 PASS / 0 FAIL / 0 SKIP，完整前端 E2E 49 PASS / 0 FAIL，关键页面组件 21 PASS / 0 FAIL，静态扫描通过；验证中暴露的版本策略、窗口详情和 MOCK provider 选择路径稳定性问题已修复。同日完成 SA-002 数据质量人工复核处置策略、受控处置执行审计设计和处置 case 最小实现：复核 API 和页面可见处置等级、允许动作、失败回滚边界和审计记录，OpenSpec 已定义并实现处置 case 审计模型；仍不执行清理。2026-05-23 已完成 SA-015 前端场景复跑与证据边界更新、SA-002 验收脚本与应用 API 数据源口径统一、SA-002 验收数据命名空间与保留策略、SA-001 发布候选评审页、SA-002 数据质量复核队列、SA-001 发布候选收口报告和 Phase 2 清账项 | 按 `docs/execution-roadmap.md` 当前 HEAD 转向 SA-002 数据质量处置 case 场景验收与证据归档 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
 | 前端用户旅程自动化验证 | 2026-05-24 完整 E2E 49/0/0：登录、分支规则、版本策略继承、Slice-1 分组/窗口、Slice-2 发布编排、冲突、失败版本更新、Run/窗口复核和版本更新请求契约均通过。既有 route-level stub 仍只作为前端观察证据，不替代后端/GitLab 强证据 | 后续保持回归 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
 
 ---
@@ -189,7 +191,7 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| P1 | SA-002 数据质量受控处置执行审计最小实现 | 执行审计设计已完成；需要把处置 case 审计模型、幂等防重、状态推进和页面入口落成最小可验证产品切片 | create/list/detail/start/verify/fail/cancel 处置 case；前端可创建和查看 case；所有接口只更新审计记录，不直接修改业务资源 |
+| P1 | SA-002 数据质量处置 case 场景验收与证据归档 | 处置 case 最小实现已完成；需要从真实页面入口证明产品体验与安全边界成立 | 前端页面验收覆盖 dry-run 导入、复核、创建 case、查看详情和状态记录；证据说明不提供直接清理入口 |
 
 ---
 
@@ -197,11 +199,12 @@
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-24 SA-002 数据质量受控处置执行审计设计已完成，当前执行队列转向 SA-002 数据质量受控处置执行审计最小实现 |
+| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-24 SA-002 数据质量受控处置 case 最小实现已完成，当前执行队列转向 SA-002 数据质量处置 case 场景验收与证据归档 |
 | 发布候选收口报告 | `docs/reports/release-candidate-2026-05-23.md` | 当前分支已通过受控候选验证；SA-002 的 188 条待复核动作已具备处置等级、允许动作、回滚边界和审计记录口径 |
 | 发布候选评审页 | `frontend/src/views/release-governance/ReleaseCandidateReview.vue` + `GET /api/v1/release-governance/candidate-review` + `POST /api/v1/release-governance/candidate-review/signoffs` | 聚合候选结论、验收证据、风险边界、检查清单和人工签核；签核不触发发布、清理、GitLab 或数据状态变更 |
 | 数据质量复核队列 | `frontend/src/views/data-quality/DataQualityReviewQueue.vue` + `POST /api/v1/data-quality/cleanup-review` | 导入 dry-run JSONL 后可按资源、风险、状态和资产范围筛选；页面展示数据源口径、命名空间、复核批次、资产范围、保留策略、处置等级、允许动作、回滚边界和审计记录；所有结果仍不允许直接执行 |
 | 数据质量处置执行审计设计 | `docs/openspec/changes/update-data-quality-disposition-audit/` + `docs/requirements/in-progress/SA-002-数据质量受控处置执行审计.md` | 定义处置 case、状态机、幂等键、脱敏快照、失败恢复、重复提交处理和处置等级边界；下一步实现最小 case 模型 |
+| 数据质量处置 case | `POST /api/v1/data-quality/disposition-cases` + `GET /api/v1/data-quality/disposition-cases` + `frontend/src/views/data-quality/DataQualityReviewQueue.vue` | 从已接受复核动作创建审计 case，支持列表、详情、start/verify/fail/cancel 状态记录；不直接修改业务资源 |
 | 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-24 完整 E2E 回归：49 PASS / 0 FAIL；覆盖登录、版本策略继承、Slice-1 分组/窗口和 Slice-2 发布链路。入口 `cd frontend && pnpm run test:e2e` |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |

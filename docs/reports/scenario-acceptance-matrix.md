@@ -124,11 +124,12 @@ P0 验收焦点：
 - 数据质量复核队列页面已补：可导入 `actions.jsonl`，按资源类型、风险类型和复核状态筛选，批量标记待复核或批准进入应用入口，并调用受控复核 API 返回摘要和逐项复核结果。
 - 人工复核后的受控处置策略已补：复核 API 与页面为每条动作展示处置等级、允许动作、失败回滚边界和审计记录口径；仓库/设置 token、featureBranch、cloneUrl 和 DRAFT 窗口风险进入应用层人工处置，BranchCreationMode 风险要求独立迁移服务，attach 分支未创建保持只读观察。
 - 受控处置执行审计设计已形成：OpenSpec change `update-data-quality-disposition-audit` 定义处置 case、状态机、幂等键、脱敏快照、失败恢复和不同处置等级的执行边界。
+- 受控处置 case 最小实现已补：后端/API 支持 create/list/detail/start/verify/fail/cancel，前端复核队列可创建 case、查看列表与详情，并记录执行前快照、执行后复核、失败原因和恢复说明。
 - 脚本拒绝 `--execute`，不直接修改数据库、不删除发布窗口、不触碰 GitLab 远端资源，符合本地持久化验收原则。
 
 缺口：
 
-- 自动执行修复不进入当前阶段；真实修复必须从人工复核后的应用层入口继续处理，或另建受控迁移服务并保留同等审计字段。下一步只允许实现处置 case 审计模型和页面入口，不能把复核队列直接升级成自动清理入口。
+- 自动执行修复不进入当前阶段；真实修复必须从人工复核后的应用层入口继续处理，或另建受控迁移服务并保留同等审计字段。下一步只允许补处置 case 的真实页面场景验收和证据归档，不能把复核队列直接升级成自动清理入口。
 
 ### SA-003：管理员建立组织分组树
 
@@ -563,7 +564,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-002 数据质量受控处置执行审计最小实现 | 执行审计设计已完成；需要把处置 case 审计模型和页面入口落成最小可验证产品切片 | 创建/list/detail/start/verify/fail/cancel 处置 case；记录动作来源、前后快照、失败恢复和幂等防重；不直接修改业务资源、不关闭窗口、不迁移数据、不触碰 GitLab 远端资源 |
+| P1 | SA-002 数据质量处置 case 场景验收与证据归档 | 处置 case 最小实现已完成；需要从真实页面入口证明创建、查看和状态记录体验成立，且无直接清理入口 | 前端页面验收覆盖导入 dry-run、提交复核、创建 case、查看详情和记录状态；证据归档说明 API/数据库/GitLab 查询只作复核，不替代用户旅程 |
+| P1 | SA-002 数据质量受控处置执行审计最小实现 | 已完成；后端/API/前端已落地处置 case 创建、列表、详情和状态记录，所有接口只更新审计记录 | 后续保持回归 |
 | P1 | SA-002 数据质量受控处置执行审计设计 | 已完成；需求、OpenSpec proposal、设计、delta spec、任务记录、矩阵、台账和路线图已同步 | 后续保持回归 |
 | P1 | SA-002 数据质量人工复核处置策略 | 已完成；复核 API 和页面返回处置等级、允许动作、失败回滚边界和审计记录口径，所有结果仍 `executionPermitted=false` | 后续保持回归 |
 | P1 | SA-001 受控发布候选 dogfood/staging 验证 | 已完成；后端/真实 GitLab 全量验收 170 PASS，完整前端 E2E 49 PASS，验证中暴露的前端用户旅程稳定性问题已修复 | 后续保持回归 |
@@ -587,6 +589,34 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-24 SA-002 数据质量受控处置 case 最小实现
+
+命令：
+
+```bash
+mvn -f backend/pom.xml -pl releasehub-application -am -Dtest=DataQualityDispositionCaseAppServiceTest,DataQualityCleanupReviewAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -f backend/pom.xml -pl releasehub-bootstrap -am -Dtest=DataQualityDispositionCaseApiTest,DataQualityCleanupApiTest -Dsurefire.failIfNoSpecifiedTests=false test
+pnpm exec vitest run src/views/data-quality/__tests__/DataQualityReviewQueue.spec.ts
+pnpm run typecheck
+pnpm i18n:lint
+bash scripts/dev/check-roadmap.sh
+git diff --check
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 应用层处置 case 测试通过：6 PASS / 0 FAIL / 0 SKIP；覆盖创建、重复创建幂等、应用层人工处置状态推进、只读观察阻断和失败记录。
+- API 测试通过：2 PASS / 0 FAIL / 0 SKIP；Flyway V33 创建 `data_quality_disposition_case`，API create/list/start/verify 只更新审计记录。
+- 前端数据质量复核队列通过：3 PASS / 0 FAIL；页面可创建处置 case、查看列表/详情并记录状态，不提供直接执行清理按钮。
+- 前端 typecheck 和 i18n lint 通过，roadmap 检查和 `git diff --check` 通过。
+- 静态扫描通过：`.ai/reports/static-scan/20260524-152044/summary.md`；SpotBugs 0，frontend lint PASS，frontend typecheck PASS。
+
+结论：
+
+- SA-002 数据质量受控处置 case 最小实现已完成。当前仍不自动删除数据库记录、不自动关闭发布窗口、不迁移业务数据、不触碰 GitLab 远端资源。
+- 当前执行队列转向 SA-002 数据质量处置 case 场景验收与证据归档。
 
 ### 2026-05-24 SA-002 数据质量受控处置执行审计设计
 
