@@ -300,7 +300,11 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await repoInputs.nth(3).fill('1.4.0')
     await selectLeafGroup(page, repoDialog)
     await repoDialog.getByRole('combobox', { name: L['repository.git.provider'] }).click(FORCE)
-    await page.getByRole('option', { name: L['repository.git.providers.MOCK'] }).click(FORCE)
+    await page
+      .locator('.el-select-dropdown__item')
+      .filter({ hasText: L['repository.git.providers.MOCK'] })
+      .last()
+      .evaluate((el: HTMLElement) => el.click())
     await confirmDialog(page)
     await searchByKeyword(page, repoName)
     await expect(page.locator('.el-table__body tr').filter({ hasText: repoName }).last()).toBeVisible()

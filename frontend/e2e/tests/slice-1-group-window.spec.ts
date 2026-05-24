@@ -410,9 +410,10 @@ test.describe.serial('Slice-1: Group + Window', () => {
 
     // Verify URL and page content
     await expect(page).toHaveURL(/\/release-windows\//, { timeout: 5000 })
-    await expect(page.locator('.el-descriptions').last()).toBeVisible()
+    const basicInfo = page.locator('.release-window-detail-page .el-descriptions').first()
+    await expect(basicInfo).toBeVisible()
     // Window name should appear in the detail page
-    await expect(page.locator('.el-descriptions').last()).toContainText(windowName, { timeout: 3000 })
+    await expect(basicInfo).toContainText(windowName, { timeout: 3000 })
   })
 
   test('10 — detach iteration from window detail via UI', async ({ page }) => {
