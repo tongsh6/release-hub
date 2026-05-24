@@ -27,21 +27,20 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-002 | BranchCreationMode 最小 dry-run 实现 | `docs/reports/scenario-acceptance-matrix.md` P1 队首 | proposal 评审结论为 `APPROVE_DRY_RUN_ONLY`，下一步只实现只读扫描与报告；仍禁止执行 API 和数据库写入 |
+| 1 | HEAD | SA-002 | BranchCreationMode 执行计划评审门禁 | `docs/reports/scenario-acceptance-matrix.md` P1 队首 | 最小 dry-run 已实现，下一步只能评审是否进入执行计划；仍禁止数据库写入和 GitLab 操作 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-002 BranchCreationMode 最小 dry-run 实现。
+任务：SA-002 BranchCreationMode 执行计划评审门禁。
 
 验收出口：
 
-- 新增只读 dry-run 应用服务和只读端口，扫描历史 `iteration_repo.branch_creation_mode` 缺失、空白、可规范化或非法值。
-- 输出 `SAFE_AUTO_DEFAULTABLE`、`NORMALIZE_LEGAL_VALUE`、`MANUAL_MAPPING_REQUIRED`、`NOT_MIGRATABLE_IN_THIS_SERVICE` 四类候选。
-- 输出 Markdown/JSON 报告，包含候选统计、推断依据、执行计划草案和拒绝原因。
-- 补应用层测试，证明 dry-run 不写数据库、不触碰 GitLab、不修改业务字段。
-- 当前切片不得实现 `approve-plan`、`execute`、`verify`、`rollback-plan` API，不新增数据库写入和迁移审计表。
+- 评审最小 dry-run 输出能否作为执行计划输入。
+- 明确是否批准进入执行计划切片；未批准前不得实现 `approve-plan`、`execute`、`verify`、`rollback-plan` API。
+- 若批准执行计划切片，下一阶段仍只能生成计划和人工确认模型，不得执行真实写库。
+- 若评审要求补充 dry-run 分类或报告字段，先回补应用服务、测试、spec 和任务记录。
 - 完成后运行 `bash scripts/dev/check-roadmap.sh`、`pnpm run typecheck`、`pnpm i18n:lint`、`git diff --check` 和静态扫描。
 
 当前输入基线：
@@ -53,7 +52,7 @@
 - 全量验收基线：2026-05-24 受控验证 170 PASS / 0 FAIL / 0 SKIP。
 - 完整前端 E2E 基线：2026-05-24 49 PASS / 0 FAIL。
 - 数据质量风险：188 条待复核动作，已具备应用内复核队列。
-- 最新静态扫描：`.ai/reports/static-scan/20260524-160645/summary.md`。
+- 最新静态扫描：`.ai/reports/static-scan/20260524-162409/summary.md`。
 - 命名空间元数据：`dataNamespace`、`reviewBatchId`、`assetScope`、`retentionPolicy` 已落到 safe-cleanup 动作、复核 API 和复核队列页面。
 - 数据源口径：`API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS`、`REVIEW_QUEUE_ACTIONS` 已落到全量验收输出、safe-cleanup 报告、复核 API 和复核队列页面。
 - 处置策略：`dispositionLevel`、`allowedAction`、`rollbackBoundary`、`auditRecord` 已落到复核 API 和复核队列页面；所有结果仍 `executionPermitted=false`。
@@ -62,6 +61,7 @@
 - 处置 case 页面验收：`frontend/e2e/tests/data-quality-disposition-case.spec.ts` 已覆盖真实页面导入 dry-run、提交复核、创建 case、打开详情、开始人工处置和记录复核通过，API 只作后置证据。
 - 发布候选交付证据包：`tasks/records/2026-05-24-sa-001-release-candidate-delivery-evidence.md` 已记录当前 dogfood/staging 候选证据与人工评审出口。
 - BranchCreationMode 迁移服务设计：`docs/openspec/changes/add-branch-creation-mode-migration-service/` 已形成；proposal 评审结论为 `APPROVE_DRY_RUN_ONLY`。
+- BranchCreationMode 最小 dry-run：`POST /api/v1/data-quality/branch-creation-mode-migrations/dry-run` 已落地，返回四类候选、统计、JSON 结构和 Markdown 报告，且 `executionPermitted=false`。
 - 最新前端场景复跑：Slice-2 23 PASS / 0 FAIL；`MOCK` provider 本地验收边界已恢复。
 
 已完成的前置事项：
@@ -79,6 +79,7 @@
 - SA-001 发布候选交付证据收口与人工评审准备已完成：`tasks/records/2026-05-24-sa-001-release-candidate-delivery-evidence.md`。
 - SA-002 BranchCreationMode 独立迁移服务设计已完成：`tasks/records/2026-05-24-sa-002-branch-creation-mode-migration-design.md`。
 - SA-002 BranchCreationMode 迁移服务 proposal 评审门禁已完成：`tasks/records/2026-05-24-sa-002-branch-mode-migration-proposal-review.md`。
+- SA-002 BranchCreationMode 最小 dry-run 实现已完成：`tasks/records/2026-05-24-sa-002-branch-mode-migration-dry-run.md`。
 - SA-015 前端场景复跑与证据边界已完成：`tasks/records/2026-05-23-sa-015-frontend-scenario-rerun.md`。
 - SA-001 受控发布候选 dogfood/staging 验证已完成：`tasks/records/2026-05-24-sa-001-controlled-rc-validation.md`。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`。

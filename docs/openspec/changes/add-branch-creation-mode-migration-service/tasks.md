@@ -12,11 +12,11 @@
 
 ## 2. 最小 dry-run 切片（已批准，只读）
 
-- [ ] 新增 BranchCreationMode migration dry-run 应用服务。
-- [ ] 只读扫描 `iteration_repo.branch_creation_mode` 缺失、空白、可规范化和非法值。
-- [ ] 输出 `SAFE_AUTO_DEFAULTABLE`、`NORMALIZE_LEGAL_VALUE`、`MANUAL_MAPPING_REQUIRED`、`NOT_MIGRATABLE_IN_THIS_SERVICE` 分类。
-- [ ] 生成 Markdown/JSON 报告，包含候选统计、推断依据、执行计划草案和拒绝原因。
-- [ ] 补应用层测试和任务记录。
+- [x] 新增 BranchCreationMode migration dry-run 应用服务。
+- [x] 只读扫描 `iteration_repo.branch_creation_mode` 缺失、空白、可规范化和非法值。
+- [x] 输出 `SAFE_AUTO_DEFAULTABLE`、`NORMALIZE_LEGAL_VALUE`、`MANUAL_MAPPING_REQUIRED`、`NOT_MIGRATABLE_IN_THIS_SERVICE` 分类。
+- [x] 生成 Markdown/JSON 报告，包含候选统计、推断依据、执行计划草案和拒绝原因。
+- [x] 补应用层测试、API 集成测试和任务记录。
 
 ## 3. 执行计划与受控执行（等待 dry-run 验收）
 

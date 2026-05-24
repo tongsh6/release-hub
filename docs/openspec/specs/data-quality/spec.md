@@ -145,6 +145,14 @@
 - **AND** proposal SHALL 明确只处理历史 `iteration_repo.branch_creation_mode` 缺失或非法记录
 - **AND** proposal SHALL 明确不得从复核队列、处置 case 或通用清理脚本直接修改数据库、发布窗口、迭代仓库集合或 GitLab 远端资源
 
+#### Scenario: BranchCreationMode 迁移 dry-run 只读报告
+
+- **WHEN** 操作者请求 BranchCreationMode 迁移 dry-run
+- **THEN** 系统 SHALL 只读扫描历史 `iteration_repo.branch_creation_mode` 缺失、空白、可规范化或非法值
+- **AND** dry-run SHALL 输出 `SAFE_AUTO_DEFAULTABLE`、`NORMALIZE_LEGAL_VALUE`、`MANUAL_MAPPING_REQUIRED` 和 `NOT_MIGRATABLE_IN_THIS_SERVICE` 四类候选
+- **AND** dry-run SHALL 输出 Markdown/JSON 结构化报告，包含候选统计、推断依据、执行计划草案和拒绝原因
+- **AND** dry-run SHALL 保持 `executionPermitted=false`，不得修改数据库、触碰 GitLab 或改变业务字段
+
 #### Scenario: 失败恢复和重复提交可审计
 
 - **WHEN** 处置 case 执行前检查失败、人工处理失败或执行后复核失败

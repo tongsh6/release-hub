@@ -10,8 +10,8 @@
 
 ## 1. 当前阶段目标
 
-**v0.1.11 受控发布候选交付证据已收口，SA-002 迁移 dry-run 进入最小实现**。
-- 主线：按 `docs/reports/scenario-acceptance-matrix.md` 和 `docs/reports/release-candidate-2026-05-23.md` 推进；SA-001 受控发布候选 dogfood/staging 验证、发布候选评审页、交付证据收口，以及 SA-002 数据质量人工复核处置策略、受控处置执行审计设计、处置 case 最小实现、处置 case 页面验收、BranchCreationMode 独立迁移服务设计和 proposal 评审门禁均已完成；当前优先进入 BranchCreationMode 最小 dry-run 实现
+**v0.1.11 受控发布候选交付证据已收口，SA-002 迁移进入执行计划评审门禁**。
+- 主线：按 `docs/reports/scenario-acceptance-matrix.md` 和 `docs/reports/release-candidate-2026-05-23.md` 推进；SA-001 受控发布候选 dogfood/staging 验证、发布候选评审页、交付证据收口，以及 SA-002 数据质量人工复核处置策略、受控处置执行审计设计、处置 case 最小实现、处置 case 页面验收、BranchCreationMode 独立迁移服务设计、proposal 评审门禁和最小 dry-run 均已完成；当前优先进入 BranchCreationMode 执行计划评审门禁
 - 不做：新功能（RBAC、通知、CI 深集成）；不重构 Iteration 领域到 `repoAssociations`
 
 ### 场景化用户旅程自动化原则（AI 接手必读）
@@ -54,6 +54,7 @@
 | SA-002 数据质量受控处置 case 最小实现 | 已验证 | `DataQualityDispositionCaseAppService` + `DataQualityDispositionCaseController` + `DataQualityReviewQueue.vue` | 应用层/API/前端专项测试 + typecheck/i18n + 静态扫描 | 支持处置 case create/list/detail/start/verify/fail/cancel；前端可创建、查看和记录状态；所有接口只更新审计记录，不修改业务资源 |
 | SA-002 BranchCreationMode 独立迁移服务设计 | 已验证 | `docs/openspec/changes/add-branch-creation-mode-migration-service/` + `docs/requirements/in-progress/SA-002-BranchCreationMode独立迁移服务设计.md` | 需求/OpenSpec/路线图检查 + typecheck/i18n + 静态扫描 | 已定义迁移对象、候选分类、dry-run、执行计划、受控执行、复核和回滚边界；当前不实现执行器、不写数据库、不触碰 GitLab；静态扫描 `.ai/reports/static-scan/20260524-160003/summary.md` |
 | SA-002 BranchCreationMode 迁移服务 proposal 评审门禁 | 已验证 | `docs/openspec/changes/add-branch-creation-mode-migration-service/review.md` + `tasks/records/2026-05-24-sa-002-branch-mode-migration-proposal-review.md` | proposal 评审 + roadmap 检查 + typecheck/i18n + 静态扫描 | 结论为 `APPROVE_DRY_RUN_ONLY`；只批准最小 dry-run，不批准执行 API、数据库写入、迁移审计表、前端执行入口或 GitLab 操作；静态扫描 `.ai/reports/static-scan/20260524-160645/summary.md` |
+| SA-002 BranchCreationMode 最小 dry-run 实现 | 已验证 | `BranchCreationModeMigrationDryRunAppService` + `POST /api/v1/data-quality/branch-creation-mode-migrations/dry-run` | 应用层/API 测试 + roadmap 检查 + typecheck/i18n + 静态扫描 | dry-run 输出四类候选、统计、JSON 结构和 Markdown 报告，且 `executionPermitted=false`；不写数据库、不触碰 GitLab；静态扫描 `.ai/reports/static-scan/20260524-162409/summary.md` |
 | Attach Run 追踪 | 已实现 | `AttachAppService` + RunItem | acc-v0.1.10 修复表 | 闭环 |
 | 冲突检测（7 种）| 已实现 | `ConflictDetectionAppService` | acc-v0.1.10 #11 + acc-v0.1.11 #5 | 闭环 |
 | 远程版本更新 | 已验证 | commit `bbbae46` + `MavenVersionUpdaterAdapter` + `GradleVersionUpdaterAdapter` + `run-acceptance.sh` SA-014 | 单测 + 真实 GitLab 验收 | Maven 单模块、多模块和 Gradle release 分支 commit 已验证 |
@@ -122,6 +123,7 @@
 | SA-002 数据质量处置 case 场景验收与证据归档 | 外部 Playwright 真实页面验收 + E2E 类型检查 + typecheck/i18n + roadmap 检查 + 静态扫描 | `tasks/records/2026-05-24-sa-002-disposition-case-ui-evidence.md` | 页面验收 **1 PASS / 0 FAIL**；组件 **3 PASS / 0 FAIL**；真实页面完成 dry-run 导入、提交复核、创建 case、查看详情、开始人工处置和记录复核通过；API 只作后置证据，不提供直接清理按钮；静态扫描 `.ai/reports/static-scan/20260524-154130/summary.md` |
 | SA-001 发布候选交付证据收口与人工评审准备 | release-governance spec + 发布候选报告 + roadmap 检查 + 静态扫描 | `tasks/records/2026-05-24-sa-001-release-candidate-delivery-evidence.md` | 交付证据包已汇总 170 PASS 后端/真实 GitLab、49 PASS 前端 E2E、21 PASS 关键组件、SA-002 处置 case 页面验收和最新静态扫描 `.ai/reports/static-scan/20260524-155040/summary.md`；候选仍为 dogfood/staging，不声明 GA |
 | SA-002 BranchCreationMode 独立迁移服务设计 | OpenSpec 手工结构校验 + roadmap 检查 + typecheck/i18n + 静态扫描 | `tasks/records/2026-05-24-sa-002-branch-creation-mode-migration-design.md` | 需求文档、proposal、design、tasks、data-quality/iteration delta spec 已形成；roadmap/typecheck/i18n/diff 检查通过；静态扫描 `.ai/reports/static-scan/20260524-160003/summary.md`；`openspec` CLI 本机不可用，未安装新工具 |
+| SA-002 BranchCreationMode 最小 dry-run 实现 | 应用层/API 测试 + roadmap 检查 + typecheck/i18n + 静态扫描 | `tasks/records/2026-05-24-sa-002-branch-mode-migration-dry-run.md` | 应用层 **11 PASS / 0 FAIL / 0 SKIP**；API **2 PASS / 0 FAIL / 0 SKIP**；只读 dry-run 返回四类候选、统计、JSON 结构和 Markdown 报告，且 `executionPermitted=false`；静态扫描 `.ai/reports/static-scan/20260524-162409/summary.md` |
 | 场景化验收矩阵基线复验 | `bash scripts/acceptance/run-acceptance.sh` | `docs/reports/scenario-acceptance-matrix.md` | **159 PASS / 0 FAIL / 0 SKIP**；新增 SA-014 批量版本更新多仓部分失败真实 GitLab 强证据 |
 | SA-014 空仓库版本解析真实 GitLab 证据 | `scripts/acceptance/sa014-empty-repo-version-evidence.sh` + `mvn -pl releasehub-application -Dtest=VersionExtractorTest,CodeRepositoryAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test` + `pnpm exec vitest run src/views/repository/__tests__/RepositoryDetail.spec.ts src/views/repository/__tests__/RepositoryDrawer.spec.ts` | `tasks/records/2026-05-23-sa-014-empty-repo-version-evidence.md` | 真实 GitLab focused 验收 **23 PASS / 0 FAIL**，报告 `.ai/reports/sa014-empty-repo-version/20260523-113039/summary.md`；应用层 22 PASS，页面组件 6 PASS；空仓库不填充假版本、不阻塞仓库列表 |
 | SA-002 存量清理人工复核入口 | `mvn -f backend/pom.xml -pl releasehub-application -am -Dtest=DataQualityCleanupReviewAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test` + `mvn -f backend/pom.xml -pl releasehub-bootstrap -am -Dtest=DataQualityCleanupApiTest -Dsurefire.failIfNoSpecifiedTests=false test` + `scripts/acceptance/sa002-safe-cleanup.sh --report-dir .ai/reports/sa002-safe-cleanup/manual-review` + 静态扫描 | `tasks/records/2026-05-23-sa-002-cleanup-review-entry.md` | 应用层 **6 PASS / 0 FAIL / 0 SKIP**；API **1 PASS / 0 FAIL / 0 SKIP**；dry-run 报告生成 3 条待复核动作，动作 JSONL 按行合法，`--execute` 继续拒绝；静态扫描报告 `.ai/reports/static-scan/20260523-152446/summary.md` |
@@ -173,7 +175,7 @@
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| 场景矩阵驱动推进 | 2026-05-24 已完成 SA-001 受控发布候选 dogfood/staging 验证：后端/真实 GitLab 全量验收 170 PASS / 0 FAIL / 0 SKIP，完整前端 E2E 49 PASS / 0 FAIL，关键页面组件 21 PASS / 0 FAIL，静态扫描通过；验证中暴露的版本策略、窗口详情和 MOCK provider 选择路径稳定性问题已修复。同日完成 SA-002 数据质量人工复核处置策略、受控处置执行审计设计、处置 case 最小实现、处置 case 页面验收、BranchCreationMode 独立迁移服务设计和 proposal 评审门禁：真实页面旅程可导入 dry-run、提交复核、创建 case、查看详情、开始人工处置和记录复核通过；BranchCreationMode 迁移 proposal 已明确只处理 `branch_creation_mode` 且不执行清理，评审只批准 dry-run。发布候选交付证据包已收敛为当前人工评审真源。2026-05-23 已完成 SA-015 前端场景复跑与证据边界更新、SA-002 验收脚本与应用 API 数据源口径统一、SA-002 验收数据命名空间与保留策略、SA-001 发布候选评审页、SA-002 数据质量复核队列、SA-001 发布候选收口报告和 Phase 2 清账项 | 按 `docs/execution-roadmap.md` 当前 HEAD 转向 SA-002 BranchCreationMode 最小 dry-run 实现 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
+| 场景矩阵驱动推进 | 2026-05-24 已完成 SA-001 受控发布候选 dogfood/staging 验证：后端/真实 GitLab 全量验收 170 PASS / 0 FAIL / 0 SKIP，完整前端 E2E 49 PASS / 0 FAIL，关键页面组件 21 PASS / 0 FAIL，静态扫描通过；验证中暴露的版本策略、窗口详情和 MOCK provider 选择路径稳定性问题已修复。同日完成 SA-002 数据质量人工复核处置策略、受控处置执行审计设计、处置 case 最小实现、处置 case 页面验收、BranchCreationMode 独立迁移服务设计、proposal 评审门禁和最小 dry-run：真实页面旅程可导入 dry-run、提交复核、创建 case、查看详情、开始人工处置和记录复核通过；BranchCreationMode dry-run 只输出候选分类和报告，不执行清理。发布候选交付证据包已收敛为当前人工评审真源。2026-05-23 已完成 SA-015 前端场景复跑与证据边界更新、SA-002 验收脚本与应用 API 数据源口径统一、SA-002 验收数据命名空间与保留策略、SA-001 发布候选评审页、SA-002 数据质量复核队列、SA-001 发布候选收口报告和 Phase 2 清账项 | 按 `docs/execution-roadmap.md` 当前 HEAD 转向 SA-002 BranchCreationMode 执行计划评审门禁 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
 | 前端用户旅程自动化验证 | 2026-05-24 完整 E2E 49/0/0：登录、分支规则、版本策略继承、Slice-1 分组/窗口、Slice-2 发布编排、冲突、失败版本更新、Run/窗口复核和版本更新请求契约均通过。既有 route-level stub 仍只作为前端观察证据，不替代后端/GitLab 强证据 | 后续保持回归 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
 
 ---
@@ -196,7 +198,7 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| P1 | SA-002 BranchCreationMode 最小 dry-run 实现 | proposal 评审已批准只读 dry-run；需要先用产品内服务输出候选分类和报告，不进入执行 | dry-run 输出四类候选、统计、推断依据、执行计划草案和拒绝原因；测试证明不写库、不触碰 GitLab |
+| P1 | SA-002 BranchCreationMode 执行计划评审门禁 | 最小 dry-run 已完成；下一步只能评审是否进入执行计划切片 | 评审 dry-run 输出是否足以支撑执行计划；未批准前不得实现执行 API、数据库写入、迁移表或 GitLab 操作 |
 
 ---
 
@@ -204,7 +206,7 @@
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-24 SA-002 BranchCreationMode proposal 评审门禁已完成，当前执行队列转向最小 dry-run 实现 |
+| 最末验收报告 | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-24 SA-002 BranchCreationMode 最小 dry-run 已完成，当前执行队列转向执行计划评审门禁 |
 | 发布候选收口报告 | `docs/reports/release-candidate-2026-05-23.md` | 当前分支已通过受控候选验证，交付证据包已汇总全量验收、前端 E2E、关键组件、SA-002 处置 case 页面验收和静态扫描；仍为 dogfood/staging 候选 |
 | 发布候选评审页 | `frontend/src/views/release-governance/ReleaseCandidateReview.vue` + `GET /api/v1/release-governance/candidate-review` + `POST /api/v1/release-governance/candidate-review/signoffs` | 聚合候选结论、验收证据、风险边界、检查清单和人工签核；签核不触发发布、清理、GitLab 或数据状态变更 |
 | 数据质量复核队列 | `frontend/src/views/data-quality/DataQualityReviewQueue.vue` + `POST /api/v1/data-quality/cleanup-review` | 导入 dry-run JSONL 后可按资源、风险、状态和资产范围筛选；页面展示数据源口径、命名空间、复核批次、资产范围、保留策略、处置等级、允许动作、回滚边界和审计记录；所有结果仍不允许直接执行 |
@@ -212,6 +214,7 @@
 | 数据质量处置 case | `POST /api/v1/data-quality/disposition-cases` + `GET /api/v1/data-quality/disposition-cases` + `frontend/src/views/data-quality/DataQualityReviewQueue.vue` + `frontend/e2e/tests/data-quality-disposition-case.spec.ts` | 从已接受复核动作创建审计 case，支持列表、详情、start/verify/fail/cancel 状态记录；外部页面验收已覆盖导入 dry-run、提交复核、创建 case、查看详情和记录复核通过；不直接修改业务资源 |
 | BranchCreationMode 独立迁移服务设计 | `docs/openspec/changes/add-branch-creation-mode-migration-service/` + `docs/requirements/in-progress/SA-002-BranchCreationMode独立迁移服务设计.md` | 定义 dry-run、候选分类、人工映射、受控执行、复核和回滚；当前只完成设计门禁，不实现执行器、不写数据库、不触碰 GitLab |
 | BranchCreationMode proposal 评审记录 | `docs/openspec/changes/add-branch-creation-mode-migration-service/review.md` | 结论 `APPROVE_DRY_RUN_ONLY`；下一步只实现只读 dry-run，执行器和数据库写入继续暂缓 |
+| BranchCreationMode dry-run API | `POST /api/v1/data-quality/branch-creation-mode-migrations/dry-run` | 返回四类候选、统计、JSON 结构和 Markdown 报告；`executionPermitted=false`，不执行迁移 |
 | 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-24 完整 E2E 回归：49 PASS / 0 FAIL；覆盖登录、版本策略继承、Slice-1 分组/窗口和 Slice-2 发布链路。入口 `cd frontend && pnpm run test:e2e` |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |

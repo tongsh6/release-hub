@@ -87,7 +87,7 @@ SA-002 已把 `BRANCH_CREATION_MODE_MISSING_OR_INVALID` 识别为 `MIGRATION_REQ
 | iteration delta spec 明确只允许受控服务补齐 `branch_creation_mode` | 人工复核 `specs/iteration/spec.md` | 1 | Done |
 | proposal 评审明确下一步是否进入 dry-run | `review.md` + 任务记录 | 1 | Done: APPROVE_DRY_RUN_ONLY |
 | OpenSpec CLI 严格校验 | `openspec validate add-branch-creation-mode-migration-service --strict` | 1 | Not run: 本机无 `openspec` 命令 |
-| dry-run 报告生成候选分类与统计 | 后续专项测试 | 2 | Not started |
+| dry-run 报告生成候选分类与统计 | 应用层/API 测试 | 2 | Done |
 | 受控执行只更新 `branch_creation_mode` 且可幂等重跑 | 后续应用层/集成测试 | 4 | Not started |
 | 执行后 version-info/API 与 DB 只读审计一致 | 后续验收脚本 | 5 | Not started |
 

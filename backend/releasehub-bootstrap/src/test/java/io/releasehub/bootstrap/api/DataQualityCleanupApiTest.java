@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -24,6 +25,9 @@ class DataQualityCleanupApiTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void shouldReviewSa002CleanupActionsWithoutExecutingThem() throws Exception {
@@ -96,6 +100,38 @@ class DataQualityCleanupApiTest {
                 .andExpect(jsonPath("$.data.actions[0].auditRecord").value("记录 reviewer、sourceReport、windowId、业务决策、执行前状态和执行后窗口状态。"))
                 .andExpect(jsonPath("$.data.actions[0].executionPermitted").value(false))
                 .andExpect(jsonPath("$.data.actions[1].reviewStatus").value("REJECTED"));
+    }
+
+    @Test
+    void shouldRunBranchCreationModeMigrationDryRunWithoutExecutingMigration() throws Exception {
+        String token = loginAndGetToken();
+        jdbcTemplate.update("INSERT INTO iteration(iteration_key, description, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                "ITER-DRY", "dry-run iteration");
+        jdbcTemplate.update("""
+                        INSERT INTO iteration_repo(iteration_key, repo_id, base_version, dev_version, target_version, feature_branch, version_source, branch_creation_mode)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                "ITER-DRY", "repo-dry", "1.0.0", "1.1.0-SNAPSHOT", "1.1.0", "feature/ITER-DRY", "SYSTEM", null);
+
+        String body = """
+                {
+                  "requestedBy": "release-manager",
+                  "sourceReport": ".ai/reports/sa002-safe-cleanup/actions.jsonl"
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/data-quality/branch-creation-mode-migrations/dry-run")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.requestedBy").value("release-manager"))
+                .andExpect(jsonPath("$.data.executionPermitted").value(false))
+                .andExpect(jsonPath("$.data.totalCandidates").value(1))
+                .andExpect(jsonPath("$.data.safeAutoDefaultableCount").value(1))
+                .andExpect(jsonPath("$.data.candidates[0].classification").value("SAFE_AUTO_DEFAULTABLE"))
+                .andExpect(jsonPath("$.data.candidates[0].proposedMode").value("AUTO"))
+                .andExpect(jsonPath("$.data.markdownReport").value(org.hamcrest.Matchers.containsString("executionPermitted: false")));
     }
 
     private String loginAndGetToken() throws Exception {
