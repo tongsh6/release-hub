@@ -123,6 +123,14 @@
 - **AND** 系统 SHALL 在操作者返回后记录执行后复核证据、复核人和复核时间
 - **AND** 数据质量复核队列不得提供直接执行清理按钮
 
+#### Scenario: 页面旅程证明处置 case 审计边界
+
+- **WHEN** 操作者从数据质量复核队列页面导入 dry-run 动作、提交人工复核并创建处置 case
+- **THEN** 页面 SHALL 展示 case 列表和详情，并允许记录执行前快照、开始人工处置和执行后复核
+- **AND** 页面验收 SHALL 从真实页面入口驱动，不得使用业务 API route stub 代替用户旅程
+- **AND** API、数据库或 GitLab 查询只能作为旅程后的证据复核，不能替代页面操作
+- **AND** 页面 SHALL 不提供直接清理、自动关闭窗口、业务数据迁移或 GitLab 远端变更按钮
+
 #### Scenario: 只读观察和迁移服务风险不允许直接执行
 
 - **WHEN** case 的处置等级为 `OBSERVE_ONLY`、`MIGRATION_REQUIRED` 或暂缓

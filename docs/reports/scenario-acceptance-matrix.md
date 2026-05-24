@@ -129,7 +129,7 @@ P0 验收焦点：
 
 缺口：
 
-- 自动执行修复不进入当前阶段；真实修复必须从人工复核后的应用层入口继续处理，或另建受控迁移服务并保留同等审计字段。下一步只允许补处置 case 的真实页面场景验收和证据归档，不能把复核队列直接升级成自动清理入口。
+- 自动执行修复不进入当前阶段；真实修复必须从人工复核后的应用层入口继续处理，或另建受控迁移服务并保留同等审计字段。处置 case 的真实页面场景验收和证据归档已补，后续不能把复核队列直接升级成自动清理入口。
 
 ### SA-003：管理员建立组织分组树
 
@@ -564,7 +564,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-002 数据质量处置 case 场景验收与证据归档 | 处置 case 最小实现已完成；需要从真实页面入口证明创建、查看和状态记录体验成立，且无直接清理入口 | 前端页面验收覆盖导入 dry-run、提交复核、创建 case、查看详情和记录状态；证据归档说明 API/数据库/GitLab 查询只作复核，不替代用户旅程 |
+| P1 | SA-001 发布候选交付证据收口与人工评审准备 | SA-001 受控发布候选验证、发布候选评审页和 SA-002 数据质量处置 case 页面证据均已完成；需要把发布候选报告从“下一阶段待做”更新为当前可交付证据清单 | 汇总最终验收、静态扫描、前端 E2E、数据质量处置 case 页面验收和非目标边界；明确当前仍是 dogfood/staging 候选，不扩大到 GA/RBAC/通知/自动迁移 |
+| P1 | SA-002 数据质量处置 case 场景验收与证据归档 | 已完成；真实页面旅程覆盖导入 dry-run、提交复核、创建 case、查看详情、开始人工处置和记录复核通过；后置 API 只作证据复核 | 后续保持回归 |
 | P1 | SA-002 数据质量受控处置执行审计最小实现 | 已完成；后端/API/前端已落地处置 case 创建、列表、详情和状态记录，所有接口只更新审计记录 | 后续保持回归 |
 | P1 | SA-002 数据质量受控处置执行审计设计 | 已完成；需求、OpenSpec proposal、设计、delta spec、任务记录、矩阵、台账和路线图已同步 | 后续保持回归 |
 | P1 | SA-002 数据质量人工复核处置策略 | 已完成；复核 API 和页面返回处置等级、允许动作、失败回滚边界和审计记录口径，所有结果仍 `executionPermitted=false` | 后续保持回归 |
@@ -589,6 +590,35 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-24 SA-002 数据质量处置 case 场景验收与证据归档
+
+命令：
+
+```bash
+scripts/dev/start-local-env.sh hold
+pnpm exec playwright test e2e/tests/data-quality-disposition-case.spec.ts
+pnpm exec tsc -p e2e/tsconfig.json --noEmit
+pnpm exec vitest run src/views/data-quality/__tests__/DataQualityReviewQueue.spec.ts
+pnpm run typecheck
+pnpm i18n:lint
+bash scripts/dev/check-roadmap.sh
+git diff --check
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 外部 Playwright 页面验收通过：1 PASS / 0 FAIL；旅程从 `/data-quality/review` 真实页面粘贴 dry-run JSONL、提交复核、创建 case、打开详情、记录执行前快照、开始人工处置并记录复核通过。
+- 后置 API 复核仅作为证据：case 状态为 `VERIFIED`，来源报告、资源、风险、处置等级、操作者和前后快照均可追溯。
+- 页面断言没有直接清理或自动清理按钮；处置 case 不自动删除数据库记录、不自动关闭发布窗口、不迁移业务数据、不触碰 GitLab 远端资源。
+- E2E TypeScript 检查通过；数据质量复核队列组件测试通过：3 PASS / 0 FAIL。
+- 前端 typecheck、i18n lint、roadmap 检查和 `git diff --check` 通过；roadmap 唯一 HEAD 指向 SA-001。
+- 静态扫描通过：`.ai/reports/static-scan/20260524-154130/summary.md`；SpotBugs 0，frontend lint PASS，frontend typecheck PASS。
+
+结论：
+
+- SA-002 数据质量处置 case 场景验收与证据归档已完成，当前执行队列转向 SA-001 发布候选交付证据收口与人工评审准备。
 
 ### 2026-05-24 SA-002 数据质量受控处置 case 最小实现
 
