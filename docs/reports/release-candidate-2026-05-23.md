@@ -38,6 +38,27 @@ SA-002 数据质量人工复核处置策略已完成。
 
 受控处置执行审计设计、最小处置 case 和页面场景验收已形成，见 `docs/openspec/changes/update-data-quality-disposition-audit/` 与 `tasks/records/2026-05-24-sa-002-disposition-case-ui-evidence.md`。下一阶段若要真实处理历史风险，仍必须从处置 case 跳转到既有应用入口处理；处置 case 只记录审计状态，不执行清理。
 
+## 2026-05-24 交付证据包补充
+
+SA-001 发布候选交付证据已收口，当前可进入人工评审。
+
+当前交付证据包包含：
+
+- 后端/真实 GitLab 全量场景验收：170 PASS / 0 FAIL / 0 SKIP。
+- 完整前端 E2E：49 PASS / 0 FAIL。
+- 关键页面组件：21 PASS / 0 FAIL。
+- SA-002 数据质量处置 case 页面验收：1 PASS / 0 FAIL。
+- 最新静态扫描：`.ai/reports/static-scan/20260524-155040/summary.md`，SpotBugs 0，frontend lint PASS，frontend typecheck PASS。
+- 发布候选评审页已可聚合候选结论、验收证据、数据质量风险、检查清单和人工签核记录。
+
+人工评审出口：
+
+- `APPROVE_CONTROLLED_REVIEW`：进入受控评审或 dogfood/staging 推进。
+- `HOLD_FOR_FOLLOW_UP`：暂缓推进，要求补充证据或处理非阻断治理项。
+- `REQUEST_MORE_EVIDENCE`：当前证据不足，需补充指定验收或复核材料后再评审。
+
+这些出口只表达人工评审结论，不触发发布窗口、仓库、GitLab、数据质量清理或发布编排状态变更。
+
 ## 发布候选能力清单
 
 | 能力域 | 当前状态 | 关键证据 |
@@ -61,6 +82,7 @@ SA-002 数据质量人工复核处置策略已完成。
 | 静态扫描 | SpotBugs 0、frontend lint PASS、typecheck PASS | `.ai/reports/static-scan/20260523-193829/summary.md` |
 | SA-002 dry-run 复核口径 | 188 条待复核动作 | `.ai/reports/sa002-safe-cleanup/20260523-aligned-baseline/summary.md` |
 | SA-002 处置 case 页面验收 | 1 PASS / 0 FAIL | `tasks/records/2026-05-24-sa-002-disposition-case-ui-evidence.md` |
+| 最新静态扫描 | SpotBugs 0、frontend lint PASS、typecheck PASS | `.ai/reports/static-scan/20260524-155040/summary.md` |
 | SA-014 空仓库真实 GitLab 证据 | 23 PASS / 0 FAIL | `.ai/reports/sa014-empty-repo-version/20260523-113039/summary.md` |
 | SA-016 种子分支清理执行保护 | dry-run / execute / repeat execute 均有报告 | `.ai/reports/gitlab-seed-branch-reset/sa016-execute/summary.md` |
 | 场景矩阵真源 | 最新队列、缺口清账、验证记录 | `docs/reports/scenario-acceptance-matrix.md` |
@@ -99,5 +121,6 @@ SA-002 当前不阻断受控发布候选，但必须明确运营边界：
 ## 建议路线
 
 1. 当前发布候选进入人工评审，不继续扩大 Phase 2 功能。
-2. SA-002 数据质量复核队列、命名空间、数据源口径、人工复核处置策略、受控处置执行审计设计、最小处置 case 和页面场景验收已完成；下一开发 HEAD 转向发布候选交付证据收口与人工评审准备。
-3. 若发布评审要求更强签核，再另建权限、通知或审批流设计，而不是把 RBAC、通知或批量迁移混入当前阶段。
+2. SA-001 受控验证、发布候选评审页和 SA-002 数据质量处置 case 页面证据均已完成，交付证据包已可作为当前人工评审真源。
+3. 下一开发 HEAD 转向 BranchCreationMode 独立迁移服务设计；该事项必须先形成 proposal、迁移范围、回滚计划和验收证据，不得直接在复核队列或脚本里执行。
+4. 若发布评审要求更强签核，再另建权限、通知或审批流设计，而不是把 RBAC、通知或批量迁移混入当前阶段。

@@ -27,23 +27,23 @@
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-001 | 发布候选交付证据收口与人工评审准备 | `scenario-acceptance-matrix.md` 当前推进队列 | SA-001 受控发布候选验证、发布候选评审页和 SA-002 数据质量处置 case 页面证据均已完成；下一步需要把交付证据、非目标边界和人工评审出口收敛成当前真源 |
+| 1 | HEAD | SA-002 | BranchCreationMode 独立迁移服务设计 | `docs/reports/scenario-acceptance-matrix.md` P1 队首 | BranchCreationMode 风险当前为 `MIGRATION_REQUIRED`，需要先形成迁移服务 proposal、范围、回滚和验收证据，不能从复核队列/脚本直接修复 |
 
 ---
 
 ## 3. 当前队首任务
 
-任务：SA-001 发布候选交付证据收口与人工评审准备。
+任务：SA-002 BranchCreationMode 独立迁移服务设计。
 
 验收出口：
 
-- 更新发布候选收口报告，使其反映 SA-001 受控验证、发布候选评审页和 SA-002 处置 case 页面验收均已完成。
-- 汇总当前可交付证据：后端/真实 GitLab 全量验收、完整前端 E2E、关键组件回归、SA-002 处置 case 页面验收和静态扫描。
-- 明确当前候选仍是 dogfood/staging，不声明无条件 GA。
-- 明确非目标边界：不扩大到 RBAC、通知、自动清理、自动关闭窗口、BranchCreationMode 迁移服务或生产级 GitLab 分支清理。
-- 保持场景化用户旅程原则：API、数据库和 GitLab 查询只能作为复核证据。
-- 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`。
-- 完成后运行 `bash scripts/dev/check-roadmap.sh`、`pnpm run typecheck`、`pnpm i18n:lint`、`git diff --check` 和静态扫描；必要时复跑发布候选/数据质量相关前端测试。
+- 新建 OpenSpec change，说明为什么 BranchCreationMode 风险必须独立迁移，不能从数据质量复核队列直接执行。
+- 明确迁移对象范围：仅历史 `iteration_repo.branch_creation_mode` 缺失或非法记录；不得触碰 GitLab 远端、发布窗口状态、迭代仓库集合或其他业务字段。
+- 明确迁移前检查、幂等键、迁移前后快照、失败回滚和审计记录。
+- 明确验收证据：dry-run 统计、受控执行计划、执行后 API/version-info 复核和回滚演练或失败记录。
+- 当前阶段先做设计门禁，不实现执行器，不修改业务数据。
+- 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md`、`docs/openspec/specs/` 和 `tasks/records/`。
+- 完成后运行 `bash scripts/dev/check-roadmap.sh`、`pnpm run typecheck`、`pnpm i18n:lint`、`git diff --check` 和静态扫描。
 
 当前输入基线：
 
@@ -54,13 +54,14 @@
 - 全量验收基线：2026-05-24 受控验证 170 PASS / 0 FAIL / 0 SKIP。
 - 完整前端 E2E 基线：2026-05-24 49 PASS / 0 FAIL。
 - 数据质量风险：188 条待复核动作，已具备应用内复核队列。
-- 最新静态扫描：`.ai/reports/static-scan/20260524-144034/summary.md`。
+- 最新静态扫描：`.ai/reports/static-scan/20260524-155040/summary.md`。
 - 命名空间元数据：`dataNamespace`、`reviewBatchId`、`assetScope`、`retentionPolicy` 已落到 safe-cleanup 动作、复核 API 和复核队列页面。
 - 数据源口径：`API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS`、`REVIEW_QUEUE_ACTIONS` 已落到全量验收输出、safe-cleanup 报告、复核 API 和复核队列页面。
 - 处置策略：`dispositionLevel`、`allowedAction`、`rollbackBoundary`、`auditRecord` 已落到复核 API 和复核队列页面；所有结果仍 `executionPermitted=false`。
 - 执行审计设计：`docs/openspec/changes/update-data-quality-disposition-audit/` 已形成；本机 `openspec` CLI 不可用，未安装新工具。
 - 处置 case 最小实现：`POST/GET /api/v1/data-quality/disposition-cases` 及 start/verify/fail/cancel 已落地；前端复核队列可创建和查看 case。
 - 处置 case 页面验收：`frontend/e2e/tests/data-quality-disposition-case.spec.ts` 已覆盖真实页面导入 dry-run、提交复核、创建 case、打开详情、开始人工处置和记录复核通过，API 只作后置证据。
+- 发布候选交付证据包：`tasks/records/2026-05-24-sa-001-release-candidate-delivery-evidence.md` 已记录当前 dogfood/staging 候选证据与人工评审出口。
 - 最新前端场景复跑：Slice-2 23 PASS / 0 FAIL；`MOCK` provider 本地验收边界已恢复。
 
 已完成的前置事项：
@@ -75,6 +76,7 @@
 - SA-002 数据质量受控处置执行审计设计已完成：`tasks/records/2026-05-24-sa-002-disposition-execution-audit-design.md`。
 - SA-002 数据质量受控处置 case 最小实现已完成：`tasks/records/2026-05-24-sa-002-disposition-case-minimal-implementation.md`。
 - SA-002 数据质量处置 case 场景验收与证据归档已完成：`tasks/records/2026-05-24-sa-002-disposition-case-ui-evidence.md`。
+- SA-001 发布候选交付证据收口与人工评审准备已完成：`tasks/records/2026-05-24-sa-001-release-candidate-delivery-evidence.md`。
 - SA-015 前端场景复跑与证据边界已完成：`tasks/records/2026-05-23-sa-015-frontend-scenario-rerun.md`。
 - SA-001 受控发布候选 dogfood/staging 验证已完成：`tasks/records/2026-05-24-sa-001-controlled-rc-validation.md`。
 - 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`。

@@ -564,7 +564,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-001 发布候选交付证据收口与人工评审准备 | SA-001 受控发布候选验证、发布候选评审页和 SA-002 数据质量处置 case 页面证据均已完成；需要把发布候选报告从“下一阶段待做”更新为当前可交付证据清单 | 汇总最终验收、静态扫描、前端 E2E、数据质量处置 case 页面验收和非目标边界；明确当前仍是 dogfood/staging 候选，不扩大到 GA/RBAC/通知/自动迁移 |
+| P1 | SA-002 BranchCreationMode 独立迁移服务设计 | `BRANCH_CREATION_MODE_MISSING_OR_INVALID` 当前被处置策略标记为 `MIGRATION_REQUIRED`；不能通过复核队列或脚本直接修复 | 先形成 OpenSpec proposal、迁移范围、回滚计划、幂等策略和验收证据；明确只处理受控范围内的历史 `iteration_repo.branch_creation_mode`，不触碰 GitLab 或发布窗口状态 |
+| P1 | SA-001 发布候选交付证据收口与人工评审准备 | 已完成；发布候选报告已汇总受控验证、前端 E2E、关键组件、SA-002 处置 case 页面验收、静态扫描、非目标边界和人工评审出口 | 后续保持回归 |
 | P1 | SA-002 数据质量处置 case 场景验收与证据归档 | 已完成；真实页面旅程覆盖导入 dry-run、提交复核、创建 case、查看详情、开始人工处置和记录复核通过；后置 API 只作证据复核 | 后续保持回归 |
 | P1 | SA-002 数据质量受控处置执行审计最小实现 | 已完成；后端/API/前端已落地处置 case 创建、列表、详情和状态记录，所有接口只更新审计记录 | 后续保持回归 |
 | P1 | SA-002 数据质量受控处置执行审计设计 | 已完成；需求、OpenSpec proposal、设计、delta spec、任务记录、矩阵、台账和路线图已同步 | 后续保持回归 |
@@ -590,6 +591,30 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-24 SA-001 发布候选交付证据收口与人工评审准备
+
+命令：
+
+```bash
+cd frontend && pnpm run typecheck
+cd frontend && pnpm i18n:lint
+bash scripts/dev/check-roadmap.sh
+git diff --check
+bash scripts/dev/static-scan-topn.sh 10
+```
+
+结果：
+
+- 发布候选报告新增交付证据包：后端/真实 GitLab 170 PASS、完整前端 E2E 49 PASS、关键页面组件 21 PASS、SA-002 处置 case 页面验收 1 PASS 和最新静态扫描。
+- release-governance current spec 新增“发布候选交付证据包”要求，固化人工评审出口和非目标边界。
+- 当前候选仍标记为 dogfood/staging，不声明无条件 GA；人工评审不触发发布窗口、仓库、GitLab、数据质量清理或发布编排状态变更。
+- `typecheck`、`i18n:lint`、roadmap 检查和 `git diff --check` 均通过。
+- 静态扫描通过：`.ai/reports/static-scan/20260524-155040/summary.md`；SpotBugs 0，frontend lint PASS，frontend typecheck PASS。
+
+结论：
+
+- SA-001 发布候选交付证据收口已完成，当前执行队列转向 SA-002 BranchCreationMode 独立迁移服务设计。
 
 ### 2026-05-24 SA-002 数据质量处置 case 场景验收与证据归档
 
