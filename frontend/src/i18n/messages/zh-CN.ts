@@ -573,6 +573,11 @@ export default {
     }
   },
   settings: {
+    group: {
+      external: '外部集成',
+      rules: '规则与策略',
+      general: '通用偏好'
+    },
     tabs: {
       gitlab: 'GitLab',
       naming: '命名策略',
@@ -587,10 +592,16 @@ export default {
       releaseTemplate: 'Release 分支模板'
     },
     buttons: {
-      testConnection: '测试连接'
+      testConnection: '测试连接',
+      enter: '进入'
     },
     messages: {
-      connectionSuccess: 'GitLab 连接测试通过'
+      connectionSuccess: 'GitLab 连接测试通过',
+      refsNotConfigurable: '基线 Ref 当前没有可配置项'
+    },
+    desc: {
+      branchRules: '管理分支命名规则与匹配模式',
+      versionPolicies: '管理版本策略与自动升级规则'
     },
     policy: {
       failFast: 'FAIL_FAST（默认）',

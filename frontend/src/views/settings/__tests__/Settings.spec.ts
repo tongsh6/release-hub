@@ -12,6 +12,14 @@ vi.mock('vue-i18n', () => ({
   })
 }))
 
+const routerPush = vi.fn()
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({
+    push: routerPush
+  })
+}))
+
 vi.mock('@/api/http', () => {
   class MockApiError extends Error {
     public readonly code: string
@@ -49,11 +57,14 @@ vi.mock('@/utils/error', () => ({
 }))
 
 const stubs = {
-  ElTabs: {
+  ElCard: {
     template: '<div><slot /></div>'
   },
-  ElTabPane: {
-    template: '<section><slot /></section>'
+  ElRow: {
+    template: '<div><slot /></div>'
+  },
+  ElCol: {
+    template: '<div><slot /></div>'
   },
   ElForm: {
     template: '<form><slot /></form>'
@@ -69,7 +80,10 @@ const stubs = {
     props: ['title'],
     template: '<div class="gitlab-diagnostic">{{ title }}</div>'
   },
-  ElEmpty: true,
+  ElEmpty: {
+    props: ['description'],
+    template: '<div>{{ description }}</div>'
+  },
   ElRadioGroup: {
     template: '<div><slot /></div>'
   },
@@ -84,7 +98,23 @@ describe('Settings', () => {
     vi.mocked(settingsApi.testGitLab).mockReset()
     vi.mocked(handleError).mockReset()
     vi.mocked(ElMessage.success).mockReset()
+    routerPush.mockReset()
     vi.mocked(settingsApi.getGitLab).mockResolvedValue({ baseUrl: 'http://gitlab.local', token: 'gl****en' })
+    vi.mocked(settingsApi.getNaming).mockResolvedValue({ featureTemplate: 'feature/{code}', releaseTemplate: 'release/{version}' })
+    vi.mocked(settingsApi.getBlocking).mockResolvedValue({ defaultPolicy: 'FAIL_FAST' })
+  })
+
+  it('renders settings as grouped cards and routes rule shortcuts to current pages', async () => {
+    const wrapper = mount(Settings, { global: { stubs } })
+
+    expect(wrapper.text()).toContain('settings.group.external')
+    expect(wrapper.text()).toContain('settings.group.rules')
+    expect(wrapper.text()).toContain('settings.group.general')
+    expect(wrapper.text()).toContain('settings.messages.refsNotConfigurable')
+
+    await (wrapper.vm as any).goTo('/branch-rules')
+
+    expect(routerPush).toHaveBeenCalledWith('/branch-rules')
   })
 
   it('shows a dedicated success message after GitLab connection test passes', async () => {

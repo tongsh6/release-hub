@@ -573,6 +573,11 @@ export default {
     }
   },
   settings: {
+    group: {
+      external: 'External Integration',
+      rules: 'Rules & Policies',
+      general: 'General Preferences'
+    },
     tabs: {
       gitlab: 'GitLab',
       naming: 'Naming Strategy',
@@ -587,10 +592,16 @@ export default {
       releaseTemplate: 'Release Branch Template'
     },
     buttons: {
-      testConnection: 'Test Connection'
+      testConnection: 'Test Connection',
+      enter: 'Enter'
     },
     messages: {
-      connectionSuccess: 'GitLab connection test passed'
+      connectionSuccess: 'GitLab connection test passed',
+      refsNotConfigurable: 'Baseline refs do not have configurable fields yet'
+    },
+    desc: {
+      branchRules: 'Manage branch naming rules and matching patterns',
+      versionPolicies: 'Manage version policies and auto-upgrade rules'
     },
     policy: {
       failFast: 'FAIL_FAST (default)',
