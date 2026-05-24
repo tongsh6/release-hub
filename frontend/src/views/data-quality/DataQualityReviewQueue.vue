@@ -157,16 +157,114 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column :label="t('dataQuality.review.dispositionCase')" width="180" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              v-if="canCreateDispositionCase(row)"
+              size="small"
+              type="primary"
+              :loading="caseSubmitting"
+              @click="createDispositionCase(row)"
+            >
+              {{ t('dataQuality.review.createCase') }}
+            </el-button>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
+
+    <el-card shadow="never" class="case-panel">
+      <template #header>
+        <div class="panel-header">
+          <span>{{ t('dataQuality.review.caseTitle') }}</span>
+          <el-button size="small" @click="refreshDispositionCases">{{ t('common.refresh') }}</el-button>
+        </div>
+      </template>
+      <el-table :data="dispositionCases" border>
+        <el-table-column prop="id" :label="t('dataQuality.review.caseId')" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="status" :label="t('dataQuality.review.caseStatus')" width="160" />
+        <el-table-column prop="resourceType" :label="t('dataQuality.review.resourceType')" width="150" />
+        <el-table-column prop="resourceId" :label="t('dataQuality.review.resourceId')" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="riskType" :label="t('dataQuality.review.riskType')" width="220" />
+        <el-table-column prop="dispositionLevel" :label="t('dataQuality.review.dispositionLevel')" width="180" />
+        <el-table-column :label="t('dataQuality.review.dispositionCase')" width="120">
+          <template #default="{ row }">
+            <el-button size="small" @click="openDispositionCase(row)">
+              {{ t('common.detail') }}
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <el-drawer v-model="caseDrawerVisible" :title="t('dataQuality.review.caseDetail')" size="48%">
+      <div v-if="selectedCase" class="case-detail">
+        <el-descriptions :column="1" border>
+          <el-descriptions-item :label="t('dataQuality.review.caseStatus')">{{ selectedCase.status }}</el-descriptions-item>
+          <el-descriptions-item :label="t('dataQuality.review.dispositionLevel')">{{ selectedCase.dispositionLevel }}</el-descriptions-item>
+          <el-descriptions-item :label="t('dataQuality.review.applicationEntry')">{{ selectedCase.applicationEntry || '-' }}</el-descriptions-item>
+          <el-descriptions-item :label="t('dataQuality.review.allowedAction')">{{ selectedCase.allowedAction || '-' }}</el-descriptions-item>
+          <el-descriptions-item :label="t('dataQuality.review.rollbackBoundary')">{{ selectedCase.rollbackBoundary || '-' }}</el-descriptions-item>
+          <el-descriptions-item :label="t('dataQuality.review.auditRecord')">{{ selectedCase.auditRecord || '-' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <el-form label-position="top" class="case-transition-form">
+          <el-form-item :label="t('dataQuality.review.operator')">
+            <el-input v-model="caseTransition.operator" />
+          </el-form-item>
+          <el-form-item :label="t('dataQuality.review.preStateSnapshot')">
+            <el-input v-model="caseTransition.preStateSnapshot" type="textarea" :rows="3" />
+          </el-form-item>
+          <el-form-item :label="t('dataQuality.review.postStateSnapshot')">
+            <el-input v-model="caseTransition.postStateSnapshot" type="textarea" :rows="3" />
+          </el-form-item>
+          <el-form-item :label="t('dataQuality.review.failureReason')">
+            <el-input v-model="caseTransition.failureReason" type="textarea" :rows="2" />
+          </el-form-item>
+          <el-form-item :label="t('dataQuality.review.rollbackNote')">
+            <el-input v-model="caseTransition.rollbackNote" type="textarea" :rows="2" />
+          </el-form-item>
+        </el-form>
+
+        <div class="case-actions">
+          <el-button
+            type="primary"
+            :disabled="selectedCase.dispositionLevel !== 'APPLICATION_MANUAL' || selectedCase.status !== 'PLANNED'"
+            @click="startSelectedCase"
+          >
+            {{ t('dataQuality.review.startCase') }}
+          </el-button>
+          <el-button
+            type="success"
+            :disabled="!canVerifyCase(selectedCase)"
+            @click="verifySelectedCase"
+          >
+            {{ t('dataQuality.review.verifyCase') }}
+          </el-button>
+          <el-button type="danger" :disabled="isTerminalCase(selectedCase)" @click="failSelectedCase">
+            {{ t('dataQuality.review.failCase') }}
+          </el-button>
+          <el-button :disabled="isTerminalCase(selectedCase)" @click="cancelSelectedCase">
+            {{ t('dataQuality.review.cancelCase') }}
+          </el-button>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { dataQualityApi, type CleanupActionInput, type CleanupActionReview, type CleanupReviewResult } from '@/api/dataQualityApi'
+import {
+  dataQualityApi,
+  type CleanupActionInput,
+  type CleanupActionReview,
+  type CleanupReviewResult,
+  type DataQualityDispositionCase
+} from '@/api/dataQualityApi'
 import { handleError } from '@/utils/error'
 
 type DisplayRow = CleanupActionInput | CleanupActionReview
@@ -179,8 +277,19 @@ const rawJsonl = ref('')
 const parseError = ref('')
 const queueActions = ref<CleanupActionInput[]>([])
 const reviewResult = ref<CleanupReviewResult | null>(null)
+const dispositionCases = ref<DataQualityDispositionCase[]>([])
+const selectedCase = ref<DataQualityDispositionCase | null>(null)
+const caseDrawerVisible = ref(false)
 const reviewing = ref(false)
+const caseSubmitting = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const caseTransition = ref({
+  operator: 'release-manager',
+  preStateSnapshot: '',
+  postStateSnapshot: '',
+  failureReason: '',
+  rollbackNote: ''
+})
 const filters = ref({
   resourceType: '',
   riskType: '',
@@ -252,11 +361,111 @@ async function reviewQueue() {
       actions: queueActions.value
     })
     ElMessage.success(t('dataQuality.review.reviewComplete', { count: reviewResult.value.total }))
+    await refreshDispositionCases()
   } catch (error) {
     handleError(error)
   } finally {
     reviewing.value = false
   }
+}
+
+async function refreshDispositionCases() {
+  dispositionCases.value = await dataQualityApi.listDispositionCases()
+}
+
+function canCreateDispositionCase(row: DisplayRow): row is CleanupActionReview {
+  return !isQueueAction(row) && row.reviewStatus === 'ACCEPTED' && Boolean(row.dispositionLevel)
+}
+
+async function createDispositionCase(row: CleanupActionReview) {
+  caseSubmitting.value = true
+  try {
+    const created = await dataQualityApi.createDispositionCase({
+      requestedBy: reviewer.value,
+      sourceReport: reviewResult.value?.sourceReport || sourceReport.value,
+      action: row
+    })
+    upsertCase(created)
+    openDispositionCase(created)
+    ElMessage.success(t('dataQuality.review.caseCreated', { id: created.id }))
+  } catch (error) {
+    handleError(error)
+  } finally {
+    caseSubmitting.value = false
+  }
+}
+
+function openDispositionCase(row: DataQualityDispositionCase) {
+  selectedCase.value = row
+  caseTransition.value = {
+    operator: reviewer.value,
+    preStateSnapshot: row.preStateSnapshot || '',
+    postStateSnapshot: row.postStateSnapshot || '',
+    failureReason: row.failureReason || '',
+    rollbackNote: row.rollbackNote || ''
+  }
+  caseDrawerVisible.value = true
+}
+
+async function startSelectedCase() {
+  if (!selectedCase.value) return
+  await transitionSelectedCase(() => dataQualityApi.startDispositionCase(selectedCase.value!.id, {
+    operator: caseTransition.value.operator,
+    preStateSnapshot: caseTransition.value.preStateSnapshot
+  }))
+}
+
+async function verifySelectedCase() {
+  if (!selectedCase.value) return
+  await transitionSelectedCase(() => dataQualityApi.verifyDispositionCase(selectedCase.value!.id, {
+    operator: caseTransition.value.operator,
+    postStateSnapshot: caseTransition.value.postStateSnapshot
+  }))
+}
+
+async function failSelectedCase() {
+  if (!selectedCase.value) return
+  await transitionSelectedCase(() => dataQualityApi.failDispositionCase(selectedCase.value!.id, {
+    operator: caseTransition.value.operator,
+    failureReason: caseTransition.value.failureReason,
+    rollbackNote: caseTransition.value.rollbackNote
+  }))
+}
+
+async function cancelSelectedCase() {
+  if (!selectedCase.value) return
+  await transitionSelectedCase(() => dataQualityApi.cancelDispositionCase(selectedCase.value!.id, {
+    operator: caseTransition.value.operator,
+    rollbackNote: caseTransition.value.rollbackNote
+  }))
+}
+
+async function transitionSelectedCase(request: () => Promise<DataQualityDispositionCase>) {
+  try {
+    const updated = await request()
+    upsertCase(updated)
+    openDispositionCase(updated)
+    ElMessage.success(t('dataQuality.review.caseUpdated', { status: updated.status }))
+  } catch (error) {
+    handleError(error)
+  }
+}
+
+function upsertCase(item: DataQualityDispositionCase) {
+  dispositionCases.value = [
+    item,
+    ...dispositionCases.value.filter(existing => existing.id !== item.id)
+  ]
+}
+
+function isTerminalCase(item: DataQualityDispositionCase) {
+  return ['VERIFIED', 'FAILED', 'CANCELLED'].includes(item.status)
+}
+
+function canVerifyCase(item: DataQualityDispositionCase) {
+  if (isTerminalCase(item)) return false
+  if (item.dispositionLevel === 'APPLICATION_MANUAL') return item.status === 'IN_PROGRESS'
+  return item.dispositionLevel === 'OBSERVE_ONLY' && item.status === 'PLANNED'
 }
 
 function triggerFileImport() {
@@ -284,6 +493,12 @@ function statusTagType(status?: string) {
   return 'warning'
 }
 
+onMounted(() => {
+  refreshDispositionCases().catch(() => {
+    dispositionCases.value = []
+  })
+})
+
 defineExpose({
   parseJsonl,
   loadQueue,
@@ -294,7 +509,16 @@ defineExpose({
   filters,
   rawJsonl,
   reviewer,
-  sourceReport
+  sourceReport,
+  dispositionCases,
+  selectedCase,
+  caseTransition,
+  refreshDispositionCases,
+  createDispositionCase,
+  startSelectedCase,
+  verifySelectedCase,
+  failSelectedCase,
+  cancelSelectedCase
 })
 </script>
 
@@ -309,7 +533,8 @@ defineExpose({
 .panel-header,
 .panel-actions,
 .summary-strip,
-.scope-counts {
+.scope-counts,
+.case-actions {
   display: flex;
   align-items: center;
 }
@@ -381,5 +606,21 @@ defineExpose({
 
 .review-table {
   width: 100%;
+}
+
+.case-panel {
+  margin-top: 4px;
+}
+
+.case-detail,
+.case-transition-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.case-actions {
+  gap: 8px;
+  flex-wrap: wrap;
 }
 </style>

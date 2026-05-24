@@ -18,7 +18,13 @@ vi.mock('element-plus', () => ({
 
 vi.mock('@/api/dataQualityApi', () => ({
   dataQualityApi: {
-    reviewCleanupActions: vi.fn()
+    reviewCleanupActions: vi.fn(),
+    listDispositionCases: vi.fn(),
+    createDispositionCase: vi.fn(),
+    startDispositionCase: vi.fn(),
+    verifyDispositionCase: vi.fn(),
+    failDispositionCase: vi.fn(),
+    cancelDispositionCase: vi.fn()
   }
 }))
 
@@ -48,12 +54,28 @@ const stubs = {
   ElAlert: true,
   ElStatistic: true,
   ElTable: true,
-  ElTableColumn: true
+  ElTableColumn: true,
+  ElDrawer: {
+    template: '<aside><slot /></aside>'
+  },
+  ElDescriptions: {
+    template: '<dl><slot /></dl>'
+  },
+  ElDescriptionsItem: {
+    template: '<div><slot /></div>'
+  }
 }
 
 describe('DataQualityReviewQueue', () => {
   beforeEach(() => {
     vi.mocked(dataQualityApi.reviewCleanupActions).mockReset()
+    vi.mocked(dataQualityApi.listDispositionCases).mockReset()
+    vi.mocked(dataQualityApi.createDispositionCase).mockReset()
+    vi.mocked(dataQualityApi.startDispositionCase).mockReset()
+    vi.mocked(dataQualityApi.verifyDispositionCase).mockReset()
+    vi.mocked(dataQualityApi.failDispositionCase).mockReset()
+    vi.mocked(dataQualityApi.cancelDispositionCase).mockReset()
+    vi.mocked(dataQualityApi.listDispositionCases).mockResolvedValue([])
     vi.mocked(ElMessage.success).mockReset()
   })
 
@@ -159,6 +181,7 @@ describe('DataQualityReviewQueue', () => {
     expect(vm.reviewResult.assetScopeCounts[0].assetScope).toBe('HISTORICAL_ACCEPTANCE')
     expect(vm.reviewResult.actions[0].dispositionLevel).toBe('APPLICATION_MANUAL')
     expect(vm.reviewResult.actions[0].rollbackBoundary).toContain('original status')
+    expect(dataQualityApi.listDispositionCases).toHaveBeenCalled()
     expect(ElMessage.success).toHaveBeenCalledWith('dataQuality.review.reviewComplete:{"count":1}')
   })
 
@@ -171,5 +194,94 @@ describe('DataQualityReviewQueue', () => {
 
     expect(vm.queueActions).toHaveLength(0)
     expect(dataQualityApi.reviewCleanupActions).not.toHaveBeenCalled()
+  })
+
+  it('creates and transitions disposition audit cases without direct cleanup execution', async () => {
+    const createdCase = {
+      id: 'case-1',
+      caseKey: 'key-1',
+      sourceReport: 'report/actions.jsonl',
+      resourceType: 'release_window',
+      resourceId: 'window-1',
+      riskType: 'DRAFT_WINDOW_REMAINS',
+      dispositionLevel: 'APPLICATION_MANUAL',
+      applicationEntry: '/release-windows/{resourceId}',
+      allowedAction: 'handle in release window page',
+      rollbackBoundary: 'keep original status on failure',
+      auditRecord: 'record reviewer and status transition',
+      status: 'PLANNED',
+      requestedBy: 'release-manager',
+      createdAt: '2026-05-24T00:00:00Z',
+      updatedAt: '2026-05-24T00:00:00Z'
+    }
+    vi.mocked(dataQualityApi.createDispositionCase).mockResolvedValue(createdCase)
+    vi.mocked(dataQualityApi.startDispositionCase).mockResolvedValue({
+      ...createdCase,
+      status: 'IN_PROGRESS',
+      preStateSnapshot: '{"status":"DRAFT"}'
+    })
+    vi.mocked(dataQualityApi.verifyDispositionCase).mockResolvedValue({
+      ...createdCase,
+      status: 'VERIFIED',
+      preStateSnapshot: '{"status":"DRAFT"}',
+      postStateSnapshot: '{"status":"CLOSED"}',
+      verifiedBy: 'qa'
+    })
+
+    const wrapper = shallowMount(DataQualityReviewQueue, { global: { stubs } })
+    const vm = wrapper.vm as any
+    vm.reviewResult = {
+      reviewer: 'release-manager',
+      sourceReport: 'report/actions.jsonl',
+      total: 1,
+      accepted: 1,
+      pending: 0,
+      rejected: 0,
+      assetBoundaries: [],
+      assetScopeCounts: [],
+      actions: [
+        {
+          resourceType: 'release_window',
+          resourceId: 'window-1',
+          riskType: 'DRAFT_WINDOW_REMAINS',
+          reviewStatus: 'ACCEPTED',
+          reason: 'ok',
+          applicationEntry: '/release-windows/{resourceId}',
+          preExecutionCheck: 'check',
+          postExecutionVerification: 'verify',
+          dispositionLevel: 'APPLICATION_MANUAL',
+          allowedAction: 'handle in release window page',
+          rollbackBoundary: 'keep original status on failure',
+          auditRecord: 'record reviewer and status transition',
+          executionPermitted: false
+        }
+      ]
+    }
+
+    await vm.createDispositionCase(vm.reviewResult.actions[0])
+    expect(dataQualityApi.createDispositionCase).toHaveBeenCalledWith({
+      requestedBy: 'release-manager',
+      sourceReport: 'report/actions.jsonl',
+      action: expect.objectContaining({
+        resourceType: 'release_window',
+        reviewStatus: 'ACCEPTED',
+        executionPermitted: false
+      })
+    })
+    expect(vm.dispositionCases[0].status).toBe('PLANNED')
+
+    vm.caseTransition.preStateSnapshot = '{"status":"DRAFT"}'
+    await vm.startSelectedCase()
+    expect(dataQualityApi.startDispositionCase).toHaveBeenCalledWith('case-1', {
+      operator: 'release-manager',
+      preStateSnapshot: '{"status":"DRAFT"}'
+    })
+
+    vm.caseTransition.postStateSnapshot = '{"status":"CLOSED"}'
+    await vm.verifySelectedCase()
+    expect(dataQualityApi.verifyDispositionCase).toHaveBeenCalledWith('case-1', {
+      operator: 'release-manager',
+      postStateSnapshot: '{"status":"CLOSED"}'
+    })
   })
 })
