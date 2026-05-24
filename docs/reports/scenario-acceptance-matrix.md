@@ -488,8 +488,8 @@ P0 验收焦点：
 - Run 列表可按 `windowKey` 和 `FAILED` 过滤，Run 抽屉可复核 `VERSION_UPDATE_FAILED`、`UPDATE_VERSION` 和缺失 POM 路径。
 - Run 列表已支持分组筛选，Playwright 在 UI 创建出的分组下生成失败版本更新 Run 后，按 `windowKey` + 分组 + `FAILED` 复核同一条 Run。
 - Run 详情页和抽屉已兼容 export JSON 的 `runId`、`repo`、`startAt/endAt` 字段，并默认展开 RunStep 明细。
-- 后端冲突检测对 mock/不可抽取版本的仓库不再把版本读取失败升级为阻断异常；mock 仓库版本更新按本地路径执行，能真实落失败 Run。
-- 2026-05-23 复跑确认 `MOCK` provider 是 SA-015 本地前端旅程的产品边界：UI 创建仓库时选择 `MOCK`，分支生命周期走本地 Mock 适配器，版本更新按本地路径执行并真实生成 `VERSION_UPDATE_FAILED` Run；避免误降级为 GitLab 后被真实远端冲突预检阻断。
+- 后端冲突检测对不可抽取版本的仓库不再把版本读取失败升级为阻断异常；Mock adapter 仅保留在隔离测试边界内。
+- 2026-05-24 复核确认产品运行库不得写入 `MOCK` provider：仓库表单/API 均禁止 `gitProvider=MOCK`，Slice-2 UI journey 改为准备真实 GitLab fixture 后通过页面创建 `GITLAB` 仓库；历史持久库中的 `MOCK` provider 进入 SA-002 dry-run 风险项。
 - Playwright 已补窗口详情冲突证据复核：复用同一个 serial UI 旅程创建出的发布窗口、迭代和仓库，从窗口详情复核 `MERGE_CONFLICT`、`BRANCH_NONCOMPLIANT`、`CROSS_REPO_VERSION_MISMATCH` 类型分布、分支/版本详情、建议处理方式和外部处理语义，并确认不会误触发版本同步接口。
 - Playwright 已补 Run 详情部分失败复核：复用同一个 serial UI 旅程创建出的窗口标识，从 Run 列表筛出部分失败 Run，并在 Run 详情页复核成功仓库项、失败仓库项、`MERGE_BLOCKED` 结果、失败任务重试次数和错误信息。
 - `run-acceptance.sh` 5.9 已补真实 GitLab 部分失败重试证据：同一 attach Run 内构造一个 `MERGED` 仓库项和一个 `MERGE_BLOCKED` 仓库项，再调用 retry API 验证新 Run 只包含选中的失败项。
@@ -566,6 +566,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 |---|---|---|---|
 | P1 | SA-002 BranchCreationMode 执行计划评审门禁 | 最小 dry-run 已实现，当前只输出四类候选、统计、JSON 结构和 Markdown 报告，且 `executionPermitted=false` | 评审 dry-run 输出是否足以进入执行计划切片；未批准前不得实现执行 API、数据库写入、迁移表或 GitLab 操作 |
 | P1 | SA-002 BranchCreationMode 最小 dry-run 实现 | 已完成；应用服务、只读端口、只读 API、应用层测试、API 集成测试和中文真源已同步 | 后续保持回归 |
+| P1 | SA-005 仓库 Mock Provider 持久化边界 | 已完成；产品仓库 UI/API 禁止 `MOCK` Provider 落库，历史 Mock Provider 进入 SA-002 dry-run 风险复核，Slice-2 UI journey 改用真实 GitLab fixture | 后续保持回归 |
 | P1 | SA-002 BranchCreationMode 迁移服务 proposal 评审门禁 | 已完成；评审记录、需求、proposal、矩阵、台账和路线图已同步，结论为 `APPROVE_DRY_RUN_ONLY` | 后续保持回归 |
 | P1 | SA-002 BranchCreationMode 独立迁移服务设计 | 已完成；需求、OpenSpec proposal、设计、data-quality/iteration delta spec、任务记录、矩阵、台账和路线图已同步 | 后续保持回归 |
 | P1 | SA-001 发布候选交付证据收口与人工评审准备 | 已完成；发布候选报告已汇总受控验证、前端 E2E、关键组件、SA-002 处置 case 页面验收、静态扫描、非目标边界和人工评审出口 | 后续保持回归 |
@@ -574,7 +575,7 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P1 | SA-002 数据质量受控处置执行审计设计 | 已完成；需求、OpenSpec proposal、设计、delta spec、任务记录、矩阵、台账和路线图已同步 | 后续保持回归 |
 | P1 | SA-002 数据质量人工复核处置策略 | 已完成；复核 API 和页面返回处置等级、允许动作、失败回滚边界和审计记录口径，所有结果仍 `executionPermitted=false` | 后续保持回归 |
 | P1 | SA-001 受控发布候选 dogfood/staging 验证 | 已完成；后端/真实 GitLab 全量验收 170 PASS，完整前端 E2E 49 PASS，验证中暴露的前端用户旅程稳定性问题已修复 | 后续保持回归 |
-| P1 | SA-015 更完整的前端场景复跑与证据更新 | Slice-2 完整复跑 23 PASS / 0 FAIL；已明确真实 UI 旅程、route-level stub 和后端/GitLab 强证据边界；`MOCK` provider 本地验收边界已恢复 | 后续保持回归 |
+| P1 | SA-015 更完整的前端场景复跑与证据更新 | Slice-2 完整复跑 23 PASS / 0 FAIL；已明确真实 UI 旅程、route-level stub 和后端/GitLab 强证据边界；后续产品 UI 旅程不得写入 `MOCK` provider，Mock 仅限隔离测试 | 后续保持回归 |
 | P1 | SA-002 验收脚本与应用 API 数据源口径统一 | 全量验收、safe-cleanup 与应用复核队列已统一使用 `API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS` 和 `REVIEW_QUEUE_ACTIONS`；复核 API 返回资产边界说明和资产范围计数 | 后续保持回归 |
 | P1 | SA-002 验收数据命名空间与保留策略 | dry-run 报告、actions.jsonl、复核 API 和数据质量复核队列已补 `dataNamespace`、`reviewBatchId`、`assetScope`、`retentionPolicy`；页面可按资产范围筛选 | 后续保持回归 |
 | P1 | SA-001 发布候选评审页 / 发布经理检查清单 | 发布候选评审页已补，支持聚合候选结论、验收证据、数据质量风险、检查清单和人工签核记录 | 后续保持回归 |
@@ -871,7 +872,7 @@ bash scripts/dev/static-scan-topn.sh 10
 
 结论：
 
-- SA-015 更完整前端场景复跑已完成；`MOCK` provider 本地验收边界已恢复，避免 mock 仓库误降级为 GitLab 后被真实远端冲突预检阻断。当前执行队列转向 SA-001 受控发布候选 dogfood/staging 验证。
+- SA-015 更完整前端场景复跑已完成；后续产品 UI 旅程写入持久库时必须使用真实 Git Provider，Mock Provider 仅限隔离测试。当前执行队列转向 SA-001 受控发布候选 dogfood/staging 验证。
 
 ### 2026-05-23 SA-002 验收脚本与应用 API 数据源口径统一
 

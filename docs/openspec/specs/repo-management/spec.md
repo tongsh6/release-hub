@@ -1,5 +1,5 @@
 ## Purpose
-代码仓库（CodeRepository）是 ReleaseHub 管理的核心资源，承载分支、MR、版本等元信息，支撑发布窗口与迭代的版本管理流程。仓库支持 GitLab/GitHub Provider 接入，并保留本地验收用 MOCK Provider，提供分支/MR 统计、健康检查（合规/不合规分支）、Git 配置管理、手动同步和 gate 概览。仓库 name 和 cloneUrl 在系统内全局唯一。
+代码仓库（CodeRepository）是 ReleaseHub 管理的核心资源，承载分支、MR、版本等元信息，支撑发布窗口与迭代的版本管理流程。产品仓库持久化只支持 GitLab/GitHub Provider 接入；MOCK Provider 仅允许存在于隔离测试或适配器级测试中，不得通过产品仓库接口落库。仓库提供分支/MR 统计、健康检查（合规/不合规分支）、Git 配置管理、手动同步和 gate 概览。仓库 name 和 cloneUrl 在系统内全局唯一。
 
 ## Requirements
 
@@ -9,6 +9,7 @@
 #### Scenario: 创建/更新校验
 - **WHEN** 用户提交包含 projectId、gitlabProjectId、name、cloneUrl、defaultBranch、monoRepo 的创建或更新请求
 - **THEN** 系统校验必填与长度（name<=128、cloneUrl<=512、defaultBranch<=128，gitlabProjectId 必须为数值且 projectId 非空），否则返回业务错误码
+- **AND** 如果请求试图保存 `gitProvider=MOCK`，系统 SHALL 返回业务错误，且不得保存仓库
 
 #### Scenario: 分页与筛选
 - **WHEN** 用户按 page/size 与 keyword（匹配 name/cloneUrl/projectId/gitlabProjectId）请求仓库列表
@@ -40,12 +41,13 @@
 - **WHEN** 用户创建或编辑仓库
 - **THEN** 表单校验 projectId、gitlabProjectId、name、cloneUrl、defaultBranch、monoRepo，失败弹出提示；成功后关闭弹窗并刷新列表
 
-#### Scenario: 本地验收 Mock Provider
+#### Scenario: 产品入口禁止 Mock Provider 落库
 
-- **WHEN** 用户在仓库表单选择 `MOCK` Provider
-- **THEN** 系统保存并返回 `gitProvider=MOCK`
-- **AND** 分支生命周期操作 SHALL 使用本地 Mock 适配器，不访问真实 GitLab/GitHub
-- **AND** 发布窗口版本更新在 `MOCK` 仓库上 SHALL 按用户提交的本地路径执行，用于生成可复核的本地失败 Run
+- **WHEN** 用户通过仓库表单或仓库 API 创建/更新代码仓库
+- **THEN** 表单 SHALL 不提供 `MOCK` Provider 选项
+- **AND** API SHALL 拒绝 `gitProvider=MOCK`
+- **AND** 正常 UI 旅程、dogfood/staging、持久本地环境和验收环境写入的仓库 SHALL 使用真实 Git Provider 语义和真实 Git cloneUrl
+- **AND** MOCK Provider SHALL 只用于单元测试、组件测试、适配器测试或隔离的一次性测试库，不得污染产品持久数据面
 
 ### Requirement: 仓库版本解析异常可追溯
 

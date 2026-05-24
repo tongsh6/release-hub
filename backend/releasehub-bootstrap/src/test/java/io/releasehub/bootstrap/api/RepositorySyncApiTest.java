@@ -121,6 +121,26 @@ class RepositorySyncApiTest {
     }
 
     @Test
+    void shouldRejectMockProviderFromProductRepositoryApi() throws Exception {
+        String token = loginAndGetToken();
+        String groupCode = createGroupAndGetCode(token);
+
+        CreateRepoRequest request = new CreateRepoRequest();
+        request.setName("Mock Provider Repo");
+        request.setCloneUrl("git@gitlab.com:test/mock-provider-repo.git");
+        request.setMonoRepo(false);
+        request.setGroupCode(groupCode);
+        request.setGitProvider("MOCK");
+
+        mockMvc.perform(post("/api/v1/repositories")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("REPO_014"));
+    }
+
+    @Test
     void shouldExposeHistoricalNonCompliantBranchesForGovernanceReview() throws Exception {
         String token = loginAndGetToken();
         when(branchGovernanceAppService.listNonCompliantBranches("repo-1")).thenReturn(List.of(

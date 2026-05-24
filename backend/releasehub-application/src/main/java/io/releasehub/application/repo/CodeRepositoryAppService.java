@@ -51,6 +51,7 @@ public class CodeRepositoryAppService {
         CloneUrl parsedCloneUrl = CloneUrl.parse(cloneUrl);
         String normalizedBranch = normalizeBranch(parsedCloneUrl.value(), defaultBranch);
         GitProvider effectiveProvider = gitProvider != null ? gitProvider : GitProvider.GITLAB;
+        ensureProductGitProvider(effectiveProvider);
         ensureLeafGroup(groupCode);
         ensureCloneUrlUnique(parsedCloneUrl, null);
         CodeRepository repo = CodeRepository.create(name, parsedCloneUrl.value(), normalizedBranch, groupCode, repoType, effectiveProvider, gitAccessToken, monoRepo, Instant.now(clock));
@@ -96,9 +97,10 @@ public class CodeRepositoryAppService {
         CodeRepository repo = get(repoId);
         CloneUrl parsedCloneUrl = CloneUrl.parse(cloneUrl);
         String normalizedBranch = normalizeBranch(parsedCloneUrl.value(), defaultBranch);
+        GitProvider effectiveProvider = gitProvider != null ? gitProvider : repo.getGitProvider();
+        ensureProductGitProvider(effectiveProvider);
         ensureLeafGroup(groupCode);
         ensureCloneUrlUnique(parsedCloneUrl, repo.getId());
-        GitProvider effectiveProvider = gitProvider != null ? gitProvider : repo.getGitProvider();
         String effectiveToken = (gitAccessToken != null && !gitAccessToken.isBlank()) ? gitAccessToken.trim() : repo.getGitAccessToken();
         repo.update(name, parsedCloneUrl.value(), normalizedBranch, groupCode, repoType, effectiveProvider, effectiveToken, monoRepo, Instant.now(clock));
         codeRepositoryPort.save(repo);
@@ -122,6 +124,12 @@ public class CodeRepositoryAppService {
                 .orElseThrow(() -> NotFoundException.groupCode(groupCode));
         if (groupPort.countChildren(groupCode) > 0) {
             throw BusinessException.groupNotLeaf(groupCode);
+        }
+    }
+
+    private void ensureProductGitProvider(GitProvider gitProvider) {
+        if (gitProvider == GitProvider.MOCK) {
+            throw ValidationException.repoMockProviderForbidden();
         }
     }
 

@@ -62,7 +62,7 @@
 - 发布候选交付证据包：`tasks/records/2026-05-24-sa-001-release-candidate-delivery-evidence.md` 已记录当前 dogfood/staging 候选证据与人工评审出口。
 - BranchCreationMode 迁移服务设计：`docs/openspec/changes/add-branch-creation-mode-migration-service/` 已形成；proposal 评审结论为 `APPROVE_DRY_RUN_ONLY`。
 - BranchCreationMode 最小 dry-run：`POST /api/v1/data-quality/branch-creation-mode-migrations/dry-run` 已落地，返回四类候选、统计、JSON 结构和 Markdown 报告，且 `executionPermitted=false`。
-- 最新前端场景复跑：Slice-2 23 PASS / 0 FAIL；`MOCK` provider 本地验收边界已恢复。
+- 最新前端场景复跑：Slice-2 23 PASS / 0 FAIL；产品 UI 旅程不得写入 `MOCK` provider，Mock 仅限隔离测试边界。
 
 已完成的前置事项：
 

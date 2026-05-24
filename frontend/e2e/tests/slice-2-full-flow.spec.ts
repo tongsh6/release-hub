@@ -6,7 +6,47 @@
  */
 import { test, expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
+import { existsSync, readFileSync } from 'node:fs'
 import { ensureLoggedIn, loadLabels, confirmDialog, confirmMessageBox, tcName, FORCE } from './helpers.js'
+
+function loadE2EGitLabEnv(): Record<string, string> {
+  const env: Record<string, string> = {}
+  if (existsSync('/tmp/e2e-gitlab.env')) {
+    for (const line of readFileSync('/tmp/e2e-gitlab.env', 'utf8').split('\n')) {
+      const match = line.match(/^([^=]+)=(.*)$/)
+      if (match) env[match[1]] = match[2]
+    }
+  }
+  return env
+}
+
+async function createGitLabFixtureProject(repoName: string): Promise<{ cloneUrl: string; token: string }> {
+  const env = loadE2EGitLabEnv()
+  const gitLabUrl = process.env.E2E_GITLAB_URL || env.E2E_GITLAB_URL || 'http://localhost:9080'
+  const token = process.env.E2E_GITLAB_TOKEN || env.E2E_GITLAB_TOKEN
+  if (!token) {
+    throw new Error('E2E_GITLAB_TOKEN is required for UI-created repository journeys')
+  }
+
+  const response = await fetch(`${gitLabUrl}/api/v4/projects`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'PRIVATE-TOKEN': token
+    },
+    body: JSON.stringify({
+      name: repoName,
+      path: repoName,
+      visibility: 'private',
+      initialize_with_readme: true
+    })
+  })
+  const data = await response.json()
+  if (!response.ok || !data.http_url_to_repo) {
+    throw new Error(`Failed to create GitLab fixture project: ${JSON.stringify(data)}`)
+  }
+  return { cloneUrl: data.http_url_to_repo, token }
+}
 
 test.describe('Slice-2: Full Release Flow', () => {
   const windowName = tcName('Win')
@@ -179,6 +219,8 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
   let windowKey = ''
   let windowDetailUrl = ''
   let createdRepoId = ''
+  let repoCloneUrl = ''
+  let gitLabToken = ''
 
   test.beforeAll(async ({ browser }) => {
     const page = await browser.newPage()
@@ -188,7 +230,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'group.createTop', 'group.name', 'group.code',
       'repository.addOrSync', 'repository.columns.repo', 'repository.columns.cloneUrl',
       'repository.columns.defaultBranch', 'repository.columns.initialVersion',
-      'repository.git.provider', 'repository.git.providers.MOCK',
+      'repository.git.provider', 'repository.git.token',
       'iteration.new', 'iteration.columns.name', 'iteration.detail.addRepos',
       'releaseWindow.create', 'releaseWindow.name', 'releaseWindow.publish',
       'releaseWindow.statusText.PUBLISHED',
@@ -232,6 +274,9 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'conflict.severity.blocker',
       'conflict.recommendation'
     ])
+    const fixture = await createGitLabFixtureProject(repoName)
+    repoCloneUrl = fixture.cloneUrl
+    gitLabToken = fixture.token
     await page.close()
   })
 
@@ -295,16 +340,15 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     const repoDialog = page.locator('.el-dialog').last()
     const repoInputs = repoDialog.locator('.el-input__inner')
     await repoInputs.nth(0).fill(repoName)
-    await repoInputs.nth(1).fill(`https://gitlab.example.com/customer/${repoName}.git`)
+    await repoInputs.nth(1).fill(repoCloneUrl)
     await repoInputs.nth(2).fill('main')
     await repoInputs.nth(3).fill('1.4.0')
     await selectLeafGroup(page, repoDialog)
-    await repoDialog.getByRole('combobox', { name: L['repository.git.provider'] }).click(FORCE)
-    await page
-      .locator('.el-select-dropdown__item')
-      .filter({ hasText: L['repository.git.providers.MOCK'] })
-      .last()
-      .evaluate((el: HTMLElement) => el.click())
+    await repoDialog
+      .locator('.el-form-item')
+      .filter({ hasText: L['repository.git.token'] })
+      .locator('input')
+      .fill(gitLabToken)
     await confirmDialog(page)
     await searchByKeyword(page, repoName)
     await expect(page.locator('.el-table__body tr').filter({ hasText: repoName }).last()).toBeVisible()
@@ -438,7 +482,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
             repos: [{
               repoId: createdRepoId,
               repoName,
-              repoCloneUrl: `https://gitlab.example.com/customer/${repoName}.git`,
+              repoCloneUrl,
               iterationKey,
               featureBranch: {
                 branchName: missingFeatureBranch,

@@ -61,6 +61,15 @@ public class DataQualityCleanupReviewAppService {
                             "通过仓库编辑页修正 Clone URL，复用格式校验和规范化重复纳管保护。",
                             "如保存失败，不修改原仓库地址；保留 dry-run 动作等待人工确认。",
                             "记录 reviewer、sourceReport、resourceId、修正前后 Clone URL 和重新审计结果。")),
+            Map.entry(key("code_repository", "MOCK_PROVIDER_IN_PERSISTENT_REPO"),
+                    new ActionContract(
+                            "/repositories/{resourceId}",
+                            "确认仓库仍存在，且 gitProvider 仍为 MOCK。",
+                            "仓库编辑保存后重新运行 SA-002 审计，持久库中 MOCK Provider 数量应减少。",
+                            "APPLICATION_MANUAL",
+                            "通过仓库编辑页改为真实 Git Provider 并填写真实 Clone URL/Token；不得通过数据库脚本绕过仓库校验。",
+                            "如保存失败，保持原仓库记录不变；保留 dry-run 动作等待真实 Provider 信息。",
+                            "记录 reviewer、sourceReport、resourceId、原 Provider、目标 Provider 和重新审计结果。")),
             Map.entry(key("release_window", "DRAFT_WINDOW_REMAINS"),
                     new ActionContract(
                             "/release-windows/{resourceId}",

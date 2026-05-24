@@ -286,6 +286,20 @@ while IFS=$'\t' read -r repo_id clone_url; do
         "仓库编辑保存后重新运行 SA-002 审计，cloneUrl 异常数量应减少。"
 done < <(psql_tsv "SELECT id, COALESCE(clone_url, '') FROM code_repository WHERE clone_url LIKE 'http://http://%' OR clone_url !~ '^(https?://[^/]+/.+|git@[^:]+:.+)(\\.git)?$' ORDER BY id;" 2>/dev/null || true)
 
+while IFS=$'\t' read -r repo_id repo_name clone_url; do
+    [ -z "${repo_id:-}" ] && continue
+    append_action \
+        "code_repository" \
+        "$repo_id" \
+        "MOCK_PROVIDER_IN_PERSISTENT_REPO" \
+        "通过仓库编辑入口把 Provider 改为真实 Git Provider，并填写真实 cloneUrl/token；Mock Provider 只能用于隔离测试，不得作为产品数据落库。" \
+        "false" \
+        "code_repository.git_provider:MOCK:$repo_name:$clone_url" \
+        "/repositories/{resourceId}" \
+        "确认仓库仍存在，且 gitProvider 仍为 MOCK。" \
+        "仓库编辑保存后重新运行 SA-002 审计，持久库中 MOCK Provider 数量应减少。"
+done < <(psql_tsv "SELECT id, COALESCE(name, ''), COALESCE(clone_url, '') FROM code_repository WHERE git_provider = 'MOCK' ORDER BY id;" 2>/dev/null || true)
+
 while IFS=$'\t' read -r window_id window_name; do
     [ -z "${window_id:-}" ] && continue
     append_action \

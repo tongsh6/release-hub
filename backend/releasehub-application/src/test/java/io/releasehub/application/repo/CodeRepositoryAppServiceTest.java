@@ -7,6 +7,7 @@ import io.releasehub.application.settings.SettingsPort;
 import io.releasehub.application.version.VersionExtractorUseCase;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
@@ -14,6 +15,7 @@ import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.repo.RepoType;
 import io.releasehub.domain.version.VersionSource;
@@ -207,6 +209,49 @@ class CodeRepositoryAppServiceTest {
         assertThatThrownBy(() -> appService.create("Repo", "git@gitlab.com:test/repo.git", "main", null, false, null, "G404"))
                 .isInstanceOf(NotFoundException.class)
                 .satisfies(ex -> assertThat(((NotFoundException) ex).getCode()).isEqualTo("GROUP_002"));
+    }
+
+    @Test
+    @DisplayName("产品仓库创建入口拒绝 MOCK provider 落库")
+    void shouldRejectCreateWithMockProvider() {
+        assertThatThrownBy(() -> appService.create(
+                "Repo",
+                "git@gitlab.com:test/repo.git",
+                "main",
+                null,
+                false,
+                null,
+                "G001",
+                GitProvider.MOCK,
+                null))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(ex -> assertThat(((ValidationException) ex).getCode()).isEqualTo("REPO_014"));
+        verify(codeRepositoryPort, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("产品仓库更新入口拒绝 MOCK provider 落库")
+    void shouldRejectUpdateWithMockProvider() {
+        Instant now = Instant.now();
+        CodeRepository repo = CodeRepository.rehydrate(
+                RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git", "main", "G001",
+                RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+
+        assertThatThrownBy(() -> appService.update(
+                "repo-1",
+                "Repo",
+                "git@gitlab.com:test/repo.git",
+                "main",
+                null,
+                false,
+                null,
+                "G001",
+                GitProvider.MOCK,
+                null))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(ex -> assertThat(((ValidationException) ex).getCode()).isEqualTo("REPO_014"));
+        verify(codeRepositoryPort, never()).save(any());
     }
 
     @Test

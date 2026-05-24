@@ -81,6 +81,22 @@ class DataQualityCleanupReviewAppServiceTest {
     }
 
     @Test
+    void shouldReturnManualStrategyForMockProviderInPersistentRepository() {
+        CleanupReviewResult result = service.review(new CleanupReviewCommand(
+                "qa",
+                "report",
+                List.of(validMockProviderAction("APPROVE_FOR_APPLICATION_ENTRY"))));
+
+        CleanupActionReview review = result.actions().get(0);
+        assertThat(review.reviewStatus()).isEqualTo("ACCEPTED");
+        assertThat(review.dispositionLevel()).isEqualTo("APPLICATION_MANUAL");
+        assertThat(review.allowedAction()).contains("真实 Git Provider");
+        assertThat(review.rollbackBoundary()).contains("保持原仓库记录不变");
+        assertThat(review.auditRecord()).contains("目标 Provider");
+        assertThat(review.executionPermitted()).isFalse();
+    }
+
+    @Test
     void shouldCarryNamespaceBatchScopeAndRetentionPolicy() {
         CleanupReviewResult result = service.review(new CleanupReviewCommand(
                 "qa",
@@ -215,6 +231,20 @@ class DataQualityCleanupReviewAppServiceTest {
                 "受控迁移服务: iteration_repo.branch_creation_mode",
                 "确认 iterationKey/repoId 仍存在，且分支模式缺失或不在 AUTO、NAMED、EXISTING 范围内。",
                 "复核 version-info 返回的 branchCreationMode 已按真实业务语义补齐。",
+                decision);
+    }
+
+    private CleanupActionInput validMockProviderAction(String decision) {
+        return new CleanupActionInput(
+                "code_repository",
+                "repo-1",
+                "MOCK_PROVIDER_IN_PERSISTENT_REPO",
+                "通过仓库编辑入口把 Provider 改为真实 Git Provider，并填写真实 cloneUrl/token。",
+                false,
+                "code_repository.git_provider:MOCK:repo-1",
+                "/repositories/{resourceId}",
+                "确认仓库仍存在，且 gitProvider 仍为 MOCK。",
+                "仓库编辑保存后重新运行 SA-002 审计，持久库中 MOCK Provider 数量应减少。",
                 decision);
     }
 }
