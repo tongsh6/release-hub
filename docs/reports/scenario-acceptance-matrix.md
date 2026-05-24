@@ -123,11 +123,12 @@ P0 验收焦点：
 - dry-run 报告已对齐全量验收可见口径：DRAFT 发布窗口残留使用后端 API 统计并生成逐项复核动作，底层 token、BranchCreationMode、featureBranch、cloneUrl 和 branchCreated 风险继续通过数据库只读审计补充。
 - 数据质量复核队列页面已补：可导入 `actions.jsonl`，按资源类型、风险类型和复核状态筛选，批量标记待复核或批准进入应用入口，并调用受控复核 API 返回摘要和逐项复核结果。
 - 人工复核后的受控处置策略已补：复核 API 与页面为每条动作展示处置等级、允许动作、失败回滚边界和审计记录口径；仓库/设置 token、featureBranch、cloneUrl 和 DRAFT 窗口风险进入应用层人工处置，BranchCreationMode 风险要求独立迁移服务，attach 分支未创建保持只读观察。
+- 受控处置执行审计设计已形成：OpenSpec change `update-data-quality-disposition-audit` 定义处置 case、状态机、幂等键、脱敏快照、失败恢复和不同处置等级的执行边界。
 - 脚本拒绝 `--execute`，不直接修改数据库、不删除发布窗口、不触碰 GitLab 远端资源，符合本地持久化验收原则。
 
 缺口：
 
-- 自动执行修复不进入当前阶段；真实修复必须从人工复核后的应用层入口继续处理，或另建受控迁移服务并保留同等审计字段。下一步只允许先设计受控执行审计闭环，不能把复核队列直接升级成自动清理入口。
+- 自动执行修复不进入当前阶段；真实修复必须从人工复核后的应用层入口继续处理，或另建受控迁移服务并保留同等审计字段。下一步只允许实现处置 case 审计模型和页面入口，不能把复核队列直接升级成自动清理入口。
 
 ### SA-003：管理员建立组织分组树
 
@@ -562,7 +563,8 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
-| P1 | SA-002 数据质量受控处置执行审计设计 | 处置策略已能区分只读观察、应用层人工处置和独立迁移服务；下一步若要真实处置历史风险，必须先定义执行记录、失败恢复和防重放边界 | 形成应用层处置执行审计设计：明确动作来源、执行前快照、执行记录、失败回滚、幂等防重和验收证据；继续禁止脚本自动删库、自动关闭窗口或触碰 GitLab 远端资源 |
+| P1 | SA-002 数据质量受控处置执行审计最小实现 | 执行审计设计已完成；需要把处置 case 审计模型和页面入口落成最小可验证产品切片 | 创建/list/detail/start/verify/fail/cancel 处置 case；记录动作来源、前后快照、失败恢复和幂等防重；不直接修改业务资源、不关闭窗口、不迁移数据、不触碰 GitLab 远端资源 |
+| P1 | SA-002 数据质量受控处置执行审计设计 | 已完成；需求、OpenSpec proposal、设计、delta spec、任务记录、矩阵、台账和路线图已同步 | 后续保持回归 |
 | P1 | SA-002 数据质量人工复核处置策略 | 已完成；复核 API 和页面返回处置等级、允许动作、失败回滚边界和审计记录口径，所有结果仍 `executionPermitted=false` | 后续保持回归 |
 | P1 | SA-001 受控发布候选 dogfood/staging 验证 | 已完成；后端/真实 GitLab 全量验收 170 PASS，完整前端 E2E 49 PASS，验证中暴露的前端用户旅程稳定性问题已修复 | 后续保持回归 |
 | P1 | SA-015 更完整的前端场景复跑与证据更新 | Slice-2 完整复跑 23 PASS / 0 FAIL；已明确真实 UI 旅程、route-level stub 和后端/GitLab 强证据边界；`MOCK` provider 本地验收边界已恢复 | 后续保持回归 |
@@ -585,6 +587,33 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | P2 | SA-014 版本更新扩展 | Maven 单模块、多模块、Gradle 真实写回已闭环；批量版本更新前端入口、请求契约、多仓部分失败后端/GitLab 证据和版本更新失败重试已补 | 后续保持回归 |
 
 ## 八、最新验证记录
+
+### 2026-05-24 SA-002 数据质量受控处置执行审计设计
+
+命令：
+
+```bash
+openspec list
+openspec list --specs
+bash scripts/dev/check-roadmap.sh
+pnpm run typecheck
+pnpm i18n:lint
+git diff --check
+```
+
+结果：
+
+- 新增需求文档：`docs/requirements/in-progress/SA-002-数据质量受控处置执行审计.md`，并登记到 `docs/requirements/INDEX.md`。
+- 新增 OpenSpec change：`docs/openspec/changes/update-data-quality-disposition-audit/`，包含 proposal、design、tasks 和 data-quality delta spec。
+- 设计明确处置 case、状态机、幂等键、脱敏快照、失败恢复、重复提交处理、处置等级边界和最小实现切片。
+- `openspec` CLI 当前本机不可用：`command not found`；未安装新工具。
+- roadmap 检查通过，唯一 HEAD 转向 SA-002 数据质量受控处置执行审计最小实现。
+- 前端 typecheck、i18n lint 和 `git diff --check` 通过。
+
+结论：
+
+- SA-002 数据质量受控处置执行审计设计已完成。当前仍不自动删除数据库记录、不自动关闭发布窗口、不迁移业务数据、不触碰 GitLab 远端资源。
+- 当前执行队列转向 SA-002 数据质量受控处置执行审计最小实现。
 
 ### 2026-05-24 SA-002 数据质量人工复核处置策略
 

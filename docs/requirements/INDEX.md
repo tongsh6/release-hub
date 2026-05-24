@@ -35,8 +35,9 @@ requirements/
 
 ## 当前进行中需求
 
-> 暂无（2026-05-11 起）。三层关联功能已完成，并通过真实 GitLab 验收 22/24 PASS，
-> 见 `docs/reports/acceptance-v0.1.11-real-gitlab.md`。
+| 需求 | 负责人 | 状态 | OpenSpec |
+|------|--------|------|----------|
+| [SA-002 数据质量受控处置执行审计](in-progress/SA-002-数据质量受控处置执行审计.md) | - | 提案设计已形成，等待最小实现切片 | `docs/openspec/changes/update-data-quality-disposition-audit/` |
 
 ## 已完成需求
 
