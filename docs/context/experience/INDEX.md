@@ -177,12 +177,12 @@
 
 ---
 
-### Git 工作流：所有变更必须走 PR
+### Git 工作流：feature → develop → release → main
 
 - **类别**：工程纪律
 - **日期**：2026-02-20
-- **关键词**：`git`, `PR`, `pull request`, `main`, `feature branch`, `工作流`, `直接推送`, `文档变更`
-- **摘要**：无论变更类型（代码/配置/文档/经验归档），一律通过 feature 分支 → PR → merge to main。"这只是文档"不是直接推 main 的理由。
+- **关键词**：`git`, `PR`, `pull request`, `develop`, `main`, `release`, `feature branch`, `工作流`, `直接推送`, `文档变更`
+- **摘要**：无论变更类型（代码/配置/文档/经验归档），一律通过 feature → PR → develop → release → main。"这只是文档"不是直接推 main/develop/release 的理由。
 - **文档**：[lessons/git-workflow.md](lessons/git-workflow.md)
 
 ---

@@ -31,7 +31,10 @@ ReleaseHub 聚焦多项目/多仓库的发布节奏治理，提供统一的发�
 - 自动校验：每个变更完成后在 `release-hub-web` 自动执行 `pnpm lint && pnpm typecheck` 并记录结果（含警告/错误），作为归档前必做项。
 
 ### Git Workflow
-- Not formally documented; default to feature branches with PR reviews before merging to the main line. No automated Git/CI integrations implemented yet (interfaces are planned for later).
+- Formal workflow: `feature/* -> develop -> release/* -> main`.
+- `develop` is the integration branch and the only source for release branches; `main` is the production-stable branch and receives release/hotfix merges only.
+- Feature work must be reviewed through PRs into `develop`. Release fixes are made on `release/vX.Y.Z`, merged to `main`, tagged, and back-merged into `develop`.
+- See `docs/context/experience/lessons/git-workflow.md` for the canonical branch rules.
 
 ## Domain Context
 - 发布窗口（ReleaseWindow）：状态流转 Draft → Published → Released → Closed；需先配置 start/end；支持冻结/解冻、发布、关闭；窗口可关联迭代并暴露编排/计划接口。
