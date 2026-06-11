@@ -1,6 +1,12 @@
 # ReleaseHub 部署指南
 
-> 最后更新：2026-05-02
+> 开源用户的标准部署入口已经收敛为源码 Docker Compose：
+> [`docs/deploy/docker-compose.md`](deploy/docker-compose.md)。
+> 版本升级与回滚见 [`docs/deploy/upgrade.md`](deploy/upgrade.md)。
+>
+> 本文件保留后端、前端、Profile、Nginx 和生产检查清单等细节说明；不要再把 e2e compose 当作生产部署入口。
+
+> 最后更新：2026-06-11
 
 ## 部署架构概览
 

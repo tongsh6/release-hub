@@ -84,6 +84,7 @@
 | SA-003 分组父级树选择体验 | 已验证 | `GroupTreeSelect.vue` + `GroupDialog.vue` + `frontend/e2e/tests/slice-1-group-window.spec.ts` | Vitest + Slice-1 Playwright | 分组编辑弹窗使用组织树选择父分组，清空表示顶层分组，当前分组自身禁选；外部 Playwright 已复核空叶子分组通过父级树选择器移动成功 |
 | SA-003 code 自动生成当前证据 | 已验证 | `GroupAppServiceValidationTest` + `frontend/e2e/tests/slice-1-group-window.spec.ts` | 应用层单测 + Slice-1 Playwright | code 缺省或空白时，顶层分组按三位数字递增，子分组继承父 code 并追加三位序号；页面创建顶层/子分组留空 code 后可在组织树复核生成值 |
 | 本地环境统一启停脚本 | 已验证 | `scripts/dev/start-local-env.sh` | 2026-05-15 真实前后端联调 | `start|hold|stop|restart|status` 可用；`hold` 托管前后端；前端 `/api` 代理登录 200 |
+| 开源单机源码部署包 | 已实现 | `deploy/compose/docker-compose.yml` + `backend/Dockerfile.prod` + `frontend/Dockerfile.prod` + `docs/deploy/docker-compose.md` | compose 配置校验 + 脚本语法检查 | 面向开源用户的 canonical 部署入口：单台 Docker 主机源码构建前后端，内置 PostgreSQL，外部 GitLab 通过 Settings 配置；提供备份、恢复、升级和健康检查脚本 |
 | SA-016 发布后收尾闭环 | 已验证 | `scripts/acceptance/run-acceptance.sh` + `frontend/e2e/tests/slice-1-group-window.spec.ts` | 2026-05-15 真实 GitLab 证据复核 + 外部 Playwright 页面旅程 | 关闭窗口、重复关闭幂等、关闭后挂载/版本更新拒绝、收尾 Run 可见、前端 CLOSED 窗口隐藏挂载入口 |
 | SA-016 发布窗口报告导出 | 已实现 | `ReleaseWindowReportController` + `ExportAppService` + `ReleaseWindowDetail.vue` | MockMvc + Vitest + typecheck/i18n | 窗口维度 JSON/CSV 汇总 window、Run、RunItem、RunStep、结果分布；详情页可导出 CSV 报告 |
 | SA-016 发布报告制品包归档 | 已实现 | `ReleaseWindowReportController` + `ReleaseWindowDetail.vue` | MockMvc + Vitest | 发布窗口可下载 `release-window-<windowKey>-evidence.zip`，包内固定包含 manifest、JSON、CSV、Markdown 四个证据文件；详情页导出菜单提供制品包入口 |

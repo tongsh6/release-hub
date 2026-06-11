@@ -18,6 +18,7 @@
 release-hub/
 ├── backend/          # Spring Boot 后端（六边形架构）
 ├── frontend/         # Vue 3 + TypeScript + Vite 前端
+├── deploy/           # 开源单机 Docker Compose 部署包
 └── docs/             # 设计文档、架构决策、工作流规范
 ```
 
@@ -36,8 +37,22 @@ cd frontend && pnpm install && pnpm dev
 
 > **适配器模式**：默认使用 Mock 适配器（不访问真实 Git 平台）。叠加 `real` profile 启用真实 GitLab API 调用。详见 [部署指南](docs/deployment.md#23-git-平台适配器模式重要)。
 
+## 自托管部署
+
+开源用户推荐使用源码 Docker Compose 部署：
+
+```bash
+cp deploy/compose/.env.example deploy/compose/.env
+$EDITOR deploy/compose/.env
+docker compose --env-file deploy/compose/.env -f deploy/compose/docker-compose.yml up -d --build
+deploy/scripts/healthcheck.sh
+```
+
+该方式在单台服务器运行前端、后端和 PostgreSQL，只连接用户已有的外部 GitLab。完整说明见 [Docker Compose 源码部署](docs/deploy/docker-compose.md)，升级流程见 [版本升级与回滚](docs/deploy/upgrade.md)。
+
 ## 文档
 
+- [Docker Compose 源码部署](docs/deploy/docker-compose.md) — 开源用户单机部署入口
 - [架构文档](docs/context/tech/architecture/) — 系统架构与技术栈
 - [开发规范](docs/context/tech/conventions/) — 代码规范与测试策略
 - [执行路线图](docs/execution-roadmap.md) — 当前唯一队首任务

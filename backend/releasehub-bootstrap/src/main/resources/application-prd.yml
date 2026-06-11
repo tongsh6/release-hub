@@ -3,13 +3,13 @@ releasehub:
     enabled: false
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/releasehub
-    username: releasehub
-    password: password
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/releasehub}
+    username: ${SPRING_DATASOURCE_USERNAME:releasehub}
+    password: ${SPRING_DATASOURCE_PASSWORD:password}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -28,7 +28,7 @@ security:
     secret: ${JWT_SECRET:ReplaceThisWithAStrongSecretInProduction}
     ttlMinutes: 120
 cors:
-  allowedOrigins: "https://releasehub.io"
+  allowedOrigins: ${CORS_ALLOWED_ORIGINS:https://releasehub.io}
 
 springdoc:
   api-docs:
