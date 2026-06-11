@@ -1,0 +1,33 @@
+FROM maven:3.9-eclipse-temurin-21-alpine AS builder
+
+WORKDIR /build/backend
+
+COPY backend/pom.xml ./
+COPY backend/releasehub-common/pom.xml ./releasehub-common/
+COPY backend/releasehub-domain/pom.xml ./releasehub-domain/
+COPY backend/releasehub-application/pom.xml ./releasehub-application/
+COPY backend/releasehub-infrastructure/pom.xml ./releasehub-infrastructure/
+COPY backend/releasehub-interfaces/pom.xml ./releasehub-interfaces/
+COPY backend/releasehub-bootstrap/pom.xml ./releasehub-bootstrap/
+
+RUN mvn -B -q -DskipTests dependency:go-offline
+
+COPY backend/ ./
+RUN mvn -B -q -DskipTests -pl releasehub-bootstrap -am package
+
+FROM eclipse-temurin:21-jre-alpine
+
+WORKDIR /app
+
+RUN addgroup -S releasehub && adduser -S releasehub -G releasehub
+
+COPY --from=builder /build/backend/releasehub-bootstrap/target/releasehub-bootstrap-*.jar /app/app.jar
+
+ENV SPRING_PROFILES_ACTIVE=prd,real
+ENV JAVA_OPTS=""
+
+EXPOSE 8080
+
+USER releasehub
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]

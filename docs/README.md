@@ -56,6 +56,11 @@ release-hub/
 │   ├── scripts/                      # 前端脚本
 │   └── plop/                         # 代码生成器模板
 │
+├── deploy/                           # 🚀 开源单机 Docker Compose 部署包
+│   ├── compose/                      #   生产 compose 与 .env.example
+│   ├── nginx/                        #   前端 Nginx 反代配置
+│   └── scripts/                      #   备份、恢复、升级、健康检查脚本
+│
 ├── docs/                             # 📚 项目文档
 │   ├── context/                      #   知识库
 │   │   ├── business/                 #     业务上下文（领域模型、用户故事、项目规划）
@@ -206,6 +211,8 @@ openspec validate --strict
 | 领域模型 | [context/business/domain-model.md](context/business/domain-model.md) |
 | 发布窗口 API | [context/tech/api/release-window.md](context/tech/api/release-window.md) |
 | 用户故事 | [context/business/user-stories-v1.3.md](context/business/user-stories-v1.3.md) |
+| Docker Compose 源码部署 | [deploy/docker-compose.md](deploy/docker-compose.md) |
+| 版本升级与回滚 | [deploy/upgrade.md](deploy/upgrade.md) |
 | 部署指南 | [deployment.md](deployment.md) |
 | 开发规范 | [context/tech/conventions/](context/tech/conventions/) |
 | 任务追踪 | [../tasks/README.md](../tasks/README.md) |

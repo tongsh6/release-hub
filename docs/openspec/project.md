@@ -10,6 +10,7 @@ ReleaseHub 聚焦多项目/多仓库的发布节奏治理，提供统一的发�
 - API/文档：REST 路由前缀 `/api/v1`；本地/测试开启 Swagger UI，生产关闭。
 - 前端：Vue 3 + TypeScript + Vite（rolldown-vite）+ Element Plus，Pinia，Vue Router，Vue I18n，Axios；pnpm 管理；openapi-typescript 生成 `src/api/schema.d.ts`；plop CRUD 模板；Vitest 单测。
 - 工具与质量：ArchUnit + Maven Enforcer 强制分层，JUnit 5 + MockMvc，ESLint + Prettier + TypeScript 类型检查，`scripts/i18n-check.js` 校验多语言。
+- 部署：开源用户 canonical 入口为 `deploy/compose/docker-compose.yml` 源码构建单机部署；前端 Nginx 代理 `/api` 到后端，后端使用 `prd,real` profile，PostgreSQL 使用 Docker volume 持久化，外部 GitLab 通过 Settings 页面配置。
 
 ## Project Conventions
 
@@ -22,6 +23,7 @@ ReleaseHub 聚焦多项目/多仓库的发布节奏治理，提供统一的发�
 - 持久化：Spring Data JPA，迁移脚本在 `releasehub-infrastructure/src/main/resources/db/migration`；本地 Postgres `ddl-auto=update`，测试/生产依赖 Flyway。
 - 安全：无状态 Spring Security，`JwtAuthenticationFilter` 置于 `UsernamePasswordAuthenticationFilter` 之前；登录 `POST /api/v1/auth/login`；CORS 来源由 `cors.allowedOrigins` 配置；各环境 JWT Secret 独立。
 - GitLab 集成：`GitLabAdapter` 读取 `SettingsPort` 的 GitLab 设置（内存存储），调用 REST API 统计分支/MR，并基于正则做分支规范校验；未配置时分支/MR信息使用空或占位返回。
+- 部署入口：对外自托管默认使用 `deploy/compose`，不内置 GitLab；升级前先备份 PostgreSQL，应用启动时由 Flyway 自动迁移。
 - 数据种子：`releasehub.seed.enabled=true` 时通过 `DataSeeder` 清理 `code_repository` 并创建固定管理员 `admin/admin`；生产默认关闭。
 - 前端结构：路由按功能在 `src/router/modules`，通用 CRUD 组件/组合式函数（`useListPage`、`SearchForm`、`DataTable`），API 模块在 `src/api/modules`。
 
