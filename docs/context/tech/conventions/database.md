@@ -58,3 +58,20 @@ metadata JSONB,
 3. **为复杂变更添加回滚注释**
 4. **使用事务**处理多语句迁移
 5. **为常用查询列添加索引**
+
+## 本地开发库清理
+
+本地开发阶段如果数据库积累了验收、联调或历史脏数据，使用统一脚本清理，不手写临时 SQL：
+
+```bash
+bash scripts/dev/cleanup-dev-database.sh
+bash scripts/dev/cleanup-dev-database.sh --execute
+```
+
+清理边界：
+
+- 只允许清理本机 Docker 容器 `releasehub-postgres` 中的 `release_hub` 数据库。
+- 默认同时扫描当前应用 schema `release_hub` 和历史遗留 schema `public`。
+- 默认保留 `flyway_schema_history`、`users`、`system_settings`，避免丢失迁移元数据、登录账号和本地 GitLab 配置。
+- 默认 dry-run 并输出 `.ai/reports/dev-db-cleanup/<timestamp>/summary.md`；只有显式 `--execute` 才执行 `TRUNCATE ... RESTART IDENTITY CASCADE`。
+- 不触碰 GitLab 远端资源，不替代 SA-002 的生产/验收数据质量复核流程。

@@ -10,6 +10,7 @@ import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.run.RunPort;
 import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.iteration.IterationStatus;
@@ -39,6 +40,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -113,6 +115,33 @@ class AttachAppServiceTest {
         verify(windowIterationPort).updateReleaseBranch(eq("window-1"), eq("ITER-1"), eq("release/RW-1"), any());
         verify(windowIterationPort).updateLastMergeAt(eq("window-1"), eq("ITER-1"), any());
         verify(runPort).save(any());
+    }
+
+    @Test
+    @DisplayName("手动创建 release 分支时不符合 BranchRule 则 Git 创建和 releaseBranch 写入前拒绝")
+    void shouldRejectManualReleaseBranchBeforeGitCreateAndStateUpdateWhenBranchRuleFails() {
+        Instant now = Instant.now();
+        ReleaseWindow window = ReleaseWindow.rehydrate(
+                ReleaseWindowId.of("window-1"), "RW-1", "Window", null,
+                now, "G001", ReleaseWindowStatus.DRAFT, now, now, false, null);
+        Iteration iteration = Iteration.rehydrate(
+                IterationKey.of("ITER-1"), "Iter", null, null, "G001",
+                Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
+        CodeRepository repo = CodeRepository.rehydrate(
+                RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git",
+                "master", "G001", RepoType.SERVICE, GitProvider.GITLAB, "token", false,
+                0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+
+        when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
+        when(iterationPort.findByKey(IterationKey.of("ITER-1"))).thenReturn(Optional.of(iteration));
+        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+        when(branchRuleUseCase.isCompliant("release/RW-1", "G001", "repo-1")).thenReturn(false);
+
+        assertThatThrownBy(() -> attachAppService.createReleaseBranchForIteration("window-1", "ITER-1"))
+                .isInstanceOf(ValidationException.class);
+
+        verify(gitBranchAdapterFactory, never()).getAdapter(any());
+        verify(windowIterationPort, never()).updateReleaseBranch(anyString(), anyString(), anyString(), any());
     }
 
     @Test

@@ -1,0 +1,78 @@
+package io.releasehub.application.dataquality;
+
+import java.time.Instant;
+
+public record DataQualityDispositionCaseView(
+        String id,
+        String caseKey,
+        String sourceReport,
+        String dataNamespace,
+        String reviewBatchId,
+        String assetScope,
+        String retentionPolicy,
+        String resourceType,
+        String resourceId,
+        String riskType,
+        String dispositionLevel,
+        String applicationEntry,
+        String allowedAction,
+        String preExecutionCheck,
+        String postExecutionVerification,
+        String rollbackBoundary,
+        String auditRecord,
+        String actionSnapshot,
+        String preStateSnapshot,
+        String postStateSnapshot,
+        String status,
+        String requestedBy,
+        String handledBy,
+        String verifiedBy,
+        String failureReason,
+        String rollbackNote,
+        String retryOfCaseId,
+        Instant createdAt,
+        Instant updatedAt,
+        Instant startedAt,
+        Instant verifiedAt,
+        Instant failedAt,
+        Instant cancelledAt
+) {
+    public static DataQualityDispositionCaseView from(
+            DataQualityDispositionCasePort.DataQualityDispositionCaseRecord record) {
+        return new DataQualityDispositionCaseView(
+                record.id(),
+                record.caseKey(),
+                record.sourceReport(),
+                record.dataNamespace(),
+                record.reviewBatchId(),
+                record.assetScope(),
+                record.retentionPolicy(),
+                record.resourceType(),
+                record.resourceId(),
+                record.riskType(),
+                record.dispositionLevel(),
+                record.applicationEntry(),
+                record.allowedAction(),
+                record.preExecutionCheck(),
+                record.postExecutionVerification(),
+                record.rollbackBoundary(),
+                record.auditRecord(),
+                record.actionSnapshot(),
+                record.preStateSnapshot(),
+                record.postStateSnapshot(),
+                record.status(),
+                record.requestedBy(),
+                record.handledBy(),
+                record.verifiedBy(),
+                record.failureReason(),
+                record.rollbackNote(),
+                record.retryOfCaseId(),
+                record.createdAt(),
+                record.updatedAt(),
+                record.startedAt(),
+                record.verifiedAt(),
+                record.failedAt(),
+                record.cancelledAt()
+        );
+    }
+}

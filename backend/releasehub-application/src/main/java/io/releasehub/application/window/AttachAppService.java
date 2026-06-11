@@ -202,13 +202,19 @@ public class AttachAppService {
 
         String releaseBranch = "release/" + releaseWindow.getWindowKey();
 
-        for (RepoId repoId : iteration.getRepos()) {
+        List<CodeRepository> repos = iteration.getRepos().stream()
+                .map(repoId -> codeRepositoryPort.findById(repoId)
+                        .orElseThrow(() -> NotFoundException.repository(repoId.value())))
+                .toList();
+        for (CodeRepository repo : repos) {
+            if (!isBranchCompliantForRepo(releaseBranch, repo)) {
+                throw ValidationException.invalidParameter("branchName");
+            }
+        }
+
+        for (CodeRepository repo : repos) {
+            RepoId repoId = repo.getId();
             try {
-                CodeRepository repo = codeRepositoryPort.findById(repoId)
-                        .orElseThrow(() -> NotFoundException.repository(repoId.value()));
-                if (!isBranchCompliantForRepo(releaseBranch, repo)) {
-                    throw ValidationException.invalidParameter("branchName");
-                }
                 GitBranchPort gitBranchPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
                 boolean created = gitBranchPort.createBranch(
                         repo.getCloneUrl(), repo.getGitAccessToken(), releaseBranch, repo.getDefaultBranch());

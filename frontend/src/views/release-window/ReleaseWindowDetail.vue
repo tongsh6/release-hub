@@ -54,6 +54,7 @@
               <el-dropdown-item command="csv">{{ t('releaseWindow.report.csv') }}</el-dropdown-item>
               <el-dropdown-item command="json">{{ t('releaseWindow.report.json') }}</el-dropdown-item>
               <el-dropdown-item command="md">{{ t('releaseWindow.report.markdown') }}</el-dropdown-item>
+              <el-dropdown-item command="zip">{{ t('releaseWindow.report.artifactPackage') }}</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -103,6 +104,50 @@
           {{ formatDateTime(form.publishedAt) }}
         </el-descriptions-item>
       </el-descriptions>
+    </el-card>
+
+    <el-card v-if="parallelScope" class="parallel-scope-card">
+      <template #header>
+        <div class="card-header">
+          <span class="title">{{ t('releaseWindow.parallelScope.title') }}</span>
+          <el-tag :type="parallelScope.activeWindowCount > 1 ? 'warning' : 'info'" size="small">
+            {{ t('releaseWindow.parallelScope.activeCount', { count: parallelScope.activeWindowCount }) }}
+          </el-tag>
+        </div>
+      </template>
+      <el-descriptions :column="2" border class="parallel-scope-summary">
+        <el-descriptions-item :label="t('releaseWindow.parallelScope.currentWindow')">
+          {{ parallelScope.currentWindowKey }}
+        </el-descriptions-item>
+        <el-descriptions-item :label="t('releaseWindow.parallelScope.groupCode')">
+          {{ parallelScope.groupCode }}
+        </el-descriptions-item>
+      </el-descriptions>
+      <el-table :data="parallelScope.windows" border size="small" class="parallel-window-table">
+        <el-table-column prop="windowKey" :label="t('releaseWindow.windowKey')" min-width="150" />
+        <el-table-column prop="name" :label="t('releaseWindow.name')" min-width="150" />
+        <el-table-column prop="status" :label="t('releaseWindow.status')" width="110">
+          <template #default="{ row }">
+            <el-tag size="small">{{ t(`releaseWindow.statusText.${row.status}`) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('releaseWindow.plannedReleaseAt')" min-width="160">
+          <template #default="{ row }">
+            {{ formatDateTime(row.plannedReleaseAt) }}
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('releaseWindow.parallelScope.iterationCount')" width="120">
+          <template #default="{ row }">{{ row.iterationCount }}</template>
+        </el-table-column>
+        <el-table-column :label="t('releaseWindow.parallelScope.repoCount')" width="120">
+          <template #default="{ row }">{{ row.repoCount }}</template>
+        </el-table-column>
+        <el-table-column :label="t('releaseWindow.parallelScope.planItems')" min-width="240">
+          <template #default="{ row }">
+            <span class="parallel-plan-items">{{ formatParallelPlanItems(row) }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
     </el-card>
 
     <!-- 关联迭代卡片 -->
@@ -216,7 +261,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowDown, ArrowLeft, Delete, Download } from '@element-plus/icons-vue'
-import { releaseWindowApi, type ConflictItemView, type ReleaseWindow } from '@/api/modules/releaseWindow'
+import { releaseWindowApi, type ConflictItemView, type ParallelWindowView, type ReleaseWindow, type ReleaseWindowParallelScopeView } from '@/api/modules/releaseWindow'
 import { iterationApi, type ConflictResolution } from '@/api/iterationApi'
 import { repositoryApi, type Repository } from '@/api/repositoryApi'
 import { handleError } from '@/utils/error'
@@ -237,6 +282,7 @@ const { t } = useI18n()
 const loading = ref(false)
 const iterationsLoading = ref(false)
 const form = ref<Partial<ReleaseWindow>>({})
+const parallelScope = ref<ReleaseWindowParallelScopeView | null>(null)
 const attachDialogRef = ref<InstanceType<typeof AttachIterationsDialog>>()
 const codeMergeDialogRef = ref<InstanceType<typeof CodeMergeDialog>>()
 const versionUpdateDialogRef = ref<InstanceType<typeof VersionUpdateDialog>>()
@@ -257,7 +303,12 @@ const expandedIterations = ref<string[]>([])
 const load = async (id: string) => {
   loading.value = true
   try {
-    form.value = await releaseWindowApi.get(id)
+    const [windowDetail, scope] = await Promise.all([
+      releaseWindowApi.get(id),
+      releaseWindowApi.getParallelScope(id)
+    ])
+    form.value = windowDetail
+    parallelScope.value = scope
     // 加载关联迭代
     await loadIterations(id)
   } catch (err) {
@@ -265,6 +316,10 @@ const load = async (id: string) => {
   } finally {
     loading.value = false
   }
+}
+
+const loadParallelScope = async (id: string) => {
+  parallelScope.value = await releaseWindowApi.getParallelScope(id)
 }
 
 const loadIterations = async (windowId: string) => {
@@ -361,7 +416,8 @@ const goAttach = () => {
 const handleAttachSuccess = () => {
   const id = route.params.id as string
   if (id) {
-    loadIterations(id)
+    void loadIterations(id)
+    void loadParallelScope(id)
   }
 }
 
@@ -376,9 +432,19 @@ const handleDetachIteration = async (iterationKey: string) => {
     await releaseWindowApi.detach(form.value.id, iterationKey)
     ElMessage.success(t('common.success'))
     await loadIterations(form.value.id)
+    await loadParallelScope(form.value.id)
   } catch (error) {
     if (error !== 'cancel') handleError(error)
   }
+}
+
+const formatParallelPlanItems = (window: ParallelWindowView) => {
+  if (!window.planItems || window.planItems.length === 0) {
+    return '-'
+  }
+  return window.planItems
+    .map(item => `${item.iterationKey} / ${item.repoId}`)
+    .join(', ')
 }
 
 const openCodeMerge = () => {
@@ -395,7 +461,7 @@ const openVersionUpdate = () => {
   versionUpdateDialogRef.value?.open(form.value.id, iterations.value.flatMap(iter => iter.repos || []))
 }
 
-const handleExportReport = (format: 'csv' | 'json' | 'md' = 'csv') => {
+const handleExportReport = (format: 'csv' | 'json' | 'md' | 'zip' = 'csv') => {
   if (!form.value?.id) return
   if (!hasPerm('release-window:read')) {
     ElMessage.warning(t('common.permissionDenied'))
@@ -503,6 +569,25 @@ const handleClose = async () => {
   color: #909399;
   text-align: center;
   padding: 20px 0;
+}
+
+.parallel-scope-card {
+  margin-top: 16px;
+}
+
+.parallel-scope-summary {
+  margin-bottom: 12px;
+}
+
+.parallel-window-table {
+  width: 100%;
+}
+
+.parallel-plan-items {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .iterations-list {

@@ -29,4 +29,4 @@ bash scripts/dev/static-scan-topn.sh 5
 
 ## 结论
 
-- SA-007 scoped policy 基础管理已具备创建、编辑、删除闭环；后续剩余重点是外部 Playwright 真实页面场景验收和版本更新入口按组织/仓库范围选取默认策略。
+- SA-007 scoped policy 基础管理已具备创建、编辑、删除闭环；后续真实页面验收和版本更新入口策略选择已分别由 `2026-05-23-sa-007-version-policy-real-page.md` 与 `2026-05-22-sa-007-version-update-policy-selection.md` 收口。

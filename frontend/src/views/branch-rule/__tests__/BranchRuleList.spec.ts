@@ -140,6 +140,20 @@ describe('BranchRuleList', () => {
     expect(ElMessage.success).toHaveBeenCalledWith('common.createSuccess')
   })
 
+  it('exposes project and sub-project scope ids for list review', async () => {
+    const wrapper = mount(BranchRuleList, { global: { stubs } })
+    await flushPromises()
+    const vm = wrapper.vm as any
+
+    expect(vm.scopeDetail({ level: 'GLOBAL' })).toBe('')
+    expect(vm.scopeDetail({ level: 'PROJECT', projectId: 'project-1' })).toBe('project-1')
+    expect(vm.scopeDetail({
+      level: 'SUB_PROJECT',
+      projectId: 'project-1',
+      subProjectId: 'repo-1'
+    })).toBe('project-1 / repo-1')
+  })
+
   it('runs the rule test with the selected pattern and type', async () => {
     vi.mocked(branchRuleApi.test).mockResolvedValue({ ok: true, errors: [] })
     const wrapper = mount(BranchRuleList, { global: { stubs } })

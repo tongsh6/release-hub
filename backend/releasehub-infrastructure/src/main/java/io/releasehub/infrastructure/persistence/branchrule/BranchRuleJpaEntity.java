@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.time.Instant;
 
@@ -35,13 +36,14 @@ public class BranchRuleJpaEntity {
 
     private String description;
 
-    @Column(name = "scope_level", nullable = false)
+    @ColumnDefault("'GLOBAL'")
+    @Column(name = "scope_level", nullable = false, length = 32)
     private String scopeLevel;
 
-    @Column(name = "scope_project_id")
+    @Column(name = "scope_project_id", length = 128)
     private String scopeProjectId;
 
-    @Column(name = "scope_sub_project_id")
+    @Column(name = "scope_sub_project_id", length = 128)
     private String scopeSubProjectId;
 
     @Column(nullable = false)

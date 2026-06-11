@@ -28,11 +28,14 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column :label="t('branchRule.scope')" width="110">
+      <el-table-column :label="t('branchRule.scope')" width="190">
         <template #default="{ row }">
-          <el-tag size="small" :type="row.scope?.level === 'GLOBAL' ? 'info' : ''">
-            {{ scopeLabel(row.scope?.level) }}
-          </el-tag>
+          <div class="scope-cell">
+            <el-tag size="small" :type="row.scope?.level === 'GLOBAL' ? 'info' : ''">
+              {{ scopeLabel(row.scope?.level) }}
+            </el-tag>
+            <span v-if="scopeDetail(row.scope)" class="scope-detail">{{ scopeDetail(row.scope) }}</span>
+          </div>
         </template>
       </el-table-column>
       <el-table-column :label="t('branchRule.status')" width="100">
@@ -144,12 +147,12 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useListPage } from '@/composables/crud/useListPage'
 import SearchForm from '@/components/crud/SearchForm.vue'
 import DataTable from '@/components/crud/DataTable.vue'
-import { branchRuleApi, type BranchRule, type BranchRuleType, type ScopeLevel, type BranchRuleTestResp } from '@/api/branchRuleApi'
+import { branchRuleApi, type BranchRule, type BranchRuleType, type ScopeLevel, type ScopeView, type BranchRuleTestResp } from '@/api/branchRuleApi'
 import { handleError } from '@/utils/error'
 
 const { t } = useI18n()
 
-const { query, loading, list, total, search, reset, onPageChange, onPageSizeChange, reload } = useListPage({
+const { query, loading, list, total, search, reset, onPageChange, onPageSizeChange, fetch: reload } = useListPage({
   fetcher: branchRuleApi.list,
   defaultQuery: {
     name: ''
@@ -205,6 +208,14 @@ const scopeLabel = (level?: string) => {
   if (level === 'PROJECT') return t('branchRule.scopeProject')
   if (level === 'SUB_PROJECT') return t('branchRule.scopeSubProject')
   return t('branchRule.scopeGlobal')
+}
+
+const scopeDetail = (scope?: ScopeView) => {
+  if (!scope || scope.level === 'GLOBAL') return ''
+  if (scope.level === 'SUB_PROJECT') {
+    return [scope.projectId, scope.subProjectId].filter(Boolean).join(' / ')
+  }
+  return scope.projectId || ''
 }
 
 const handleAdd = () => {
@@ -330,6 +341,22 @@ const runTest = async () => {
 </script>
 
 <style scoped>
+.scope-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.scope-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
 .test-result { margin-top: 16px; }
 .test-errors { margin-top: 8px; }
 .error-msg { color: var(--el-color-danger); font-size: 13px; margin: 2px 0; }

@@ -81,11 +81,12 @@
               :key="event.id"
               class="event-item"
               :class="getEventClass(event)"
-              :title="event.name"
+              :title="parallelCalendarTitle(event)"
               @click="handleEventClick(event)"
             >
               <span v-if="event.frozen" class="frozen-icon">❄️</span>
               <span class="event-name">{{ event.name }}</span>
+              <span class="event-window-key">{{ event.windowKey }}</span>
             </div>
             <div v-if="day.events.length > 3" class="more-events">
               +{{ day.events.length - 3 }} {{ t('calendar.more') }}
@@ -129,12 +130,13 @@
               :key="event.id"
               class="event-item event-item-week"
               :class="getEventClass(event)"
-              :title="event.name"
+              :title="parallelCalendarTitle(event)"
               @click="handleEventClick(event)"
             >
               <span v-if="event.frozen" class="frozen-icon">❄️</span>
               <span class="event-time">{{ formatTime(event.plannedReleaseAt) }}</span>
               <span class="event-name">{{ event.name }}</span>
+              <span class="event-window-key">{{ event.windowKey }}</span>
             </div>
             <div v-if="day.events.length === 0" class="no-events">—</div>
           </div>
@@ -332,6 +334,15 @@ function getEventClass(event: ReleaseWindowView) {
     classes.push('frozen')
   }
   return classes
+}
+
+function parallelCalendarTitle(event: ReleaseWindowView) {
+  const count = event.parallelActiveWindowCount || 0
+  if (count <= 1) {
+    return `${event.name} (${event.windowKey})`
+  }
+  const keys = event.parallelActiveWindowKeys?.join(', ') || event.windowKey
+  return `${event.name} (${event.windowKey}) ${t('releaseWindow.parallelScope.summary', { count, keys })}`
 }
 
 function handleEventClick(event: ReleaseWindowView) {
@@ -698,6 +709,12 @@ onMounted(() => {
 .event-name {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.event-window-key {
+  flex: 0 0 auto;
+  font-size: 10px;
+  opacity: 0.85;
 }
 
 .more-events {

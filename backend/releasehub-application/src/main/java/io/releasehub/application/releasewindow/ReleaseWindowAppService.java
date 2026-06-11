@@ -6,6 +6,7 @@ import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.run.RunAppService;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.window.PlanItemView;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
@@ -31,8 +32,13 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -83,7 +89,7 @@ public class ReleaseWindowAppService {
     public ReleaseWindowView get(String id) {
         ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(id))
                                             .orElseThrow(() -> NotFoundException.releaseWindow(id));
-        return ReleaseWindowView.from(rw);
+        return enrichParallelContext(ReleaseWindowView.from(rw));
     }
 
     @Transactional
@@ -101,9 +107,10 @@ public class ReleaseWindowAppService {
     }
 
     public List<ReleaseWindowView> list() {
-        return releaseWindowPort.findAll().stream()
+        List<ReleaseWindowView> views = releaseWindowPort.findAll().stream()
                                 .map(ReleaseWindowView::from)
                                 .toList();
+        return enrichParallelContext(views);
     }
 
     public PageResult<ReleaseWindowView> listPaged(String name, ReleaseWindowStatus status, int page, int size) {
@@ -111,7 +118,7 @@ public class ReleaseWindowAppService {
         List<ReleaseWindowView> views = result.items().stream()
                                               .map(ReleaseWindowView::from)
                                               .toList();
-        return new PageResult<>(views, result.total());
+        return new PageResult<>(enrichParallelContext(views), result.total());
     }
 
     public PageResult<ReleaseWindowView> listPaged(String name, ReleaseWindowStatus status, String groupCode, int page, int size) {
@@ -125,7 +132,113 @@ public class ReleaseWindowAppService {
         List<ReleaseWindowView> views = result.items().stream()
                                               .map(ReleaseWindowView::from)
                                               .toList();
-        return new PageResult<>(views, result.total());
+        return new PageResult<>(enrichParallelContext(views), result.total());
+    }
+
+    public ReleaseWindowParallelScopeView getParallelScope(String id) {
+        ReleaseWindow current = findById(id);
+        List<ReleaseWindow> sameGroupActiveWindows = activeWindowsInSameGroup(current.getGroupCode());
+        List<ReleaseWindowParallelScopeView.ParallelWindowView> windows = sameGroupActiveWindows.stream()
+                .map(this::toParallelWindowView)
+                .toList();
+        return new ReleaseWindowParallelScopeView(
+                current.getId().value(),
+                current.getWindowKey(),
+                current.getGroupCode(),
+                windows.size(),
+                windows
+        );
+    }
+
+    private ReleaseWindowParallelScopeView.ParallelWindowView toParallelWindowView(ReleaseWindow window) {
+        List<WindowIteration> bindings = windowIterationPort.listByWindow(window.getId());
+        bindings.sort(Comparator.comparing(WindowIteration::getAttachAt));
+        Map<IterationKey, Integer> order = computePlannedOrder(bindings);
+
+        Set<String> repoIds = new LinkedHashSet<>();
+        List<PlanItemView> planItems = new ArrayList<>();
+        for (WindowIteration wi : bindings) {
+            Iteration iteration = iterationPort.findByKey(wi.getIterationKey()).orElse(null);
+            if (iteration == null) {
+                continue;
+            }
+            for (RepoId repoId : iteration.getRepos()) {
+                repoIds.add(repoId.value());
+                planItems.add(new PlanItemView(
+                        window.getWindowKey(),
+                        repoId.value(),
+                        wi.getIterationKey().value(),
+                        order.getOrDefault(wi.getIterationKey(), 0),
+                        null
+                ));
+            }
+        }
+
+        return new ReleaseWindowParallelScopeView.ParallelWindowView(
+                window.getId().value(),
+                window.getWindowKey(),
+                window.getName(),
+                window.getStatus().name(),
+                window.getPlannedReleaseAt(),
+                bindings.size(),
+                repoIds.size(),
+                planItems
+        );
+    }
+
+    private Map<IterationKey, Integer> computePlannedOrder(List<WindowIteration> bindings) {
+        List<IterationKey> orderedKeys = bindings.stream()
+                .sorted(Comparator.comparing(WindowIteration::getAttachAt))
+                .map(WindowIteration::getIterationKey)
+                .distinct()
+                .toList();
+        return orderedKeys.stream().collect(Collectors.toMap(key -> key, key -> orderedKeys.indexOf(key) + 1));
+    }
+
+    private ReleaseWindowView enrichParallelContext(ReleaseWindowView view) {
+        return applyParallelContext(view, collectActiveWindowKeysByGroup());
+    }
+
+    private ReleaseWindowView applyParallelContext(ReleaseWindowView view, Map<String, List<String>> activeKeysByGroup) {
+        if (view == null || view.getGroupCode() == null || view.getGroupCode().isBlank()) {
+            return view;
+        }
+        List<String> activeKeys = activeKeysByGroup.getOrDefault(view.getGroupCode(), List.of());
+        view.setParallelActiveWindowCount(activeKeys.size());
+        view.setParallelActiveWindowKeys(activeKeys);
+        return view;
+    }
+
+    private List<ReleaseWindowView> enrichParallelContext(List<ReleaseWindowView> views) {
+        Map<String, List<String>> activeKeysByGroup = collectActiveWindowKeysByGroup();
+        return views.stream()
+                .map(view -> applyParallelContext(view, activeKeysByGroup))
+                .toList();
+    }
+
+    private Map<String, List<String>> collectActiveWindowKeysByGroup() {
+        return releaseWindowPort.findAll().stream()
+                .filter(this::isActiveParallelWindow)
+                .filter(window -> window.getGroupCode() != null && !window.getGroupCode().isBlank())
+                .sorted(Comparator.comparing(ReleaseWindow::getPlannedReleaseAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(ReleaseWindow::getCreatedAt))
+                .collect(Collectors.groupingBy(
+                        ReleaseWindow::getGroupCode,
+                        Collectors.mapping(ReleaseWindow::getWindowKey, Collectors.toList())
+                ));
+    }
+
+    private List<ReleaseWindow> activeWindowsInSameGroup(String groupCode) {
+        return releaseWindowPort.findAll().stream()
+                .filter(window -> groupCode.equals(window.getGroupCode()))
+                .filter(this::isActiveParallelWindow)
+                .sorted(Comparator.comparing(ReleaseWindow::getPlannedReleaseAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(ReleaseWindow::getCreatedAt))
+                .toList();
+    }
+
+    private boolean isActiveParallelWindow(ReleaseWindow window) {
+        return window.getStatus() == ReleaseWindowStatus.DRAFT || window.getStatus() == ReleaseWindowStatus.PUBLISHED;
     }
 
     private List<String> collectGroupCodes(String rootCode) {

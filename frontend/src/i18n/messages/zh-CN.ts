@@ -18,6 +18,8 @@ export default {
     iterations: '迭代',
     repositories: '仓库',
     runs: '执行记录',
+    dataQualityReview: '数据质量复核',
+    releaseCandidateReview: '发布候选评审',
     blockBoard: '阻塞看板',
     settings: '配置',
     groups: '分组设置'
@@ -105,6 +107,18 @@ export default {
     publish: '发布',
     close: '关闭',
     groupPath: '组织路径',
+    parallelScope: {
+      title: '同组并行发布窗口',
+      shortTitle: '并行窗口',
+      single: '无并行窗口',
+      summary: '{count} 个活跃：{keys}',
+      activeCount: '{count} 个活跃窗口',
+      currentWindow: '当前窗口',
+      groupCode: '组织编码',
+      iterationCount: '迭代数',
+      repoCount: '仓库数',
+      planItems: '发布计划'
+    },
     configureTime: '配置时间',
     confirmFreeze: '确认冻结此发布窗口？',
     confirmPublish: '确认发布此发布窗口？',
@@ -196,7 +210,8 @@ export default {
       export: '导出报告',
       csv: 'CSV',
       json: 'JSON',
-      markdown: 'Markdown'
+      markdown: 'Markdown',
+      artifactPackage: '制品包'
     },
     releasePlan: {
       title: '发布计划',
@@ -344,7 +359,8 @@ export default {
       alreadyAdded: '已添加',
       selectedCount: '已选择 {count} 个新仓库',
       noNewRepos: '请至少选择一个新仓库',
-      repoScopeLocked: '迭代已挂载发布窗口，仓库集合不可修改'
+      repoScopeLocked: '迭代已挂载发布窗口，仓库集合不可修改',
+      repoPageSummary: '当前页显示 {shown} 个，共 {total} 个仓库'
     },
     branchCreationMode: {
       label: 'Feature 分支创建方式',
@@ -400,8 +416,16 @@ export default {
       GRADLE: 'Gradle',
       SYSTEM: '系统记录',
       REPO: '仓库读取',
+      VERSION_FILE_MISSING: '缺少版本文件',
+      VERSION_DECL_MISSING: '缺少版本声明',
+      VERSION_INVALID: '版本号异常',
+      VERSION_READ_ERROR: '读取失败',
       VERSION_UNRESOLVED: '解析失败',
       NOT_SET: '未设置'
+    },
+    versionDiagnostics: {
+      summary: '{message}；分支：{branch}；检查路径：{paths}；错误类型：{errorType}',
+      defaultMessage: '版本解析失败'
     },
     repoTypes: {
       SERVICE: '服务',
@@ -425,7 +449,8 @@ export default {
       currentToken: '当前 Token: {token}',
       providers: {
         GITHUB: 'GitHub',
-        GITLAB: 'GitLab'
+        GITLAB: 'GitLab',
+        MOCK: 'Mock'
       }
     },
     gateSummaryLabels: {
@@ -441,6 +466,13 @@ export default {
       activeMrs: '活跃 MR',
       mergedMrs: '已合并 MR',
       closedMrs: '已关闭 MR'
+    },
+    branchGovernance: {
+      boundary: '治理入口仅展示活跃不合规分支并提供安全引导，不会自动重命名、删除或归档历史分支',
+      branchName: '分支名',
+      guidanceLabel: '处理建议',
+      guidance: '请先确认分支负责人和业务状态，再在 Git 平台中手动处理',
+      empty: '未发现需要治理的历史不合规分支'
     },
     gitlabMissing: '请先在系统设置中配置 GitLab',
     gitlabUrlNotAvailable: '无法获取 GitLab 地址',
@@ -541,6 +573,11 @@ export default {
     }
   },
   settings: {
+    group: {
+      external: '外部集成',
+      rules: '规则与策略',
+      general: '通用偏好'
+    },
     tabs: {
       gitlab: 'GitLab',
       naming: '命名策略',
@@ -555,10 +592,16 @@ export default {
       releaseTemplate: 'Release 分支模板'
     },
     buttons: {
-      testConnection: '测试连接'
+      testConnection: '测试连接',
+      enter: '进入'
     },
     messages: {
-      connectionSuccess: 'GitLab 连接测试通过'
+      connectionSuccess: 'GitLab 连接测试通过',
+      refsNotConfigurable: '基线 Ref 当前没有可配置项'
+    },
+    desc: {
+      branchRules: '管理分支命名规则与匹配模式',
+      versionPolicies: '管理版本策略与自动升级规则'
     },
     policy: {
       failFast: 'FAIL_FAST（默认）',
@@ -629,6 +672,8 @@ export default {
     parentCode: '父级编码',
     codePlaceholder: '留空自动生成',
     codeAutoGenTip: '留空时系统自动生成编码（如 001、001001）',
+    parentPlaceholder: '选择父分组；清空表示顶层分组',
+    parentMoveTip: '仅未挂资源且无子分组的空叶子分组可以移动',
     searchPlaceholder: '按名称或编码筛选',
     selectGroup: '请选择分组',
     hasChildren: '有子分组',
@@ -649,6 +694,9 @@ export default {
     deleteSuccess: '删除成功',
     deleteBlocked: '存在子分组，无法删除',
     deleteReferenced: '分组已被仓库、迭代或发布窗口使用，无法删除',
+    moveBlockedByChildren: '存在子分组，无法移动该分组',
+    moveBlockedByReference: '分组已被仓库、迭代或发布窗口使用，无法移动',
+    moveTargetReferenced: '目标父分组已被仓库、迭代或发布窗口使用，无法作为新的上级',
     validation: {
       nameRequired: '请输入名称',
       codeRequired: '请输入编码',
@@ -711,6 +759,97 @@ export default {
       GIT_UNAVAILABLE: 'Git 不可达'
     }
   },
+  releaseGovernance: {
+    review: {
+      title: '发布候选评审',
+      boundary: '只记录签核，不执行发布',
+      evidence: '验收证据',
+      risks: '风险与边界',
+      checklist: '发布经理检查清单',
+      signoff: '人工签核',
+      item: '事项',
+      status: '状态',
+      result: '结果',
+      source: '真源',
+      checkItem: '检查项',
+      note: '备注',
+      reviewer: '签核人',
+      decision: '结论',
+      confirmed: '已确认',
+      needsFollowUp: '需跟进',
+      notApplicable: '不适用',
+      markAllConfirmed: '全部确认',
+      approve: '进入受控评审',
+      hold: '暂缓跟进',
+      submit: '记录签核',
+      signoffSaved: '签核记录已保存',
+      latestSignoff: '最近签核：{reviewer} / {decision} / {createdAt}'
+    }
+  },
+  dataQuality: {
+    review: {
+      title: '数据质量复核队列',
+      executionBoundary: '只复核，不执行',
+      reviewer: '复核人',
+      sourceReport: '来源报告',
+      importFile: '导入文件',
+      loadQueue: '载入队列',
+      jsonlPlaceholder: '粘贴 actions.jsonl 内容',
+      queueTitle: '待复核动作',
+      markAllPending: '全部待复核',
+      markAllApproved: '全部批准入口',
+      reviewQueue: '提交复核',
+      resourceType: '资源类型',
+      resourceId: '资源 ID',
+      riskType: '风险类型',
+      dataNamespace: '数据命名空间',
+      reviewBatchId: '复核批次',
+      assetScope: '资产范围',
+      retentionPolicy: '保留策略',
+      dataSourceBoundary: '数据源口径',
+      metricKey: '指标键',
+      metricLabel: '指标名称',
+      metricDescription: '口径说明',
+      userVisible: '用户可见',
+      manualReviewCandidate: '进入复核',
+      reviewStatus: '复核状态',
+      decision: '人工决策',
+      applicationEntry: '应用入口',
+      dispositionLevel: '处置等级',
+      allowedAction: '允许动作',
+      rollbackBoundary: '回滚边界',
+      auditRecord: '审计记录',
+      dispositionCase: '处置 case',
+      createCase: '创建 case',
+      caseTitle: '处置执行审计 case',
+      caseId: 'Case ID',
+      caseStatus: 'Case 状态',
+      caseDetail: '处置 case 详情',
+      operator: '操作者',
+      preStateSnapshot: '执行前快照',
+      postStateSnapshot: '执行后复核',
+      failureReason: '失败原因',
+      rollbackNote: '恢复说明',
+      startCase: '开始人工处置',
+      verifyCase: '记录复核通过',
+      failCase: '记录失败',
+      cancelCase: '取消 case',
+      caseCreated: '已创建处置 case：{id}',
+      caseUpdated: '处置 case 已更新为 {status}',
+      reason: '原因',
+      executionPermitted: '允许执行',
+      imported: '已导入',
+      accepted: '已通过',
+      pending: '待复核',
+      rejected: '已拒绝',
+      approve: '批准进入应用入口',
+      parseFailed: '解析失败',
+      emptyInput: '请先导入 dry-run 动作',
+      invalidLine: '第 {line} 行缺少资源类型、资源 ID 或风险类型',
+      queueLoaded: '已载入 {count} 条动作',
+      reviewComplete: '已复核 {count} 条动作'
+    }
+  },
   orchestration: {
     title: '发布编排',
     status: {
@@ -739,6 +878,13 @@ export default {
       archiveBranch: '归档分支'
     },
     executeFinish: '执行收尾',
+    latestRun: '最新 Run 复核',
+    runItems: '执行项',
+    failedItems: '失败项',
+    failureContext: '失败上下文',
+    failedStep: '失败步骤',
+    failureReason: '失败原因',
+    viewRunDetail: '查看 Run 详情',
     recentRuns: '最近执行记录',
     planPreview: '执行计划预览',
     confirmMergeAll: '确认合并所有迭代的代码到 release 分支？',

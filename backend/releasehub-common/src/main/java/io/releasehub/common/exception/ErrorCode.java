@@ -54,6 +54,7 @@ public enum ErrorCode {
     REPO_ATTACHED("REPO_011", "error.repo.attached", 400),
     REPO_CLONE_URL_EXISTS("REPO_012", "error.repo.clone_url_exists", 409),
     REPO_URL_INVALID("REPO_013", "error.repo.url_invalid", 400),
+    REPO_MOCK_PROVIDER_FORBIDDEN("REPO_014", "error.repo.mock_provider_forbidden", 400),
 
     // ========== 分组 (GROUP) ==========
     GROUP_NOT_FOUND("GROUP_001", "error.group.not_found", 404),
@@ -70,6 +71,9 @@ public enum ErrorCode {
     GROUP_ID_INVALID("GROUP_012", "error.group.id_invalid", 400),
     GROUP_REFERENCED("GROUP_013", "error.group.referenced", 400),
     GROUP_NOT_LEAF("GROUP_014", "error.group.not_leaf", 400),
+    GROUP_MOVE_HAS_CHILDREN("GROUP_015", "error.group.move_has_children", 400),
+    GROUP_MOVE_REFERENCED("GROUP_016", "error.group.move_referenced", 400),
+    GROUP_MOVE_TARGET_REFERENCED("GROUP_017", "error.group.move_target_referenced", 400),
 
     // ========== 迭代 (ITER) ==========
     ITERATION_NOT_FOUND("ITER_001", "error.iter.not_found", 404),
@@ -100,6 +104,9 @@ public enum ErrorCode {
     GITLAB_SETTINGS_MISSING("GITLAB_001", "error.gitlab.settings_missing", 400),
     GITLAB_PROJECT_NOT_FOUND("GITLAB_002", "error.gitlab.project_not_found", 404),
     GITLAB_CONNECTION_FAILED("GITLAB_003", "error.gitlab.connection_failed", 400),
+    GITLAB_TOKEN_INVALID("GITLAB_004", "error.gitlab.token_invalid", 400),
+    GITLAB_PERMISSION_DENIED("GITLAB_005", "error.gitlab.permission_denied", 403),
+    GITLAB_UNREACHABLE("GITLAB_006", "error.gitlab.unreachable", 503),
 
     // ========== 分支规则 (BR) ==========
     BRANCH_RULE_NOT_FOUND("BR_001", "error.br.not_found", 404),

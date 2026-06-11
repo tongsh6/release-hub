@@ -21,6 +21,8 @@ export interface ReleaseWindowView {
   updatedAt: string
   frozen: boolean
   publishedAt?: string
+  parallelActiveWindowCount?: number
+  parallelActiveWindowKeys?: string[]
 }
 
 // Re-export for compatibility with some UI components using 'ReleaseWindow' name
@@ -89,6 +91,25 @@ export interface PlanItemView {
   lastExecutedOrder?: number
 }
 
+export interface ParallelWindowView {
+  windowId: string
+  windowKey: string
+  name: string
+  status: ReleaseWindowStatus
+  plannedReleaseAt?: string
+  iterationCount: number
+  repoCount: number
+  planItems: PlanItemView[]
+}
+
+export interface ReleaseWindowParallelScopeView {
+  currentWindowId: string
+  currentWindowKey: string
+  groupCode: string
+  activeWindowCount: number
+  windows: ParallelWindowView[]
+}
+
 // --- API Functions ---
 
 export async function list(query: PageQuery & { name?: string; status?: string; groupCode?: string }): Promise<PageResult<ReleaseWindowView>> {
@@ -108,6 +129,10 @@ export async function list(query: PageQuery & { name?: string; status?: string; 
 
 export function getById(id: string): Promise<ReleaseWindowView> {
   return apiGet<ReleaseWindowView>(`${BASE}/release-windows/${id}`)
+}
+
+export function getParallelScope(id: string): Promise<ReleaseWindowParallelScopeView> {
+  return apiGet<ReleaseWindowParallelScopeView>(`${BASE}/release-windows/${id}/parallel-scope`)
 }
 
 export function create(req: CreateReleaseWindowReq): Promise<ReleaseWindowView> {
@@ -265,6 +290,7 @@ export function getConflicts(windowId: string): Promise<ConflictReportView> {
 export const releaseWindowApi = {
   list,
   get: getById,
+  getParallelScope,
   create,
   freeze,
   unfreeze,

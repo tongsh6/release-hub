@@ -29,6 +29,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class GroupAppServiceValidationTest {
@@ -59,6 +60,41 @@ class GroupAppServiceValidationTest {
     }
 
     @Test
+    void createShouldAutoGenerateSequentialTopLevelCodes() {
+        Group first = svc.create("First", null, null);
+        Group second = svc.create("Second", "", null);
+
+        assertEquals("001", first.getCode());
+        assertEquals("002", second.getCode());
+        assertNull(first.getParentCode());
+        assertNull(second.getParentCode());
+    }
+
+    @Test
+    void createShouldAutoGenerateHierarchicalChildCodes() {
+        port.save(Group.create("Parent", "PARENT", null, now));
+
+        Group first = svc.create("Child 1", null, "PARENT");
+        Group second = svc.create("Child 2", " ", "PARENT");
+
+        assertEquals("PARENT001", first.getCode());
+        assertEquals("PARENT002", second.getCode());
+        assertEquals("PARENT", first.getParentCode());
+        assertEquals("PARENT", second.getParentCode());
+    }
+
+    @Test
+    void createShouldContinueFromExistingNumericSiblings() {
+        port.save(Group.create("First", "001", null, now));
+        port.save(Group.create("Custom", "CUSTOM", null, now));
+        port.save(Group.create("Ninth", "009", null, now));
+
+        Group next = svc.create("Next", null, null);
+
+        assertEquals("010", next.getCode());
+    }
+
+    @Test
     void updateShouldFailWhenParentIsSelf() {
         port.save(Group.create("Self", "SELF", null, now));
 
@@ -83,6 +119,74 @@ class GroupAppServiceValidationTest {
 
         assertEquals("ChildRenamed", updated.getName());
         assertEquals("PARENT", updated.getParentCode());
+    }
+
+    @Test
+    void updateShouldStillAllowRenamingReferencedGroupWithoutMovingIt() {
+        port.save(Group.create("Group", "G001", null, now));
+        CodeRepository repo = CodeRepository.rehydrate(
+                RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git", "main", "G001",
+                RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+        GroupAppService service = new GroupAppService(
+                port,
+                new EmptyReleaseWindowPort(),
+                new EmptyIterationPort(),
+                new FixedRepoPort(List.of(repo))
+        );
+
+        Group updated = service.update("G001", "Group Renamed", null);
+
+        assertEquals("Group Renamed", updated.getName());
+        assertNull(updated.getParentCode());
+    }
+
+    @Test
+    void updateShouldFailWhenMovingGroupWithChildren() {
+        port.save(Group.create("Parent", "PARENT", null, now));
+        port.save(Group.create("Child", "CHILD", null, now));
+        port.save(Group.create("Grandchild", "GRANDCHILD", "CHILD", now));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.update("CHILD", "Child", "PARENT"));
+
+        assertEquals("GROUP_015", ex.getCode());
+    }
+
+    @Test
+    void updateShouldFailWhenMovingGroupReferencedByRepository() {
+        port.save(Group.create("Target", "TARGET", null, now));
+        port.save(Group.create("Group", "G001", null, now));
+        CodeRepository repo = CodeRepository.rehydrate(
+                RepoId.of("repo-1"), "Repo", "git@gitlab.com:test/repo.git", "main", "G001",
+                RepoType.SERVICE, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+        GroupAppService service = new GroupAppService(
+                port,
+                new EmptyReleaseWindowPort(),
+                new EmptyIterationPort(),
+                new FixedRepoPort(List.of(repo))
+        );
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.update("G001", "Group", "TARGET"));
+
+        assertEquals("GROUP_016", ex.getCode());
+    }
+
+    @Test
+    void updateShouldFailWhenMovingUnderReferencedParent() {
+        port.save(Group.create("Target", "TARGET", null, now));
+        port.save(Group.create("Child", "CHILD", null, now));
+        ReleaseWindow window = ReleaseWindow.rehydrate(
+                ReleaseWindowId.of("window-1"), "RW-1", "Window", null, null, "TARGET",
+                ReleaseWindowStatus.DRAFT, now, now, false, null);
+        GroupAppService service = new GroupAppService(
+                port,
+                new FixedReleaseWindowPort(List.of(window)),
+                new EmptyIterationPort(),
+                new EmptyRepoPort()
+        );
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.update("CHILD", "Child", "TARGET"));
+
+        assertEquals("GROUP_017", ex.getCode());
     }
 
     @Test

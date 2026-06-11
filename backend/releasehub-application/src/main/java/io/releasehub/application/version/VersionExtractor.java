@@ -18,46 +18,115 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class VersionExtractor implements VersionExtractorUseCase {
     private final GitLabFilePort gitLabFilePort;
-    
+
     // Maven pom.xml 中的版本号正则
     private static final Pattern POM_VERSION_PATTERN = Pattern.compile(
             "<version>([^<]+)</version>", Pattern.DOTALL);
-    
+
     // Gradle gradle.properties 中的版本号正则
     private static final Pattern GRADLE_VERSION_PATTERN = Pattern.compile(
             "^\\s*version\\s*=\\s*([^\\s]+)", Pattern.MULTILINE);
+
+    private static final Pattern VERSION_VALUE_PATTERN = Pattern.compile(
+            "^[0-9][0-9A-Za-z._+\\-]*$");
     
     /**
      * 从仓库提取版本号
      * @return 版本号和来源
      */
     public Optional<VersionExtractorUseCase.VersionInfo> extractVersion(String repoCloneUrl, String branch) {
-        // 优先尝试 Maven pom.xml
-        Optional<String> pomVersion = extractFromPom(repoCloneUrl, branch);
-        if (pomVersion.isPresent()) {
-            return Optional.of(new VersionExtractorUseCase.VersionInfo(pomVersion.get(), VersionSource.POM));
+        VersionInspection inspection = inspectVersion(repoCloneUrl, branch);
+        if (inspection.status() == VersionInspectionStatus.RESOLVED) {
+            return Optional.of(new VersionExtractorUseCase.VersionInfo(inspection.version(), inspection.source()));
         }
-        
-        // 尝试 Gradle gradle.properties
-        Optional<String> gradleVersion = extractFromGradle(repoCloneUrl, branch);
-        if (gradleVersion.isPresent()) {
-            return Optional.of(new VersionExtractorUseCase.VersionInfo(gradleVersion.get(), VersionSource.GRADLE));
-        }
-        
-        log.warn("Cannot extract version from repository: {} branch: {}", repoCloneUrl, branch);
         return Optional.empty();
     }
-    
-    /**
-     * 从 pom.xml 提取版本号
-     */
-    private Optional<String> extractFromPom(String repoCloneUrl, String branch) {
-        Optional<String> content = gitLabFilePort.readFile(repoCloneUrl, branch, "pom.xml");
-        if (content.isEmpty()) {
-            return Optional.empty();
+
+    @Override
+    public VersionInspection inspectVersion(String repoCloneUrl, String branch) {
+        Optional<String> pomContent;
+        try {
+            pomContent = gitLabFilePort.readFile(repoCloneUrl, branch, "pom.xml");
+        } catch (Exception e) {
+            log.warn("Failed to read pom.xml from repository: {} branch: {}: {}", repoCloneUrl, branch, e.getMessage());
+            return VersionInspection.unresolved(
+                    VersionInspectionError.VERSION_READ_ERROR,
+                    branch,
+                    java.util.List.of("pom.xml"),
+                    "读取 pom.xml 失败: " + e.getMessage()
+            );
         }
-        
-        String pomContent = content.get();
+
+        if (pomContent.isPresent()) {
+            Optional<String> pomVersion = extractFromPomContent(pomContent.get());
+            if (pomVersion.isPresent()) {
+                String version = pomVersion.get();
+                if (!isSupportedVersionValue(version)) {
+                    return VersionInspection.unresolved(
+                            VersionInspectionError.VERSION_INVALID,
+                            branch,
+                            java.util.List.of("pom.xml"),
+                            "pom.xml 中的版本号格式异常: " + version
+                    );
+                }
+                return VersionInspection.resolved(version, VersionSource.POM, branch, java.util.List.of("pom.xml"));
+            }
+        }
+
+        Optional<String> gradleContent;
+        try {
+            gradleContent = gitLabFilePort.readFile(repoCloneUrl, branch, "gradle.properties");
+        } catch (Exception e) {
+            log.warn("Failed to read gradle.properties from repository: {} branch: {}: {}", repoCloneUrl, branch, e.getMessage());
+            return VersionInspection.unresolved(
+                    VersionInspectionError.VERSION_READ_ERROR,
+                    branch,
+                    java.util.List.of("pom.xml", "gradle.properties"),
+                    "读取 gradle.properties 失败: " + e.getMessage()
+            );
+        }
+
+        if (gradleContent.isPresent()) {
+            Optional<String> gradleVersion = extractFromGradleContent(gradleContent.get());
+            if (gradleVersion.isPresent()) {
+                String version = gradleVersion.get();
+                if (!isSupportedVersionValue(version)) {
+                    return VersionInspection.unresolved(
+                            VersionInspectionError.VERSION_INVALID,
+                            branch,
+                            java.util.List.of("pom.xml", "gradle.properties"),
+                            "gradle.properties 中的版本号格式异常: " + version
+                    );
+                }
+                return VersionInspection.resolved(version, VersionSource.GRADLE, branch, java.util.List.of("pom.xml", "gradle.properties"));
+            }
+            return VersionInspection.unresolved(
+                    VersionInspectionError.VERSION_DECL_MISSING,
+                    branch,
+                    java.util.List.of("pom.xml", "gradle.properties"),
+                    "版本文件存在，但未找到项目版本号声明"
+            );
+        }
+
+        if (pomContent.isPresent()) {
+            return VersionInspection.unresolved(
+                    VersionInspectionError.VERSION_DECL_MISSING,
+                    branch,
+                    java.util.List.of("pom.xml", "gradle.properties"),
+                    "pom.xml 存在，但未找到项目自身的 <version> 声明"
+            );
+        }
+
+        log.warn("Cannot find version file in repository: {} branch: {}", repoCloneUrl, branch);
+        return VersionInspection.unresolved(
+                VersionInspectionError.VERSION_FILE_MISSING,
+                branch,
+                java.util.List.of("pom.xml", "gradle.properties"),
+                "未找到 pom.xml 或 gradle.properties"
+        );
+    }
+
+    private Optional<String> extractFromPomContent(String pomContent) {
         // 提取项目自身的版本号（第一个 <version> 标签，排除 parent 中的）
         // 简化处理：查找 <project> 下直接的 <version>
         Matcher matcher = POM_VERSION_PATTERN.matcher(pomContent);
@@ -78,21 +147,17 @@ public class VersionExtractor implements VersionExtractorUseCase {
         return Optional.empty();
     }
     
-    /**
-     * 从 gradle.properties 提取版本号
-     */
-    private Optional<String> extractFromGradle(String repoCloneUrl, String branch) {
-        Optional<String> content = gitLabFilePort.readFile(repoCloneUrl, branch, "gradle.properties");
-        if (content.isEmpty()) {
-            return Optional.empty();
-        }
-        
-        Matcher matcher = GRADLE_VERSION_PATTERN.matcher(content.get());
+    private Optional<String> extractFromGradleContent(String gradleContent) {
+        Matcher matcher = GRADLE_VERSION_PATTERN.matcher(gradleContent);
         if (matcher.find()) {
             return Optional.of(matcher.group(1).trim());
         }
         
         return Optional.empty();
+    }
+
+    private boolean isSupportedVersionValue(String version) {
+        return version != null && VERSION_VALUE_PATTERN.matcher(version).matches();
     }
     
     /**

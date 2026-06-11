@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -69,7 +70,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
         String normalizedGroupCode = normalize(groupCode);
 
         int pageIndex = Math.max(page - 1, 0);
-        PageRequest pageable = PageRequest.of(pageIndex, size);
+        PageRequest pageable = PageRequest.of(pageIndex, size, Sort.by(Sort.Direction.DESC, "startedAt"));
         Page<RunJpaEntity> result = repository.findPagedByFilters(
                 normalizedRunType,
                 normalizedOperator,

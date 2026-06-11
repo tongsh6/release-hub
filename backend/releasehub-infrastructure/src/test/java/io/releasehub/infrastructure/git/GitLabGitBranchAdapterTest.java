@@ -9,6 +9,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.List;
+
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
@@ -16,6 +18,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.put;
 import static com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.verify;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -191,6 +194,23 @@ class GitLabGitBranchAdapterTest {
 
         assertTrue(status.exists());
         assertEquals("abc123", status.latestCommit());
+    }
+
+    @Test
+    void shouldListAllBranchesWhenPrefixIsBlank(WireMockRuntimeInfo wm) {
+        stubFor(get(urlEqualTo(ENC + "/repository/branches?per_page=100"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("""
+                                [
+                                  {"name":"main"},
+                                  {"name":"feature/ITER-1"},
+                                  {"name":"legacy_branch"}
+                                ]
+                                """)));
+
+        var branches = adapter.listBranches(baseUrl(wm) + "/acme/releasehub.git", "token", "");
+
+        assertEquals(List.of("main", "feature/ITER-1", "legacy_branch"), branches);
     }
 
     @Test

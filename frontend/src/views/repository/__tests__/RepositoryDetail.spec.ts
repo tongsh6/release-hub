@@ -31,6 +31,7 @@ vi.mock('@/api/repositoryApi', () => ({
     getGateSummary: vi.fn(),
     getBranchSummary: vi.fn(),
     getInitialVersion: vi.fn(),
+    getNonCompliantBranches: vi.fn(),
     syncInitialVersion: vi.fn(),
     sync: vi.fn()
   }
@@ -85,6 +86,24 @@ const stubs = {
   ElStatistic: {
     props: ['title', 'value'],
     template: '<div>{{ title }} {{ value }}</div>'
+  },
+  ElDivider: {
+    template: '<hr />'
+  },
+  ElAlert: {
+    props: ['title'],
+    template: '<div>{{ title }}</div>'
+  },
+  ElTable: {
+    props: ['data'],
+    template: '<table><tr v-for="row in data" :key="row.branchName"><td>{{ row.branchName }}</td><td>{{ row.scopeProjectId }}</td><td>{{ row.scopeSubProjectId }}</td><slot /></tr></table>'
+  },
+  ElTableColumn: {
+    template: '<td><slot /></td>'
+  },
+  ElEmpty: {
+    props: ['description'],
+    template: '<div>{{ description }}</div>'
   }
 }
 
@@ -116,6 +135,7 @@ describe('RepositoryDetail', () => {
     vi.mocked(repositoryApi.getGateSummary).mockReset()
     vi.mocked(repositoryApi.getBranchSummary).mockReset()
     vi.mocked(repositoryApi.getInitialVersion).mockReset()
+    vi.mocked(repositoryApi.getNonCompliantBranches).mockReset()
     vi.mocked(repositoryApi.syncInitialVersion).mockReset()
     vi.mocked(groupApi.listTree).mockReset()
     vi.mocked(ElMessage.success).mockReset()
@@ -135,6 +155,7 @@ describe('RepositoryDetail', () => {
       mergedMrs: 0,
       closedMrs: 0
     })
+    vi.mocked(repositoryApi.getNonCompliantBranches).mockResolvedValue([])
     vi.mocked(groupApi.listTree).mockResolvedValue([])
   })
 
@@ -142,7 +163,11 @@ describe('RepositoryDetail', () => {
     vi.mocked(repositoryApi.getInitialVersion).mockResolvedValue({
       repoId: 'repo-1',
       version: null,
-      versionSource: 'VERSION_UNRESOLVED'
+      versionSource: 'VERSION_FILE_MISSING',
+      branch: 'main',
+      checkedPaths: ['pom.xml', 'gradle.properties'],
+      errorType: 'VERSION_FILE_MISSING',
+      message: 'version files missing'
     })
     vi.mocked(repositoryApi.syncInitialVersion).mockResolvedValue({
       repoId: 'repo-1',
@@ -165,6 +190,26 @@ describe('RepositoryDetail', () => {
     expect(ElMessage.success).toHaveBeenCalledWith('repository.versionSyncSuccess')
     expect(wrapper.text()).toContain('1.2.3')
     expect(wrapper.text()).toContain('repository.versionSources.POM')
+  })
+
+  it('shows version parsing diagnostic context when repository version is unresolved', async () => {
+    vi.mocked(repositoryApi.getInitialVersion).mockResolvedValue({
+      repoId: 'repo-1',
+      version: null,
+      versionSource: 'VERSION_INVALID',
+      branch: 'release/RW-1',
+      checkedPaths: ['pom.xml'],
+      errorType: 'VERSION_INVALID',
+      message: 'invalid version in pom.xml'
+    })
+
+    const wrapper = shallowMount(RepositoryDetail, {
+      global: { stubs }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('repository.versionSources.VERSION_INVALID')
+    expect(wrapper.text()).toContain('repository.versionDiagnostics.summary')
   })
 
   it('hides version rescan action when the initial version is resolved', async () => {

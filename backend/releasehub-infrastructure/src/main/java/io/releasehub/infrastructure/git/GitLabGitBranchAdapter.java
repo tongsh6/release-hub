@@ -366,8 +366,12 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     public List<String> listBranches(String repoCloneUrl, String token, String prefix) {
         try {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);
-            String endpoint = String.format("%s/api/v4/projects/%s/repository/branches?search=%s&per_page=100",
-                    repoRef.baseUrl, repoRef.encodedPath, urlEncode(prefix));
+            String branchPrefix = prefix == null ? "" : prefix;
+            String endpoint = branchPrefix.isBlank()
+                    ? String.format("%s/api/v4/projects/%s/repository/branches?per_page=100",
+                    repoRef.baseUrl, repoRef.encodedPath)
+                    : String.format("%s/api/v4/projects/%s/repository/branches?search=%s&per_page=100",
+                    repoRef.baseUrl, repoRef.encodedPath, urlEncode(branchPrefix));
             ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
                     uri(endpoint), HttpMethod.GET, new HttpEntity<>(headers(token)),
                     new ParameterizedTypeReference<>() {});
@@ -379,7 +383,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
                     .map(b -> b.get("name"))
                     .filter(name -> name != null)
                     .map(String::valueOf)
-                    .filter(name -> name.startsWith(prefix))
+                    .filter(name -> branchPrefix.isBlank() || name.startsWith(branchPrefix))
                     .toList();
         } catch (Exception e) {
             log.warn("Failed to list branches for {} with prefix {}: {}", repoCloneUrl, prefix, e.getMessage());

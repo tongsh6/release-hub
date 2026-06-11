@@ -43,6 +43,7 @@ const props = withDefaults(defineProps<{
   placeholder?: string
   clearable?: boolean
   disabled?: boolean
+  disabledCodes?: string[]
   leafOnly?: boolean
   showCode?: boolean
 }>(), {
@@ -50,6 +51,7 @@ const props = withDefaults(defineProps<{
   placeholder: '',
   clearable: true,
   disabled: false,
+  disabledCodes: () => [],
   leafOnly: true,
   showCode: true
 })
@@ -68,7 +70,7 @@ const treeProps = {
   value: 'code',
   label: 'name',
   children: 'children',
-  disabled: (data: TreeNode) => props.leafOnly && !data.isLeaf
+  disabled: (data: TreeNode) => props.disabledCodes.includes(data.code) || (props.leafOnly && !data.isLeaf)
 }
 
 const modelValue = computed({

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# ReleaseHub 场景化验收证据脚本 v3.16
+# ReleaseHub 场景化验收证据脚本 v3.17
 #
 # ╔═══════════════════════════════════════════════════════════╗
 # ║  ⚠️  重要提示：本脚本是场景证据入口，不是完整 UI 验收替代品  ⚠️  ║
@@ -23,7 +23,7 @@
 #   SA-002: 存量数据审计（BranchCreationMode、featureBranch、cloneUrl、仓库/Settings token 安全）
 #   SA-003: 三层分组，非叶子资源挂载拒绝
 #   SA-005: 分组仓库纳管、真实 GitLab cloneUrl、token 安全审计
-#   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法/EXISTING/Branches端点）
+#   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法写入前拒绝/EXISTING/Branches端点）
 #   SA-008: 发布窗口创建、空窗口发布拒绝、windowKey
 #   SA-010: Attach 迭代、GitLab release 分支创建、解除挂载后 release 分支归档、runItems 细粒度断言
 #   SA-011: 冲突检测和分类统计、MERGE_CONFLICT / CROSS_REPO_VERSION_MISMATCH / REPO_AHEAD / SYSTEM_AHEAD / GIT_PERMISSION_DENIED / GIT_UNAVAILABLE 真实 GitLab 强证据
@@ -31,7 +31,7 @@
 #   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS
 #   SA-014: 版本更新、校验、Maven 单模块/多模块、Gradle Git 远程提交验证、批量部分失败证据
 #   SA-015: Run 执行详情（RunItem/RunStep）、真实部分失败重试
-#   SA-016: 窗口关闭、关闭后关键操作禁止、收尾 Run 可见
+#   SA-016: 窗口关闭、关闭后关键操作禁止、收尾 Run 可见、关闭后 tag/merge/archive 真实 GitLab 证据
 #
 # 原则:
 #   1. 永不 DROP DATABASE / DELETE 数据（本地持久化模式）
@@ -336,6 +336,42 @@ else:
 "
 }
 
+gitlab_tag_state() {
+    local clone_url=$1
+    local tag=$2
+    local gl_token="${GITLAB_PAT:-}"
+    if [ -z "$gl_token" ] || [ "$gl_token" = "null" ]; then
+        echo "MISSING_TOKEN"
+        return 1
+    fi
+
+    local project_path
+    project_path=$(gitlab_project_path_from_clone_url "$clone_url")
+    local encoded_path
+    encoded_path=$(echo "$project_path" | gitlab_encode)
+    local encoded_tag
+    encoded_tag=$(echo "$tag" | gitlab_encode)
+    local resp
+    resp=$(curl -s -H "PRIVATE-TOKEN: $gl_token" \
+        "$GITLAB/api/v4/projects/$encoded_path/repository/tags/$encoded_tag")
+
+    echo "$resp" | python3 -c "
+import sys,json
+tag = '''$tag'''
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('NON_JSON_RESPONSE')
+    sys.exit(0)
+if isinstance(d, dict) and d.get('name') == tag:
+    print('FOUND')
+elif isinstance(d, dict) and d.get('message'):
+    print('NOT_FOUND')
+else:
+    print('UNKNOWN')
+"
+}
+
 gitlab_delete_branch() {
     local clone_url=$1
     local branch=$2
@@ -499,13 +535,14 @@ curl -s -o /dev/null "$FRONTEND" 2>/dev/null && ok "前端 $FRONTEND" || warn "�
 h2 "SA-002: 1. 存量数据审计"
 
 # 1.1 数据资产统计
+API_VISIBLE_METRIC="API_VISIBLE_ASSETS"
 STATS=$(curl -s "$BACKEND/api/v1/runs/paged?size=1" -H "$AUTH")
 RUN_TOTAL=$(echo "$STATS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('page', {}).get('total', 0))" 2>/dev/null || echo 0)
 GROUP_COUNT=$(curl -s "$BACKEND/api/v1/groups" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo 0)
 REPO_COUNT=$(curl -s "$BACKEND/api/v1/repositories" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo 0)
 WINDOW_COUNT=$(curl -s "$BACKEND/api/v1/release-windows" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo 0)
 ITER_COUNT=$(curl -s "$BACKEND/api/v1/iterations" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo 0)
-info "Groups:$GROUP_COUNT  Repos:$REPO_COUNT  Windows:$WINDOW_COUNT  Iterations:$ITER_COUNT  Runs:$RUN_TOTAL"
+info "$API_VISIBLE_METRIC: Groups=$GROUP_COUNT Repos=$REPO_COUNT Windows=$WINDOW_COUNT Iterations=$ITER_COUNT Runs=$RUN_TOTAL"
 
 # 1.2 Flyway 版本
 FLYWAY_V=$(docker exec releasehub-postgres psql -U postgres -d release_hub -t -c \
@@ -693,7 +730,7 @@ NON_LEAF_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Cont
 [ "$NON_LEAF_ITER" = "True" ] && no "非叶子分组创建迭代未被拒绝" || ok "非叶子分组创建迭代被拒绝"
 
 NON_LEAF_REPO=$(curl -s -X POST "$BACKEND/api/v1/repositories" -H "$AUTH" -H "Content-Type: application/json" \
-    -d "{\"name\":\"验收-非叶子仓库-$TS\",\"cloneUrl\":\"http://localhost:9080/e2e-user/non-leaf-probe.git\",\"defaultBranch\":\"main\",\"groupCode\":\"$CUSTOMER_CODE\",\"gitProvider\":\"MOCK\"}" \
+    -d "{\"name\":\"验收-非叶子仓库-$TS\",\"cloneUrl\":\"http://localhost:9080/e2e-user/non-leaf-probe.git\",\"defaultBranch\":\"main\",\"groupCode\":\"$CUSTOMER_CODE\",\"gitProvider\":\"GITLAB\"}" \
     | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "False")
 [ "$NON_LEAF_REPO" = "True" ] && no "非叶子分组创建仓库未被拒绝" || ok "非叶子分组创建仓库被拒绝"
 
@@ -1787,13 +1824,12 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
     fi
 
     if [ -n "$GIT_ACCESS_WINDOW_ID" ] && [ -n "$GIT_ACCESS_WINDOW_KEY" ]; then
-        GIT_ACCESS_EXISTING_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
         GIT_ACCESS_BAD_TOKEN="invalid-token-$GIT_ACCESS_TS"
+        GIT_ACCESS_PERMISSION_URL="http://localhost:9080/e2e-user/git-permission-denied-$GIT_ACCESS_TS.git"
         GIT_ACCESS_UNAVAILABLE_URL="http://localhost:65535/e2e-user/git-unavailable-$GIT_ACCESS_TS.git"
 
         GIT_ACCESS_PERMISSION_REPO_RESP=$(curl -s -X POST "$BACKEND/api/v1/repositories" -H "$AUTH" -H "Content-Type: application/json" \
-            -d "{\"name\":\"验收-Git权限不足-$GIT_ACCESS_TS\",\"cloneUrl\":\"$GIT_ACCESS_EXISTING_REPO_URL\",\"defaultBranch\":\"main\",\"groupCode\":\"$GROUP_CODE\",\"gitProvider\":\"GITLAB\",\"gitAccessToken\":\"$GIT_ACCESS_BAD_TOKEN\",\"initialVersion\":\"1.0.0\"}")
+            -d "{\"name\":\"验收-Git权限不足-$GIT_ACCESS_TS\",\"cloneUrl\":\"$GIT_ACCESS_PERMISSION_URL\",\"defaultBranch\":\"main\",\"groupCode\":\"$GROUP_CODE\",\"gitProvider\":\"GITLAB\",\"gitAccessToken\":\"$GIT_ACCESS_BAD_TOKEN\",\"initialVersion\":\"1.0.0\"}")
         GIT_ACCESS_PERMISSION_REPO_ID=$(echo "$GIT_ACCESS_PERMISSION_REPO_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('id',''))" 2>/dev/null)
         [ -n "$GIT_ACCESS_PERMISSION_REPO_ID" ] && ok "已注册权限不足探针仓库: ${GIT_ACCESS_PERMISSION_REPO_ID:0:8}..." || no "权限不足探针仓库注册失败: $GIT_ACCESS_PERMISSION_REPO_RESP"
 
@@ -2471,6 +2507,51 @@ else:
     else
         no "SA-016 未找到收尾 Run: $CLEANUP_EVIDENCE"
     fi
+
+    if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+        SA16_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$VU_REPO_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+        SA16_ITER_KEY="${CLEAN_ITER_KEY:-$ITER_KEY}"
+        SA16_FEATURE_BRANCH="${CLEAN_BRANCH:-feature/$SA16_ITER_KEY}"
+        SA16_RELEASE_BRANCH="release/$SA16_WINDOW_KEY"
+        SA16_FEATURE_ARCHIVE="archive/released/${SA16_FEATURE_BRANCH//\//-}"
+        SA16_RELEASE_ARCHIVE="archive/released/${SA16_RELEASE_BRANCH//\//-}"
+        SA16_TARGET_VERSION=$(curl -s "$BACKEND/api/v1/iterations/$SA16_ITER_KEY/repos/$VU_REPO_ID/version-info" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('targetVersion',''))" 2>/dev/null)
+        SA16_TAG="v$SA16_TARGET_VERSION"
+
+        if [ -n "$SA16_REPO_URL" ] && [ -n "$SA16_ITER_KEY" ] && [ -n "$SA16_TARGET_VERSION" ]; then
+            SA16_MERGE_COMMIT=$(verify_gitlab_commit "$SA16_REPO_URL" "main" "Merge $SA16_RELEASE_BRANCH into main")
+            SA16_TAG_STATE=$(gitlab_tag_state "$SA16_REPO_URL" "$SA16_TAG")
+            SA16_FEATURE_AFTER=$(gitlab_branch_state "$SA16_REPO_URL" "$SA16_FEATURE_BRANCH")
+            SA16_FEATURE_ARCHIVE_AFTER=$(gitlab_branch_state "$SA16_REPO_URL" "$SA16_FEATURE_ARCHIVE")
+            SA16_RELEASE_AFTER=$(gitlab_branch_state "$SA16_REPO_URL" "$SA16_RELEASE_BRANCH")
+            SA16_RELEASE_ARCHIVE_AFTER=$(gitlab_branch_state "$SA16_REPO_URL" "$SA16_RELEASE_ARCHIVE")
+
+            if [ "$SA16_MERGE_COMMIT" = "FOUND" ]; then
+                ok "SA-016 真实 GitLab merge to main 证据: $SA16_RELEASE_BRANCH -> main"
+            else
+                no "SA-016 未发现 release 合并到 main 的真实 GitLab commit: $SA16_MERGE_COMMIT"
+            fi
+            if [ "$SA16_TAG_STATE" = "FOUND" ]; then
+                ok "SA-016 真实 GitLab tag 证据: $SA16_TAG"
+            else
+                no "SA-016 未发现真实 GitLab tag $SA16_TAG: $SA16_TAG_STATE"
+            fi
+            if [ "$SA16_FEATURE_AFTER" = "NOT_FOUND" ] && [ "$SA16_FEATURE_ARCHIVE_AFTER" = "FOUND" ]; then
+                ok "SA-016 feature 分支关闭后归档: $SA16_FEATURE_BRANCH -> $SA16_FEATURE_ARCHIVE"
+            else
+                no "SA-016 feature 分支归档状态异常: active=$SA16_FEATURE_AFTER archive=$SA16_FEATURE_ARCHIVE_AFTER"
+            fi
+            if [ "$SA16_RELEASE_AFTER" = "NOT_FOUND" ] && [ "$SA16_RELEASE_ARCHIVE_AFTER" = "FOUND" ]; then
+                ok "SA-016 release 分支关闭后归档: $SA16_RELEASE_BRANCH -> $SA16_RELEASE_ARCHIVE"
+            else
+                no "SA-016 release 分支归档状态异常: active=$SA16_RELEASE_AFTER archive=$SA16_RELEASE_ARCHIVE_AFTER"
+            fi
+        else
+            no "SA-016 真实 GitLab 收尾证据缺少上下文: repo=$SA16_REPO_URL iteration=$SA16_ITER_KEY target=$SA16_TARGET_VERSION"
+        fi
+    else
+        skip "SA-016 真实 GitLab tag/merge/archive 证据跳过：GitLab 或 PAT 不可用"
+    fi
 fi
 
 # ---- 9. 场景: 存量冒烟 ----
@@ -2527,33 +2608,48 @@ if [ -n "$NAMED_ITER_KEY" ]; then
     NAMED_FB=$(echo "$NAMED_VINFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('featureBranch','NONE'))" 2>/dev/null)
     if echo "$NAMED_FB" | grep -q "acceptance-named"; then
         ok "NAMED featureBranch: $NAMED_FB"
+        NAMED_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R2" -H "$AUTH" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+        NAMED_BRANCH_STATE=$(gitlab_branch_state "$NAMED_REPO_URL" "$NAMED_FB")
+        [ "$NAMED_BRANCH_STATE" = "FOUND" ] && ok "GitLab 直查确认 NAMED 合规分支已创建: $NAMED_FB" || no "GitLab NAMED 分支状态异常: $NAMED_BRANCH_STATE"
     else
         no "NAMED featureBranch 异常: $NAMED_FB"
     fi
 fi
 
-# 10.3 NAMED 非法分支名：不在 feature/ 路径下 → 版本信息不保存
-info "10.3 NAMED 非法分支名校验"
+# 10.3 NAMED 非法分支名：不在 feature/ 路径下 → 写入前拒绝且 GitLab 不创建
+info "10.3 NAMED 非法分支名写入前拒绝"
 NAMED_ITER2=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"name\":\"验收-NAMED-BAD-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
 NAMED_ITER2_KEY=$(echo "$NAMED_ITER2" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
 
 if [ -n "$NAMED_ITER2_KEY" ]; then
-    # addRepos 吞异常——repo 仍被添加，但 featureBranch 为 null（versionInfo 未保存）
-    curl -s -X POST "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
-        -d "{\"repoIds\":[\"$R3\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"hotfix/bad-name\"}" > /dev/null
+    NAMED_BAD_BRANCH="hotfix/bad-name"
+    NAMED_BAD_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"repoIds\":[\"$R3\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"$NAMED_BAD_BRANCH\"}")
+    NAMED_BAD_SUCCESS=$(echo "$NAMED_BAD_ADD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success', False))" 2>/dev/null)
+    [ "$NAMED_BAD_SUCCESS" = "False" ] && ok "NAMED 非法分支名 API 写入前拒绝" || no "NAMED 非法分支名未返回失败: $NAMED_BAD_ADD"
 
     sleep 1
-    BAD_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos/$R3/version-info" -H "$AUTH")
-    BAD_FB=$(echo "$BAD_VINFO" | python3 -c "import sys,json; d=json.load(sys.stdin); f=d.get('data',{}).get('featureBranch'); print(f if f is not None else 'None')" 2>/dev/null)
-    if [ "$BAD_FB" = "None" ]; then
-        ok "NAMED 非法分支名被拒绝（featureBranch=null）"
+    NAMED_BAD_REPOS=$(curl -s "$BACKEND/api/v1/iterations/$NAMED_ITER2_KEY/repos" -H "$AUTH")
+    NAMED_BAD_REPO_PRESENT=$(echo "$NAMED_BAD_REPOS" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print('FOUND' if '$R3' in (d.get('data') or []) else 'NOT_FOUND')
+" 2>/dev/null)
+    if [ "$NAMED_BAD_REPO_PRESENT" = "NOT_FOUND" ]; then
+        ok "NAMED 非法分支名未写入迭代仓库集合"
     else
-        no "NAMED 非法分支名未被拦截: featureBranch=$BAD_FB"
+        no "NAMED 非法分支名仍写入仓库集合: $NAMED_BAD_REPOS"
     fi
+
+    NAMED_BAD_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R3" -H "$AUTH" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+    NAMED_BAD_BRANCH_STATE=$(gitlab_branch_state "$NAMED_BAD_REPO_URL" "$NAMED_BAD_BRANCH")
+    [ "$NAMED_BAD_BRANCH_STATE" = "NOT_FOUND" ] && ok "GitLab 直查确认 NAMED 非法分支未创建: $NAMED_BAD_BRANCH" || no "GitLab NAMED 非法分支状态异常: $NAMED_BAD_BRANCH_STATE"
 fi
 
-# 10.4 EXISTING 模式：关联不存在的分支 → featureBranch 应为 null
+# 10.4 EXISTING 模式：关联不存在的分支 → 写入前拒绝
 info "10.4 EXISTING 模式（关联不存在分支时拒绝）"
 EXISTING_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"name\":\"验收-EXISTING-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
@@ -2561,17 +2657,29 @@ EXISTING_ITER_KEY=$(echo "$EXISTING_ITER" | python3 -c "import sys,json; d=json.
 
 if [ -n "$EXISTING_ITER_KEY" ]; then
     # 用一个绝对不存在的分支名，验证 EXISTING 模式的 GitLab 校验
-    curl -s -X POST "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
-        -d "{\"repoIds\":[\"$R1\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"feature/nonexistent-acceptance-$TS\"}" > /dev/null
+    EXISTING_MISSING_BRANCH="feature/nonexistent-acceptance-$TS"
+    EXISTING_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"repoIds\":[\"$R1\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"$EXISTING_MISSING_BRANCH\"}")
+    EXISTING_SUCCESS=$(echo "$EXISTING_ADD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success', False))" 2>/dev/null)
+    [ "$EXISTING_SUCCESS" = "False" ] && ok "EXISTING 不存在分支 API 写入前拒绝" || no "EXISTING 不存在分支未返回失败: $EXISTING_ADD"
 
     sleep 1
-    EXISTING_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos/$R1/version-info" -H "$AUTH")
-    EXISTING_FB=$(echo "$EXISTING_VINFO" | python3 -c "import sys,json; d=json.load(sys.stdin); f=d.get('data',{}).get('featureBranch'); print(f if f is not None else 'None')" 2>/dev/null)
-    if [ "$EXISTING_FB" = "None" ]; then
-        ok "EXISTING 不存在的分支被拒绝（featureBranch=null）"
+    EXISTING_REPOS=$(curl -s "$BACKEND/api/v1/iterations/$EXISTING_ITER_KEY/repos" -H "$AUTH")
+    EXISTING_REPO_PRESENT=$(echo "$EXISTING_REPOS" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print('FOUND' if '$R1' in (d.get('data') or []) else 'NOT_FOUND')
+" 2>/dev/null)
+    if [ "$EXISTING_REPO_PRESENT" = "NOT_FOUND" ]; then
+        ok "EXISTING 不存在分支未写入迭代仓库集合"
     else
-        no "EXISTING 未正确拒绝不存在分支: featureBranch=$EXISTING_FB"
+        no "EXISTING 不存在分支仍写入仓库集合: $EXISTING_REPOS"
     fi
+
+    EXISTING_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+    EXISTING_BRANCH_STATE=$(gitlab_branch_state "$EXISTING_REPO_URL" "$EXISTING_MISSING_BRANCH")
+    [ "$EXISTING_BRANCH_STATE" = "NOT_FOUND" ] && ok "GitLab 直查确认 EXISTING 不存在分支仍不存在: $EXISTING_MISSING_BRANCH" || no "GitLab EXISTING 不存在分支状态异常: $EXISTING_BRANCH_STATE"
 fi
 
 # 10.5 Branches 端点验证
@@ -2588,7 +2696,7 @@ fi
 # ---- 11. 汇总 ----
 h2 "11. 验收汇总"
 echo ""
-echo "  数据资产: $GROUP_COUNT groups | $REPO_COUNT repos | $WINDOW_COUNT windows | $ITER_COUNT iterations | $RUN_TOTAL runs"
+echo "  $API_VISIBLE_METRIC: $GROUP_COUNT groups | $REPO_COUNT repos | $WINDOW_COUNT windows | $ITER_COUNT iterations | $RUN_TOTAL runs"
 echo "  Token 安全: 加密=$ENCRYPTED_COUNT | 明文=$PLAINTEXT_COUNT | Flyway=$FLYWAY_V"
 echo "  本轮结果: PASS=$PASS | FAIL=$FAIL | SKIP=$SKIP"
 echo ""

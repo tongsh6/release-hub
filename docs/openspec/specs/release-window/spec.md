@@ -97,9 +97,11 @@
 
 系统 SHALL 支持以下收尾任务类型，按顺序执行：
 
-1. MERGE_RELEASE_TO_MASTER - release 分支合并到 master
-2. ARCHIVE_BRANCHES - 归档 feature/hotfix 分支（归档原因为 released）
-3. ARCHIVE_ITERATION - 归档关联迭代
+1. MERGE_RELEASE_TO_MASTER - release 分支合并到默认分支
+2. CREATE_TAG - 在默认分支创建发布 tag
+3. TRIGGER_CI - 在 release 分支仍可访问时触发收尾 CI
+4. ARCHIVE_BRANCHES - 归档 feature/hotfix 分支与 release 分支（归档原因为 released）
+5. ARCHIVE_ITERATION - 归档关联迭代
 
 #### Scenario: 任务按顺序执行
 - **GIVEN** 一个已创建的 Run，包含多个 RunTask
@@ -112,6 +114,35 @@
 - **WHEN** 某个 RunTask 执行失败且重试次数已达上限
 - **THEN** 后续任务不再执行
 - **AND** Run 状态变为 FAILED
+
+### Requirement: 关闭窗口后的 GitLab 收尾证据
+系统 SHALL 在发布窗口关闭后留下可按 `windowKey`、`iterationKey` 和 `repoId` 复核的真实 GitLab 状态。
+
+#### Scenario: 关闭窗口后复核 GitLab 状态
+- **GIVEN** 一个已发布窗口 RW-20260115-ABCD 关联迭代 ITER-20260110-XYZ 和仓库 A
+- **AND** 仓库 A 已存在 feature 分支和 release/RW-20260115-ABCD 分支
+- **WHEN** 用户关闭发布窗口
+- **THEN** release 分支合并到仓库默认分支
+- **AND** 默认分支上创建对应发布 tag
+- **AND** 原 feature 分支不再作为活跃分支存在，`archive/released/feature-ITER-20260110-XYZ` 可查询
+- **AND** 原 release 分支不再作为活跃分支存在，`archive/released/release-RW-20260115-ABCD` 可查询
+- **AND** 收尾 Run 记录 `MERGE_TO_MASTER`、`CREATE_TAG`、`TRIGGER_CI` 和两个 `ARCHIVE_BRANCH` 步骤
+
+### Requirement: GitLab 种子仓库分支清理保护
+系统 SHALL 提供本地验收 GitLab 种子仓库的受控分支清理入口，避免历史 release/feature 分支累积影响 clean-room 复现。
+
+#### Scenario: dry-run 生成候选清单
+- **WHEN** 操作者以默认模式运行种子分支清理脚本
+- **THEN** 系统生成 `summary.md`、`branches.md` 和 `branches.jsonl`
+- **AND** 每条分支事件包含仓库、Project ID、分支、动作、HTTP 状态和保护原因
+- **AND** 默认模式不得删除任何 GitLab 分支
+
+#### Scenario: execute 只删除非种子分支
+- **WHEN** 操作者显式传入 `--execute`
+- **THEN** 系统只删除固定种子仓库中的非种子分支
+- **AND** `main` 与脚本内置 seed feature 分支必须保留
+- **AND** 执行后报告必须记录 `POST_KEEP` 和 `POST_REMOVED` 复核事件
+- **AND** 重复执行不得产生新的删除动作
 
 ### Requirement: 发布窗口列表分页与筛选
 系统 SHALL 提供发布窗口列表的服务端分页查询，使用 1-based `page` 与 `size`，并支持名称筛选。
@@ -129,3 +160,26 @@
 - **THEN** 返回对应分页结果
 - **AND** `page.total` 为总条数且 `page` 为 1-based
 
+### Requirement: 多窗口并行发布可观测性
+系统 SHALL 在同一组织存在多个活跃发布窗口时，提供可按 `windowId` / `windowKey` 追溯的并行窗口观察口径，避免列表、日历、详情和发布计划把不同窗口的迭代或仓库混淆。
+
+#### Scenario: 查看同组并行窗口范围
+- **GIVEN** 同一叶子分组下存在两个 DRAFT 或 PUBLISHED 发布窗口
+- **AND** 两个窗口分别关联不同迭代与仓库
+- **WHEN** 用户查看发布窗口列表、日历或窗口详情
+- **THEN** 系统展示同组活跃窗口数量与窗口 Key
+- **AND** 窗口详情返回当前分组下每个活跃窗口的迭代数、仓库数和发布计划项
+- **AND** 每个发布计划项必须保留所属 `windowKey`、`iterationKey` 和 `repoId`
+- **AND** 其他组织的发布窗口、迭代、仓库和发布计划不得出现在当前并行范围内
+
+### Requirement: 发布窗口报告制品包归档
+系统 SHALL 为发布窗口提供可下载的报告制品包，用于发布证据归档，并保持既有 JSON、CSV、Markdown 报告契约兼容。
+
+#### Scenario: 下载发布窗口报告制品包
+- **GIVEN** 一个存在的发布窗口
+- **WHEN** 用户从发布窗口详情页选择导出制品包
+- **THEN** 系统返回 `application/zip` 制品包
+- **AND** 响应头包含可审计文件名 `release-window-<windowKey>-evidence.zip`
+- **AND** 制品包包含 `manifest.txt`、`report.json`、`report.csv`、`report.md`
+- **AND** `manifest.txt` 说明窗口 ID、窗口 Key、状态、Run/Item/Step 数量和包内文件清单
+- **AND** `report.json`、`report.csv`、`report.md` 与对应单文件报告端点表达同一窗口证据

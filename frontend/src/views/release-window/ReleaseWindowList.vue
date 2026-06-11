@@ -40,6 +40,13 @@
           {{ resolveWindowGroupPath(row) }}
         </template>
       </el-table-column>
+      <el-table-column :label="t('releaseWindow.parallelScope.shortTitle')" min-width="190">
+        <template #default="{ row }">
+          <el-tag :type="(row.parallelActiveWindowCount || 0) > 1 ? 'warning' : 'info'" size="small">
+            {{ parallelWindowSummary(row) }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="description" :label="t('releaseWindow.description')" min-width="150">
         <template #default="{ row }">
           <el-tooltip
@@ -192,6 +199,15 @@ onMounted(async () => {
 
 const resolveWindowGroupPath = (row: ReleaseWindow) => {
   return resolveGroupPath(row.groupCode, groupTree.value) || row.groupCode || '-'
+}
+
+const parallelWindowSummary = (row: ReleaseWindow) => {
+  const count = row.parallelActiveWindowCount || 0
+  if (count <= 1) {
+    return t('releaseWindow.parallelScope.single')
+  }
+  const keys = row.parallelActiveWindowKeys?.join(', ') || '-'
+  return t('releaseWindow.parallelScope.summary', { count, keys })
 }
 
 const canAttachIterations = (row: ReleaseWindow) => row.status === 'DRAFT' && !row.frozen

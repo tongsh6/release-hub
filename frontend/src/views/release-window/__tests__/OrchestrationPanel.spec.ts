@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OrchestrationPanel from '../OrchestrationPanel.vue'
 import { releaseWindowApi } from '@/api/modules/releaseWindow'
@@ -37,7 +37,8 @@ vi.mock('@/api/modules/releaseWindow', () => ({
 
 vi.mock('@/api/runApi', () => ({
   runApi: {
-    list: vi.fn().mockResolvedValue({ list: [], total: 0 })
+    list: vi.fn().mockResolvedValue({ list: [], total: 0 }),
+    getRunById: vi.fn()
   }
 }))
 
@@ -78,6 +79,10 @@ const stubs = {
   },
   ElEmpty: true
 }
+const directives = {
+  perm: {},
+  loading: {}
+}
 
 describe('OrchestrationPanel', () => {
   beforeEach(() => {
@@ -85,6 +90,16 @@ describe('OrchestrationPanel', () => {
     vi.mocked(releaseWindowApi.orchestrate).mockResolvedValue('run-1')
     vi.mocked(runApi.list).mockReset()
     vi.mocked(runApi.list).mockResolvedValue({ list: [], total: 0 })
+    vi.mocked(runApi.getRunById).mockReset()
+    vi.mocked(runApi.getRunById).mockResolvedValue({
+      id: 'run-1',
+      runType: 'WINDOW_ORCHESTRATION',
+      status: 'COMPLETED',
+      startedAt: '',
+      finishedAt: '',
+      operator: 'frontend',
+      items: []
+    })
   })
 
   it('executes finish orchestration with the current window repository and iteration scope', async () => {
@@ -98,7 +113,7 @@ describe('OrchestrationPanel', () => {
         repoIds: ['repo-1'],
         iterationKeys: ['ITER-1']
       },
-      global: { stubs }
+      global: { stubs, directives }
     })
 
     await wrapper.findAll('button').at(-1)!.trigger('click')
@@ -109,6 +124,119 @@ describe('OrchestrationPanel', () => {
       failFast: false,
       operator: 'frontend'
     })
+    expect(runApi.getRunById).toHaveBeenCalledWith('run-1')
+  })
+
+  it('shows the latest orchestration run result after execution', async () => {
+    vi.mocked(runApi.getRunById).mockResolvedValue({
+      id: 'run-1',
+      runType: 'WINDOW_ORCHESTRATION',
+      status: 'COMPLETED',
+      startedAt: '2026-05-23T01:00:00Z',
+      finishedAt: '2026-05-23T01:00:05Z',
+      operator: 'frontend',
+      items: [
+        {
+          windowKey: 'RW-1',
+          repoId: 'repo-1',
+          iterationKey: 'ITER-1',
+          plannedOrder: 1,
+          executedOrder: 1,
+          finalResult: 'MERGED',
+          steps: [
+            {
+              actionType: 'TRY_MERGE',
+              result: 'MERGED',
+              message: 'Merged feature/ITER-1 → release/RW-1'
+            }
+          ]
+        }
+      ]
+    })
+
+    const wrapper = mount(OrchestrationPanel, {
+      props: {
+        windowId: 'window-1',
+        windowKey: 'RW-1',
+        windowStatus: 'PUBLISHED',
+        iterationCount: 1,
+        repoCount: 1,
+        repoIds: ['repo-1'],
+        iterationKeys: ['ITER-1']
+      },
+      global: { stubs, directives }
+    })
+
+    await wrapper.findAll('button').at(-1)!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('orchestration.latestRun')
+    expect(wrapper.text()).toContain('run-1')
+    expect(wrapper.text()).toContain('COMPLETED')
+    expect(wrapper.text()).toContain('orchestration.runItems:1')
+    expect(wrapper.text()).toContain('orchestration.failedItems:0')
+  })
+
+  it('makes failed orchestration run context and first failed step visible', async () => {
+    vi.mocked(runApi.list).mockResolvedValue({
+      list: [
+        {
+          id: 'run-failed',
+          runType: 'WINDOW_ORCHESTRATION',
+          status: 'FAILED',
+          startedAt: '2026-05-23T01:00:00Z',
+          finishedAt: '2026-05-23T01:00:05Z',
+          operator: 'frontend'
+        }
+      ],
+      total: 1
+    })
+    vi.mocked(runApi.getRunById).mockResolvedValue({
+      id: 'run-failed',
+      runType: 'WINDOW_ORCHESTRATION',
+      status: 'FAILED',
+      startedAt: '2026-05-23T01:00:00Z',
+      finishedAt: '2026-05-23T01:00:05Z',
+      operator: 'frontend',
+      items: [
+        {
+          windowKey: 'RW-1',
+          repoId: 'repo-fail',
+          iterationKey: 'ITER-FAIL',
+          plannedOrder: 1,
+          executedOrder: 1,
+          finalResult: 'MERGE_BLOCKED',
+          steps: [
+            {
+              actionType: 'TRY_MERGE',
+              result: 'MERGE_BLOCKED',
+              message: 'Merge conflict in pom.xml'
+            }
+          ]
+        }
+      ]
+    })
+
+    const wrapper = mount(OrchestrationPanel, {
+      props: {
+        windowId: 'window-1',
+        windowKey: 'RW-1',
+        windowStatus: 'PUBLISHED',
+        iterationCount: 1,
+        repoCount: 1,
+        repoIds: ['repo-fail'],
+        iterationKeys: ['ITER-FAIL']
+      },
+      global: { stubs, directives }
+    })
+    await flushPromises()
+
+    expect(runApi.getRunById).toHaveBeenCalledWith('run-failed')
+    expect(wrapper.text()).toContain('FAILED')
+    expect(wrapper.text()).toContain('orchestration.failedItems:1')
+    expect(wrapper.text()).toContain('RW-1 / repo-fail / ITER-FAIL')
+    expect(wrapper.text()).toContain('TRY_MERGE')
+    expect(wrapper.text()).toContain('Merge conflict in pom.xml')
   })
 
   it('emits the version update event name used by the release window detail page', async () => {
@@ -122,7 +250,7 @@ describe('OrchestrationPanel', () => {
         repoIds: ['repo-1'],
         iterationKeys: ['ITER-1']
       },
-      global: { stubs }
+      global: { stubs, directives }
     })
 
     await wrapper.findAll('button').at(-2)!.trigger('click')
@@ -142,7 +270,7 @@ describe('OrchestrationPanel', () => {
         repoIds: ['repo-1'],
         iterationKeys: ['ITER-1']
       },
-      global: { stubs }
+      global: { stubs, directives }
     })
 
     expect(runApi.list).toHaveBeenCalledWith({ page: 1, pageSize: 5, windowKey: 'RW-1' })

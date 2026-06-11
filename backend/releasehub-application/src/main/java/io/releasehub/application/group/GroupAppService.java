@@ -111,6 +111,9 @@ public class GroupAppService {
         if (normalizedParent != null && normalizedParent.equals(group.getCode())) {
             throw BusinessException.groupParentSelf();
         }
+        if (!Objects.equals(group.getParentCode(), normalizedParent)) {
+            ensureMoveAllowed(group.getCode(), normalizedParent);
+        }
 
         Instant now = Instant.now(clock);
         group.rename(name, now);
@@ -136,6 +139,24 @@ public class GroupAppService {
     }
 
     private void ensureNotReferenced(String groupCode) {
+        if (isGroupReferenced(groupCode)) {
+            throw BusinessException.groupReferenced(groupCode);
+        }
+    }
+
+    private void ensureMoveAllowed(String groupCode, String targetParentCode) {
+        if (groupPort.countChildren(groupCode) > 0) {
+            throw BusinessException.groupMoveHasChildren(groupCode);
+        }
+        if (isGroupReferenced(groupCode)) {
+            throw BusinessException.groupMoveReferenced(groupCode);
+        }
+        if (targetParentCode != null && isGroupReferenced(targetParentCode)) {
+            throw BusinessException.groupMoveTargetReferenced(targetParentCode);
+        }
+    }
+
+    private boolean isGroupReferenced(String groupCode) {
         boolean referenced = releaseWindowPort.findAll().stream()
                                               .anyMatch(w -> groupCode.equals(w.getGroupCode()));
         if (!referenced) {
@@ -146,9 +167,7 @@ public class GroupAppService {
             referenced = codeRepositoryPort.findAll().stream()
                                            .anyMatch(repo -> groupCode.equals(repo.getGroupCode()));
         }
-        if (referenced) {
-            throw BusinessException.groupReferenced(groupCode);
-        }
+        return referenced;
     }
 
     @Transactional
