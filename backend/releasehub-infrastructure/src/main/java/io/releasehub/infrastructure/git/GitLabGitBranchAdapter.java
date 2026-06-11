@@ -28,6 +28,9 @@ import java.util.regex.Pattern;
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "releasehub.gitlab.real-adapter", havingValue = "true")
 public class GitLabGitBranchAdapter implements GitBranchPort {
 
+    private static final int MERGE_READINESS_MAX_ATTEMPTS = 80;
+    private static final long MERGE_READINESS_POLL_MILLIS = 250L;
+
     private RestTemplate restTemplate;
 
     public GitLabGitBranchAdapter(RestTemplateBuilder builder) {
@@ -168,7 +171,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
         String endpoint = String.format("%s/api/v4/projects/%s/merge_requests/%d",
                 repoRef.baseUrl, repoRef.encodedPath, iid);
         String lastStatus = initialStatus;
-        for (int attempt = 0; attempt < 20; attempt++) {
+        for (int attempt = 0; attempt < MERGE_READINESS_MAX_ATTEMPTS; attempt++) {
             sleepBeforeMergeReadinessPoll();
             try {
                 ResponseEntity<Map<String, Object>> response = restTemplate.exchange(uri(endpoint), HttpMethod.GET,
@@ -196,7 +199,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
 
     private void sleepBeforeMergeReadinessPoll() {
         try {
-            Thread.sleep(250);
+            Thread.sleep(MERGE_READINESS_POLL_MILLIS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -227,7 +230,11 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     }
 
     private boolean isPendingStatus(String status) {
-        return "unchecked".equals(status) || "checking".equals(status) || "preparing".equals(status);
+        return "unchecked".equals(status)
+                || "checking".equals(status)
+                || "preparing".equals(status)
+                || "cannot_be_merged_recheck".equals(status)
+                || "approvals_syncing".equals(status);
     }
 
     private void closeMergeRequest(RepoRef repoRef, String token, int iid) {
@@ -293,7 +300,10 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             if (readiness == MergeReadiness.CONFLICT) {
                 return MergeabilityResult.conflict("merge conflict detected");
             }
-            return MergeabilityResult.mergeable();
+            if (readiness == MergeReadiness.MERGEABLE || readiness == MergeReadiness.NO_COMMITS) {
+                return MergeabilityResult.mergeable();
+            }
+            return MergeabilityResult.error("mergeability check did not become ready");
         } catch (HttpClientErrorException e) {
             String body = e.getResponseBodyAsString();
             if (isNoCommitsBetweenResponse(body)) {
