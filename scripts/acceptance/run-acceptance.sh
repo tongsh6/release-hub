@@ -741,13 +741,19 @@ GITLAB_PAT="${E2E_GITLAB_TOKEN:-}"
 
 # 3.2.1 确保后端已配置 GitLab Settings（v0.1.11：脱离 MVP 后这是 Orchestrate / 版本更新的硬前置）
 CURRENT_GL=$(curl -s "$BACKEND/api/v1/settings/gitlab" -H "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('baseUrl','') or '')" 2>/dev/null)
-if [ -z "$CURRENT_GL" ] && [ -n "$GITLAB_PAT" ] && [ "$GITLAB_READY" = "true" ]; then
+if [ -n "$GITLAB_PAT" ] && [ "$GITLAB_READY" = "true" ]; then
     SETTINGS_RESP=$(curl -s -X POST "$BACKEND/api/v1/settings/gitlab" -H "$AUTH" -H "Content-Type: application/json" \
         -d "{\"baseUrl\":\"$GITLAB\",\"token\":\"$GITLAB_PAT\"}")
     SETTINGS_OK=$(echo "$SETTINGS_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
-    [ "$SETTINGS_OK" = "True" ] && ok "GitLab Settings 已配置: $GITLAB" || no "GitLab Settings 配置失败: $SETTINGS_RESP"
-elif [ -n "$CURRENT_GL" ]; then
-    ok "GitLab Settings 已存在: $CURRENT_GL（持久化校验：✓）"
+    if [ "$SETTINGS_OK" = "True" ]; then
+        if [ -n "$CURRENT_GL" ]; then
+            ok "GitLab Settings 已刷新: $GITLAB"
+        else
+            ok "GitLab Settings 已配置: $GITLAB"
+        fi
+    else
+        no "GitLab Settings 配置失败: $SETTINGS_RESP"
+    fi
 else
     skip "跳过 GitLab Settings 配置（MOCK_MODE 或缺 PAT）"
 fi
@@ -1462,12 +1468,13 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
             no "预置 release 分支失败: $CREATE_MERGE_RELEASE"
         fi
 
-        MERGE_FEATURE_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>merge-conflict</artifactId><version>1.2.0-feature-$MERGE_TS</version></project>"
-        MERGE_RELEASE_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>merge-conflict</artifactId><version>1.2.0-release-$MERGE_TS</version></project>"
-        COMMIT_MERGE_FEATURE=$(gitlab_commit_file "$MERGE_REPO_URL" "$MERGE_FEATURE_BRANCH" "pom.xml" "$MERGE_FEATURE_POM" "ReleaseHub acceptance: feature conflict $MERGE_TS")
-        COMMIT_MERGE_RELEASE=$(gitlab_commit_file "$MERGE_REPO_URL" "$MERGE_RELEASE_BRANCH" "pom.xml" "$MERGE_RELEASE_POM" "ReleaseHub acceptance: release conflict $MERGE_TS")
-        [ "$COMMIT_MERGE_FEATURE" = "201" ] && ok "GitLab feature 分支冲突提交已写入: pom.xml" || no "feature 分支冲突提交失败: $COMMIT_MERGE_FEATURE"
-        [ "$COMMIT_MERGE_RELEASE" = "201" ] && ok "GitLab release 分支冲突提交已写入: pom.xml" || no "release 分支冲突提交失败: $COMMIT_MERGE_RELEASE"
+        MERGE_CONFLICT_FILE="releasehub-acceptance-conflict.txt"
+        MERGE_FEATURE_CONTENT="feature conflict $MERGE_TS"
+        MERGE_RELEASE_CONTENT="release conflict $MERGE_TS"
+        COMMIT_MERGE_FEATURE=$(gitlab_commit_file "$MERGE_REPO_URL" "$MERGE_FEATURE_BRANCH" "$MERGE_CONFLICT_FILE" "$MERGE_FEATURE_CONTENT" "ReleaseHub acceptance: feature conflict $MERGE_TS" "create")
+        COMMIT_MERGE_RELEASE=$(gitlab_commit_file "$MERGE_REPO_URL" "$MERGE_RELEASE_BRANCH" "$MERGE_CONFLICT_FILE" "$MERGE_RELEASE_CONTENT" "ReleaseHub acceptance: release conflict $MERGE_TS" "create")
+        [ "$COMMIT_MERGE_FEATURE" = "201" ] && ok "GitLab feature 分支冲突提交已写入: $MERGE_CONFLICT_FILE" || no "feature 分支冲突提交失败: $COMMIT_MERGE_FEATURE"
+        [ "$COMMIT_MERGE_RELEASE" = "201" ] && ok "GitLab release 分支冲突提交已写入: $MERGE_CONFLICT_FILE" || no "release 分支冲突提交失败: $COMMIT_MERGE_RELEASE"
 
         MERGE_FEATURE_STATE=$(gitlab_branch_state "$MERGE_REPO_URL" "$MERGE_FEATURE_BRANCH")
         MERGE_RELEASE_STATE=$(gitlab_branch_state "$MERGE_REPO_URL" "$MERGE_RELEASE_BRANCH")
@@ -1903,9 +1910,11 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
     fi
 
     if [ -n "$PARTIAL_WINDOW_ID" ] && [ -n "$PARTIAL_WINDOW_KEY" ]; then
-        PARTIAL_REPO_OK_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+        PARTIAL_OK_REPO_ID="$R2"
+        PARTIAL_BLOCKED_REPO_ID="$R1"
+        PARTIAL_REPO_OK_URL=$(curl -s "$BACKEND/api/v1/repositories/$PARTIAL_OK_REPO_ID" -H "$AUTH" \
             | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
-        PARTIAL_REPO_BLOCKED_URL=$(curl -s "$BACKEND/api/v1/repositories/$R2" -H "$AUTH" \
+        PARTIAL_REPO_BLOCKED_URL=$(curl -s "$BACKEND/api/v1/repositories/$PARTIAL_BLOCKED_REPO_ID" -H "$AUTH" \
             | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
         PARTIAL_OK_FEATURE="feature/acceptance-partial-ok-$PARTIAL_TS"
         PARTIAL_BLOCKED_FEATURE="feature/acceptance-partial-conflict-$PARTIAL_TS"
@@ -1930,13 +1939,12 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
             no "预置部分失败仓库 release 分支失败: $CREATE_PARTIAL_BLOCKED_RELEASE"
         fi
 
-        PARTIAL_OK_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>partial-ok</artifactId><version>1.0.0-ok-$PARTIAL_TS</version></project>"
-        PARTIAL_BLOCKED_FEATURE_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>partial-blocked</artifactId><version>1.0.0-feature-$PARTIAL_TS</version></project>"
-        PARTIAL_BLOCKED_RELEASE_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>partial-blocked</artifactId><version>1.0.0-release-$PARTIAL_TS</version></project>"
-        COMMIT_PARTIAL_OK=$(gitlab_commit_file "$PARTIAL_REPO_OK_URL" "$PARTIAL_OK_FEATURE" "pom.xml" "$PARTIAL_OK_POM" "ReleaseHub acceptance: partial retry ok $PARTIAL_TS")
-        COMMIT_PARTIAL_BLOCKED_FEATURE=$(gitlab_commit_file "$PARTIAL_REPO_BLOCKED_URL" "$PARTIAL_BLOCKED_FEATURE" "pom.xml" "$PARTIAL_BLOCKED_FEATURE_POM" "ReleaseHub acceptance: partial retry feature conflict $PARTIAL_TS")
-        COMMIT_PARTIAL_BLOCKED_RELEASE=$(gitlab_commit_file "$PARTIAL_REPO_BLOCKED_URL" "$PARTIAL_RELEASE_BRANCH" "pom.xml" "$PARTIAL_BLOCKED_RELEASE_POM" "ReleaseHub acceptance: partial retry release conflict $PARTIAL_TS")
-        [ "$COMMIT_PARTIAL_OK" = "201" ] && ok "部分成功仓库 feature 提交已写入" || no "部分成功仓库 feature 提交失败: $COMMIT_PARTIAL_OK"
+        PARTIAL_CONFLICT_FILE="releasehub-acceptance-partial-conflict.txt"
+        PARTIAL_BLOCKED_FEATURE_CONTENT="partial feature conflict $PARTIAL_TS"
+        PARTIAL_BLOCKED_RELEASE_CONTENT="partial release conflict $PARTIAL_TS"
+        COMMIT_PARTIAL_BLOCKED_FEATURE=$(gitlab_commit_file "$PARTIAL_REPO_BLOCKED_URL" "$PARTIAL_BLOCKED_FEATURE" "$PARTIAL_CONFLICT_FILE" "$PARTIAL_BLOCKED_FEATURE_CONTENT" "ReleaseHub acceptance: partial retry feature conflict $PARTIAL_TS" "create")
+        COMMIT_PARTIAL_BLOCKED_RELEASE=$(gitlab_commit_file "$PARTIAL_REPO_BLOCKED_URL" "$PARTIAL_RELEASE_BRANCH" "$PARTIAL_CONFLICT_FILE" "$PARTIAL_BLOCKED_RELEASE_CONTENT" "ReleaseHub acceptance: partial retry release conflict $PARTIAL_TS" "create")
+        ok "部分成功仓库 feature 分支保持 no-op merge 证据: $PARTIAL_OK_FEATURE"
         [ "$COMMIT_PARTIAL_BLOCKED_FEATURE" = "201" ] && ok "部分失败仓库 feature 冲突提交已写入" || no "部分失败仓库 feature 冲突提交失败: $COMMIT_PARTIAL_BLOCKED_FEATURE"
         [ "$COMMIT_PARTIAL_BLOCKED_RELEASE" = "201" ] && ok "部分失败仓库 release 冲突提交已写入" || no "部分失败仓库 release 冲突提交失败: $COMMIT_PARTIAL_BLOCKED_RELEASE"
 
@@ -1962,9 +1970,9 @@ for rule in json.load(sys.stdin).get('data', []):
 
         if [ -n "$PARTIAL_ITER_KEY" ]; then
             PARTIAL_ADD_OK=$(curl -s -X POST "$BACKEND/api/v1/iterations/$PARTIAL_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
-                -d "{\"repoIds\":[\"$R1\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"$PARTIAL_OK_FEATURE\"}")
+                -d "{\"repoIds\":[\"$PARTIAL_OK_REPO_ID\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"$PARTIAL_OK_FEATURE\"}")
             PARTIAL_ADD_BLOCKED=$(curl -s -X POST "$BACKEND/api/v1/iterations/$PARTIAL_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json" \
-                -d "{\"repoIds\":[\"$R2\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"$PARTIAL_BLOCKED_FEATURE\"}")
+                -d "{\"repoIds\":[\"$PARTIAL_BLOCKED_REPO_ID\"],\"branchCreationMode\":\"EXISTING\",\"customBranchName\":\"$PARTIAL_BLOCKED_FEATURE\"}")
             PARTIAL_ADD_OK_SUCCESS=$(echo "$PARTIAL_ADD_OK" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "False")
             PARTIAL_ADD_BLOCKED_SUCCESS=$(echo "$PARTIAL_ADD_BLOCKED" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "False")
             [ "$PARTIAL_ADD_OK_SUCCESS" = "True" ] && [ "$PARTIAL_ADD_BLOCKED_SUCCESS" = "True" ] \
@@ -1988,8 +1996,8 @@ print(any(r.get('hasErrors', False) for r in d.get('data', [])))
 import sys,json
 window_key='''$PARTIAL_WINDOW_KEY'''
 iteration_key='''$PARTIAL_ITER_KEY'''
-ok_repo='''$R1'''
-blocked_repo='''$R2'''
+ok_repo='''$PARTIAL_OK_REPO_ID'''
+blocked_repo='''$PARTIAL_BLOCKED_REPO_ID'''
 runs=json.load(sys.stdin).get('data', [])
 for r in reversed(runs):
     if r.get('runType') != 'ATTACH_ITERATION':
@@ -2027,8 +2035,8 @@ print('MISSING_RUN|0|0|')
 import sys,json
 d=json.load(sys.stdin).get('data', {})
 items=d.get('items', [])
-blocked_repo='''$R2'''
-ok_repo='''$R1'''
+blocked_repo='''$PARTIAL_BLOCKED_REPO_ID'''
+ok_repo='''$PARTIAL_OK_REPO_ID'''
 retry_key='''$PARTIAL_RETRY_KEY'''
 selected=[
     item for item in items
@@ -2340,6 +2348,12 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
             if [ "$SA14_GRADLE_ATTACH_OK" != "True" ]; then
                 no "SA-014 Gradle Attach 失败: $SA14_GRADLE_ATTACH"
             else
+                SA14_GRADLE_WINDOW_KEY=$(curl -s "$BACKEND/api/v1/release-windows/$SA14_GRADLE_WINDOW_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))" 2>/dev/null)
+                SA14_GRADLE_RELEASE_BRANCH="release/$SA14_GRADLE_WINDOW_KEY"
+                GRADLE_RELEASE_PROPS_STATUS=$(gitlab_upsert_file "$SA14_GRADLE_REPO_URL" "$SA14_GRADLE_RELEASE_BRANCH" "gradle.properties" "$SA14_GRADLE_PROPERTIES" "ReleaseHub acceptance: upsert gradle release properties $SA14_GRADLE_TS")
+                [ "$GRADLE_RELEASE_PROPS_STATUS" = "201" ] || [ "$GRADLE_RELEASE_PROPS_STATUS" = "200" ] \
+                    && ok "SA-014 Gradle release fixture 已提交: $SA14_GRADLE_RELEASE_BRANCH" \
+                    || no "SA-014 Gradle release fixture 提交异常: $GRADLE_RELEASE_PROPS_STATUS"
                 SA14_GRADLE_UPDATE=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA14_GRADLE_WINDOW_ID/execute/version-update" -H "$AUTH" -H "Content-Type: application/json" \
                     -d "{\"repoId\":\"$R3\",\"targetVersion\":\"3.2.0\",\"buildTool\":\"GRADLE\",\"repoPath\":\".\",\"gradlePropertiesPath\":\"gradle.properties\"}")
                 SA14_GRADLE_UPDATE_OK=$(echo "$SA14_GRADLE_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)

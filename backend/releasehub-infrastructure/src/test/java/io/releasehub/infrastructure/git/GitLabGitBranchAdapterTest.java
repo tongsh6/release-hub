@@ -242,6 +242,22 @@ class GitLabGitBranchAdapterTest {
     }
 
     @Test
+    void shouldNotTreatUnknownMergeabilityReadinessAsMergeable(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
+                        .withBody("{\"iid\":204,\"detailed_merge_status\":\"not_open\"}")));
+        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/204"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{}")));
+
+        GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
+                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1");
+
+        assertFalse(result.canMerge());
+        assertEquals(GitBranchPort.MergeabilityFailure.UNKNOWN, result.failure());
+    }
+
+    @Test
     void shouldTreatNoCommitsBetweenBranchesAsMergeable(WireMockRuntimeInfo wm) {
         stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(400)

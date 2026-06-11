@@ -139,12 +139,33 @@ CLONE_URL_REPO3="http://$GITLAB_HOST_PORT/$TEST_USER/seed-repo-3-gradle.git"
 api_create_file() {
   local pid=$1 branch=$2 path=$3 content=$4 msg=$5
   local encoded_path=$(echo -n "$path" | python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read()))")
-  local b64_content=$(echo -n "$content" | base64)
+  local b64_content=$(echo -n "$content" | base64 | tr -d '\n')
   curl -s -o /dev/null -w "%{http_code}" --request POST \
     -H "PRIVATE-TOKEN: $E2E_TOKEN" \
     -H "Content-Type: application/json" \
     -d "{\"branch\":\"$branch\",\"encoding\":\"base64\",\"content\":\"$b64_content\",\"commit_message\":\"$msg\"}" \
     "$GITLAB_URL/api/v4/projects/$pid/repository/files/$encoded_path"
+}
+
+api_update_file() {
+  local pid=$1 branch=$2 path=$3 content=$4 msg=$5
+  local encoded_path=$(echo -n "$path" | python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read()))")
+  local b64_content=$(echo -n "$content" | base64 | tr -d '\n')
+  curl -s -o /dev/null -w "%{http_code}" --request PUT \
+    -H "PRIVATE-TOKEN: $E2E_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"branch\":\"$branch\",\"encoding\":\"base64\",\"content\":\"$b64_content\",\"commit_message\":\"$msg\"}" \
+    "$GITLAB_URL/api/v4/projects/$pid/repository/files/$encoded_path"
+}
+
+api_upsert_file() {
+  local pid=$1 branch=$2 path=$3 content=$4 msg=$5
+  local status
+  status=$(api_create_file "$pid" "$branch" "$path" "$content" "$msg")
+  if [ "$status" != "201" ]; then
+    status=$(api_update_file "$pid" "$branch" "$path" "$content" "$msg")
+  fi
+  echo "$status"
 }
 
 # Helper: create a branch via API
@@ -157,80 +178,59 @@ api_create_branch() {
     "$GITLAB_URL/api/v4/projects/$pid/repository/branches"
 }
 
-# Check if repo already has content (non-empty tree) — idempotent guard
-repo_has_content() {
-  local pid=$1
-  local count=$(curl -s -H "PRIVATE-TOKEN: $E2E_TOKEN" \
-    "$GITLAB_URL/api/v4/projects/$pid/repository/tree?ref=main&per_page=1" | \
-    python3 -c "import sys,json; data=json.load(sys.stdin); print(len(data) if isinstance(data, list) else 0)" 2>/dev/null)
-  [ -n "$count" ] && [ "$count" -gt 0 ]
-}
-
 # ---- Repo 1: Maven single module ----
 echo "--- Repo 1: Maven single module ---"
-if repo_has_content "$REPO1_ID"; then
-  echo "  Repo 1 already has content, skipping seed"
-else
-  # Main branch: pom.xml v1.4.0
-  api_create_file "$REPO1_ID" "main" "pom.xml" \
-    '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-1</artifactId><version>1.4.0</version></project>' \
-    "seed: add pom.xml v1.4.0" > /dev/null
+# Main branch: pom.xml v1.4.0
+api_upsert_file "$REPO1_ID" "main" "pom.xml" \
+  '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-1</artifactId><version>1.4.0</version></project>' \
+  "seed: add pom.xml v1.4.0" > /dev/null
 
-  # feature/upgrade-guava: pom.xml v1.5.0
-  api_create_branch "$REPO1_ID" "feature/upgrade-guava" "main" > /dev/null
-  api_create_file "$REPO1_ID" "feature/upgrade-guava" "pom.xml" \
-    '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-1</artifactId><version>1.5.0</version></project>' \
-    "feat: bump to 1.5.0" > /dev/null
+# feature/upgrade-guava: pom.xml v1.5.0
+api_create_branch "$REPO1_ID" "feature/upgrade-guava" "main" > /dev/null
+api_upsert_file "$REPO1_ID" "feature/upgrade-guava" "pom.xml" \
+  '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-1</artifactId><version>1.5.0</version></project>' \
+  "feat: bump to 1.5.0" > /dev/null
 
-  # feature/add-logging: pom.xml v1.4.1
-  api_create_branch "$REPO1_ID" "feature/add-logging" "main" > /dev/null
-  api_create_file "$REPO1_ID" "feature/add-logging" "pom.xml" \
-    '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-1</artifactId><version>1.4.1</version></project>' \
-    "feat: bump to 1.4.1" > /dev/null
+# feature/add-logging: pom.xml v1.4.1
+api_create_branch "$REPO1_ID" "feature/add-logging" "main" > /dev/null
+api_upsert_file "$REPO1_ID" "feature/add-logging" "pom.xml" \
+  '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-1</artifactId><version>1.4.1</version></project>' \
+  "feat: bump to 1.4.1" > /dev/null
 
-  echo "  Repo 1 seeded (3 branches)"
-fi
+echo "  Repo 1 seeded/verified (3 branches)"
 
 # ---- Repo 2: Maven multi-module ----
 echo "--- Repo 2: Maven multi-module ---"
-if repo_has_content "$REPO2_ID"; then
-  echo "  Repo 2 already has content, skipping seed"
-else
-  api_create_file "$REPO2_ID" "main" "pom.xml" \
-    '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-2-parent</artifactId><version>2.1.0</version><packaging>pom</packaging></project>' \
-    "seed: add parent pom v2.1.0" > /dev/null
+api_upsert_file "$REPO2_ID" "main" "pom.xml" \
+  '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-2-parent</artifactId><version>2.1.0</version><packaging>pom</packaging></project>' \
+  "seed: add parent pom v2.1.0" > /dev/null
 
-  api_create_branch "$REPO2_ID" "feature/update-lib" "main" > /dev/null
-  api_create_file "$REPO2_ID" "feature/update-lib" "pom.xml" \
-    '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-2-parent</artifactId><version>2.2.0</version><packaging>pom</packaging></project>' \
-    "feat: bump to 2.2.0" > /dev/null
+api_create_branch "$REPO2_ID" "feature/update-lib" "main" > /dev/null
+api_upsert_file "$REPO2_ID" "feature/update-lib" "pom.xml" \
+  '<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-2-parent</artifactId><version>2.2.0</version><packaging>pom</packaging></project>' \
+  "feat: bump to 2.2.0" > /dev/null
 
-  echo "  Repo 2 seeded (2 branches)"
-fi
+echo "  Repo 2 seeded/verified (2 branches)"
 
 # ---- Repo 3: Gradle ----
 echo "--- Repo 3: Gradle ---"
-if repo_has_content "$REPO3_ID"; then
-  echo "  Repo 3 already has content, skipping seed"
-else
-  api_create_file "$REPO3_ID" "main" "build.gradle" \
-    'plugins { id("java") }
+api_upsert_file "$REPO3_ID" "main" "build.gradle" \
+  'plugins { id("java") }
 group = "com.e2e"
 version = "3.0.0"' \
-    "seed: add build.gradle v3.0.0" > /dev/null
+  "seed: add build.gradle v3.0.0" > /dev/null
 
-  api_create_branch "$REPO3_ID" "feature/kotlin-support" "main" > /dev/null
-  api_create_file "$REPO3_ID" "feature/kotlin-support" "gradle.properties" \
-    "version=3.1.0" \
-    "feat: add gradle.properties v3.1.0" > /dev/null
-  api_create_file "$REPO3_ID" "feature/kotlin-support" "build.gradle" \
-    'plugins { id("java") }
+api_create_branch "$REPO3_ID" "feature/kotlin-support" "main" > /dev/null
+api_upsert_file "$REPO3_ID" "feature/kotlin-support" "gradle.properties" \
+  "version=3.1.0" \
+  "feat: add gradle.properties v3.1.0" > /dev/null
+api_upsert_file "$REPO3_ID" "feature/kotlin-support" "build.gradle" \
+  'plugins { id("java") }
 group = "com.e2e"
 version = "3.1.0"' \
-    "feat: bump build.gradle to 3.1.0" > /dev/null
+  "feat: bump build.gradle to 3.1.0" > /dev/null
 
-  echo "  Repo 3 seeded (2 branches)"
-fi
+echo "  Repo 3 seeded/verified (2 branches)"
 
 # ============================================================
 # Summary & export
