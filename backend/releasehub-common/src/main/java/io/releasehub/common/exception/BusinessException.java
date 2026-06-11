@@ -73,6 +73,18 @@ public class BusinessException extends BaseException {
         return of(ErrorCode.GROUP_NOT_LEAF, code);
     }
 
+    public static BusinessException groupMoveHasChildren(Object code) {
+        return of(ErrorCode.GROUP_MOVE_HAS_CHILDREN, code);
+    }
+
+    public static BusinessException groupMoveReferenced(Object code) {
+        return of(ErrorCode.GROUP_MOVE_REFERENCED, code);
+    }
+
+    public static BusinessException groupMoveTargetReferenced(Object code) {
+        return of(ErrorCode.GROUP_MOVE_TARGET_REFERENCED, code);
+    }
+
     // ========== Iteration ==========
 
     public static BusinessException iterationAttached(Object key) {
@@ -101,6 +113,18 @@ public class BusinessException extends BaseException {
 
     public static BusinessException gitlabConnectionFailed(Object reason) {
         return of(ErrorCode.GITLAB_CONNECTION_FAILED, reason);
+    }
+
+    public static BusinessException gitlabTokenInvalid() {
+        return of(ErrorCode.GITLAB_TOKEN_INVALID);
+    }
+
+    public static BusinessException gitlabPermissionDenied() {
+        return of(ErrorCode.GITLAB_PERMISSION_DENIED);
+    }
+
+    public static BusinessException gitlabUnreachable() {
+        return of(ErrorCode.GITLAB_UNREACHABLE);
     }
 
     // ========== Repository ==========

@@ -63,6 +63,10 @@ public class ValidationException extends BaseException {
         return of(ErrorCode.REPO_URL_INVALID);
     }
 
+    public static ValidationException repoMockProviderForbidden() {
+        return of(ErrorCode.REPO_MOCK_PROVIDER_FORBIDDEN);
+    }
+
     public static ValidationException repoBranchRequired() {
         return of(ErrorCode.REPO_BRANCH_REQUIRED);
     }

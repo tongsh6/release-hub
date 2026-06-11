@@ -28,6 +28,9 @@ import java.util.regex.Pattern;
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "releasehub.gitlab.real-adapter", havingValue = "true")
 public class GitLabGitBranchAdapter implements GitBranchPort {
 
+    private static final int MERGE_READINESS_MAX_ATTEMPTS = 80;
+    private static final long MERGE_READINESS_POLL_MILLIS = 250L;
+
     private RestTemplate restTemplate;
 
     public GitLabGitBranchAdapter(RestTemplateBuilder builder) {
@@ -168,7 +171,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
         String endpoint = String.format("%s/api/v4/projects/%s/merge_requests/%d",
                 repoRef.baseUrl, repoRef.encodedPath, iid);
         String lastStatus = initialStatus;
-        for (int attempt = 0; attempt < 20; attempt++) {
+        for (int attempt = 0; attempt < MERGE_READINESS_MAX_ATTEMPTS; attempt++) {
             sleepBeforeMergeReadinessPoll();
             try {
                 ResponseEntity<Map<String, Object>> response = restTemplate.exchange(uri(endpoint), HttpMethod.GET,
@@ -196,7 +199,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
 
     private void sleepBeforeMergeReadinessPoll() {
         try {
-            Thread.sleep(250);
+            Thread.sleep(MERGE_READINESS_POLL_MILLIS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -227,7 +230,11 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     }
 
     private boolean isPendingStatus(String status) {
-        return "unchecked".equals(status) || "checking".equals(status) || "preparing".equals(status);
+        return "unchecked".equals(status)
+                || "checking".equals(status)
+                || "preparing".equals(status)
+                || "cannot_be_merged_recheck".equals(status)
+                || "approvals_syncing".equals(status);
     }
 
     private void closeMergeRequest(RepoRef repoRef, String token, int iid) {
@@ -293,7 +300,10 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             if (readiness == MergeReadiness.CONFLICT) {
                 return MergeabilityResult.conflict("merge conflict detected");
             }
-            return MergeabilityResult.mergeable();
+            if (readiness == MergeReadiness.MERGEABLE || readiness == MergeReadiness.NO_COMMITS) {
+                return MergeabilityResult.mergeable();
+            }
+            return MergeabilityResult.error("mergeability check did not become ready");
         } catch (HttpClientErrorException e) {
             String body = e.getResponseBodyAsString();
             if (isNoCommitsBetweenResponse(body)) {
@@ -366,8 +376,12 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     public List<String> listBranches(String repoCloneUrl, String token, String prefix) {
         try {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);
-            String endpoint = String.format("%s/api/v4/projects/%s/repository/branches?search=%s&per_page=100",
-                    repoRef.baseUrl, repoRef.encodedPath, urlEncode(prefix));
+            String branchPrefix = prefix == null ? "" : prefix;
+            String endpoint = branchPrefix.isBlank()
+                    ? String.format("%s/api/v4/projects/%s/repository/branches?per_page=100",
+                    repoRef.baseUrl, repoRef.encodedPath)
+                    : String.format("%s/api/v4/projects/%s/repository/branches?search=%s&per_page=100",
+                    repoRef.baseUrl, repoRef.encodedPath, urlEncode(branchPrefix));
             ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
                     uri(endpoint), HttpMethod.GET, new HttpEntity<>(headers(token)),
                     new ParameterizedTypeReference<>() {});
@@ -379,7 +393,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
                     .map(b -> b.get("name"))
                     .filter(name -> name != null)
                     .map(String::valueOf)
-                    .filter(name -> name.startsWith(prefix))
+                    .filter(name -> branchPrefix.isBlank() || name.startsWith(branchPrefix))
                     .toList();
         } catch (Exception e) {
             log.warn("Failed to list branches for {} with prefix {}: {}", repoCloneUrl, prefix, e.getMessage());

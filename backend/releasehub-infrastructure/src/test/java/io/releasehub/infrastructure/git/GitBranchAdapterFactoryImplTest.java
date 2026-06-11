@@ -19,11 +19,13 @@ class GitBranchAdapterFactoryImplTest {
     void shouldReturnMatchedAdapter() {
         GitBranchPort inMemoryGitLab = new InMemoryGitLabBranchAdapter();
         GitBranchPort github = new GitHubGitBranchAdapter(builder);
+        GitBranchPort mock = new MockGitBranchAdapter();
 
-        GitBranchAdapterFactoryImpl factory = new GitBranchAdapterFactoryImpl(List.of(github, inMemoryGitLab));
+        GitBranchAdapterFactoryImpl factory = new GitBranchAdapterFactoryImpl(List.of(github, inMemoryGitLab, mock));
 
         assertSame(github, factory.getAdapter(GitProvider.GITHUB));
         assertSame(inMemoryGitLab, factory.getAdapter(GitProvider.GITLAB));
+        assertSame(mock, factory.getAdapter(GitProvider.MOCK));
     }
 
     @Test

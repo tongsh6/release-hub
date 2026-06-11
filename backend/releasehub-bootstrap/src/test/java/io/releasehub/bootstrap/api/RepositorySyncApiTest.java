@@ -2,6 +2,7 @@ package io.releasehub.bootstrap.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.releasehub.application.branchrule.BranchGovernanceAppService;
 import io.releasehub.application.settings.SettingsPort;
 import io.releasehub.interfaces.api.repo.CreateRepoRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,11 +10,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.List;
+
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -32,6 +37,9 @@ class RepositorySyncApiTest {
 
     @Autowired
     private SettingsPort settingsPort;
+
+    @MockBean
+    private BranchGovernanceAppService branchGovernanceAppService;
 
     @BeforeEach
     void resetSettings() {
@@ -105,7 +113,54 @@ class RepositorySyncApiTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.version").value("1.2.3"))
-                .andExpect(jsonPath("$.data.versionSource").value("MANUAL"));
+                .andExpect(jsonPath("$.data.versionSource").value("MANUAL"))
+                .andExpect(jsonPath("$.data.branch").value("main"))
+                .andExpect(jsonPath("$.data.checkedPaths").isArray())
+                .andExpect(jsonPath("$.data.errorType").doesNotExist())
+                .andExpect(jsonPath("$.data.message").doesNotExist());
+    }
+
+    @Test
+    void shouldRejectMockProviderFromProductRepositoryApi() throws Exception {
+        String token = loginAndGetToken();
+        String groupCode = createGroupAndGetCode(token);
+
+        CreateRepoRequest request = new CreateRepoRequest();
+        request.setName("Mock Provider Repo");
+        request.setCloneUrl("git@gitlab.com:test/mock-provider-repo.git");
+        request.setMonoRepo(false);
+        request.setGroupCode(groupCode);
+        request.setGitProvider("MOCK");
+
+        mockMvc.perform(post("/api/v1/repositories")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("REPO_014"));
+    }
+
+    @Test
+    void shouldExposeHistoricalNonCompliantBranchesForGovernanceReview() throws Exception {
+        String token = loginAndGetToken();
+        when(branchGovernanceAppService.listNonCompliantBranches("repo-1")).thenReturn(List.of(
+                new BranchGovernanceAppService.NonCompliantBranch(
+                        "repo-1",
+                        "Payment Service",
+                        "legacy_branch",
+                        "G001",
+                        "repo-1",
+                        "MANUAL_REVIEW_ONLY",
+                        "Review branch owner before rename, delete, or archive outside ReleaseHub"
+                )
+        ));
+
+        mockMvc.perform(get("/api/v1/repositories/repo-1/branch-governance/noncompliant")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].repositoryId").value("repo-1"))
+                .andExpect(jsonPath("$.data[0].branchName").value("legacy_branch"))
+                .andExpect(jsonPath("$.data[0].actionBoundary").value("MANUAL_REVIEW_ONLY"));
     }
 
     private String createGroupAndGetCode(String token) throws Exception {

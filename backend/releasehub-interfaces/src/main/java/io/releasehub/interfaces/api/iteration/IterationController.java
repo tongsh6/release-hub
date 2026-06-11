@@ -2,6 +2,7 @@ package io.releasehub.interfaces.api.iteration;
 
 import io.releasehub.application.iteration.IterationAppService;
 import io.releasehub.application.iteration.IterationAppService.RepoBranchConfig;
+import io.releasehub.application.iteration.IterationRepoDetailView;
 import io.releasehub.application.iteration.IterationRepoVersionInfo;
 import io.releasehub.application.iteration.IterationView;
 import io.releasehub.application.iteration.VersionConflict;
@@ -119,6 +120,15 @@ public class IterationController {
     public ApiResponse<java.util.Set<String>> listRepos(@PathVariable("key") String key) {
         var repos = iterationAppService.listRepos(key);
         return ApiResponse.success(repos);
+    }
+
+    @GetMapping("/{key}/repos/paged")
+    @Operation(summary = "List repos of iteration with version metadata (paged)")
+    public ApiPageResponse<List<IterationRepoDetailView>> listReposPaged(@PathVariable("key") String key,
+                                                                         @RequestParam(name = "page", defaultValue = "1") int page,
+                                                                         @RequestParam(name = "size", defaultValue = "10") int size) {
+        var result = iterationAppService.listRepoDetailsPaged(key, page, size);
+        return ApiPageResponse.success(result.items(), new PageMeta(page, size, result.total()));
     }
 
     @DeleteMapping("/{key}")

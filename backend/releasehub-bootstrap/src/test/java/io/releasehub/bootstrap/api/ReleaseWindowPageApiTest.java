@@ -9,7 +9,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -129,6 +131,60 @@ class ReleaseWindowPageApiTest {
     }
 
     @Test
+    void shouldExposeParallelScopeWithoutCrossWindowPlanPollution() throws Exception {
+        String token = loginAndGetToken();
+        String groupCode = createGroupAndGetCode(token);
+        String otherGroupCode = createGroupAndGetCode(token);
+
+        CreatedWindow windowA = createWindow(token, groupCode, "RW-Parallel-A");
+        CreatedWindow windowB = createWindow(token, groupCode, "RW-Parallel-B");
+        CreatedWindow otherWindow = createWindow(token, otherGroupCode, "RW-Parallel-Other");
+        String repoA = createRepo(token, groupCode, "repo-a");
+        String repoB = createRepo(token, groupCode, "repo-b");
+        String repoOther = createRepo(token, otherGroupCode, "repo-other");
+        String iterA = createIteration(token, groupCode, "IT-Parallel-A", repoA);
+        String iterB = createIteration(token, groupCode, "IT-Parallel-B", repoB);
+        String iterOther = createIteration(token, otherGroupCode, "IT-Parallel-Other", repoOther);
+
+        attachIteration(token, windowA.id(), iterA);
+        attachIteration(token, windowB.id(), iterB);
+        attachIteration(token, otherWindow.id(), iterOther);
+
+        MvcResult scopeResult = mockMvc.perform(get("/api/v1/release-windows/" + windowA.id() + "/parallel-scope")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.currentWindowId").value(windowA.id()))
+            .andExpect(jsonPath("$.data.currentWindowKey").value(windowA.windowKey()))
+            .andExpect(jsonPath("$.data.groupCode").value(groupCode))
+            .andExpect(jsonPath("$.data.activeWindowCount").value(2))
+            .andExpect(jsonPath("$.data.windows.length()").value(2))
+            .andReturn();
+
+        JsonNode windows = objectMapper.readTree(scopeResult.getResponse().getContentAsString())
+                .get("data")
+                .get("windows");
+        JsonNode scopeA = findWindowScope(windows, windowA.windowKey());
+        JsonNode scopeB = findWindowScope(windows, windowB.windowKey());
+        assertThat(scopeA.get("iterationCount").asInt()).isEqualTo(1);
+        assertThat(scopeA.get("repoCount").asInt()).isEqualTo(1);
+        assertThat(scopeA.get("planItems").get(0).get("iterationKey").asText()).isEqualTo(iterA);
+        assertThat(scopeA.get("planItems").get(0).get("repoId").asText()).isEqualTo(repoA);
+        assertThat(scopeB.get("iterationCount").asInt()).isEqualTo(1);
+        assertThat(scopeB.get("repoCount").asInt()).isEqualTo(1);
+        assertThat(scopeB.get("planItems").get(0).get("iterationKey").asText()).isEqualTo(iterB);
+        assertThat(scopeB.get("planItems").get(0).get("repoId").asText()).isEqualTo(repoB);
+        assertThat(windows.toString()).doesNotContain(repoOther);
+
+        mockMvc.perform(get("/api/v1/release-windows/paged?page=1&size=10&name=RW-Parallel-&groupCode=" + groupCode)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(2))
+            .andExpect(jsonPath("$.data[0].parallelActiveWindowCount").value(2))
+            .andExpect(jsonPath("$.data[0].parallelActiveWindowKeys.length()").value(2));
+    }
+
+    @Test
     void shouldDeleteEmptyDraftWindow() throws Exception {
         String token = loginAndGetToken();
         String groupCode = createGroupAndGetCode(token);
@@ -153,7 +209,7 @@ class ReleaseWindowPageApiTest {
     }
 
     private String createGroupAndGetCode(String token) throws Exception {
-        String code = "G" + System.currentTimeMillis();
+        String code = "G" + System.nanoTime();
         createGroup(token, "UT-Group", code, null);
         return code;
     }
@@ -167,5 +223,77 @@ class ReleaseWindowPageApiTest {
                         .content(req))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").exists());
+    }
+
+    private CreatedWindow createWindow(String token, String groupCode, String name) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/release-windows")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"" + name + "\",\"groupCode\":\"" + groupCode + "\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.id").exists())
+            .andExpect(jsonPath("$.data.windowKey").exists())
+            .andReturn();
+        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
+        return new CreatedWindow(data.get("id").asText(), data.get("windowKey").asText());
+    }
+
+    private String createIteration(String token, String groupCode, String name, String repoId) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/iterations")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"" + name + "\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"" + repoId + "\"]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.key").exists())
+            .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data")
+                .get("key")
+                .asText();
+    }
+
+    private String createRepo(String token, String groupCode, String suffix) throws Exception {
+        String name = "UT-" + suffix + "-" + System.nanoTime();
+        String cloneUrl = "https://git.example.com/" + name + ".git";
+        String req = "{" +
+                "\"name\":\"" + name + "\"," +
+                "\"cloneUrl\":\"" + cloneUrl + "\"," +
+                "\"groupCode\":\"" + groupCode + "\"," +
+                "\"defaultBranch\":\"main\"," +
+                "\"gitProvider\":\"GITLAB\"," +
+                "\"gitAccessToken\":\"test-token\"" +
+                "}";
+        MvcResult result = mockMvc.perform(post("/api/v1/repositories")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(req))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.id").exists())
+            .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("data")
+                .get("id")
+                .asText();
+    }
+
+    private void attachIteration(String token, String windowId, String iterationKey) throws Exception {
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/attach")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(java.util.Map.of("iterationKeys", java.util.List.of(iterationKey)))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].iterationKey").value(iterationKey));
+    }
+
+    private JsonNode findWindowScope(JsonNode windows, String windowKey) {
+        for (JsonNode window : windows) {
+            if (windowKey.equals(window.get("windowKey").asText())) {
+                return window;
+            }
+        }
+        throw new AssertionError("Missing parallel scope for " + windowKey);
+    }
+
+    private record CreatedWindow(String id, String windowKey) {
     }
 }

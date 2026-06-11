@@ -106,7 +106,7 @@ public interface GitBranchPort {
      * 列出仓库中匹配前缀的分支名。
      * @param repoCloneUrl 仓库克隆地址
      * @param token Git 访问令牌
-     * @param prefix 分支名前缀（如 "feature/"）
+     * @param prefix 分支名前缀（如 "feature/"）；空字符串表示列出全部分支
      * @return 匹配的分支名列表
      */
     List<String> listBranches(String repoCloneUrl, String token, String prefix);

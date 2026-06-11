@@ -23,6 +23,9 @@
             <el-descriptions-item :label="t('repository.columns.versionStatus')">
               <span>{{ initialVersion?.version || '-' }}</span>
               <el-tag class="version-source-tag" :type="versionSourceTagType" size="small">{{ versionSourceLabel }}</el-tag>
+              <div v-if="versionDiagnostic" class="version-diagnostic">
+                {{ versionDiagnostic }}
+              </div>
             </el-descriptions-item>
             <el-descriptions-item :label="t('repository.columns.cloneUrl')">{{ detail?.cloneUrl }}</el-descriptions-item>
             <el-descriptions-item :label="t('repository.columns.repoType')">
@@ -68,6 +71,7 @@
             <el-statistic :title="t('repository.branchSummary.closedMrs')" :value="branchSummary?.closedMrs || 0" />
           </el-col>
         </el-row>
+        <BranchGovernancePanel :branches="nonCompliantBranches" />
       </el-card>
     </div>
   </el-drawer>
@@ -76,9 +80,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { repositoryApi, type Repository, type GateSummary, type BranchSummary, type InitialVersionView } from '@/api/repositoryApi'
+import { repositoryApi, type Repository, type GateSummary, type BranchSummary, type InitialVersionView, type NonCompliantBranch } from '@/api/repositoryApi'
 import { groupApi } from '@/api/modules/group'
 import { resolveGroupPath } from '@/utils/groupPath'
+import BranchGovernancePanel from './BranchGovernancePanel.vue'
 
 const { t } = useI18n()
 
@@ -88,6 +93,7 @@ const detail = ref<Repository>()
 const gateSummary = ref<GateSummary>()
 const branchSummary = ref<BranchSummary>()
 const initialVersion = ref<InitialVersionView>()
+const nonCompliantBranches = ref<NonCompliantBranch[]>([])
 const groupPath = ref('')
 
 const versionSourceLabel = computed(() => {
@@ -100,10 +106,24 @@ const versionSourceLabel = computed(() => {
 
 const versionSourceTagType = computed(() => {
   const source = initialVersion.value?.versionSource
-  if (source === 'VERSION_UNRESOLVED') {
+  if (source?.startsWith('VERSION_')) {
     return 'danger'
   }
   return source ? 'success' : 'info'
+})
+
+const versionDiagnostic = computed(() => {
+  const versionInfo = initialVersion.value
+  if (!versionInfo?.errorType) return ''
+  const paths = versionInfo.checkedPaths?.length ? versionInfo.checkedPaths.join(', ') : '-'
+  const branch = versionInfo.branch || detail.value?.defaultBranch || '-'
+  const message = versionInfo.message || t('repository.versionDiagnostics.defaultMessage')
+  return t('repository.versionDiagnostics.summary', {
+    errorType: versionInfo.errorType,
+    branch,
+    paths,
+    message
+  })
 })
 
 const open = async (id: string) => {
@@ -115,17 +135,19 @@ const open = async (id: string) => {
 const refresh = async () => {
   if (!repoId.value) return
   try {
-    const [d, g, b, v, tree] = await Promise.all([
+    const [d, g, b, v, governanceBranches, tree] = await Promise.all([
       repositoryApi.get(repoId.value),
       repositoryApi.getGateSummary(repoId.value),
       repositoryApi.getBranchSummary(repoId.value),
       repositoryApi.getInitialVersion(repoId.value),
+      repositoryApi.getNonCompliantBranches(repoId.value),
       groupApi.listTree().catch(() => [])
     ])
     detail.value = d
     gateSummary.value = g
     branchSummary.value = b
     initialVersion.value = v
+    nonCompliantBranches.value = governanceBranches
     groupPath.value = resolveGroupPath(d.groupCode, tree) || d.groupCode || ''
   } catch (e) {
     console.error(e)
@@ -149,5 +171,12 @@ defineExpose({
 /* 页面特定样式 - 通用样式已移至 index.css */
 .version-source-tag {
   margin-left: 8px;
+}
+
+.version-diagnostic {
+  margin-top: 6px;
+  color: var(--el-color-danger);
+  font-size: 12px;
+  line-height: 18px;
 }
 </style>

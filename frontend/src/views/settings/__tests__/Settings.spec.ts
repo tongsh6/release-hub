@@ -4,12 +4,35 @@ import Settings from '../Settings.vue'
 import { settingsApi } from '@/api/settingsApi'
 import { handleError } from '@/utils/error'
 import { ElMessage } from 'element-plus'
+import { ApiError } from '@/api/http'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
     t: (key: string) => key
   })
 }))
+
+const routerPush = vi.fn()
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({
+    push: routerPush
+  })
+}))
+
+vi.mock('@/api/http', () => {
+  class MockApiError extends Error {
+    public readonly code: string
+
+    constructor(args: { code: string; message: string }) {
+      super(args.message)
+      this.name = 'ApiError'
+      this.code = args.code
+    }
+  }
+
+  return { ApiError: MockApiError }
+})
 
 vi.mock('element-plus', () => ({
   ElMessage: {
@@ -34,11 +57,14 @@ vi.mock('@/utils/error', () => ({
 }))
 
 const stubs = {
-  ElTabs: {
+  ElCard: {
     template: '<div><slot /></div>'
   },
-  ElTabPane: {
-    template: '<section><slot /></section>'
+  ElRow: {
+    template: '<div><slot /></div>'
+  },
+  ElCol: {
+    template: '<div><slot /></div>'
   },
   ElForm: {
     template: '<form><slot /></form>'
@@ -50,7 +76,14 @@ const stubs = {
   ElButton: {
     template: '<button type="button" @click="$emit(\'click\')"><slot /></button>'
   },
-  ElEmpty: true,
+  ElAlert: {
+    props: ['title'],
+    template: '<div class="gitlab-diagnostic">{{ title }}</div>'
+  },
+  ElEmpty: {
+    props: ['description'],
+    template: '<div>{{ description }}</div>'
+  },
   ElRadioGroup: {
     template: '<div><slot /></div>'
   },
@@ -65,7 +98,23 @@ describe('Settings', () => {
     vi.mocked(settingsApi.testGitLab).mockReset()
     vi.mocked(handleError).mockReset()
     vi.mocked(ElMessage.success).mockReset()
+    routerPush.mockReset()
     vi.mocked(settingsApi.getGitLab).mockResolvedValue({ baseUrl: 'http://gitlab.local', token: 'gl****en' })
+    vi.mocked(settingsApi.getNaming).mockResolvedValue({ featureTemplate: 'feature/{code}', releaseTemplate: 'release/{version}' })
+    vi.mocked(settingsApi.getBlocking).mockResolvedValue({ defaultPolicy: 'FAIL_FAST' })
+  })
+
+  it('renders settings as grouped cards and routes rule shortcuts to current pages', async () => {
+    const wrapper = mount(Settings, { global: { stubs } })
+
+    expect(wrapper.text()).toContain('settings.group.external')
+    expect(wrapper.text()).toContain('settings.group.rules')
+    expect(wrapper.text()).toContain('settings.group.general')
+    expect(wrapper.text()).toContain('settings.messages.refsNotConfigurable')
+
+    await (wrapper.vm as any).goTo('/branch-rules')
+
+    expect(routerPush).toHaveBeenCalledWith('/branch-rules')
   })
 
   it('shows a dedicated success message after GitLab connection test passes', async () => {
@@ -87,5 +136,19 @@ describe('Settings', () => {
 
     expect(handleError).toHaveBeenCalledWith(error)
     expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+
+  it('renders classified GitLab connection diagnostics on the settings page', async () => {
+    const error = new ApiError({
+      code: 'GITLAB_004',
+      message: 'GitLab token is invalid or expired'
+    })
+    vi.mocked(settingsApi.testGitLab).mockRejectedValue(error)
+    const wrapper = mount(Settings, { global: { stubs } })
+
+    await (wrapper.vm as any).testGitLab()
+
+    expect(wrapper.find('.gitlab-diagnostic').text()).toBe('GitLab token is invalid or expired')
+    expect(handleError).toHaveBeenCalledWith(error)
   })
 })

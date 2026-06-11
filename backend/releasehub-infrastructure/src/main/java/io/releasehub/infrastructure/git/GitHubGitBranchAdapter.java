@@ -305,6 +305,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     @Override
     public List<String> listBranches(String repoCloneUrl, String token, String prefix) {
         try {
+            String branchPrefix = prefix == null ? "" : prefix;
             RepoRef rp = parseRepoRef(repoCloneUrl);
             String endpoint = String.format(rp.apiBaseUrl + "/repos/%s/%s/branches?per_page=100",
                     rp.owner, rp.repo);
@@ -319,7 +320,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
                     .map(b -> b.get("name"))
                     .filter(name -> name != null)
                     .map(String::valueOf)
-                    .filter(name -> name.startsWith(prefix))
+                    .filter(name -> branchPrefix.isBlank() || name.startsWith(branchPrefix))
                     .toList();
         } catch (Exception e) {
             log.warn("Failed to list branches for {}: {}", repoCloneUrl, e.getMessage());

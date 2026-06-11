@@ -89,8 +89,11 @@ public class InMemoryGitLabBranchAdapter implements GitBranchPort {
 
     @Override
     public List<String> listBranches(String repoCloneUrl, String token, String prefix) {
+        String branchPrefix = prefix == null ? "" : prefix;
         Set<String> branchSet = branches.getOrDefault(repoCloneUrl, Set.of());
-        return branchSet.stream().filter(b -> b.startsWith(prefix)).toList();
+        return branchSet.stream()
+                .filter(b -> branchPrefix.isBlank() || b.startsWith(branchPrefix))
+                .toList();
     }
 
     @Override

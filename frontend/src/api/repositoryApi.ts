@@ -2,7 +2,7 @@ import { http } from '@/api/http'
 import type { PageResult, PageQuery, Id } from '@/types/crud'
 import type { ApiResponse } from '@/types/dto'
 
-export type GitProvider = 'GITHUB' | 'GITLAB'
+export type GitProvider = 'GITHUB' | 'GITLAB' | 'MOCK'
 
 export interface Repository {
   id: string
@@ -46,6 +46,20 @@ export interface InitialVersionView {
   repoId: string
   version: string | null
   versionSource?: string | null
+  branch?: string | null
+  checkedPaths?: string[]
+  errorType?: string | null
+  message?: string | null
+}
+
+export interface NonCompliantBranch {
+  repositoryId: string
+  repositoryName: string
+  branchName: string
+  scopeProjectId: string
+  scopeSubProjectId: string
+  actionBoundary: 'MANUAL_REVIEW_ONLY'
+  guidance: string
 }
 
 export interface CreateRepoReq {
@@ -145,6 +159,13 @@ export const repositoryApi = {
 
   async listBranches(id: Id, prefix: string = 'feature/'): Promise<string[]> {
     const res = await http.get<ApiResponse<string[]>>(`/v1/repositories/${id}/branches`, { params: { prefix } })
+    return res.data.data ?? []
+  },
+
+  async getNonCompliantBranches(id: Id): Promise<NonCompliantBranch[]> {
+    const res = await http.get<ApiResponse<NonCompliantBranch[]>>(
+      `/v1/repositories/${id}/branch-governance/noncompliant`
+    )
     return res.data.data ?? []
   }
 }

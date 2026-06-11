@@ -15,7 +15,8 @@ vi.mock('@/api/repositoryApi', () => ({
     get: vi.fn(),
     getGateSummary: vi.fn(),
     getBranchSummary: vi.fn(),
-    getInitialVersion: vi.fn()
+    getInitialVersion: vi.fn(),
+    getNonCompliantBranches: vi.fn()
   }
 }))
 
@@ -55,6 +56,24 @@ const stubs = {
   ElStatistic: {
     props: ['title', 'value'],
     template: '<div>{{ title }} {{ value }}</div>'
+  },
+  ElDivider: {
+    template: '<hr />'
+  },
+  ElAlert: {
+    props: ['title'],
+    template: '<div class="branch-governance-boundary">{{ title }}</div>'
+  },
+  ElTable: {
+    props: ['data'],
+    template: '<table class="noncompliant-branch-table"><tr v-for="row in data" :key="row.branchName"><td>{{ row.branchName }}</td><td>{{ row.scopeProjectId }}</td><td>{{ row.scopeSubProjectId }}</td><slot /></tr></table>'
+  },
+  ElTableColumn: {
+    template: '<td><slot /></td>'
+  },
+  ElEmpty: {
+    props: ['description'],
+    template: '<div>{{ description }}</div>'
   }
 }
 
@@ -85,6 +104,7 @@ describe('RepositoryDrawer', () => {
     vi.mocked(repositoryApi.getGateSummary).mockReset()
     vi.mocked(repositoryApi.getBranchSummary).mockReset()
     vi.mocked(repositoryApi.getInitialVersion).mockReset()
+    vi.mocked(repositoryApi.getNonCompliantBranches).mockReset()
     vi.mocked(groupApi.listTree).mockReset()
 
     vi.mocked(repositoryApi.get).mockResolvedValue(repo as any)
@@ -107,6 +127,7 @@ describe('RepositoryDrawer', () => {
       version: '1.2.3',
       versionSource: 'MANUAL'
     } as any)
+    vi.mocked(repositoryApi.getNonCompliantBranches).mockResolvedValue([])
     vi.mocked(groupApi.listTree).mockResolvedValue([
       {
         code: 'customer',
@@ -141,5 +162,51 @@ describe('RepositoryDrawer', () => {
     expect(wrapper.text()).toContain('Customer A / Line X / Leaf Group Y')
     expect(wrapper.text()).toContain('1.2.3')
     expect(wrapper.text()).toContain('repository.versionSources.MANUAL')
+  })
+
+  it('shows version parsing diagnostic in repository drawer', async () => {
+    vi.mocked(repositoryApi.getInitialVersion).mockResolvedValue({
+      repoId: 'repo-1',
+      version: null,
+      versionSource: 'VERSION_DECL_MISSING',
+      branch: 'main',
+      checkedPaths: ['pom.xml', 'gradle.properties'],
+      errorType: 'VERSION_DECL_MISSING',
+      message: 'version declaration missing'
+    } as any)
+    const wrapper = mount(RepositoryDrawer, {
+      global: { stubs }
+    })
+
+    await (wrapper.vm as any).open('repo-1')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('repository.versionSources.VERSION_DECL_MISSING')
+    expect(wrapper.text()).toContain('repository.versionDiagnostics.summary')
+  })
+
+  it('shows historical non-compliant branches with manual governance boundary', async () => {
+    vi.mocked(repositoryApi.getNonCompliantBranches).mockResolvedValue([
+      {
+        repositoryId: 'repo-1',
+        repositoryName: 'payment-service',
+        branchName: 'legacy_branch',
+        scopeProjectId: 'leaf',
+        scopeSubProjectId: 'repo-1',
+        actionBoundary: 'MANUAL_REVIEW_ONLY',
+        guidance: 'repository.branchGovernance.guidance'
+      }
+    ] as any)
+    const wrapper = mount(RepositoryDrawer, {
+      global: { stubs }
+    })
+
+    await (wrapper.vm as any).open('repo-1')
+    await flushPromises()
+
+    expect(repositoryApi.getNonCompliantBranches).toHaveBeenCalledWith('repo-1')
+    expect(wrapper.text()).toContain('repository.branchGovernance.boundary')
+    expect(wrapper.text()).toContain('legacy_branch')
+    expect(wrapper.text()).toContain('repository.branchGovernance.guidance')
   })
 })

@@ -64,9 +64,16 @@ public class GitLabAdapter implements GitLabPort {
             }
             return true;
         } catch (HttpStatusCodeException e) {
+            int status = e.getStatusCode().value();
+            if (status == 401) {
+                throw BusinessException.gitlabTokenInvalid();
+            }
+            if (status == 403) {
+                throw BusinessException.gitlabPermissionDenied();
+            }
             throw BusinessException.gitlabConnectionFailed("GitLab API returned " + e.getStatusCode().value());
         } catch (RestClientException | IllegalArgumentException e) {
-            throw BusinessException.gitlabConnectionFailed("GitLab API is unreachable");
+            throw BusinessException.gitlabUnreachable();
         }
     }
 

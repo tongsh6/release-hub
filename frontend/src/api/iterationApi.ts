@@ -10,6 +10,24 @@ export interface IterationRepoVersionInfo {
   devVersion?: string
   targetVersion?: string
   featureBranch?: string
+  branchCreationMode?: 'AUTO' | 'NAMED' | 'EXISTING'
+  versionSource?: 'POM' | 'GRADLE' | 'MANUAL' | 'SYSTEM' | 'REPO'
+  versionSyncedAt?: string
+}
+
+export interface IterationRepoDetail {
+  repoId: string
+  repoName?: string
+  cloneUrl?: string
+  groupCode?: string
+  defaultBranch?: string
+  repoType?: string
+  monoRepo?: boolean
+  branchCreationMode?: 'AUTO' | 'NAMED' | 'EXISTING'
+  featureBranch?: string
+  baseVersion?: string
+  devVersion?: string
+  targetVersion?: string
   versionSource?: 'POM' | 'GRADLE' | 'MANUAL' | 'SYSTEM' | 'REPO'
   versionSyncedAt?: string
 }
@@ -139,6 +157,22 @@ export const iterationApi = {
   async listRepos(key: string): Promise<string[]> {
     const resp = await apiGet<string[]>(`/v1/iterations/${encodeURIComponent(key)}/repos`)
     return resp || []
+  },
+
+  async listRepoDetails(query: PageQuery & { key: string }): Promise<PageResult<IterationRepoDetail>> {
+    const res = await http.get<ApiPageResponse<IterationRepoDetail[]>>(
+      `/v1/iterations/${encodeURIComponent(query.key)}/repos/paged`,
+      {
+        params: {
+          page: query.page,
+          size: query.pageSize
+        }
+      }
+    )
+    return {
+      list: res.data.data || [],
+      total: res.data.page.total
+    }
   },
 
   // 获取迭代的仓库版本信息列表

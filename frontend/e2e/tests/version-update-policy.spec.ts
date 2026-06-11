@@ -8,7 +8,7 @@
  */
 import { test, expect } from '@playwright/test'
 import type { Page, Route } from '@playwright/test'
-import { loadLabels, seedAuthenticatedSession, FORCE } from './helpers.js'
+import { ensureLoggedIn, loadLabels, seedAuthenticatedSession, FORCE } from './helpers.js'
 
 const windowId = 'vp-window-1'
 const windowKey = 'RW-VP-001'
@@ -16,6 +16,19 @@ const iterationKey = 'ITER-VP-001'
 const repoId = 'repo-vp-1'
 const repoName = 'repo-vp-policy'
 const groupCode = 'G001001'
+const authedUser = {
+  id: 'e2e-user',
+  username: 'admin',
+  displayName: 'E2E Admin',
+  permissions: [
+    'release-window:read',
+    'release-window:write',
+    'iteration:read',
+    'repository:read',
+    'run:read',
+    'version-policy:read'
+  ]
+}
 
 test.describe('SA-007: Version update policy selection', () => {
   let L: Record<string, string> = {}
@@ -33,12 +46,17 @@ test.describe('SA-007: Version update policy selection', () => {
   })
 
   async function mockReleaseWindowDetail(page: Page) {
-    await page.route('**/api/v1/**', async (route) => {
+    await page.route('**/v1/**', async (route) => {
       const request = route.request()
       const url = new URL(request.url())
-      const path = url.pathname
+      const path = url.pathname.replace(/^\/api(?=\/v1(?:\/|$))/, '')
 
-      if (request.method() === 'GET' && path === `/api/v1/release-windows/${windowId}`) {
+      if (request.method() === 'GET' && path === '/v1/me') {
+        await json(route, authedUser)
+        return
+      }
+
+      if (request.method() === 'GET' && path === `/v1/release-windows/${windowId}`) {
         await json(route, {
           id: windowId,
           windowKey,
@@ -52,13 +70,24 @@ test.describe('SA-007: Version update policy selection', () => {
         return
       }
 
-      if (request.method() === 'GET' && path === `/api/v1/release-windows/${windowId}/iterations`) {
+      if (request.method() === 'GET' && path === `/v1/release-windows/${windowId}/parallel-scope`) {
+        await json(route, {
+          currentWindowKey: windowKey,
+          groupCode,
+          activeWindowCount: 1,
+          windows: []
+        })
+        return
+      }
+
+      if (request.method() === 'GET' && path === `/v1/release-windows/${windowId}/iterations`) {
         await json(route, [{ iterationKey }])
         return
       }
 
-      if (request.method() === 'GET' && path === `/api/v1/iterations/${iterationKey}`) {
+      if (request.method() === 'GET' && path === `/v1/iterations/${iterationKey}`) {
         await json(route, {
+          iterationKey,
           key: iterationKey,
           name: 'Version Policy Iteration',
           description: '',
@@ -73,12 +102,12 @@ test.describe('SA-007: Version update policy selection', () => {
         return
       }
 
-      if (request.method() === 'GET' && path === `/api/v1/repositories/${repoId}`) {
+      if (request.method() === 'GET' && path === `/v1/repositories/${repoId}`) {
         await json(route, repositoryView())
         return
       }
 
-      if (request.method() === 'GET' && path === `/api/v1/repositories/${repoId}/initial-version`) {
+      if (request.method() === 'GET' && path === `/v1/repositories/${repoId}/initial-version`) {
         await json(route, {
           repoId,
           version: '1.2.3',
@@ -87,7 +116,7 @@ test.describe('SA-007: Version update policy selection', () => {
         return
       }
 
-      if (request.method() === 'GET' && path === '/api/v1/version-policies/applicable') {
+      if (request.method() === 'GET' && path === '/v1/version-policies/applicable') {
         expect(url.searchParams.get('scopeProjectId')).toBe(groupCode)
         expect(url.searchParams.get('scopeSubProjectId')).toBe(repoId)
         await json(route, [
@@ -109,7 +138,7 @@ test.describe('SA-007: Version update policy selection', () => {
         return
       }
 
-      if (request.method() === 'POST' && path === `/api/v1/release-windows/${windowId}/validate`) {
+      if (request.method() === 'POST' && path === `/v1/release-windows/${windowId}/validate`) {
         const body = request.postDataJSON()
         await json(route, {
           valid: true,
@@ -120,7 +149,7 @@ test.describe('SA-007: Version update policy selection', () => {
         return
       }
 
-      if (request.method() === 'GET' && path === `/api/v1/release-windows/${windowId}/conflicts`) {
+      if (request.method() === 'GET' && path === `/v1/release-windows/${windowId}/conflicts`) {
         await json(route, {
           windowId,
           checkedAt: '2026-05-22T00:00:00Z',
@@ -131,12 +160,12 @@ test.describe('SA-007: Version update policy selection', () => {
         return
       }
 
-      if (request.method() === 'GET' && path === `/api/v1/release-windows/${windowId}/plan`) {
+      if (request.method() === 'GET' && path === `/v1/release-windows/${windowId}/plan`) {
         await json(route, [])
         return
       }
 
-      if (request.method() === 'GET' && path === `/api/v1/release-windows/${windowId}/branch-status`) {
+      if (request.method() === 'GET' && path === `/v1/release-windows/${windowId}/branch-status`) {
         await json(route, {
           windowId,
           windowKey,
@@ -145,7 +174,7 @@ test.describe('SA-007: Version update policy selection', () => {
         return
       }
 
-      if (request.method() === 'GET' && path === '/api/v1/runs/paged') {
+      if (request.method() === 'GET' && path === '/v1/runs/paged') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -165,7 +194,7 @@ test.describe('SA-007: Version update policy selection', () => {
   }
 
   test('loads inherited policy and derives target version in version update dialog', async ({ page }) => {
-    await seedAuthenticatedSession(page)
+    await ensureLoggedIn(page)
     await mockReleaseWindowDetail(page)
 
     await page.goto(`/release-windows/${windowId}`)

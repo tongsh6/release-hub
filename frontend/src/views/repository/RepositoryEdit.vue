@@ -82,7 +82,7 @@ import { handleError } from '@/utils/error'
 import { isSupportedCloneUrl } from '@/utils/cloneUrl'
 
 interface RepoForm extends CreateRepoReq {
-  gitProvider: GitProvider
+  gitProvider: Exclude<GitProvider, 'MOCK'>
   gitAccessToken: string
 }
 
@@ -152,7 +152,7 @@ const open = (repo?: any) => {
   form.monoRepo = repo?.monoRepo ?? false
   form.initialVersion = ''
   form.groupCode = repo?.groupCode || ''
-  form.gitProvider = repo?.gitProvider || 'GITLAB'
+  form.gitProvider = repo?.gitProvider === 'GITHUB' ? 'GITHUB' : 'GITLAB'
   form.gitAccessToken = ''
   originalToken.value = repo?.gitAccessTokenMasked || null
   mode.value = repo ? 'edit' : 'create'

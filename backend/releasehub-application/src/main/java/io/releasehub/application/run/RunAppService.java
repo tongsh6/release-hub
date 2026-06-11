@@ -356,7 +356,6 @@ public class RunAppService {
         log.info("Starting cleanup run for closed window {}", windowId);
 
         Run run = Run.start(RunType.WINDOW_ORCHESTRATION, operator, now);
-        String releaseBranch = deriveReleaseBranch(rw.getWindowKey());
         List<WindowIteration> bindings = new java.util.ArrayList<>(
                 windowIterationPort.listByWindow(ReleaseWindowId.of(windowId)));
         bindings.sort(Comparator.comparing(WindowIteration::getAttachAt));
@@ -383,6 +382,9 @@ public class RunAppService {
                 GitBranchPort gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
                 String token = repo.getGitAccessToken();
                 String cloneUrl = repo.getCloneUrl();
+                String releaseBranch = wi.getReleaseBranch() == null || wi.getReleaseBranch().isBlank()
+                        ? deriveReleaseBranch(rw.getWindowKey())
+                        : wi.getReleaseBranch();
 
                 // Get per-repo version info
                 Optional<IterationRepoVersionInfo> repoVersionInfo = iterationRepoPort.getVersionInfo(iterationKey, repoId.value());
@@ -403,26 +405,7 @@ public class RunAppService {
                             "No dev version found, skip version derivation"));
                 }
 
-                // Step 2: ARCHIVE_BRANCH
-                Instant sa = Instant.now(clock);
-                if (featureBranch == null) {
-                    item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.SKIPPED, sa, sa,
-                            "featureBranch 未配置，跳过归档"));
-                } else if (gitPort.getBranchStatus(cloneUrl, token, featureBranch).exists()) {
-                    boolean archived = gitPort.archiveBranch(cloneUrl, token, featureBranch, "released");
-                    if (archived) {
-                        item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.SUCCESS, sa, sa,
-                                "Archived feature branch: " + featureBranch));
-                    } else {
-                        item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.FAILED, sa, sa,
-                                "Failed to archive: " + featureBranch));
-                    }
-                } else {
-                    item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.SKIPPED, sa, sa,
-                            "Feature branch not found, skip archive"));
-                }
-
-                // Step 3: MERGE_TO_MASTER
+                // Step 2: MERGE_TO_MASTER
                 Instant sm = Instant.now(clock);
                 if (gitPort.getBranchStatus(cloneUrl, token, releaseBranch).exists()) {
                     String masterBranch = repo.getDefaultBranch();
@@ -448,7 +431,7 @@ public class RunAppService {
                             "Release branch not found, skip merge to master"));
                 }
 
-                // Step 4: CREATE_TAG
+                // Step 3: CREATE_TAG
                 Instant st = Instant.now(clock);
                 if (!itemFailed && releaseVersion != null) {
                     String tagName = "v" + releaseVersion;
@@ -469,7 +452,7 @@ public class RunAppService {
                             "Skipped due to earlier failure"));
                 }
 
-                // Step 5: TRIGGER_CI
+                // Step 4: TRIGGER_CI
                 Instant sc = Instant.now(clock);
                 RunItemResult ciResult = null;
                 if (!itemFailed) {
@@ -490,6 +473,51 @@ public class RunAppService {
                 } else {
                     item.addStep(new RunStep(ActionType.TRIGGER_CI, RunItemResult.SKIPPED_DUE_TO_BLOCK, sc, sc,
                             "Skipped due to earlier failure"));
+                }
+
+                boolean blockedBeforeArchive = itemFailed;
+
+                // Step 5: ARCHIVE_BRANCH — archive feature branch after merge/tag/CI evidence is written.
+                Instant saf = Instant.now(clock);
+                if (blockedBeforeArchive) {
+                    item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.SKIPPED_DUE_TO_BLOCK, saf, saf,
+                            "Skipped feature branch archive due to earlier failure"));
+                } else if (featureBranch == null) {
+                    item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.SKIPPED, saf, saf,
+                            "featureBranch 未配置，跳过归档"));
+                } else if (gitPort.getBranchStatus(cloneUrl, token, featureBranch).exists()) {
+                    boolean archived = gitPort.archiveBranch(cloneUrl, token, featureBranch, "released");
+                    if (archived) {
+                        item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.SUCCESS, saf, saf,
+                                "Archived feature branch: " + featureBranch));
+                    } else {
+                        item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.FAILED, saf, saf,
+                                "Failed to archive feature branch: " + featureBranch));
+                        itemFailed = true;
+                    }
+                } else {
+                    item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.SKIPPED, saf, saf,
+                            "Feature branch not found, skip archive"));
+                }
+
+                // Step 6: ARCHIVE_BRANCH — archive release branch after CI has had a stable ref.
+                Instant sar = Instant.now(clock);
+                if (blockedBeforeArchive) {
+                    item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.SKIPPED_DUE_TO_BLOCK, sar, sar,
+                            "Skipped release branch archive due to earlier failure"));
+                } else if (gitPort.getBranchStatus(cloneUrl, token, releaseBranch).exists()) {
+                    boolean archived = gitPort.archiveBranch(cloneUrl, token, releaseBranch, "released");
+                    if (archived) {
+                        item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.SUCCESS, sar, sar,
+                                "Archived release branch: " + releaseBranch));
+                    } else {
+                        item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.FAILED, sar, sar,
+                                "Failed to archive release branch: " + releaseBranch));
+                        itemFailed = true;
+                    }
+                } else {
+                    item.addStep(new RunStep(ActionType.ARCHIVE_BRANCH, RunItemResult.SKIPPED, sar, sar,
+                            "Release branch not found, skip archive"));
                 }
 
                 item.setExecutedOrder(order);

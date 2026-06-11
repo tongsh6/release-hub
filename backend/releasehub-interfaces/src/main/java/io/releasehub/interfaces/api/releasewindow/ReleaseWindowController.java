@@ -2,6 +2,7 @@ package io.releasehub.interfaces.api.releasewindow;
 
 import io.releasehub.application.releasewindow.ReleaseWindowAppService;
 import io.releasehub.application.releasewindow.BranchStatusView;
+import io.releasehub.application.releasewindow.ReleaseWindowParallelScopeView;
 import io.releasehub.application.releasewindow.ReleaseWindowView;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
@@ -119,5 +120,11 @@ public class ReleaseWindowController {
     public ApiResponse<BranchStatusView> getBranchStatus(@PathVariable("id") String id) {
         BranchStatusView view = appService.getBranchStatus(id);
         return ApiResponse.success(view);
+    }
+
+    @GetMapping("/{id}/parallel-scope")
+    @Operation(summary = "Get active parallel release windows in the same group")
+    public ApiResponse<ReleaseWindowParallelScopeView> getParallelScope(@PathVariable("id") String id) {
+        return ApiResponse.success(appService.getParallelScope(id));
     }
 }

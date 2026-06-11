@@ -38,6 +38,7 @@ vi.mock('element-plus', () => ({
 vi.mock('@/api/modules/releaseWindow', () => ({
   releaseWindowApi: {
     list: vi.fn(),
+    getParallelScope: vi.fn(),
     freeze: vi.fn(),
     unfreeze: vi.fn(),
     publish: vi.fn(),
@@ -153,6 +154,20 @@ describe('ReleaseWindowList', () => {
       'Customer A / Line X / Project Y'
     )
     expect((wrapper.vm as any).resolveWindowGroupPath({ groupCode: 'UNKNOWN' })).toBe('UNKNOWN')
+  })
+
+  it('summarizes same-group parallel windows from backend read model', async () => {
+    const wrapper = mount(ReleaseWindowList, { global: { stubs, directives: { perm: {} } } })
+    await flushPromises()
+
+    expect((wrapper.vm as any).parallelWindowSummary({
+      parallelActiveWindowCount: 2,
+      parallelActiveWindowKeys: ['RW-A', 'RW-B']
+    })).toBe('releaseWindow.parallelScope.summary')
+    expect((wrapper.vm as any).parallelWindowSummary({
+      parallelActiveWindowCount: 1,
+      parallelActiveWindowKeys: ['RW-A']
+    })).toBe('releaseWindow.parallelScope.single')
   })
 
   it('hides release plan mutation actions while a draft window is frozen', async () => {

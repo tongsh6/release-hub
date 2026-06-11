@@ -139,6 +139,65 @@ class VersionExtractorTest {
         }
 
         @Test
+        @DisplayName("没有版本文件时返回可追溯诊断")
+        void shouldInspectMissingVersionFiles() {
+            when(gitLabFilePort.readFile(REPO_URL, BRANCH, "pom.xml"))
+                    .thenReturn(Optional.empty());
+            when(gitLabFilePort.readFile(REPO_URL, BRANCH, "gradle.properties"))
+                    .thenReturn(Optional.empty());
+
+            VersionExtractorUseCase.VersionInspection result = versionExtractor.inspectVersion(REPO_URL, BRANCH);
+
+            assertThat(result.status()).isEqualTo(VersionExtractorUseCase.VersionInspectionStatus.UNRESOLVED);
+            assertThat(result.errorType()).isEqualTo(VersionExtractorUseCase.VersionInspectionError.VERSION_FILE_MISSING);
+            assertThat(result.branch()).isEqualTo(BRANCH);
+            assertThat(result.checkedPaths()).containsExactly("pom.xml", "gradle.properties");
+            assertThat(result.message()).contains("pom.xml");
+        }
+
+        @Test
+        @DisplayName("版本文件存在但没有项目版本声明时返回可追溯诊断")
+        void shouldInspectMissingVersionDeclaration() {
+            String pomContent = """
+                <project>
+                    <parent>
+                        <version>3.0.0</version>
+                    </parent>
+                    <artifactId>test</artifactId>
+                </project>
+                """;
+            when(gitLabFilePort.readFile(REPO_URL, BRANCH, "pom.xml"))
+                    .thenReturn(Optional.of(pomContent));
+            when(gitLabFilePort.readFile(REPO_URL, BRANCH, "gradle.properties"))
+                    .thenReturn(Optional.empty());
+
+            VersionExtractorUseCase.VersionInspection result = versionExtractor.inspectVersion(REPO_URL, BRANCH);
+
+            assertThat(result.status()).isEqualTo(VersionExtractorUseCase.VersionInspectionStatus.UNRESOLVED);
+            assertThat(result.errorType()).isEqualTo(VersionExtractorUseCase.VersionInspectionError.VERSION_DECL_MISSING);
+            assertThat(result.checkedPaths()).containsExactly("pom.xml", "gradle.properties");
+        }
+
+        @Test
+        @DisplayName("版本号格式异常时返回可追溯诊断")
+        void shouldInspectInvalidVersionValue() {
+            String pomContent = """
+                <project>
+                    <version>release candidate</version>
+                </project>
+                """;
+            when(gitLabFilePort.readFile(REPO_URL, BRANCH, "pom.xml"))
+                    .thenReturn(Optional.of(pomContent));
+
+            VersionExtractorUseCase.VersionInspection result = versionExtractor.inspectVersion(REPO_URL, BRANCH);
+
+            assertThat(result.status()).isEqualTo(VersionExtractorUseCase.VersionInspectionStatus.UNRESOLVED);
+            assertThat(result.errorType()).isEqualTo(VersionExtractorUseCase.VersionInspectionError.VERSION_INVALID);
+            assertThat(result.checkedPaths()).containsExactly("pom.xml");
+            assertThat(result.message()).contains("release candidate");
+        }
+
+        @Test
         @DisplayName("pom.xml 无版本号时尝试 gradle.properties")
         void shouldFallbackToGradleWhenPomHasNoVersion() {
             String pomContent = """

@@ -26,6 +26,9 @@
           >
             {{ t('repository.syncVersion') }}
           </el-button>
+          <div v-if="versionDiagnostic" class="version-diagnostic">
+            {{ versionDiagnostic }}
+          </div>
         </el-descriptions-item>
         <el-descriptions-item :label="t('repository.columns.cloneUrl')">{{ detail?.cloneUrl || '-' }}</el-descriptions-item>
       </el-descriptions>
@@ -75,6 +78,7 @@
           <el-statistic :title="t('repository.branchSummary.closedMrs')" :value="branchSummary?.closedMrs || 0" />
         </el-col>
       </el-row>
+      <BranchGovernancePanel :branches="nonCompliantBranches" />
     </el-card>
   </div>
 </template>
@@ -84,12 +88,13 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { repositoryApi, type Repository, type GateSummary, type BranchSummary, type InitialVersionView } from '@/api/repositoryApi'
+import { repositoryApi, type Repository, type GateSummary, type BranchSummary, type InitialVersionView, type NonCompliantBranch } from '@/api/repositoryApi'
 import { groupApi } from '@/api/modules/group'
 import { resolveGroupPath } from '@/utils/groupPath'
 import { ElMessage } from 'element-plus'
 import { ApiError } from '@/api/http'
 import { handleError } from '@/utils/error'
+import BranchGovernancePanel from './BranchGovernancePanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -104,6 +109,7 @@ const detail = ref<Repository>()
 const gateSummary = ref<GateSummary>()
 const branchSummary = ref<BranchSummary>()
 const initialVersion = ref<InitialVersionView>()
+const nonCompliantBranches = ref<NonCompliantBranch[]>([])
 const groupPath = ref('')
 const syncing = ref(false)
 const syncingVersion = ref(false)
@@ -118,7 +124,7 @@ const versionSourceLabel = computed(() => {
 
 const versionSourceTagType = computed(() => {
   const source = initialVersion.value?.versionSource
-  if (source === 'VERSION_UNRESOLVED') {
+  if (source?.startsWith('VERSION_')) {
     return 'danger'
   }
   return source ? 'success' : 'info'
@@ -128,6 +134,21 @@ const canSyncInitialVersion = computed(() => {
   const versionInfo = initialVersion.value
   if (!versionInfo) return false
   return !versionInfo.version || versionInfo.versionSource === 'VERSION_UNRESOLVED'
+    || Boolean(versionInfo.errorType)
+})
+
+const versionDiagnostic = computed(() => {
+  const versionInfo = initialVersion.value
+  if (!versionInfo?.errorType) return ''
+  const paths = versionInfo.checkedPaths?.length ? versionInfo.checkedPaths.join(', ') : '-'
+  const branch = versionInfo.branch || detail.value?.defaultBranch || '-'
+  const message = versionInfo.message || t('repository.versionDiagnostics.defaultMessage')
+  return t('repository.versionDiagnostics.summary', {
+    errorType: versionInfo.errorType,
+    branch,
+    paths,
+    message
+  })
 })
 
 /**
@@ -201,17 +222,19 @@ async function handleSyncInitialVersion() {
 async function refresh() {
   if (!repoId) return
   try {
-    const [d, g, b, v, tree] = await Promise.all([
+    const [d, g, b, v, governanceBranches, tree] = await Promise.all([
       repositoryApi.get(repoId),
       repositoryApi.getGateSummary(repoId),
       repositoryApi.getBranchSummary(repoId),
       repositoryApi.getInitialVersion(repoId),
+      repositoryApi.getNonCompliantBranches(repoId),
       groupApi.listTree().catch(() => [])
     ])
     detail.value = d
     gateSummary.value = g
     branchSummary.value = b
     initialVersion.value = v
+    nonCompliantBranches.value = governanceBranches
     groupPath.value = resolveGroupPath(d.groupCode, tree) || d.groupCode || ''
   } catch (e) {
     handleError(e)
@@ -231,5 +254,12 @@ onMounted(() => {
 
 .version-sync-button {
   margin-left: 8px;
+}
+
+.version-diagnostic {
+  margin-top: 6px;
+  color: var(--el-color-danger);
+  font-size: 12px;
+  line-height: 18px;
 }
 </style>

@@ -57,7 +57,31 @@ class GitLabAdapterTest {
 
         BusinessException ex = assertThrows(BusinessException.class, () -> adapter.testConnection());
 
-        assertEquals("GITLAB_003", ex.getCode());
+        assertEquals("GITLAB_004", ex.getCode());
+        assertEquals(0, ex.getArgs().length);
+    }
+
+    @Test
+    void shouldRejectConnectionWhenGitLabReturnsForbidden(WireMockRuntimeInfo wm) {
+        configureBaseUrl(wm, "insufficient-scope-token");
+        stubFor(get(urlPathEqualTo("/api/v4/user"))
+                .willReturn(aResponse().withStatus(403)));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> adapter.testConnection());
+
+        assertEquals("GITLAB_005", ex.getCode());
+        assertEquals(0, ex.getArgs().length);
+    }
+
+    @Test
+    void shouldRejectConnectionWhenGitLabIsUnreachable() {
+        when(settingsPort.getGitLab()).thenReturn(Optional.of(
+                new SettingsPort.SettingsGitLab("http://127.0.0.1:1", "valid-token")));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> adapter.testConnection());
+
+        assertEquals("GITLAB_006", ex.getCode());
+        assertEquals(0, ex.getArgs().length);
     }
 
     @Test

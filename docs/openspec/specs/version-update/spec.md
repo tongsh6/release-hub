@@ -42,3 +42,14 @@
 - **WHEN** 子模块存在显式 `project.version` 且该值与旧父版本一致
 - **THEN** 系统将该子模块 `project.version` 同步为目标版本
 - **AND** 不修改与旧父版本不一致的显式子模块版本
+
+### Requirement: 版本更新前置版本状态可解释
+
+系统 SHALL 在版本更新入口依赖仓库初始版本时，复用仓库版本解析诊断作为用户可见前置状态。
+
+#### Scenario: 异常仓库不会表现为不明失败
+
+- **WHEN** 仓库默认分支为空、缺少版本文件、版本文件缺少版本声明或版本值格式异常
+- **THEN** 仓库初始版本接口返回明确的 `VERSION_FILE_MISSING`、`VERSION_DECL_MISSING`、`VERSION_INVALID` 或 `VERSION_READ_ERROR`
+- **AND** 响应包含仓库默认分支、检查路径和说明文案
+- **AND** 前端仓库详情/抽屉展示这些诊断，供版本更新前修复

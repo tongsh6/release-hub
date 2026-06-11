@@ -33,8 +33,12 @@ if echo "$HEAD_ROW" | grep -q '后续保持回归'; then
     fail "HEAD row points to a regression-only item: $HEAD_ROW"
 fi
 
-SA_ID=$(echo "$HEAD_ROW" | sed -E 's/.*(SA-[0-9]{3}).*/\1/')
+SA_ID=$(echo "$HEAD_ROW" | awk -F'|' '{ gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4 }')
 [ -n "$SA_ID" ] || fail "HEAD row must contain an SA-xxx identifier"
+
+if ! echo "$SA_ID" | grep -Eq '^SA-[0-9]{3}$'; then
+    fail "HEAD row SA column must contain exactly one SA-xxx identifier, got: $SA_ID"
+fi
 
 if ! grep -q "| $SA_ID |" "$MATRIX"; then
     fail "$SA_ID does not exist in scenario-acceptance-matrix.md"

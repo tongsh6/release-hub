@@ -2,7 +2,7 @@
 
 ## 核心原则
 
-**所有变更必须通过 feature 分支 → PR → merge。禁止直接 push main/release。**
+**所有变更必须通过 feature 分支 → PR → develop → release → main。禁止直接 push develop/main/release。**
 
 ---
 
@@ -11,14 +11,16 @@
 ```
 main
  │
- ├─── feature/pagination-fix     ─┐
- ├─── feature/gitflow-lifecycle  ─┼─→ release/v0.3.0 ─→ tag v0.3.0 ─→ main
- └─── feature/branch-dashboard  ─┘
+ └── develop
+      ├── feature/pagination-fix     ─┐
+      ├── feature/gitflow-lifecycle  ─┼─→ develop ─→ release/v0.3.0 ─→ tag v0.3.0 ─→ main
+      └── feature/branch-dashboard  ─┘                         └──────────────→ develop
 ```
 
-- **`main`**：唯一稳定主干，只接受 release 分支的合并
-- **`feature/*`**：从 main 创建，开发单个功能，PR 合并到 release 分支
-- **`release/*`**：从 main 创建，聚合多个 feature，打标签后合并回 main
+- **`main`**：生产稳定主干，只接受 release/hotfix 的受控合并和 tag。
+- **`develop`**：日常集成主线，承接 feature PR，也是 release 分支的唯一来源。
+- **`feature/*`**：从 develop 创建，开发单个功能，PR 合并回 develop。
+- **`release/*`**：从 develop 创建，用于候选验证、修复和版本冻结；完成后合并到 main 并同步回 develop。
 
 ---
 
@@ -27,8 +29,9 @@ main
 ### 步骤 1：创建 feature 分支
 
 ```bash
-scripts/dev/git-flow.sh feature:start <name>
-# 等同于: git checkout main && git pull && git checkout -b feature/<name>
+git switch develop
+git pull --ff-only origin develop
+git switch -c feature/<name>
 ```
 
 ### 步骤 2：开发 & 提交
@@ -38,51 +41,59 @@ git add <files>
 git commit -m "feat: ..."
 ```
 
-### 步骤 3：推送 feature，创建 PR 到 release 分支
+### 步骤 3：推送 feature，创建 PR 到 develop
 
 ```bash
-scripts/dev/git-flow.sh feature:finish <name>
-# 推送后创建 PR:
-gh pr create --title "feat: <name>" --base release/vX.Y.Z --delete-branch
+git push -u origin feature/<name>
+gh pr create --title "feat: <name>" --base develop --delete-branch
 ```
 
-### 步骤 4：创建 release 分支（聚合多个 feature 时）
+### 步骤 4：从 develop 创建 release 分支
 
 ```bash
-scripts/dev/git-flow.sh release:start 0.3.0
-# 等同于: git checkout main && git pull && git checkout -b release/v0.3.0 && git push
+git switch develop
+git pull --ff-only origin develop
+git switch -c release/v0.3.0
+git push -u origin release/v0.3.0
 ```
 
-### 步骤 5：合并所有 feature PR 到 release
+### 步骤 5：稳定 release 分支
 
-通过 GitHub PR，将各 feature 分支合并到 `release/vX.Y.Z`。
+只允许候选验证、阻断修复、版本号/CHANGELOG/发布证据等 release 收口变更进入 `release/vX.Y.Z`。不再把新的 feature 直接塞入 release；新功能继续进 develop，等待下一轮 release。
 
-### 步骤 6：完成 release（打标签 + 合并 main + 清理）
+### 步骤 6：完成 release（打标签 + 合并 main + 回灌 develop + 清理）
 
 ```bash
-scripts/dev/git-flow.sh release:finish 0.3.0
-# 执行: tag v0.3.0 → push tag → merge release → main → delete release branch
+git switch release/v0.3.0
+git tag v0.3.0
+git push origin v0.3.0
+
+git switch main
+git pull --ff-only origin main
+git merge --no-ff release/v0.3.0
+git push origin main
+
+git switch develop
+git pull --ff-only origin develop
+git merge --no-ff release/v0.3.0
+git push origin develop
+
+git push origin --delete release/v0.3.0
+git branch -d release/v0.3.0
 ```
 
 ### 步骤 7：删除已合并的 feature 分支
 
 ```bash
-scripts/dev/git-flow.sh feature:delete <name>
-# 或 GitHub PR merge 时勾选 "Delete branch"
+git branch -d feature/<name>
+git push origin --delete feature/<name>
 ```
 
 ---
 
-## 快速参考：helper 脚本
+## 快速参考
 
-```bash
-scripts/dev/git-flow.sh feature:start <name>     # 从 main 创建 feature 分支
-scripts/dev/git-flow.sh feature:finish <name>    # 推送，引导创建 PR
-scripts/dev/git-flow.sh feature:delete <name>    # 删除已合并的 feature 分支
-scripts/dev/git-flow.sh release:start <version>  # 从 main 创建 release 分支
-scripts/dev/git-flow.sh release:finish <version> # 打标签 + 合并 main + 清理
-scripts/dev/git-flow.sh status                   # 查看当前 GitFlow 状态
-```
+当前仓库没有 `scripts/dev/git-flow.sh` helper，按上面的原生命令执行。若后续新增 helper，脚本行为必须与本文件保持一致。
 
 ---
 
@@ -93,6 +104,7 @@ scripts/dev/git-flow.sh status                   # 查看当前 GitFlow 状态
 | `feature/`  | 新功能开发                        |
 | `fix/`      | Bug 修复                          |
 | `release/`  | 发布版本聚合（格式：`release/vX.Y.Z`） |
+| `hotfix/`   | 从 main 拉出的紧急修复             |
 | `chore/`    | 依赖升级、配置调整                |
 | `docs/`     | 纯文档更新（无代码变更）          |
 
@@ -102,21 +114,23 @@ scripts/dev/git-flow.sh status                   # 查看当前 GitFlow 状态
 
 | 变更类型                  | PR base 分支          |
 |---------------------------|----------------------|
-| 新功能（在 release 中）   | `release/vX.Y.Z`     |
-| 紧急 Bug 修复             | `main`（hotfix）     |
-| 纯文档/经验归档           | `main`               |
+| 新功能                    | `develop`            |
+| release 稳定修复          | `release/vX.Y.Z`     |
+| 紧急 Bug 修复             | `main`（hotfix 后回灌 develop） |
+| 纯文档/经验归档           | `develop`            |
 
 ---
 
 ## 关键规则
 
-1. **feature 分支从 main 创建**，不从 release 分支创建
-2. **release 分支从 main 创建**，然后接收 feature PR
-3. **打标签在 release:finish 时自动完成**（在 release 分支上打）
-4. **release 合并到 main 用 --no-ff**，保留合并历史
-5. **feature/release 分支合并后必须删除**
-6. worktree 中的变更同样需要走 PR，不因在 worktree 中操作就豁免
-7. 经验归档（`.ai/summaries/`、`context/experience/`）也需走 PR
+1. **feature 分支从 develop 创建**，不从 main/release 分支创建。
+2. **feature PR 只合并到 develop**，不直接合并 main/release。
+3. **release 分支从 develop 创建**，只接收 release 稳定修复和发布证据收口。
+4. **release 合并到 main 用 --no-ff**，保留合并历史，并在 release 分支上打 tag。
+5. **release 完成后必须回灌 develop**，确保 release 修复不丢失。
+6. **feature/release 分支合并后必须删除**。
+7. worktree 中的变更同样需要走 PR，不因在 worktree 中操作就豁免。
+8. 经验归档（`.ai/summaries/`、`context/experience/`）也需走 PR。
 
 ---
 
@@ -130,5 +144,10 @@ scripts/dev/git-flow.sh status                   # 查看当前 GitFlow 状态
 
 ## 辅助工具
 
-- **查看状态**：`scripts/dev/git-flow.sh status`
-- **完整帮助**：`scripts/dev/git-flow.sh help`
+当前无专用 GitFlow helper。状态检查使用：
+
+```bash
+git status --short --branch
+git branch -vv
+git rev-list --left-right --count origin/main...origin/develop
+```

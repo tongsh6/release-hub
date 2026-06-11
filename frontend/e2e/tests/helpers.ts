@@ -22,7 +22,8 @@ const AUTHED_USER = {
     'version-policy:read',
     'version-policy:write',
     'branch-rule:read',
-    'branch-rule:write'
+    'branch-rule:write',
+    'data-quality:review'
   ]
 }
 

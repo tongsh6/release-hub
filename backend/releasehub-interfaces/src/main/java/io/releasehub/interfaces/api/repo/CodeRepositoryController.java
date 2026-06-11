@@ -1,5 +1,6 @@
 package io.releasehub.interfaces.api.repo;
 
+import io.releasehub.application.branchrule.BranchGovernanceAppService;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.repo.CodeRepositoryAppService;
 import io.releasehub.application.repo.CodeRepositoryPort;
@@ -35,6 +36,7 @@ public class CodeRepositoryController {
     private final CodeRepositoryAppService appService;
     private final CodeRepositoryPort codeRepositoryPort;
     private final GitBranchAdapterFactory gitBranchAdapterFactory;
+    private final BranchGovernanceAppService branchGovernanceAppService;
 
     @PostMapping
     @Operation(summary = "Create repository")
@@ -110,6 +112,15 @@ public class CodeRepositoryController {
         ));
     }
 
+    @GetMapping("/{id}/branch-governance/noncompliant")
+    @Operation(summary = "List active non-compliant branches for manual governance review")
+    public ApiResponse<List<NonCompliantBranchView>> listNonCompliantBranches(@PathVariable("id") String id) {
+        List<NonCompliantBranchView> branches = branchGovernanceAppService.listNonCompliantBranches(id).stream()
+                .map(NonCompliantBranchView::from)
+                .toList();
+        return ApiResponse.success(branches);
+    }
+
     @GetMapping
     @Operation(summary = "List repositories")
     public ApiResponse<List<CodeRepositoryView>> list(@RequestParam(name = "keyword", required = false) String keyword) {
@@ -133,14 +144,31 @@ public class CodeRepositoryController {
     @Operation(summary = "Get repository initial version")
     public ApiResponse<InitialVersionView> getInitialVersion(@PathVariable("id") String id) {
         var info = appService.getInitialVersionInfo(id);
-        return ApiResponse.success(new InitialVersionView(id, info.version(), info.versionSource()));
+        return ApiResponse.success(new InitialVersionView(
+                id,
+                info.version(),
+                info.versionSource(),
+                info.branch(),
+                info.checkedPaths(),
+                info.errorType(),
+                info.message()
+        ));
     }
 
     @PutMapping("/{id}/initial-version")
     @Operation(summary = "Set repository initial version manually")
     public ApiResponse<InitialVersionView> setInitialVersion(@PathVariable("id") String id, @RequestBody @Valid SetInitialVersionRequest request) {
         appService.setInitialVersion(id, request.getVersion());
-        return ApiResponse.success(new InitialVersionView(id, request.getVersion(), "MANUAL"));
+        var info = appService.getInitialVersionInfo(id);
+        return ApiResponse.success(new InitialVersionView(
+                id,
+                request.getVersion(),
+                "MANUAL",
+                info.branch(),
+                info.checkedPaths(),
+                info.errorType(),
+                info.message()
+        ));
     }
 
     @PostMapping("/{id}/sync-version")
@@ -148,7 +176,15 @@ public class CodeRepositoryController {
     public ApiResponse<InitialVersionView> syncInitialVersion(@PathVariable("id") String id) {
         String version = appService.syncInitialVersionFromRepo(id);
         var info = appService.getInitialVersionInfo(id);
-        return ApiResponse.success(new InitialVersionView(id, version, info.versionSource()));
+        return ApiResponse.success(new InitialVersionView(
+                id,
+                version,
+                info.versionSource(),
+                info.branch(),
+                info.checkedPaths(),
+                info.errorType(),
+                info.message()
+        ));
     }
 
     @PostMapping("/{id}/sync")
@@ -190,6 +226,28 @@ public class CodeRepositoryController {
             return GitProvider.valueOf(gitProvider.toUpperCase());
         } catch (IllegalArgumentException e) {
             throw ValidationException.invalidParameter("gitProvider");
+        }
+    }
+
+    public record NonCompliantBranchView(
+            String repositoryId,
+            String repositoryName,
+            String branchName,
+            String scopeProjectId,
+            String scopeSubProjectId,
+            String actionBoundary,
+            String guidance
+    ) {
+        static NonCompliantBranchView from(BranchGovernanceAppService.NonCompliantBranch branch) {
+            return new NonCompliantBranchView(
+                    branch.repositoryId(),
+                    branch.repositoryName(),
+                    branch.branchName(),
+                    branch.scopeProjectId(),
+                    branch.scopeSubProjectId(),
+                    branch.actionBoundary(),
+                    branch.guidance()
+            );
         }
     }
 }

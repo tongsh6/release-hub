@@ -35,8 +35,10 @@ requirements/
 
 ## 当前进行中需求
 
-> 暂无（2026-05-11 起）。三层关联功能已完成，并通过真实 GitLab 验收 22/24 PASS，
-> 见 `docs/reports/acceptance-v0.1.11-real-gitlab.md`。
+| 需求 | 负责人 | 状态 | OpenSpec |
+|------|--------|------|----------|
+| [SA-002 BranchCreationMode 独立迁移服务设计](in-progress/SA-002-BranchCreationMode独立迁移服务设计.md) | - | 提案设计已形成，等待 proposal 人工评审 | `docs/openspec/changes/add-branch-creation-mode-migration-service/` |
+| [SA-002 数据质量受控处置执行审计](in-progress/SA-002-数据质量受控处置执行审计.md) | - | 最小实现与页面验收已完成，保留后续扩展项 | `docs/openspec/changes/update-data-quality-disposition-audit/` |
 
 ## 已完成需求
 

@@ -37,6 +37,7 @@ vi.mock('element-plus', () => ({
 vi.mock('@/api/modules/releaseWindow', () => ({
   releaseWindowApi: {
     get: vi.fn(),
+    getParallelScope: vi.fn(),
     listIterations: vi.fn(),
     freeze: vi.fn(),
     unfreeze: vi.fn(),
@@ -94,6 +95,7 @@ const stubs = {
         <button type="button" class="export-csv" @click="$emit('command', 'csv')">csv</button>
         <button type="button" class="export-json" @click="$emit('command', 'json')">json</button>
         <button type="button" class="export-md" @click="$emit('command', 'md')">md</button>
+        <button type="button" class="export-zip" @click="$emit('command', 'zip')">zip</button>
       </div>
     `
   },
@@ -170,6 +172,7 @@ describe('ReleaseWindowDetail', () => {
 
   beforeEach(() => {
     vi.mocked(releaseWindowApi.get).mockReset()
+    vi.mocked(releaseWindowApi.getParallelScope).mockReset()
     vi.mocked(releaseWindowApi.listIterations).mockReset()
     vi.mocked(releaseWindowApi.detach).mockReset()
     vi.mocked(iterationApi.get).mockReset()
@@ -187,6 +190,46 @@ describe('ReleaseWindowDetail', () => {
       status: 'PUBLISHED',
       frozen: false
     } as any)
+    vi.mocked(releaseWindowApi.getParallelScope).mockResolvedValue({
+      currentWindowId: 'window-1',
+      currentWindowKey: 'RW-1',
+      groupCode: 'G001',
+      activeWindowCount: 2,
+      windows: [
+        {
+          windowId: 'window-1',
+          windowKey: 'RW-1',
+          name: 'Window 1',
+          status: 'PUBLISHED',
+          iterationCount: 1,
+          repoCount: 1,
+          planItems: [
+            {
+              windowKey: 'RW-1',
+              iterationKey: 'ITER-1',
+              repoId: 'repo-1',
+              plannedOrder: 1
+            }
+          ]
+        },
+        {
+          windowId: 'window-2',
+          windowKey: 'RW-2',
+          name: 'Window 2',
+          status: 'DRAFT',
+          iterationCount: 1,
+          repoCount: 1,
+          planItems: [
+            {
+              windowKey: 'RW-2',
+              iterationKey: 'ITER-2',
+              repoId: 'repo-2',
+              plannedOrder: 1
+            }
+          ]
+        }
+      ]
+    })
     vi.mocked(releaseWindowApi.listIterations).mockResolvedValue([{ iterationKey: 'ITER-1' }])
     vi.mocked(iterationApi.get).mockResolvedValue({
       iterationKey: 'ITER-1',
@@ -300,6 +343,27 @@ describe('ReleaseWindowDetail', () => {
 
     expect(openSpy).toHaveBeenCalledWith('/api/v1/release-windows/window-1/report.json', '_blank')
     expect(openSpy).toHaveBeenCalledWith('/api/v1/release-windows/window-1/report.md', '_blank')
+  })
+
+  it('exports the release window evidence package from the detail page', async () => {
+    const wrapper = mountReleaseWindowDetail()
+    await flushPromises()
+    await flushPromises()
+
+    await wrapper.find('.export-zip').trigger('click')
+
+    expect(openSpy).toHaveBeenCalledWith('/api/v1/release-windows/window-1/report.zip', '_blank')
+  })
+
+  it('loads parallel window scope and formats each window plan independently', async () => {
+    const wrapper = mountReleaseWindowDetail()
+    await flushPromises()
+    await flushPromises()
+
+    expect(releaseWindowApi.getParallelScope).toHaveBeenCalledWith('window-1')
+    expect((wrapper.vm as any).parallelScope.activeWindowCount).toBe(2)
+    expect((wrapper.vm as any).formatParallelPlanItems((wrapper.vm as any).parallelScope.windows[0])).toBe('ITER-1 / repo-1')
+    expect((wrapper.vm as any).formatParallelPlanItems((wrapper.vm as any).parallelScope.windows[1])).toBe('ITER-2 / repo-2')
   })
 
   it('hides release plan mutation controls after publish', async () => {

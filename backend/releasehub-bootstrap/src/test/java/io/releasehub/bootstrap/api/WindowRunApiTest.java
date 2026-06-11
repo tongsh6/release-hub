@@ -2,18 +2,29 @@ package io.releasehub.bootstrap.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.releasehub.infrastructure.gitlab.InMemoryGitLabFileAdapter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.zip.ZipInputStream;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -27,6 +38,9 @@ class WindowRunApiTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private InMemoryGitLabFileAdapter gitFiles;
 
     private String loginAndGetToken() throws Exception {
         String body = "{\"username\":\"admin\",\"password\":\"admin\"}";
@@ -55,12 +69,12 @@ class WindowRunApiTest {
             .andReturn();
         String windowId = objectMapper.readTree(rwCreate.getResponse().getContentAsString()).get("data").get("id").asText();
         String windowKey = objectMapper.readTree(rwCreate.getResponse().getContentAsString()).get("data").get("windowKey").asText();
-        String repo1 = createRepo(token, groupCode, "repo-1");
+        CreatedRepo repo1 = createRepo(token, groupCode, "repo-1");
 
         var it1Result = mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"IT-1\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"" + repo1 + "\"]}"))
+                .content("{\"name\":\"IT-1\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"" + repo1.id() + "\"]}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.key").exists())
             .andReturn();
@@ -69,12 +83,14 @@ class WindowRunApiTest {
         var it2Result = mockMvc.perform(post("/api/v1/iterations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"IT-2\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"" + repo1 + "\"]}"))
+                .content("{\"name\":\"IT-2\",\"description\":\"d\",\"groupCode\":\"" + groupCode + "\",\"repoIds\":[\"" + repo1.id() + "\"]}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.key").exists())
             .andReturn();
         String it2Key = objectMapper.readTree(it2Result.getResponse().getContentAsString())
                 .get("data").get("key").asText();
+        makeFeatureBranchVersionUnresolved(repo1.cloneUrl(), it1Key);
+        makeFeatureBranchVersionUnresolved(repo1.cloneUrl(), it2Key);
 
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/attach")
                 .header("Authorization", "Bearer " + token)
@@ -103,7 +119,7 @@ class WindowRunApiTest {
         MvcResult orch = mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/orchestrate")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"repoIds\":[\"" + repo1 + "\"],\"iterationKeys\":[],\"failFast\":true,\"operator\":\"tester\"}"))
+                .content("{\"repoIds\":[\"" + repo1.id() + "\"],\"iterationKeys\":[],\"failFast\":true,\"operator\":\"tester\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data").exists())
             .andReturn();
@@ -153,7 +169,25 @@ class WindowRunApiTest {
                 .contains("## Runs")
                 .contains(runId);
 
-        String itemId = windowKey + "::" + repo1 + "::" + it1Key;
+        MvcResult windowReportPackage = mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/report.zip")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, containsString("release-window-" + windowKey + "-evidence.zip")))
+            .andReturn();
+        Map<String, byte[]> entries = readZipEntries(windowReportPackage.getResponse().getContentAsByteArray());
+        assertThat(entries.keySet()).containsExactly("manifest.txt", "report.json", "report.csv", "report.md");
+        assertThat(new String(entries.get("manifest.txt"), StandardCharsets.UTF_8))
+                .contains("ReleaseHub 发布窗口证据制品包")
+                .contains("windowId=" + windowId)
+                .contains("windowKey=" + windowKey)
+                .contains("report.json")
+                .contains("report.csv")
+                .contains("report.md");
+        assertThat(objectMapper.readTree(entries.get("report.json")).get("windowId").asText()).isEqualTo(windowId);
+        assertThat(new String(entries.get("report.csv"), StandardCharsets.UTF_8)).contains(windowId, windowKey, runId);
+        assertThat(new String(entries.get("report.md"), StandardCharsets.UTF_8)).contains("# Release Window Report: " + windowKey);
+
+        String itemId = windowKey + "::" + repo1.id() + "::" + it1Key;
         MvcResult retry = mockMvc.perform(post("/api/v1/runs/" + runId + "/retry")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -169,6 +203,19 @@ class WindowRunApiTest {
             .andExpect(status().isOk());
     }
 
+    private Map<String, byte[]> readZipEntries(byte[] zipBytes) throws IOException {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(zipBytes), StandardCharsets.UTF_8)) {
+            var entry = zip.getNextEntry();
+            while (entry != null) {
+                entries.put(entry.getName(), zip.readAllBytes());
+                zip.closeEntry();
+                entry = zip.getNextEntry();
+            }
+        }
+        return entries;
+    }
+
     private String createGroupAndGetCode(String token) throws Exception {
         String code = "G" + System.currentTimeMillis();
         String req = "{\"name\":\"UT-Group\",\"code\":\"" + code + "\",\"parentCode\":null}";
@@ -181,11 +228,16 @@ class WindowRunApiTest {
         return code;
     }
 
-    private String createRepo(String token, String groupCode, String suffix) throws Exception {
+    private void makeFeatureBranchVersionUnresolved(String cloneUrl, String iterationKey) {
+        gitFiles.setFile(cloneUrl, "feature/" + iterationKey, "pom.xml", "<project></project>");
+    }
+
+    private CreatedRepo createRepo(String token, String groupCode, String suffix) throws Exception {
         String name = "UT-" + suffix + "-" + System.currentTimeMillis();
+        String cloneUrl = "https://git.example.com/" + name + ".git";
         String req = "{" +
                 "\"name\":\"" + name + "\"," +
-                "\"cloneUrl\":\"https://git.example.com/" + name + ".git\"," +
+                "\"cloneUrl\":\"" + cloneUrl + "\"," +
                 "\"groupCode\":\"" + groupCode + "\"," +
                 "\"defaultBranch\":\"main\"," +
                 "\"gitProvider\":\"GITLAB\"," +
@@ -198,6 +250,10 @@ class WindowRunApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").exists())
                 .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString()).get("data").get("id").asText();
+        String id = objectMapper.readTree(result.getResponse().getContentAsString()).get("data").get("id").asText();
+        return new CreatedRepo(id, cloneUrl);
+    }
+
+    private record CreatedRepo(String id, String cloneUrl) {
     }
 }

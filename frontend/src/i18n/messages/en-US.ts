@@ -18,6 +18,8 @@ export default {
     iterations: 'Iterations',
     repositories: 'Repositories',
     runs: 'Runs',
+    dataQualityReview: 'Data Quality Review',
+    releaseCandidateReview: 'Release Candidate Review',
     blockBoard: 'Blocks',
     settings: 'Settings',
     groups: 'Groups'
@@ -105,6 +107,18 @@ export default {
     publish: 'Publish',
     close: 'Close',
     groupPath: 'Group Path',
+    parallelScope: {
+      title: 'Same-Group Parallel Windows',
+      shortTitle: 'Parallel Windows',
+      single: 'No parallel windows',
+      summary: '{count} active: {keys}',
+      activeCount: '{count} active windows',
+      currentWindow: 'Current Window',
+      groupCode: 'Group Code',
+      iterationCount: 'Iterations',
+      repoCount: 'Repositories',
+      planItems: 'Release Plan'
+    },
     configureTime: 'Configure Time',
     confirmFreeze: 'Confirm to freeze this release window?',
     confirmPublish: 'Confirm to publish this release window?',
@@ -196,7 +210,8 @@ export default {
       export: 'Export Report',
       csv: 'CSV',
       json: 'JSON',
-      markdown: 'Markdown'
+      markdown: 'Markdown',
+      artifactPackage: 'Artifact Package'
     },
     releasePlan: {
       title: 'Release Plan',
@@ -344,7 +359,8 @@ export default {
       alreadyAdded: 'Already Added',
       selectedCount: '{count} new repositories selected',
       noNewRepos: 'Please select at least one new repository',
-      repoScopeLocked: 'This iteration is attached to a release window, so its repository scope is locked'
+      repoScopeLocked: 'This iteration is attached to a release window, so its repository scope is locked',
+      repoPageSummary: 'Showing {shown} of {total} repositories'
     },
     branchCreationMode: {
       label: 'Feature Branch Creation Mode',
@@ -400,8 +416,16 @@ export default {
       GRADLE: 'Gradle',
       SYSTEM: 'System',
       REPO: 'Repository',
+      VERSION_FILE_MISSING: 'Version file missing',
+      VERSION_DECL_MISSING: 'Version declaration missing',
+      VERSION_INVALID: 'Invalid version',
+      VERSION_READ_ERROR: 'Read failed',
       VERSION_UNRESOLVED: 'Unresolved',
       NOT_SET: 'Not Set'
+    },
+    versionDiagnostics: {
+      summary: '{message}; branch: {branch}; checked paths: {paths}; error type: {errorType}',
+      defaultMessage: 'Version parsing failed'
     },
     repoTypes: {
       SERVICE: 'Service',
@@ -425,7 +449,8 @@ export default {
       currentToken: 'Current Token: {token}',
       providers: {
         GITHUB: 'GitHub',
-        GITLAB: 'GitLab'
+        GITLAB: 'GitLab',
+        MOCK: 'Mock'
       }
     },
     gateSummaryLabels: {
@@ -441,6 +466,13 @@ export default {
       activeMrs: 'Active MRs',
       mergedMrs: 'Merged MRs',
       closedMrs: 'Closed MRs'
+    },
+    branchGovernance: {
+      boundary: 'This governance entry only shows active non-compliant branches and safe guidance; it will not automatically rename, delete, or archive historical branches.',
+      branchName: 'Branch',
+      guidanceLabel: 'Guidance',
+      guidance: 'Confirm the branch owner and business state first, then handle it manually in the Git platform.',
+      empty: 'No historical non-compliant branches need governance.'
     },
     gitlabMissing: 'Configure GitLab settings first',
     gitlabUrlNotAvailable: 'GitLab URL not available',
@@ -541,6 +573,11 @@ export default {
     }
   },
   settings: {
+    group: {
+      external: 'External Integration',
+      rules: 'Rules & Policies',
+      general: 'General Preferences'
+    },
     tabs: {
       gitlab: 'GitLab',
       naming: 'Naming Strategy',
@@ -555,10 +592,16 @@ export default {
       releaseTemplate: 'Release Branch Template'
     },
     buttons: {
-      testConnection: 'Test Connection'
+      testConnection: 'Test Connection',
+      enter: 'Enter'
     },
     messages: {
-      connectionSuccess: 'GitLab connection test passed'
+      connectionSuccess: 'GitLab connection test passed',
+      refsNotConfigurable: 'Baseline refs do not have configurable fields yet'
+    },
+    desc: {
+      branchRules: 'Manage branch naming rules and matching patterns',
+      versionPolicies: 'Manage version policies and auto-upgrade rules'
     },
     policy: {
       failFast: 'FAIL_FAST (default)',
@@ -629,6 +672,8 @@ export default {
     parentCode: 'Parent Code',
     codePlaceholder: 'Leave empty for auto-generation',
     codeAutoGenTip: 'Auto-generated if left empty (e.g., 001, 001001)',
+    parentPlaceholder: 'Select parent group; clear for top-level',
+    parentMoveTip: 'Only empty leaf groups without resources can be moved',
     searchPlaceholder: 'Filter by name or code',
     selectGroup: 'Select a group',
     hasChildren: 'Has children',
@@ -649,6 +694,9 @@ export default {
     deleteSuccess: 'Deleted successfully',
     deleteBlocked: 'Cannot delete group with children',
     deleteReferenced: 'This group is used by repositories, iterations, or release windows and cannot be deleted',
+    moveBlockedByChildren: 'Cannot move a group that still has child groups',
+    moveBlockedByReference: 'This group is used by repositories, iterations, or release windows and cannot be moved',
+    moveTargetReferenced: 'The target parent is already used by repositories, iterations, or release windows',
     validation: {
       nameRequired: 'Please enter name',
       codeRequired: 'Please enter code',
@@ -711,6 +759,97 @@ export default {
       GIT_UNAVAILABLE: 'Git Unavailable'
     }
   },
+  releaseGovernance: {
+    review: {
+      title: 'Release Candidate Review',
+      boundary: 'Signoff only, no release action',
+      evidence: 'Evidence',
+      risks: 'Risks and Boundaries',
+      checklist: 'Release Manager Checklist',
+      signoff: 'Manual Signoff',
+      item: 'Item',
+      status: 'Status',
+      result: 'Result',
+      source: 'Source',
+      checkItem: 'Check Item',
+      note: 'Note',
+      reviewer: 'Reviewer',
+      decision: 'Decision',
+      confirmed: 'Confirmed',
+      needsFollowUp: 'Needs Follow-up',
+      notApplicable: 'Not Applicable',
+      markAllConfirmed: 'Confirm All',
+      approve: 'Approve Controlled Review',
+      hold: 'Hold for Follow-up',
+      submit: 'Record Signoff',
+      signoffSaved: 'Signoff saved',
+      latestSignoff: 'Latest signoff: {reviewer} / {decision} / {createdAt}'
+    }
+  },
+  dataQuality: {
+    review: {
+      title: 'Data Quality Review Queue',
+      executionBoundary: 'Review only, no execution',
+      reviewer: 'Reviewer',
+      sourceReport: 'Source Report',
+      importFile: 'Import File',
+      loadQueue: 'Load Queue',
+      jsonlPlaceholder: 'Paste actions.jsonl content',
+      queueTitle: 'Review Actions',
+      markAllPending: 'Mark Pending',
+      markAllApproved: 'Approve All',
+      reviewQueue: 'Submit Review',
+      resourceType: 'Resource Type',
+      resourceId: 'Resource ID',
+      riskType: 'Risk Type',
+      dataNamespace: 'Data Namespace',
+      reviewBatchId: 'Review Batch',
+      assetScope: 'Asset Scope',
+      retentionPolicy: 'Retention Policy',
+      dataSourceBoundary: 'Data Source Boundary',
+      metricKey: 'Metric Key',
+      metricLabel: 'Metric Label',
+      metricDescription: 'Boundary Description',
+      userVisible: 'User Visible',
+      manualReviewCandidate: 'Review Candidate',
+      reviewStatus: 'Review Status',
+      decision: 'Manual Decision',
+      applicationEntry: 'Application Entry',
+      dispositionLevel: 'Disposition Level',
+      allowedAction: 'Allowed Action',
+      rollbackBoundary: 'Rollback Boundary',
+      auditRecord: 'Audit Record',
+      dispositionCase: 'Disposition Case',
+      createCase: 'Create Case',
+      caseTitle: 'Disposition Audit Cases',
+      caseId: 'Case ID',
+      caseStatus: 'Case Status',
+      caseDetail: 'Disposition Case Detail',
+      operator: 'Operator',
+      preStateSnapshot: 'Pre-state Snapshot',
+      postStateSnapshot: 'Post-state Verification',
+      failureReason: 'Failure Reason',
+      rollbackNote: 'Recovery Note',
+      startCase: 'Start Manual Handling',
+      verifyCase: 'Record Verification',
+      failCase: 'Record Failure',
+      cancelCase: 'Cancel Case',
+      caseCreated: 'Disposition case created: {id}',
+      caseUpdated: 'Disposition case updated to {status}',
+      reason: 'Reason',
+      executionPermitted: 'Execution Permitted',
+      imported: 'Imported',
+      accepted: 'Accepted',
+      pending: 'Pending',
+      rejected: 'Rejected',
+      approve: 'Approve for Application Entry',
+      parseFailed: 'Parse failed',
+      emptyInput: 'Import dry-run actions first',
+      invalidLine: 'Line {line} is missing resource type, resource ID, or risk type',
+      queueLoaded: '{count} actions loaded',
+      reviewComplete: '{count} actions reviewed'
+    }
+  },
   orchestration: {
     title: 'Release Orchestration',
     status: {
@@ -739,6 +878,13 @@ export default {
       archiveBranch: 'Archive Branch'
     },
     executeFinish: 'Execute Finish',
+    latestRun: 'Latest Run Review',
+    runItems: 'Run Items',
+    failedItems: 'Failed Items',
+    failureContext: 'Failure Context',
+    failedStep: 'Failed Step',
+    failureReason: 'Failure Reason',
+    viewRunDetail: 'View Run Detail',
     recentRuns: 'Recent Runs',
     planPreview: 'Execution Plan Preview',
     confirmMergeAll: 'Confirm to merge all iterations to release branch?',

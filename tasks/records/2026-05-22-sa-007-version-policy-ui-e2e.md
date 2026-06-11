@@ -33,4 +33,4 @@ bash scripts/dev/static-scan-topn.sh 5
 
 ## 结论
 
-- SA-007 scoped policy 真实页面候选旅程已有 Playwright 自动化用例；环境就绪后必须实跑真实页面才可计入验收。
+- SA-007 scoped policy 真实页面候选旅程已有 Playwright 自动化用例；后续已由 `tasks/records/2026-05-23-sa-007-version-policy-real-page.md` 实跑收口。

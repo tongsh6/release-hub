@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.util.List;
 
 @Setter
 @Getter
@@ -20,6 +21,8 @@ public class ReleaseWindowView {
     private Instant updatedAt;
     private boolean frozen;
     private Instant publishedAt;
+    private int parallelActiveWindowCount;
+    private List<String> parallelActiveWindowKeys = List.of();
 
     public ReleaseWindowView() {
     }
@@ -52,5 +55,13 @@ public class ReleaseWindowView {
                 rw.isFrozen(),
                 rw.getPublishedAt()
         );
+    }
+
+    public List<String> getParallelActiveWindowKeys() {
+        return List.copyOf(parallelActiveWindowKeys);
+    }
+
+    public void setParallelActiveWindowKeys(List<String> parallelActiveWindowKeys) {
+        this.parallelActiveWindowKeys = parallelActiveWindowKeys == null ? List.of() : List.copyOf(parallelActiveWindowKeys);
     }
 }
