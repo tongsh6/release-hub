@@ -31,15 +31,15 @@ public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
                   and w.groupCode = :groupCode
               ))
               and (
-                :status is null or
+                :status is null or r.executionStatus = :status or
                 (
-                  (:status = 'FAILED' and exists (
+                  (r.executionStatus is null and :status = 'FAILED' and exists (
                      select 1 from RunItemJpaEntity item
                      where item.run.id = r.id
                        and (item.finalResult like '%FAILED%' or item.finalResult = 'MERGE_BLOCKED')
                    )
                   ) or
-                  (:status = 'SUCCESS' and exists (
+                  (r.executionStatus is null and :status = 'SUCCESS' and exists (
                      select 1 from RunItemJpaEntity item where item.run.id = r.id
                    ) and not exists (
                      select 1 from RunItemJpaEntity item
@@ -52,7 +52,7 @@ public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
                        and (item.finalResult like '%FAILED%' or item.finalResult = 'MERGE_BLOCKED')
                    )
                   ) or
-                  (:status = 'COMPLETED' and r.finishedAt is not null and
+                  (r.executionStatus is null and :status = 'COMPLETED' and r.finishedAt is not null and
                    not exists (
                      select 1 from RunItemJpaEntity item
                      where item.run.id = r.id
@@ -67,7 +67,7 @@ public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
                      )
                    )
                   ) or
-                  (:status = 'RUNNING' and r.finishedAt is null and
+                  (r.executionStatus is null and :status = 'RUNNING' and r.finishedAt is null and
                    not exists (
                      select 1 from RunItemJpaEntity item
                      where item.run.id = r.id
@@ -91,15 +91,15 @@ public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
                           and w.groupCode = :groupCode
                       ))
                       and (
-                        :status is null or
+                        :status is null or r.executionStatus = :status or
                         (
-                          (:status = 'FAILED' and exists (
+                          (r.executionStatus is null and :status = 'FAILED' and exists (
                              select 1 from RunItemJpaEntity item
                              where item.run.id = r.id
                                and (item.finalResult like '%FAILED%' or item.finalResult = 'MERGE_BLOCKED')
                            )
                           ) or
-                          (:status = 'SUCCESS' and exists (
+                          (r.executionStatus is null and :status = 'SUCCESS' and exists (
                              select 1 from RunItemJpaEntity item where item.run.id = r.id
                            ) and not exists (
                              select 1 from RunItemJpaEntity item
@@ -112,7 +112,7 @@ public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
                                and (item.finalResult like '%FAILED%' or item.finalResult = 'MERGE_BLOCKED')
                            )
                           ) or
-                          (:status = 'COMPLETED' and r.finishedAt is not null and
+                          (r.executionStatus is null and :status = 'COMPLETED' and r.finishedAt is not null and
                            not exists (
                              select 1 from RunItemJpaEntity item
                              where item.run.id = r.id
@@ -127,7 +127,7 @@ public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
                              )
                            )
                           ) or
-                          (:status = 'RUNNING' and r.finishedAt is null and
+                          (r.executionStatus is null and :status = 'RUNNING' and r.finishedAt is null and
                            not exists (
                              select 1 from RunItemJpaEntity item
                              where item.run.id = r.id

@@ -32,7 +32,7 @@ describe('Groups Tree API', () => {
             id: string('g1'),
             name: string('Root Group'),
             code: string('root'),
-            parentCode: string(null),
+            parentCode: null,
             createdAt: string('2026-01-01T00:00:00Z'),
             updatedAt: string('2026-01-01T00:00:00Z'),
             children: [],

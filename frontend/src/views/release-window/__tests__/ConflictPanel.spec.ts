@@ -119,7 +119,8 @@ describe('ConflictPanel', () => {
           conflictType: 'REPO_AHEAD',
           systemVersion: '1.3.0-SNAPSHOT',
           repoVersion: '1.4.0-SNAPSHOT',
-          message: 'repo version is newer'
+          message: 'repo version is newer',
+          suggestion: 'accept repo version'
         }
       ]
     })

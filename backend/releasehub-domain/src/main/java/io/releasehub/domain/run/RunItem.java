@@ -52,9 +52,8 @@ public class RunItem extends BaseEntity<RunItemId> {
     }
 
     public static RunItem createRetry(String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, String sourceRunId, Instant now) {
-        RunItemId baseId = RunItemId.generate(windowKey, repo, iterationKey);
-        RunItemId id = RunItemId.of(baseId.value() + "::retry::" + sourceRunId);
-        return new RunItem(id, windowKey, repo, iterationKey, plannedOrder, now);
+        // 来源由 metadata 记录，不能再拼接到主键中。
+        return create(windowKey, repo, iterationKey, plannedOrder, now);
     }
 
     public static RunItem rehydrate(RunItemId id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, int executedOrder, RunItemResult finalResult, List<RunStep> steps, Instant createdAt, Instant updatedAt, long version) {

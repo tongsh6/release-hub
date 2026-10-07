@@ -37,6 +37,7 @@ requirements/
 
 | 需求 | 负责人 | 状态 | OpenSpec |
 |------|--------|------|----------|
+| [SA-013 发布编排中断恢复](in-progress/SA-013-发布编排中断恢复.md) | - | S1 已批准并完成；S2–S5 保留未完成项 | `docs/openspec/changes/add-durable-run-recovery/` |
 | [SA-002 BranchCreationMode 独立迁移服务设计](in-progress/SA-002-BranchCreationMode独立迁移服务设计.md) | - | 提案设计已形成，等待 proposal 人工评审 | `docs/openspec/changes/add-branch-creation-mode-migration-service/` |
 | [SA-002 数据质量受控处置执行审计](in-progress/SA-002-数据质量受控处置执行审计.md) | - | 最小实现与页面验收已完成，保留后续扩展项 | `docs/openspec/changes/update-data-quality-disposition-audit/` |
 

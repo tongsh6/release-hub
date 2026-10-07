@@ -83,13 +83,27 @@ export interface VersionRunSummaryDTO {
   finishedAt?: string
 }
 
-export interface VersionRunDetailDTO extends VersionRunSummaryDTO {
-  request: any
-  result?: any
-  error?: {
-    message: string
-    stack?: string
-  }
+// 与 VersionOpsController.RunDetailView 保持一致。
+export interface VersionRunDetailDTO {
+  runId: string
+  type: string
+  status: RunStatus
+  branchName: string | null
+  startedAt: string | null
+  finishedAt: string | null
+  items: Array<{
+    windowKey: string
+    repoId: string
+    iterationKey: string
+    result: string | null
+    steps: Array<{
+      actionType: string
+      result: string
+      message: string | null
+      startAt: string
+      endAt: string
+    }>
+  }>
 }
 
 export interface RunLogsResp {
@@ -125,8 +139,8 @@ export function pageRuns(query: PageQuery & RunListFilter): Promise<PageResult<V
     }))
 }
 
-export function getRunDetail(runId: string): Promise<VersionRunDetailDTO> {
-  return apiGet<VersionRunDetailDTO>(`${MODULE_PATH}/runs/${runId}`)
+export function getRunDetail(runId: string): Promise<VersionRunDetailDTO | null> {
+  return apiGet<VersionRunDetailDTO | null>(`${MODULE_PATH}/runs/${runId}`)
 }
 
 export function getRunLogs(runId: string): Promise<RunLogsResp> {

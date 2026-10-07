@@ -3,6 +3,7 @@ package io.releasehub.infrastructure.persistence.user;
 import io.releasehub.domain.user.User;
 import io.releasehub.application.user.UserPort;
 import lombok.RequiredArgsConstructor;
+import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -15,6 +16,18 @@ import java.util.Optional;
 public class UserPersistenceAdapter implements UserPort {
 
     private final UserJpaRepository jpaRepository;
+    private final EntityManager entityManager;
+
+    @Override
+    public void lockForInitialization() {
+        // 普通登录查询不受影响；空表检查与写入在同一 PostgreSQL 事务中完成。
+        entityManager.createNativeQuery("LOCK TABLE users IN EXCLUSIVE MODE").executeUpdate();
+    }
+
+    @Override
+    public boolean existsAny() {
+        return jpaRepository.count() > 0;
+    }
 
     @Override
     public Optional<User> findByUsername(String username) {

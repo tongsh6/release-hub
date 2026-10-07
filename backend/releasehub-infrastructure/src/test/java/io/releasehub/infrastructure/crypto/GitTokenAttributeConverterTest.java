@@ -9,6 +9,8 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class GitTokenAttributeConverterTest {
 
@@ -62,5 +64,35 @@ class GitTokenAttributeConverterTest {
 
         assertEquals("glpat-plain", disabledConverter.convertToDatabaseColumn("glpat-plain"));
         assertEquals("glpat-plain", disabledConverter.convertToEntityAttribute("glpat-plain"));
+    }
+
+    @Test
+    void shouldRejectTaggedCiphertextWithWrongKeyWithoutLeakingIt() {
+        String ciphertext = converter.convertToDatabaseColumn("glpat-sensitive-test-token");
+        var wrongKey = new GitTokenCrypto(Base64.getEncoder().encodeToString(new byte[32]));
+        var wrongConverter = new GitTokenAttributeConverter(Optional.of(wrongKey));
+        var error = assertThrows(GitTokenCrypto.CryptoException.class,
+                () -> wrongConverter.convertToEntityAttribute(ciphertext));
+        assertFalse(error.getMessage().contains(ciphertext));
+        assertFalse(error.getMessage().contains("glpat-sensitive-test-token"));
+    }
+
+    @Test
+    void shouldRejectTaggedCiphertextWhenEncryptionIsDisabled() {
+        String ciphertext = converter.convertToDatabaseColumn("glpat-test-token");
+        var disabled = new GitTokenAttributeConverter(Optional.empty());
+        assertThrows(GitTokenCrypto.CryptoException.class,
+                () -> disabled.convertToEntityAttribute(ciphertext));
+    }
+
+    @Test
+    void shouldRejectDamagedTaggedCiphertext() {
+        assertThrows(GitTokenCrypto.CryptoException.class,
+                () -> converter.convertToEntityAttribute("enc:v1:invalid"));
+    }
+
+    @Test
+    void shouldKeepLegacyPlaintextReadableWithoutMigration() {
+        assertEquals("glpat-legacy-plain", converter.convertToEntityAttribute("glpat-legacy-plain"));
     }
 }

@@ -32,10 +32,12 @@ cd backend && ./scripts/run.sh
 cd backend && SPRING_PROFILES_ACTIVE=local,real ./scripts/run.sh
 
 # 启动前端
-cd frontend && pnpm install && pnpm dev
+cd frontend && corepack pnpm install --frozen-lockfile && corepack pnpm dev
 ```
 
 > **适配器模式**：默认使用 Mock 适配器（不访问真实 Git 平台）。叠加 `real` profile 启用真实 GitLab API 调用。详见 [部署指南](docs/deployment.md#23-git-平台适配器模式重要)。
+
+前端使用 `.nvmrc` 声明的 Node 24 主版本及 `frontend/package.json` 固定的 pnpm 10.33.0。CI 和两个前端 Docker 构建入口读取同一 pnpm 版本声明；已有依赖无需重复安装。详见 [前端开发指南](frontend/README-DEV.md)。
 
 ## 自托管部署
 
@@ -49,6 +51,10 @@ deploy/scripts/healthcheck.sh
 ```
 
 该方式在单台服务器运行前端、后端和 PostgreSQL，只连接用户已有的外部 GitLab。完整说明见 [Docker Compose 源码部署](docs/deploy/docker-compose.md)，升级流程见 [版本升级与回滚](docs/deploy/upgrade.md)。
+
+首次空库部署必须在 `.env` 中设置 `RELEASEHUB_BOOTSTRAP_ADMIN_PASSWORD`，然后使用配置的用户名和密码登录。生产环境不提供默认密码；已有账户不会因初始化配置变化而重置。
+
+生产部署还必须设置并独立备份 `RELEASEHUB_CRYPTO_SECRET_KEY`。新实例使用 Base64 编码的 32 字节随机密钥；已有加密实例必须沿用原密钥。数据库备份不包含该密钥。
 
 ## 文档
 

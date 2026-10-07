@@ -18,6 +18,7 @@
           <el-option label="FAILED" value="FAILED" />
           <el-option label="SUCCESS" value="SUCCESS" />
           <el-option label="RUNNING" value="RUNNING" />
+          <el-option :label="t('runPlan.status')" value="PLANNED" />
           <el-option label="COMPLETED" value="COMPLETED" />
         </el-select>
       </el-form-item>

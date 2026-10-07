@@ -42,11 +42,14 @@ vi.mock('@/api/runApi', () => ({
   }
 }))
 
+vi.mock('@/api/runPlanApi', () => ({ runPlanApi: { list: vi.fn(), get: vi.fn(), create: vi.fn() } }))
+
 vi.mock('@/utils/error', () => ({
   handleError: vi.fn()
 }))
 
 const stubs = {
+  RunPlanPreviewDialog: true,
   Document: true,
   Connection: true,
   Edit: true,
@@ -116,7 +119,7 @@ describe('OrchestrationPanel', () => {
       global: { stubs, directives }
     })
 
-    await wrapper.findAll('button').at(-1)!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().includes('orchestration.executeFinish'))!.trigger('click')
 
     expect(releaseWindowApi.orchestrate).toHaveBeenCalledWith('window-1', {
       repoIds: ['repo-1'],
@@ -167,7 +170,7 @@ describe('OrchestrationPanel', () => {
       global: { stubs, directives }
     })
 
-    await wrapper.findAll('button').at(-1)!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().includes('orchestration.executeFinish'))!.trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('orchestration.latestRun')
@@ -253,7 +256,7 @@ describe('OrchestrationPanel', () => {
       global: { stubs, directives }
     })
 
-    await wrapper.findAll('button').at(-2)!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === 'releaseWindow.versionUpdate.execute')!.trigger('click')
 
     expect(wrapper.emitted('open-version-update')?.length).toBeGreaterThan(0)
     expect(wrapper.emitted('openVersionUpdate')).toBeUndefined()

@@ -107,7 +107,9 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 items,
                 entity.getCreatedAt(),
                 entity.getUpdatedAt(),
-                entity.getVersion()
+                entity.getVersion(),
+                entity.getExecutionVersion() == null ? 1 : entity.getExecutionVersion(),
+                entity.getExecutionStatus() == null ? null : io.releasehub.domain.run.RunExecutionStatus.valueOf(entity.getExecutionStatus())
         );
     }
 
@@ -148,6 +150,8 @@ public class RunJpaPersistenceAdapter implements RunPort {
         entity.setCreatedAt(domain.getCreatedAt());
         entity.setUpdatedAt(domain.getUpdatedAt());
         entity.setVersion(domain.getVersion());
+        entity.setExecutionVersion(domain.getExecutionVersion());
+        entity.setExecutionStatus(domain.getExecutionStatus() == null ? null : domain.getExecutionStatus().name());
 
         List<RunItemJpaEntity> itemEntities = domain.getItems().stream()
                                                     .map(item -> {

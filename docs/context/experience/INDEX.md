@@ -17,6 +17,34 @@
 
 ## 经验列表
 
+### Run 恢复的身份与持久化边界
+
+- **日期**：2026-10-08（更新）
+- **关键词**：`Run`、`中断恢复`、`幂等`、`RunItemId`、`UNKNOWN`、`事务`、`租约`、`历史隔离`、`MapsId`、`schema`、`persist`
+- **摘要**：独立 UUID 保留历史归属；同主体请求键保护不可变快照，JPA 映射须覆盖 local schema；未知外部结果仍不能直接重试，预览不等于恢复执行。
+- **文档**：[lessons/run-recovery-identity-and-boundaries.md](lessons/run-recovery-identity-and-boundaries.md)
+
+### pnpm 与 CI 版本统一来源
+
+- **日期**：2026-10-08（更新）
+- **关键词**：`pnpm`、`Corepack`、`packageManager`、`Node`、`CI`、`develop`、`构建`、`vue-tsc`、`references`、`typecheck`
+- **摘要**：项目精确声明 pnpm，由本地、CI 与 Docker 共用；显式检查 app/node 并用错误注入验证阻断能力，避免 references 根配置空跑；44 项存量错误已修复。
+- **文档**：[lessons/pnpm-ci-version-source.md](lessons/pnpm-ci-version-source.md)
+
+### 生产 Token 加密与恢复边界
+
+- **日期**：2026-10-05
+- **关键词**：`Token`、`加密`、`AES-GCM`、`secret-key`、`恢复`、`错钥`、`enc:v1`
+- **摘要**：生产配置必须直接验证密文入库；有标识密文解密失败不得透传；数据库恢复必须使用原密钥，历史无标识凭据不得自动迁移。
+- **文档**：[lessons/production-token-crypto.md](lessons/production-token-crypto.md)
+
+### 首次生产部署的账户初始化与数据库卷
+
+- **日期**：2026-10-05
+- **关键词**：`首次部署`、`登录`、`bootstrap-admin`、`seed`、`prd`、`PostgreSQL 18`、`数据卷`
+- **摘要**：独立空库验证生产登录；首次账户创建需要事务锁和不覆盖约束；PostgreSQL 18.1 使用父目录挂载并验证重建后持久化。
+- **文档**：[lessons/production-initial-admin.md](lessons/production-initial-admin.md)
+
 ### ReleaseWindow 冻结/解冻：领域事件 + 状态机模式
 
 - **类别**：设计决策

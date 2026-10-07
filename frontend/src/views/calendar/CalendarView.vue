@@ -288,7 +288,7 @@ const weekDays = computed<WeekDay[]>(() => {
   sunday.setDate(base.getDate() - dayOfWeek)
 
   const days: WeekDay[] = []
-  for (let i = 0; i < 7; i++) {
+  weekDayNames.value.forEach((dayName, i) => {
     const date = new Date(sunday)
     date.setDate(sunday.getDate() + i)
     const isToday = date.getTime() === today.getTime()
@@ -303,8 +303,8 @@ const weekDays = computed<WeekDay[]>(() => {
 
     const conflicts = events.length > 1 ? events : []
 
-    days.push({ date, isToday, dayName: weekDayNames.value[i], events, conflicts })
-  }
+    days.push({ date, isToday, dayName, events, conflicts })
+  })
 
   return days
 })

@@ -80,7 +80,7 @@ public record ReleaseWindowReportView(
             return new RunReport(
                     run.getId().value(),
                     run.getRunType().name(),
-                    determineStatus(itemReports, run.getFinishedAt() != null),
+                    run.getExecutionStatus() == null ? determineStatus(itemReports, run.getFinishedAt() != null) : run.getExecutionStatus().name(),
                     run.getOperator(),
                     run.getStartedAt() == null ? null : run.getStartedAt().toString(),
                     run.getFinishedAt() == null ? null : run.getFinishedAt().toString(),

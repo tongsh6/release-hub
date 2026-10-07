@@ -43,8 +43,12 @@
       />
     </el-card>
 
+    <el-card v-if="previewPlan" style="margin-top: 16px;">
+      <RunPlanSnapshotView :plan="previewPlan" />
+    </el-card>
+
     <!-- 运行任务列表 -->
-    <el-card v-loading="tasksLoading" style="margin-top: 16px;">
+    <el-card v-if="detail?.status !== 'PLANNED'" v-loading="tasksLoading" style="margin-top: 16px;">
       <template #header>
         <div class="card-header">
           <span>{{ t('run.detail.tasksTitle') }}</span>
@@ -108,7 +112,7 @@
     </el-card>
 
     <!-- 执行项列表（原有） -->
-    <el-card v-loading="loading" style="margin-top: 16px;">
+    <el-card v-if="detail?.status !== 'PLANNED'" v-loading="loading" style="margin-top: 16px;">
       <template #header>
         <div class="card-header">
           <span>{{ t('run.detail.triplesTitle') }}</span>
@@ -150,7 +154,7 @@
                     <div v-if="step.message" class="step-message">
                       <div v-if="step.actionType === 'UPDATE_VERSION' && extractDiff(step.message)">
                         <div class="version-info">{{ extractVersionInfo(step.message) }}</div>
-                        <DiffViewer :diff="extractDiff(step.message)" />
+                        <DiffViewer :diff="extractDiff(step.message) ?? undefined" />
                       </div>
                       <div v-else>{{ step.message }}</div>
                     </div>
@@ -177,6 +181,8 @@ import DiffViewer from '@/components/run/DiffViewer.vue'
 import { handleError } from '@/utils/error'
 import { hasPerm } from '@/utils/perm'
 import { useUserStore } from '@/stores/user'
+import { runPlanApi, type RunPlanPreview } from '@/api/runPlanApi'
+import RunPlanSnapshotView from '@/components/run/RunPlanSnapshotView.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -186,6 +192,7 @@ const userStore = useUserStore()
 const loading = ref(false)
 const tasksLoading = ref(false)
 const detail = ref<RunDetail>()
+const previewPlan = ref<RunPlanPreview>()
 const tasks = ref<RunTask[]>([])
 const retryingTasks = reactive<Record<string, boolean>>({})
 const retryingItems = ref(false)
@@ -231,12 +238,14 @@ async function fetchDetail() {
   loading.value = true
   try {
     detail.value = await runApi.getRunById(currentRunId.value)
+    previewPlan.value = detail.value.status === 'PLANNED' ? await runPlanApi.get(currentRunId.value) : undefined
   } finally {
     loading.value = false
   }
 }
 
 async function fetchTasks() {
+  if (detail.value?.status === 'PLANNED') { tasks.value = []; return }
   tasksLoading.value = true
   try {
     tasks.value = await runApi.getTasks(currentRunId.value)
@@ -375,9 +384,11 @@ function extractDiff(message: string): string | null {
   return null
 }
 
-onMounted(() => {
-  fetchDetail()
-  fetchTasks()
+onMounted(async () => {
+  try {
+    await fetchDetail()
+    await fetchTasks()
+  } catch (error) { handleError(error) }
 })
 </script>
 

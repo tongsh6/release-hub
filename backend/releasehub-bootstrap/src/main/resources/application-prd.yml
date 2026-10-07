@@ -1,6 +1,14 @@
 releasehub:
+  crypto:
+    enabled: true
+    secret-key: ${RELEASEHUB_CRYPTO_SECRET_KEY:}
+    verify-stored-tokens: true
   seed:
     enabled: false
+  bootstrap-admin:
+    enabled: true
+    username: ${RELEASEHUB_BOOTSTRAP_ADMIN_USERNAME:admin}
+    password: ${RELEASEHUB_BOOTSTRAP_ADMIN_PASSWORD:}
 
 server:
   port: ${SERVER_PORT:8080}

@@ -42,6 +42,7 @@
             >
               {{ t('orchestration.previewPlan') }}
             </el-button>
+            <el-button size="small" @click="savedPlanVisible = true">{{ t('runPlan.title') }}</el-button>
           </div>
         </div>
       </div>
@@ -203,6 +204,15 @@
       </el-table>
     </div>
 
+    <RunPlanPreviewDialog
+      v-model="savedPlanVisible"
+      :window-id="windowId"
+      :repo-ids="repoIds"
+      :iteration-keys="iterationKeys"
+      :can-create="windowStatus !== 'CLOSED' && iterationCount > 0"
+      @created="loadRecentRuns"
+    />
+
     <!-- 执行计划预览对话框 -->
     <el-dialog v-model="planDialogVisible" :title="t('orchestration.planPreview')" width="600px">
       <div v-loading="planLoading" class="plan-content">
@@ -235,6 +245,7 @@ import { releaseWindowApi, type CodeMergeResult } from '@/api/modules/releaseWin
 import { runApi, type Run, type RunDetail } from '@/api/runApi'
 import { handleError } from '@/utils/error'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import RunPlanPreviewDialog from './RunPlanPreviewDialog.vue'
 
 const props = defineProps<{
   windowId: string
@@ -259,6 +270,7 @@ const merging = ref(false)
 const orchestrating = ref(false)
 const planLoading = ref(false)
 const planDialogVisible = ref(false)
+const savedPlanVisible = ref(false)
 const mergeResults = ref<CodeMergeResult[]>([])
 const recentRuns = ref<Run[]>([])
 const latestRunDetail = ref<RunDetail>()

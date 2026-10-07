@@ -86,6 +86,7 @@ public class RunController {
         }
 
         private static String determineStatus(Run run) {
+            if (run.getExecutionStatus() != null) return run.getExecutionStatus().name();
             if (run.getItems().isEmpty()) {
                 return run.getFinishedAt() != null ? "COMPLETED" : "RUNNING";
             }

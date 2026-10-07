@@ -72,15 +72,7 @@ public class RunAppService {
     private static final String META_RETRY_SOURCE_ITEM_ID = "retry.sourceItemId";
 
     private String deriveReleaseBranch(String windowKey) {
-        return settingsPort.getNaming()
-                .map(n -> {
-                    String template = n.releaseTemplate();
-                    if (template == null || template.isBlank()) {
-                        return "release/" + windowKey;
-                    }
-                    return template.replace("{key}", windowKey);
-                })
-                .orElse("release/" + windowKey);
+        return io.releasehub.application.window.ReleaseBranchNaming.resolve(windowKey, settingsPort.getNaming().orElse(null));
     }
 
     @Transactional
@@ -245,6 +237,9 @@ public class RunAppService {
     public Run retry(String runId, List<String> items, String operator) {
         Instant now = Instant.now(clock);
         Run previous = runPort.findById(runId).orElseThrow();
+        if (previous.getExecutionVersion() > 1) {
+            throw BusinessException.of(io.releasehub.common.exception.ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        }
         if (previous.getRunType() == RunType.VERSION_UPDATE) {
             return retryVersionUpdate(previous, items, operator, now);
         }

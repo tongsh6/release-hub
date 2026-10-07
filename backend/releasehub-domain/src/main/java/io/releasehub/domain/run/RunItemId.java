@@ -5,15 +5,14 @@ import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.base.EntityId;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.repo.RepoId;
+import java.util.UUID;
 
 /**
  * 运行项标识符
  * <p>
- * 格式：{windowKey}::{repoId}::{iterationKey}
+ * 新执行项使用独立 UUID，业务范围不再充当数据库主键；旧标识继续可读取。
  */
 public record RunItemId(String value) implements EntityId {
-
-    private static final String SEPARATOR = "::";
 
     public RunItemId {
         if (value == null || value.isBlank()) {
@@ -29,9 +28,11 @@ public record RunItemId(String value) implements EntityId {
     }
 
     /**
-     * 根据组成部分生成 RunItemId
+     * 为每个执行项分配独立标识。
      */
     public static RunItemId generate(String windowKey, RepoId repoId, IterationKey iterationKey) {
-        return new RunItemId(windowKey + SEPARATOR + repoId.value() + SEPARATOR + iterationKey.value());
+        java.util.Objects.requireNonNull(repoId);
+        java.util.Objects.requireNonNull(iterationKey);
+        return new RunItemId(UUID.randomUUID().toString());
     }
 }

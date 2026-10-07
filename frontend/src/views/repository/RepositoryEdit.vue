@@ -82,6 +82,8 @@ import { handleError } from '@/utils/error'
 import { isSupportedCloneUrl } from '@/utils/cloneUrl'
 
 interface RepoForm extends CreateRepoReq {
+  defaultBranch: string
+  initialVersion: string
   gitProvider: Exclude<GitProvider, 'MOCK'>
   gitAccessToken: string
 }

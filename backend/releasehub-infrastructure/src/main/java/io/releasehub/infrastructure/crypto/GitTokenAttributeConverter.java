@@ -13,13 +13,13 @@ import java.util.Optional;
  * 数据库存储密文（Base64），Java 对象持有明文。
  * 当加密未启用时，退化为透传——数据库存储明文。
  * <p>
- * 兼容旧数据：读取时同时支持历史无前缀密文；解密失败时原样返回，支持渐进式迁移。
+ * 有格式标识的密文必须成功解密；无标识旧数据保留兼容读取，不自动迁移。
  */
 @Component
 @Converter(autoApply = false)
 public class GitTokenAttributeConverter implements AttributeConverter<String, String> {
 
-    private static final String CIPHERTEXT_PREFIX = "enc:v1:";
+    static final String CIPHERTEXT_PREFIX = "enc:v1:";
 
     private final GitTokenCrypto crypto;
 
@@ -40,15 +40,25 @@ public class GitTokenAttributeConverter implements AttributeConverter<String, St
 
     @Override
     public String convertToEntityAttribute(String dbData) {
-        if (dbData == null || dbData.isEmpty() || crypto == null) {
+        if (dbData == null || dbData.isEmpty()) {
             return dbData;
         }
-        String ciphertext = dbData;
         if (dbData.startsWith(CIPHERTEXT_PREFIX)) {
-            ciphertext = dbData.substring(CIPHERTEXT_PREFIX.length());
+            if (crypto == null) {
+                throw new GitTokenCrypto.CryptoException("已加密的 Git Token 需要启用加密并配置原密钥");
+            }
+            try {
+                return crypto.decrypt(dbData.substring(CIPHERTEXT_PREFIX.length()));
+            } catch (GitTokenCrypto.CryptoException e) {
+                throw new GitTokenCrypto.CryptoException("Git Token 解密失败，请检查原密钥和数据库备份", e);
+            }
         }
+        if (crypto == null) {
+            return dbData;
+        }
+        // 无标识明文和历史密文无法仅凭格式可靠区分，保持既有兼容边界。
         try {
-            return crypto.decrypt(ciphertext);
+            return crypto.decrypt(dbData);
         } catch (GitTokenCrypto.CryptoException e) {
             return dbData;
         }

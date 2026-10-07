@@ -45,7 +45,7 @@ describe('Release Window Create API', () => {
             createdAt: string('2026-06-30T00:00:00Z'),
             updatedAt: string('2026-06-30T00:00:00Z'),
             frozen: boolean(false),
-            publishedAt: string(null),
+            publishedAt: null,
           },
         },
       })

@@ -2,7 +2,7 @@ name: Frontend CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 jobs:
@@ -14,12 +14,15 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: '.nvmrc'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: latest
+          package_json_file: frontend/package.json
+
+      - name: 验证工具版本
+        run: cd frontend && node --version && pnpm --version
 
       - name: Install dependencies
         run: cd frontend && pnpm install --frozen-lockfile

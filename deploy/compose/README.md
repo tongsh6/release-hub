@@ -12,6 +12,8 @@ docker compose --env-file deploy/compose/.env -f deploy/compose/docker-compose.y
 
 Open the frontend at the `APP_BASE_URL` configured in `.env`.
 
+首次空库部署必须配置管理员初始密码和独立的 `RELEASEHUB_CRYPTO_SECRET_KEY`。已有加密实例必须沿用原密钥，并将密钥与数据库备份分开安全保管。完整要求见中文部署指南。
+
 ## GitLab
 
 ReleaseHub does not bundle GitLab in this deployment. After login, configure your existing GitLab instance in the Settings page.

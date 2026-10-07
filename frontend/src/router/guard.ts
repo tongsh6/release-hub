@@ -3,7 +3,7 @@ import { useUserStore } from '@/stores/user'
 import { i18n } from '@/i18n'
 
 export function registerGuards(router: Router) {
-  router.beforeEach(async (to, from, next) => {
+  router.beforeEach(async (to, _from, next) => {
     // 0. 动态标题设置
     const appTitle = import.meta.env.VITE_APP_TITLE || 'ReleaseHub'
     let title = to.meta.title

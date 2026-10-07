@@ -67,7 +67,7 @@ const logs = ref<string[]>([])
 
 const goBack = () => router.back()
 
-const formatTime = (iso?: string) => {
+const formatTime = (iso?: string | null) => {
   if (!iso) return '-'
   return dayjs(iso).format('YYYY-MM-DD HH:mm:ss')
 }
@@ -90,7 +90,7 @@ const statusLabel = (s: string) => {
   }
 }
 
-const itemResultType = (r: string) => {
+const itemResultType = (r: string | null) => {
   if (!r) return 'info'
   if (r.includes('SUCCESS') || r === 'MERGED') return 'success'
   if (r.includes('FAILED') || r.includes('BLOCKED')) return 'danger'

@@ -61,11 +61,15 @@
 | SA-014 | Risk & Execution | 技术负责人 | 执行版本更新 | Maven 单模块真实写回 release 分支、Run COMPLETED/SUCCESS、GitLab commit 可验证 | 已覆盖 |
 | SA-015 | Risk & Execution | 测试人员 | 复核发布状态和执行证据 | 窗口/Run 列表与详情、状态和执行明细可见 | 已覆盖 |
 | SA-016 | Post Release | 发布经理 | 关闭发布窗口并完成收尾 | 关闭状态流转、关闭后禁止关键操作、收尾 Run 可见 | 已覆盖 |
+| SA-017 | Admin Setup | 部署管理员 | 全新生产部署首次登录 | 自定义凭据、空库初始化、幂等、并发保护、密码不泄露 | 已验证（生产配置/API/数据库；未声称浏览器旅程），见 `tasks/records/2026-10-05-sa-017-initial-admin-bootstrap.md` |
+| SA-018 | 验收运行治理 | 维护者 | 固定构建环境与 CI 门禁 | 项目 pnpm 固定、CI/部署一致、develop 与 PR 检查 | 版本/触发配置和真实类型门禁已完成；158 个源码/测试文件、3 个工具配置检查通过，见 `tasks/records/2026-10-08-sa-018-real-typecheck.md` |
+
 
 ## 三、前后端场景证据矩阵
 
 | ID | 用户旅程入口 | 后端业务证据 | GitLab/数据证据 | 当前主要缺口 |
 |---|---|---|---|---|
+| SA-017 | 部署者配置初始凭据，使用现有登录页 | 13 项应用单测，5 项真实 PostgreSQL 生产配置集成；另有 5 项既有登录回归 | Flyway 33 项迁移、哈希入库、重启不覆盖、并发仅一账户；Compose 卷重建后保留数据 | 首次账户初始化已闭环；本轮复核现有登录 API，未重跑浏览器旅程或 GitLab 发布 |
 | SA-003 | 管理员在分组页面创建多层分组并查看树 | Group API、非叶子资源挂载拒绝；分组父级变更受后端权威约束保护，只有未挂资源且无子分组的空叶子分组可移动；目标父分组若已挂资源则拒绝成为新上级；code 缺省或空白时按同级序列自动生成 | 仓库/迭代/窗口 groupCode 均落在叶子分组；受控移动不会把已挂资源分组变成非叶子分组；自动生成 code 在组织树中可见且全局唯一 | 前端已稳定断言仓库、迭代、发布窗口创建入口只能选择叶子分组；关联资源删除保护、受控空叶子分组移动拒绝提示、父级组织树选择器、外部 Playwright 移动旅程和 code 自动生成当前测试证据已补；后续保持回归 |
 | SA-004 | 管理员在系统设置页保存并测试 GitLab 连接 | Settings 保存、读取、重启持久化；`system_settings.gitlab_token` 透明加密；连接测试调用 GitLab `/api/v4/user` | 后续真实 GitLab 分支操作成功且 token 不泄露；验收脚本同时审计仓库 token 和 Settings token 明文数量；token 无效、权限不足和 GitLab 不可达分别返回 `GITLAB_004`、`GITLAB_005`、`GITLAB_006` | 连接测试入口、成功提示、失败错误出口和页面内细分诊断展示已补；后续保持回归 |
 | SA-005 | 管理员在仓库页纳管分组仓库并查看详情 | 仓库创建校验、叶子分组归属、重复/错误 URL 校验；仓库列表支持按组织及子组织范围筛选；详情页/抽屉展示组织路径和版本解析状态；仓库仍被迭代引用、分组仍有子分组或仍被仓库/迭代/发布窗口引用时拒绝删除 | 真实 GitLab cloneUrl、默认分支、token 安全审计；初始版本来源 `versionSource` 可复核 | Clone URL 格式校验、规范化重复纳管保护、版本解析失败修复引导、按组织筛选和删除保护已补；后续保持回归 |
@@ -564,6 +568,10 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
+| P1 | SA-018 真实 TypeScript 门禁与存量类型修复 | 原检查为空项目；显式应用检查 44 个存量错误，S1 新增 0 个 | 修复真实检查入口与类型基线，不放宽类型规则 |
+| 已完成 | SA-013 S1 身份隔离与持久预览 | UUID、历史隔离、事务、幂等、API/UI 和 local schema 已验证 | S2–S5 尚未批准或实现 |
+| 已完成 | SA-018 固定构建环境与 CI 门禁 | pnpm 10.33.0、Node 24、CI/Docker 同一版本来源和 develop/PR 触发声明已统一 | 本地 95 项单测、6 项 Pact、生产构建通过；未声称远程 CI 已运行 |
+| 已完成 | SA-004 生产 Git Token 加密配置与恢复验证 | 2026-10-05 生产默认加密、只读密文校验、SQL 备份恢复和 HTTP 凭据请求验证通过 | 保持回归；历史无标识凭据迁移、密钥轮换独立评审 |
 | P1 | SA-002 BranchCreationMode 执行计划评审门禁 | 最小 dry-run 已实现，当前只输出四类候选、统计、JSON 结构和 Markdown 报告，且 `executionPermitted=false` | 评审 dry-run 输出是否足以进入执行计划切片；未批准前不得实现执行 API、数据库写入、迁移表或 GitLab 操作 |
 | P1 | SA-002 BranchCreationMode 最小 dry-run 实现 | 已完成；应用服务、只读端口、只读 API、应用层测试、API 集成测试和中文真源已同步 | 后续保持回归 |
 | P1 | SA-005 仓库 Mock Provider 持久化边界 | 已完成；产品仓库 UI/API 禁止 `MOCK` Provider 落库，历史 Mock Provider 进入 SA-002 dry-run 风险复核，Slice-2 UI journey 改用真实 GitLab fixture | 后续保持回归 |
@@ -3048,3 +3056,23 @@ bash scripts/acceptance/run-acceptance.sh --stop-services
 - 创建子分组弹窗的 `parentCode` 预填和锁定不稳定；现在打开后会回填并禁用父编码，提交成功后关闭弹窗。
 - 关联迭代弹窗清空选择只清业务状态、不清表格选中态；现在同步清空 Element Plus 表格 selection。
 - 分组 TreeSelect 默认展开，减少大量存量分组下叶子节点不可发现的问题。
+
+### 2026-10-05 SA-004 生产加密与恢复
+
+生产配置要求独立密钥，仓库及 Settings Token 带标识密文入库。错误密钥或损坏密文拒绝启动；无标识历史凭据不自动迁移。真实 PostgreSQL 隔离库 SQL 备份恢复后，两类凭据均通过本机 HTTP fixture 请求校验；该证据不等于真实 GitLab 发布或浏览器用户旅程。最终后端 332 PASS / 5 SKIP，定向集成 14 PASS。详见 `tasks/records/2026-10-05-sa-004-production-token-crypto.md`。
+
+### 2026-10-05 SA-018 构建环境与 CI 门禁
+
+Corepack 在前端目录离线解析为 pnpm 10.33.0，Node 声明统一为 24 主版本。三个工作流补齐 develop 推送并保留 PR；CI 与 Docker 读取 packageManager。锁文件哈希未变化；lint、95 项单测、6 项 Pact 和生产构建通过。当时根项目 typecheck 未覆盖源码，结论更正见下文。详见 `tasks/records/2026-10-05-sa-018-build-ci-consistency.md`。
+
+### 2026-10-05 SA-013 中断恢复设计
+
+新增 4 项应用级和 2 项 PostgreSQL 证据，确认当前中断、误重放、ID 碰撞和历史执行项归属转移风险；外部效果由测试对象模拟，不是实际 GitLab 或 kill -9 恢复验收。Run 定向回归 17 PASS、架构 4 PASS、PostgreSQL 2 PASS。提案包含完整架构、状态、数据/API/UI、Provider 核对、迁移回滚及 S1–S5 计划；实施尚未批准或开始。详见 `docs/openspec/changes/add-durable-run-recovery/` 和 `tasks/records/2026-10-05-sa-013-run-recovery-design.md`。
+
+### 2026-10-08 SA-013 S1 与类型门禁更正
+
+S1 完成新标识隔离、持久计划与幂等受理，API 和 UI 明确预览不可执行，未调用 Git。最终预览 API 9 PASS，含并发、回滚、微秒精度、跨组/关闭窗口拒绝及 local schema；旧 Run 查询 10 PASS。前端全量 100 PASS、生产构建通过。真实应用类型检查 44 个存量错误，基线 45 个，新增 0 个，不能标为全量通过。详见 `tasks/records/2026-10-08-sa-013-s1-run-plan-preview.md`。
+
+### 2026-10-08 SA-018 真实类型门禁修复
+
+显式检查 app/node 配置，覆盖 158 个源码与测试文件及 3 个工具配置；44 项存量错误清零，Vue 与配置错误注入均能阻断。107 项前端单测、消费端 Pact 6 项与提供端 Pact 6 项、生产构建及 i18n 通过；lint 无错误，保留 8 条既有 warning。严格设置、源码类型检查范围和依赖未放宽。此为本地工程门禁验证，不代表远程 GitHub Actions 或完整浏览器旅程已执行。详见 `tasks/records/2026-10-08-sa-018-real-typecheck.md`。

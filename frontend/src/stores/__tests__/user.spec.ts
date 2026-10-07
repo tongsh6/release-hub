@@ -56,7 +56,7 @@ describe('useUserStore', () => {
 
   it('should fetch user profile', async () => {
     vi.mocked(userApi.me).mockResolvedValue({
-      id: 1, username: 'admin', displayName: 'Admin', permissions: ['ADMIN']
+      id: '1', username: 'admin', displayName: 'Admin', permissions: ['ADMIN']
     })
     const store = useUserStore()
 

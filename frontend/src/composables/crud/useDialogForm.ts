@@ -1,10 +1,11 @@
 import { ref, toRaw } from 'vue'
 import type { CrudMode, Id } from '@/types/crud'
+import { i18n } from '@/i18n'
 
 interface UseDialogFormOptions<T> {
-  fetchById: (id: Id) => Promise<T>
+  fetchById?: (id: Id) => Promise<T>
   create: (payload: T) => Promise<any>
-  update: (id: Id, payload: T) => Promise<any>
+  update?: (id: Id, payload: T) => Promise<any>
   defaultForm: T
 }
 
@@ -16,6 +17,7 @@ interface OpenPayload<T> {
 
 export function useDialogForm<T extends object>(options: UseDialogFormOptions<T>) {
   const { fetchById, create, update, defaultForm } = options
+  const { t } = i18n.global
 
   const visible = ref(false)
   const mode = ref<CrudMode>('create')
@@ -32,6 +34,13 @@ export function useDialogForm<T extends object>(options: UseDialogFormOptions<T>
 
   const open = async (payload: OpenPayload<T> = {}) => {
     const { id, mode: newMode = 'create', preset } = payload
+
+    if (newMode === 'edit' && (!fetchById || !update)) {
+      throw new Error(t('common.formEditUnsupported'))
+    }
+    if (newMode === 'view' && !fetchById) {
+      throw new Error(t('common.formViewUnsupported'))
+    }
     
     // Reset state
     visible.value = true
@@ -43,7 +52,7 @@ export function useDialogForm<T extends object>(options: UseDialogFormOptions<T>
     // Initialize form
     if (newMode === 'create') {
       form.value = { ...defaultForm, ...(preset || {}) }
-    } else if (id) {
+    } else if (id && fetchById) {
       loading.value = true
       try {
         const res = await fetchById(id)
@@ -76,6 +85,7 @@ export function useDialogForm<T extends object>(options: UseDialogFormOptions<T>
         res = await create(toRaw(form.value))
       } else {
         if (!currentId.value) throw new Error('Missing ID for update')
+        if (!update) throw new Error(t('common.formEditUnsupported'))
         res = await update(currentId.value, toRaw(form.value))
       }
       

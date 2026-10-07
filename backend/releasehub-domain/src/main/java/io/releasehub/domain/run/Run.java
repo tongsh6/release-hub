@@ -18,6 +18,8 @@ public class Run extends BaseEntity<RunId> {
     private String operator;
     private Instant startedAt;
     private Instant finishedAt;
+    private int executionVersion = 1;
+    private RunExecutionStatus executionStatus;
     private List<RunItem> items = new ArrayList<>();
 
     private Run(RunId id, RunType runType, String operator, Instant startedAt, Instant finishedAt, List<RunItem> items, Instant createdAt, Instant updatedAt, long version) {
@@ -40,7 +42,26 @@ public class Run extends BaseEntity<RunId> {
         return new Run(id, runType, operator, now, null, null, now, now, 0);
     }
 
+    public static Run preview(String operator, Instant now) {
+        Run run = start(RunType.WINDOW_ORCHESTRATION, operator, now);
+        run.executionVersion = 2;
+        run.executionStatus = RunExecutionStatus.PLANNED;
+        return run;
+    }
+
+    public static Run rehydrate(RunId id, RunType type, String operator, Instant startedAt, Instant finishedAt,
+                                List<RunItem> items, Instant createdAt, Instant updatedAt, long version,
+                                int executionVersion, RunExecutionStatus executionStatus) {
+        Run run = rehydrate(id, type, operator, startedAt, finishedAt, items, createdAt, updatedAt, version);
+        run.executionVersion = executionVersion;
+        run.executionStatus = executionStatus;
+        return run;
+    }
+
     public void finish(Instant now) {
+        if (executionStatus == RunExecutionStatus.PLANNED) {
+            throw new IllegalStateException("计划预览不可执行或结束");
+        }
         this.finishedAt = now;
         touch(now);
     }

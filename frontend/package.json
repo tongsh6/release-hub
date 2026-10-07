@@ -3,6 +3,10 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "vite",
     "dev:local": "vite",
@@ -12,7 +16,7 @@
     "build:test": "vite build --mode test",
     "preview": "vite preview",
     "lint": "eslint .",
-    "typecheck": "vue-tsc --noEmit",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:login": "playwright test login.spec.ts",

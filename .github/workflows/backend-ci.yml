@@ -2,7 +2,7 @@ name: Backend CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 jobs:
@@ -24,8 +24,5 @@ jobs:
           key: maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: maven-
 
-      - name: Build & test
-        run: cd backend && mvn verify -Pcoverage
-
-      - name: SpotBugs
-        run: cd backend && mvn spotbugs:check
+      - name: 构建、测试和静态扫描
+        run: cd backend && mvn -B verify -Pcoverage com.github.spotbugs:spotbugs-maven-plugin:4.9.8.3:check

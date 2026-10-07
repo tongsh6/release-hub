@@ -69,7 +69,7 @@ docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T \
 
 gunzip -c "$backup_file" | docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T \
   -e PGPASSWORD="$POSTGRES_PASSWORD" \
-  postgres psql -U "$POSTGRES_USER" "$POSTGRES_DB"
+  postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" "$POSTGRES_DB"
 
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 echo "Database restored from $backup_file"

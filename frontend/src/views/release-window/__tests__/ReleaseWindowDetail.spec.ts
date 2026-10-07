@@ -1,3 +1,4 @@
+import type { SetupContext } from 'vue'
 import { shallowMount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ReleaseWindowDetail from '../ReleaseWindowDetail.vue'
@@ -6,6 +7,9 @@ import { iterationApi } from '@/api/iterationApi'
 import { repositoryApi } from '@/api/repositoryApi'
 import { ElMessageBox } from 'element-plus'
 import { hasPerm } from '@/utils/perm'
+
+// 当前 Element Plus 声明错误地将返回值写成交叉类型；confirm 运行时返回 action。
+const confirmDialog = vi.hoisted(() => vi.fn<() => Promise<'confirm'>>())
 
 vi.mock('vue-i18n', () => ({
   createI18n: () => ({
@@ -30,7 +34,7 @@ vi.mock('element-plus', () => ({
     warning: vi.fn()
   },
   ElMessageBox: {
-    confirm: vi.fn()
+    confirm: confirmDialog
   }
 }))
 
@@ -138,7 +142,7 @@ const stubs = {
   BranchStatusPanel: true,
   ConflictPanel: {
     props: ['windowId'],
-    setup(_props: unknown, { expose }: { expose: (exposed: unknown) => void }) {
+    setup(_props: unknown, { expose }: SetupContext) {
       expose({ refresh: conflictPanelRefresh })
       return {
         item: {
@@ -178,7 +182,7 @@ describe('ReleaseWindowDetail', () => {
     vi.mocked(iterationApi.get).mockReset()
     vi.mocked(iterationApi.resolveVersionConflict).mockReset()
     vi.mocked(repositoryApi.get).mockReset()
-    vi.mocked(ElMessageBox.confirm).mockReset()
+    confirmDialog.mockReset()
     vi.mocked(hasPerm).mockReturnValue(true)
     openSpy.mockClear()
     conflictPanelRefresh.mockReset()
@@ -236,6 +240,9 @@ describe('ReleaseWindowDetail', () => {
       name: 'Iteration 1',
       description: '',
       expectedReleaseAt: null,
+      groupCode: 'G001',
+      attachedToWindow: true,
+      attachedWindowIds: ['window-1'],
       repoIds: ['repo-1'],
       repoCount: 1,
       mountedWindows: '',
@@ -248,6 +255,8 @@ describe('ReleaseWindowDetail', () => {
       name: 'repo-1',
       cloneUrl: 'https://gitlab.example.com/customer/repo-1.git',
       defaultBranch: 'main',
+      groupCode: 'G001',
+      gitProvider: 'GITLAB',
       repoType: 'application',
       monoRepo: false,
       branchCount: 0,
@@ -261,7 +270,7 @@ describe('ReleaseWindowDetail', () => {
       createdAt: '',
       updatedAt: ''
     })
-    vi.mocked(ElMessageBox.confirm).mockResolvedValue(true)
+    confirmDialog.mockResolvedValue('confirm')
     vi.mocked(iterationApi.resolveVersionConflict).mockResolvedValue({
       repoId: 'repo-1',
       repoName: 'repo-1',
@@ -288,7 +297,7 @@ describe('ReleaseWindowDetail', () => {
       ...stubs,
       ConflictPanel: {
         props: ['windowId'],
-        setup(_props: unknown, { expose }: { expose: (exposed: unknown) => void }) {
+        setup(_props: unknown, { expose }: SetupContext) {
           expose({ refresh: conflictPanelRefresh })
           return {
             item: {

@@ -65,7 +65,7 @@ interface BlockGroup {
   items: BlockedItem[]
 }
 
-const groups = ref<BlockGroup[]>([
+const groups = ref<[BlockGroup, BlockGroup, BlockGroup]>([
   { reasonKey: 'conflict', items: [] },
   { reasonKey: 'pipelineFailed', items: [] },
   { reasonKey: 'approvalRequired', items: [] }
@@ -96,9 +96,9 @@ const fetchData = async () => {
           const msg = lastStep?.message || 'Unknown error'
           
           allBlockedItems.push({
-            id: `${run.id}-${item.repo}-${item.iterationKey}`,
+            id: `${run.id}-${item.repoId}-${item.iterationKey}`,
             runId: run.id,
-            repo: item.repo,
+            repo: item.repoId,
             iterationKey: item.iterationKey,
             message: msg,
             updatedAt: run.finishedAt || run.startedAt

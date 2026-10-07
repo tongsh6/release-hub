@@ -2,7 +2,7 @@ name: Full-Link E2E Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
     paths-ignore:
       - 'docs/**'

@@ -20,18 +20,23 @@ public final class GitTokenCrypto {
     private static final int GCM_IV_BYTES = 12;  // 96-bit IV for GCM
     private static final int GCM_TAG_BITS = 128; // 128-bit auth tag
     private static final int AES_KEY_BYTES = 32; // AES-256
+    private static final String KEY_CONFIG_ERROR = "请配置 RELEASEHUB_CRYPTO_SECRET_KEY：必须是 Base64 编码的 32 字节独立密钥";
 
     private final SecretKey key;
     private final SecureRandom secureRandom;
 
     public GitTokenCrypto(String base64Key) {
         if (base64Key == null || base64Key.isBlank()) {
-            throw new IllegalArgumentException("Encryption key must not be null or blank");
+            throw new IllegalArgumentException(KEY_CONFIG_ERROR);
         }
-        byte[] keyBytes = Base64.getDecoder().decode(base64Key);
+        byte[] keyBytes;
+        try {
+            keyBytes = Base64.getDecoder().decode(base64Key);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(KEY_CONFIG_ERROR);
+        }
         if (keyBytes.length != AES_KEY_BYTES) {
-            throw new IllegalArgumentException(
-                    "Encryption key must be " + (AES_KEY_BYTES * 8) + " bits, got " + (keyBytes.length * 8));
+            throw new IllegalArgumentException(KEY_CONFIG_ERROR);
         }
         this.key = new SecretKeySpec(keyBytes, ALGORITHM);
         this.secureRandom = new SecureRandom();
@@ -89,7 +94,7 @@ public final class GitTokenCrypto {
 
     /**
      * Round-trip 自检：加密后立即解密，验证结果与原文一致。
-     * 用于启动时检测密钥是否正确配置，失败则阻止应用启动。
+     * 校验密钥格式与加解密能力；是否匹配存量密文由启动校验器另外检查。
      */
     public void verify() {
         String test = "health-check-" + System.currentTimeMillis();

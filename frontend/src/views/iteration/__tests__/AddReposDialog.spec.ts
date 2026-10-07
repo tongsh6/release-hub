@@ -1,3 +1,4 @@
+import type { SetupContext } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AddReposDialog from '../AddReposDialog.vue'
@@ -35,7 +36,7 @@ vi.mock('@/utils/error', () => ({
 
 const stubs = {
   EntityDialog: {
-    setup(_props: unknown, { expose }: { expose: (exposed: unknown) => void }) {
+    setup(_props: unknown, { expose }: SetupContext) {
       expose({
         open: vi.fn(),
         close: vi.fn()

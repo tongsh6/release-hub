@@ -25,6 +25,8 @@ export default {
     groups: 'Groups'
   },
   common: {
+    formEditUnsupported: 'This form does not support editing',
+    formViewUnsupported: 'This form does not support viewing details',
     search: 'Search',
     reset: 'Reset',
     create: 'Create',
@@ -849,6 +851,25 @@ export default {
       queueLoaded: '{count} actions loaded',
       reviewComplete: '{count} actions reviewed'
     }
+  },
+  runPlan: {
+    plannedSteps: 'Preview steps',
+    steps: { ENSURE_FEATURE: 'Check feature branch', ENSURE_RELEASE: 'Prepare release branch', ENSURE_MR: 'Check merge prerequisites', TRY_MERGE: 'Attempt merge' },
+    title: 'Saved plan previews',
+    create: 'Save current scope preview',
+    recent: 'Latest 20 previews',
+    empty: 'No saved preview. Save the current scope to inspect it later.',
+    readOnlyNotice: 'Local snapshot only. Remote state is not checked. This preview cannot merge, update versions, or execute Git operations.',
+    createdAt: 'Saved at',
+    windowAtCreation: 'Window when saved',
+    order: 'Order',
+    repository: 'Repository',
+    iteration: 'Iteration',
+    featureBranch: 'Feature branch',
+    releaseBranch: 'Release branch',
+    devVersion: 'Development version',
+    targetVersion: 'Target version',
+    status: 'Plan preview',
   },
   orchestration: {
     title: 'Release Orchestration',

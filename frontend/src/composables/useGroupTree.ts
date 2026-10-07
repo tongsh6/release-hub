@@ -27,12 +27,9 @@ export function useGroupTree() {
         return
       }
     }
-    if (treeData.value.length > 0) {
-      selected.value = treeData.value[0]
-      selectedCode.value = treeData.value[0].code
-    } else {
-      selected.value = null
-    }
+    const firstNode = treeData.value[0]
+    selected.value = firstNode ?? null
+    selectedCode.value = firstNode?.code ?? null
   }
 
   const loadTree = async () => {
@@ -50,7 +47,7 @@ export function useGroupTree() {
 
   const onNodeClick = (node: GroupNode) => {
     selected.value = node
-    selectedCode.value = node.code
+    selectedCode.value = node.code ?? null
   }
 
   return {

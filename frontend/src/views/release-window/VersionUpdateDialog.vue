@@ -256,9 +256,12 @@ watch(updateScope, (scope) => {
     if (selectedRepoIds.value.length === 0) {
       selectedRepoIds.value = form.repoId ? [form.repoId] : repositories.value.map(repo => repo.id)
     }
-  } else if (!form.repoId && selectedRepoIds.value.length > 0) {
-    form.repoId = selectedRepoIds.value[0]
-    void handleRepoChange(form.repoId)
+  } else if (!form.repoId) {
+    const firstRepoId = selectedRepoIds.value[0]
+    if (firstRepoId) {
+      form.repoId = firstRepoId
+      void handleRepoChange(firstRepoId)
+    }
   }
 })
 
@@ -342,13 +345,13 @@ const open = async (id: string, windowRepositories: Repository[] = []) => {
   resetForm()
   scopedRepositories.value = windowRepositories.length > 0
   repositories.value = [...windowRepositories]
-  if (windowRepositories.length === 1) {
-    form.repoId = windowRepositories[0].id
-    await handleRepoChange(windowRepositories[0].id)
-  } else if (windowRepositories.length > 1) {
-    form.repoId = windowRepositories[0].id
-    selectedRepoIds.value = windowRepositories.map(repo => repo.id)
-    await handleRepoChange(windowRepositories[0].id)
+  const firstRepository = windowRepositories[0]
+  if (firstRepository) {
+    form.repoId = firstRepository.id
+    if (windowRepositories.length > 1) {
+      selectedRepoIds.value = windowRepositories.map(repo => repo.id)
+    }
+    await handleRepoChange(firstRepository.id)
   }
   visible.value = true
   conflictBlocked.value = false

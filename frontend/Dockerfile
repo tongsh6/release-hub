@@ -1,9 +1,10 @@
 FROM node:24-alpine AS builder
 WORKDIR /build
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 COPY package.json pnpm-lock.yaml ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+RUN corepack pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm build --mode gitlab-e2e
+RUN corepack pnpm build --mode gitlab-e2e
 
 FROM nginx:alpine
 COPY --from=builder /build/dist /usr/share/nginx/html

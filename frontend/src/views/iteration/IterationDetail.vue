@@ -176,7 +176,7 @@
   </div>
   <AttachWindowDialog ref="attachRef" @success="fetchDetail" />
   <AddReposDialog ref="addReposRef" @success="fetchDetail" />
-  <VersionConflictDialog ref="conflictDialogRef" @resolved="fetchDetail" />
+  <VersionConflictDialog @resolved="fetchDetail" />
 </template>
 
 <script setup lang="ts">
@@ -214,7 +214,6 @@ const repoPage = reactive({
 const syncingRepos = reactive<Record<string, boolean>>({})
 const attachRef = ref<InstanceType<typeof AttachWindowDialog>>()
 const addReposRef = ref<InstanceType<typeof AddReposDialog>>()
-const conflictDialogRef = ref<InstanceType<typeof VersionConflictDialog>>()
 const canChangeRepos = computed(() => !iteration.value?.attachedToWindow)
 const repoRows = computed(() => repos.value)
 

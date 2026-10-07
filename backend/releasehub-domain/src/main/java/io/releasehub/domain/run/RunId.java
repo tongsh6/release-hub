@@ -5,15 +5,14 @@ import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.base.EntityId;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * 运行记录标识符
  * <p>
- * 格式：{runType}::{timestamp}
+ * 新记录使用独立 UUID；历史字符串标识继续可读取。
  */
 public record RunId(String value) implements EntityId {
-
-    private static final String SEPARATOR = "::";
 
     public RunId {
         if (value == null || value.isBlank()) {
@@ -29,9 +28,11 @@ public record RunId(String value) implements EntityId {
     }
 
     /**
-     * 根据运行类型和时间生成 RunId
+     * 为每次运行分配独立标识，类型与时间仍保存在 Run 字段中。
      */
     public static RunId generate(RunType runType, Instant timestamp) {
-        return new RunId(runType.name() + SEPARATOR + timestamp.toEpochMilli());
+        java.util.Objects.requireNonNull(runType);
+        java.util.Objects.requireNonNull(timestamp);
+        return new RunId(UUID.randomUUID().toString());
     }
 }

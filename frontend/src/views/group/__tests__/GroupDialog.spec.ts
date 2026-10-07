@@ -7,6 +7,8 @@ import { ApiError } from '@/api/http'
 import { ElMessage } from 'element-plus'
 import { handleError } from '@/utils/error'
 
+vi.mock('@/i18n', () => ({ i18n: { global: { t: (key: string) => key } } }))
+
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
     t: (key: string) => key

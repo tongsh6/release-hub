@@ -19,7 +19,7 @@ public class TokenCryptoConfig {
 
     @Bean
     public GitTokenCrypto gitTokenCrypto(
-            @Value("${releasehub.crypto.secret-key}") String base64Key) {
+            @Value("${releasehub.crypto.secret-key:}") String base64Key) {
         GitTokenCrypto crypto = new GitTokenCrypto(base64Key);
         crypto.verify();
         return crypto;

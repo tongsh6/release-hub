@@ -1,3 +1,4 @@
+import type { SetupContext } from 'vue'
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -52,7 +53,7 @@ const stubs = {
     template: '<section v-if="modelValue"><slot /><slot name="footer" /></section>'
   },
   ElForm: {
-    setup(_props: unknown, { expose }: { expose: (exposed: unknown) => void }) {
+    setup(_props: unknown, { expose }: SetupContext) {
       expose({
         validate: async (callback: (valid: boolean) => void) => callback(true),
         resetFields: vi.fn()

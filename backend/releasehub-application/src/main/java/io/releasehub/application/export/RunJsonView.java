@@ -11,6 +11,8 @@ import java.util.List;
 public class RunJsonView {
     private String runId;
     private String runType;
+    private int executionVersion;
+    private String status;
     private long startedAt;
     private Long finishedAt;
     private List<Item> items;
@@ -39,6 +41,8 @@ public class RunJsonView {
         RunJsonView v = new RunJsonView();
         v.setRunId(run.getId().value());
         v.setRunType(run.getRunType().name());
+        v.setExecutionVersion(run.getExecutionVersion());
+        v.setStatus(run.getExecutionStatus() == null ? null : run.getExecutionStatus().name());
         v.setStartedAt(run.getStartedAt().toEpochMilli());
         v.setFinishedAt(run.getFinishedAt() == null ? null : run.getFinishedAt().toEpochMilli());
         v.setItems(run.getItems().stream().map(RunJsonView::mapItem).toList());

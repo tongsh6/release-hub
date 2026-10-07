@@ -12,6 +12,8 @@ function walk(dir, files) {
   for (const entry of entries) {
     const full = path.join(dir, entry.name)
     if (full.startsWith(skipDir)) continue
+    // 测试描述和 fixture 不属于产品文案；业务源码仍全部检查。
+    if (entry.name === '__tests__' || /\.(test|spec)\.[cm]?[jt]sx?$/.test(entry.name)) continue
     if (entry.isDirectory()) {
       walk(full, files)
     } else {

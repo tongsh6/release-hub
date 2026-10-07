@@ -2,8 +2,12 @@ import { shallowMount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RunDetail from '../RunDetail.vue'
 import { runApi } from '@/api/runApi'
+import { runPlanApi } from '@/api/runPlanApi'
 import { ElMessageBox } from 'element-plus'
 import { hasPerm } from '@/utils/perm'
+
+// 当前 Element Plus 声明错误地将返回值写成交叉类型；confirm 运行时返回 action。
+const confirmDialog = vi.hoisted(() => vi.fn<() => Promise<'confirm'>>())
 
 const routerPush = vi.fn()
 const profile = { username: 'tester' }
@@ -26,7 +30,7 @@ vi.mock('element-plus', () => ({
     info: vi.fn()
   },
   ElMessageBox: {
-    confirm: vi.fn()
+    confirm: confirmDialog
   }
 }))
 
@@ -42,6 +46,8 @@ vi.mock('@/api/runApi', () => ({
 vi.mock('@/stores/user', () => ({
   useUserStore: () => ({ profile })
 }))
+
+vi.mock('@/api/runPlanApi', () => ({ runPlanApi: { list: vi.fn(), get: vi.fn(), create: vi.fn() } }))
 
 vi.mock('@/utils/error', () => ({
   handleError: vi.fn()
@@ -95,17 +101,29 @@ const mountRunDetail = () => shallowMount(RunDetail, {
 })
 
 describe('RunDetail', () => {
+  it('showsSavedPreviewWithoutRequestingExecutionTasks', async () => {
+    vi.mocked(runApi.getRunById).mockResolvedValueOnce({ id: 'run-1', runType: 'WINDOW_ORCHESTRATION', status: 'PLANNED',
+      startedAt: '', finishedAt: '', operator: 'admin', items: [] })
+    vi.mocked(runPlanApi.get).mockResolvedValueOnce({ runId: 'run-1', windowId: 'window-1', operator: 'admin', createdAt: '',
+      planHash: 'hash', executionVersion: 2, status: 'PLANNED', evidenceLevel: 'LOCAL_ONLY', executionPermitted: false,
+      snapshot: { windowKey: 'RW-1', groupCode: 'G001', windowStatus: 'DRAFT', frozen: false, failFast: true, items: [] } })
+    const wrapper = mountRunDetail()
+    await flushPromises()
+    expect(runPlanApi.get).toHaveBeenCalledWith('run-1')
+    expect(runApi.getTasks).not.toHaveBeenCalled()
+    expect(wrapper.findComponent({ name: 'RunPlanSnapshotView' }).exists()).toBe(true)
+  })
   beforeEach(() => {
     vi.mocked(runApi.getRunById).mockReset()
     vi.mocked(runApi.getTasks).mockReset()
     vi.mocked(runApi.retry).mockReset()
-    vi.mocked(ElMessageBox.confirm).mockReset()
+    confirmDialog.mockReset()
     vi.mocked(hasPerm).mockReturnValue(true)
     routerPush.mockReset()
 
     vi.mocked(runApi.getTasks).mockResolvedValue([])
     vi.mocked(runApi.retry).mockResolvedValue('run-retry-1')
-    vi.mocked(ElMessageBox.confirm).mockResolvedValue(true)
+    confirmDialog.mockResolvedValue('confirm')
     vi.mocked(runApi.getRunById).mockImplementation(async (id) => ({
       id: String(id),
       runType: 'ATTACH_ITERATION',

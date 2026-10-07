@@ -7,10 +7,10 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install --frozen-lockfile
+RUN corepack pnpm install --frozen-lockfile
 
 COPY frontend/ ./
-RUN pnpm build:prd
+RUN corepack pnpm build:prd
 
 FROM nginx:alpine
 

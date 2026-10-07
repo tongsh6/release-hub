@@ -37,6 +37,10 @@ public class RunJpaEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
     private long version;
+    @Column(name = "execution_version")
+    private Integer executionVersion;
+    @Column(name = "execution_status")
+    private String executionStatus;
 
     @OneToMany(mappedBy = "run", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<RunItemJpaEntity> items = new ArrayList<>();

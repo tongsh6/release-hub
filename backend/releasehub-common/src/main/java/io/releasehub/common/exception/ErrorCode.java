@@ -97,6 +97,9 @@ public enum ErrorCode {
     RUN_ID_INVALID("RUN_002", "error.run.id_invalid", 400),
     RUN_ITEM_ID_INVALID("RUN_003", "error.run.item_id_invalid", 400),
     RUN_NO_ITEMS_CREATED("RUN_004", "error.run.no_items_created", 400),
+    RUN_PLAN_KEY_CONFLICT("RUN_005", "error.run.plan_key_conflict", 409),
+    RUN_PLAN_INVALID_SCOPE("RUN_006", "error.run.plan_invalid_scope", 400),
+    RUN_PLAN_NOT_EXECUTABLE("RUN_007", "error.run.plan_not_executable", 409),
     // ========== 窗口迭代关联 (WI) ==========
     WINDOW_ITERATION_ID_INVALID("WI_001", "error.wi.id_invalid", 400),
 

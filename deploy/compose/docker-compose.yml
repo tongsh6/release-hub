@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-releasehub}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/compose/.env}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
@@ -30,9 +30,12 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-releasehub}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/compose/.env}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in deploy/compose/.env}
+      RELEASEHUB_CRYPTO_SECRET_KEY: ${RELEASEHUB_CRYPTO_SECRET_KEY:?Set the original RELEASEHUB_CRYPTO_SECRET_KEY in deploy/compose/.env}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8090}
       CORS_ALLOWEDORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8090}
       RELEASEHUB_SEED_ENABLED: "false"
+      RELEASEHUB_BOOTSTRAP_ADMIN_USERNAME: ${RELEASEHUB_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      RELEASEHUB_BOOTSTRAP_ADMIN_PASSWORD: ${RELEASEHUB_BOOTSTRAP_ADMIN_PASSWORD:-}
       JAVA_OPTS: ${JAVA_OPTS:-}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8080}:8080"

@@ -91,7 +91,7 @@ describe('VersionPolicyList', () => {
     vm.rules.scopeProjectId[0].validator({}, '', callback)
 
     expect(callback).toHaveBeenCalledWith(expect.any(Error))
-    expect(callback.mock.calls[0][0].message).toBe('versionPolicy.scopeProjectRequired')
+    expect(callback).toHaveBeenCalledWith(new Error('versionPolicy.scopeProjectRequired'))
   })
 
   it('clears stale scope ids when scope level changes', async () => {

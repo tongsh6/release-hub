@@ -40,7 +40,7 @@ describe('Release Window Paged API', () => {
             createdAt: string('2026-01-01T00:00:00Z'),
             updatedAt: string('2026-01-01T00:00:00Z'),
             frozen: boolean(false),
-            publishedAt: string(null),
+            publishedAt: null,
           }),
           page: {
             page: integer(1),

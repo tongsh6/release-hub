@@ -10,6 +10,16 @@
 
 ## 1. 当前阶段目标
 
+2026-10-08：SA-013 S1 身份隔离及持久计划预览已完成；随后 SA-018 真实类型门禁也已修复。检查覆盖 158 个源码/测试文件和 3 个工具配置，44 个存量错误清零，严格设置与依赖不变。107 项前端测试、6 项 Pact 和生产构建通过。当前 HEAD 为 SA-013 S2 范围评审，S2–S5 实施仍未批准。详见 `tasks/records/2026-10-08-sa-018-real-typecheck.md`。S1 交付时发现的空项目类型检查及 44 项错误作为历史证据保留，不能反向认定旧检查有效。
+
+### 2026-10-05 历史推进记录
+
+2026-10-05 已完成 SA-017 首次部署管理员初始化与登录修复，并修正 PostgreSQL 18.1 卷路径。后端单元/架构检查 328 PASS / 5 SKIP，新旧登录集成 10 PASS，Compose 空库启动及重建持久化通过。SA-004 生产加密默认配置、错钥阻断、隔离库备份恢复也已完成；最终后端检查 332 PASS / 5 SKIP，定向集成 14 PASS。SA-018 构建环境与 CI 门禁也已完成：pnpm 10.33.0、Node 24、develop/PR 触发声明及本地前端检查通过，锁文件不变。SA-013 中断恢复设计及 6 项缺口证据已完成，生产恢复逻辑未实现；当前 HEAD 为中断恢复提案评审与 S1 范围确认。加密证据见 `tasks/records/2026-10-05-sa-004-production-token-crypto.md`。完整范围和证据见 `tasks/plans/2026-10-05-initial-admin-bootstrap.md`、`tasks/records/2026-10-05-sa-017-initial-admin-bootstrap.md`。
+
+### 历史发布候选基线（2026-05-24）
+
+以下保留历史阶段说明；当前任务选择以路线图为准，SA-002 历史迁移边界继续有效。
+
 **v0.1.11 受控发布候选交付证据已收口，SA-002 迁移进入执行计划评审门禁**。
 - 主线：按 `docs/reports/scenario-acceptance-matrix.md` 和 `docs/reports/release-candidate-2026-05-23.md` 推进；SA-001 受控发布候选 dogfood/staging 验证、发布候选评审页、交付证据收口，以及 SA-002 数据质量人工复核处置策略、受控处置执行审计设计、处置 case 最小实现、处置 case 页面验收、BranchCreationMode 独立迁移服务设计、proposal 评审门禁和最小 dry-run 均已完成；当前优先进入 BranchCreationMode 执行计划评审门禁
 - 不做：新功能（RBAC、通知、CI 深集成）；不重构 Iteration 领域到 `repoAssociations`
@@ -34,6 +44,16 @@
 ---
 
 ## 2. 已完成事项
+
+2026-10-08：S1 新 Run/Item 使用独立 UUID，旧 ID 与空协议字段读取兼容；计划预览具备同主体幂等键、不可变快照、API/UI、PLANNED 筛选及旧 retry 阻断。V34 无历史回填；Flyway 与 local 自建 schema 在隔离测试中验证通过。后续 SA-018 已修复真实类型门禁。
+
+2026-10-05：SA-013 设计阶段完成。确认分支已创建而 Run 未保存、未知结果可重放、保存失败前已有模拟外部效果、标识碰撞和执行项跨 Run 转移；形成完整设计、11 个 Requirement / 27 个 Scenario 和 S1–S5 追踪。仅设计与证据完成，恢复尚未实现。
+
+2026-10-05：SA-018 已完成。项目声明 pnpm 精确版本，CI/Docker 读取同一来源，Node 使用 24 主版本；三个工作流补齐 develop 推送，95 项单测、6 项 Pact 和生产构建通过。详见 `tasks/records/2026-10-05-sa-018-build-ci-consistency.md`。
+
+2026-10-05：SA-004 生产默认启用 AES-GCM 和只读存量密文校验，仓库与 Settings Token 在重启、SQL 备份恢复后仍可用于连接；无标识旧凭据未迁移，密钥未轮换。
+
+2026-10-05：SA-017 已完成。生产空用户表使用显式凭据创建管理员，支持并发保护和重复启动；已有账户不改动。修复 Compose PostgreSQL 18.1 挂载路径，验证重建后数据保留。
 
 | 事项 | 状态 | 证据路径 | 验证方式 | 备注 |
 |---|---|---|---|---|
@@ -107,6 +127,8 @@
 
 ## 3. 已验证事项
 
+2026-10-08 SA-018：真实类型检查覆盖应用与全部工具配置；Vue/配置故障注入阻断，清理后通过。107 项前端单测、消费端与提供端 Pact 各 6 项、生产构建、i18n 通过；静态扫描无错误、8 条既有 lint warning。记录及报告见 `tasks/records/2026-10-08-sa-018-real-typecheck.md`。
+
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |---|---|---|---|
 | 场景矩阵全量复验 | `bash scripts/acceptance/run-acceptance.sh` | `docs/reports/scenario-acceptance-matrix.md` | 2026-05-21 **159 PASS / 0 FAIL / 0 SKIP**；数据资产 `323 groups / 120 repos / 293 windows / 465 iterations / 440 runs` |
@@ -178,7 +200,7 @@
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| 场景矩阵驱动推进 | 2026-05-24 已完成 SA-001 受控发布候选 dogfood/staging 验证：后端/真实 GitLab 全量验收 170 PASS / 0 FAIL / 0 SKIP，完整前端 E2E 49 PASS / 0 FAIL，关键页面组件 21 PASS / 0 FAIL，静态扫描通过；同日完成 SA-002 数据质量人工复核处置策略、受控处置执行审计设计、处置 case 最小实现、处置 case 页面验收、BranchCreationMode 独立迁移服务设计、proposal 评审门禁和最小 dry-run，并补齐产品仓库 Mock Provider 持久化边界：产品 UI/API 不再允许 `MOCK` provider 落库，历史 Mock Provider 进入 dry-run 风险复核。发布候选交付证据包已收敛为当前人工评审真源。2026-05-23 已完成 SA-015 前端场景复跑与证据边界更新、SA-002 验收脚本与应用 API 数据源口径统一、SA-002 验收数据命名空间与保留策略、SA-001 发布候选评审页、SA-002 数据质量复核队列、SA-001 发布候选收口报告和 Phase 2 清账项 | 按 `docs/execution-roadmap.md` 当前 HEAD 转向 SA-002 BranchCreationMode 执行计划评审门禁 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
+| 场景矩阵驱动推进 | 2026-05-24 已完成 SA-001 受控发布候选 dogfood/staging 验证：后端/真实 GitLab 全量验收 170 PASS / 0 FAIL / 0 SKIP，完整前端 E2E 49 PASS / 0 FAIL，关键页面组件 21 PASS / 0 FAIL，静态扫描通过；同日完成 SA-002 数据质量人工复核处置策略、受控处置执行审计设计、处置 case 最小实现、处置 case 页面验收、BranchCreationMode 独立迁移服务设计、proposal 评审门禁和最小 dry-run，并补齐产品仓库 Mock Provider 持久化边界：产品 UI/API 不再允许 `MOCK` provider 落库，历史 Mock Provider 进入 dry-run 风险复核。发布候选交付证据包已收敛为当前人工评审真源。2026-05-23 已完成 SA-015 前端场景复跑与证据边界更新、SA-002 验收脚本与应用 API 数据源口径统一、SA-002 验收数据命名空间与保留策略、SA-001 发布候选评审页、SA-002 数据质量复核队列、SA-001 发布候选收口报告和 Phase 2 清账项 | 按 `docs/execution-roadmap.md` 当前 HEAD 评审 SA-013 S2 范围；S2 及 SA-002 实施保留授权边界 | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
 | 前端用户旅程自动化验证 | 2026-05-24 完整 E2E 49/0/0：登录、分支规则、版本策略继承、Slice-1 分组/窗口、Slice-2 发布编排、冲突、失败版本更新、Run/窗口复核和版本更新请求契约均通过。既有 route-level stub 仍只作为前端观察证据，不替代后端/GitLab 强证据 | 后续保持回归 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
 
 ---
@@ -201,6 +223,7 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
+| P1 | SA-013 S2 范围评审 | S1 与类型门禁修复已完成，恢复执行风险仍留给后续切片 | 形成具体覆盖和验收清单；S2 未批准，不执行真实 Git 写入 |
 | P1 | SA-002 BranchCreationMode 执行计划评审门禁 | 最小 dry-run 已完成；下一步只能评审是否进入执行计划切片 | 评审 dry-run 输出是否足以支撑执行计划；未批准前不得实现执行 API、数据库写入、迁移表或 GitLab 操作 |
 
 ---

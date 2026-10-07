@@ -25,6 +25,8 @@ export default {
     groups: '分组设置'
   },
   common: {
+    formEditUnsupported: '当前表单不支持编辑',
+    formViewUnsupported: '当前表单不支持查看详情',
     search: '查询',
     reset: '重置',
     create: '新增',
@@ -849,6 +851,25 @@ export default {
       queueLoaded: '已载入 {count} 条动作',
       reviewComplete: '已复核 {count} 条动作'
     }
+  },
+  runPlan: {
+    plannedSteps: '预览步骤',
+    steps: { ENSURE_FEATURE: '检查 Feature 分支', ENSURE_RELEASE: '准备 Release 分支', ENSURE_MR: '核对合并条件', TRY_MERGE: '尝试合并' },
+    title: '已保存计划预览',
+    create: '保存当前范围预览',
+    recent: '最近 20 条预览',
+    empty: '暂无已保存预览，可保存当前范围后查询',
+    readOnlyNotice: '仅保存本地快照，未检查远端；不会合并、更新版本或触发 Git 操作，此预览不可直接执行。',
+    createdAt: '保存时间',
+    windowAtCreation: '保存时窗口',
+    order: '顺序',
+    repository: '仓库',
+    iteration: '迭代',
+    featureBranch: 'Feature 分支',
+    releaseBranch: 'Release 分支',
+    devVersion: '开发版本',
+    targetVersion: '目标版本',
+    status: '计划预览',
   },
   orchestration: {
     title: '发布编排',

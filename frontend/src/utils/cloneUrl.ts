@@ -7,7 +7,7 @@ export function isSupportedCloneUrl(value: string): boolean {
 
   const scpMatch = trimmed.match(SCP_LIKE)
   if (scpMatch) {
-    return hasRepoPath(scpMatch[2])
+    return hasRepoPath(scpMatch[2] ?? '')
   }
 
   try {

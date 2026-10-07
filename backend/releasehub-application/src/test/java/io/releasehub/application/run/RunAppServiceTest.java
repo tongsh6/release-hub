@@ -167,6 +167,77 @@ class RunAppServiceTest {
     }
 
     @Nested
+    @DisplayName("SA-013 当前中断窗口证据（恢复协议实现时替换为目标断言）")
+    class InterruptionEvidence {
+        @Test
+        void observesCreatedBranchWithoutSavedRunWhenNextReadFails() {
+            setupWindowAndIteration();
+            var remoteBranchCreated = new java.util.concurrent.atomic.AtomicBoolean();
+            when(gitBranchPort.getBranchStatus(any(), any(), eq(featureBranch)))
+                    .thenReturn(GitBranchPort.BranchStatus.present("source-sha"))
+                    .thenThrow(new IllegalStateException("INJECTED_READ_FAILURE_AFTER_CREATE"));
+            when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch)))
+                    .thenReturn(GitBranchPort.BranchStatus.missing());
+            when(gitBranchPort.createBranch(any(), any(), eq(releaseBranch), eq("main")))
+                    .thenAnswer(invocation -> { remoteBranchCreated.set(true); return true; });
+
+            assertThatThrownBy(() -> service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester"))
+                    .hasMessage("INJECTED_READ_FAILURE_AFTER_CREATE");
+            assertThat(remoteBranchCreated.get()).isTrue();
+            verify(runPort, never()).save(any());
+        }
+
+        @Test
+        void observesReplayAfterRemoteMergeSuccessWithLostResponse() {
+            setupWindowAndIteration();
+            when(gitBranchPort.getBranchStatus(any(), any(), any()))
+                    .thenReturn(GitBranchPort.BranchStatus.present("known-sha"));
+            var remoteMergeRequests = new java.util.concurrent.atomic.AtomicInteger();
+            when(gitBranchPort.mergeBranch(any(), any(), any(), any(), any())).thenAnswer(invocation -> {
+                remoteMergeRequests.incrementAndGet(); // 模拟远端已接收写入，但第一次响应丢失。
+                return remoteMergeRequests.get() == 1
+                        ? GitBranchPort.MergeResult.failed("INJECTED_RESPONSE_LOST_AFTER_REMOTE_SUCCESS")
+                        : GitBranchPort.MergeResult.success();
+            });
+            Run first = service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester");
+            assertThat(first.getItems().get(0).getFinalResult()).isEqualTo(RunItemResult.FAILED);
+            when(runPort.findById(first.getId().value())).thenReturn(Optional.of(first));
+            when(clock.instant()).thenReturn(now.plusMillis(1));
+
+            service.retry(first.getId().value(), List.of(windowKey + "::" + repoId + "::" + iterationKey), "tester");
+            assertThat(remoteMergeRequests.get()).isEqualTo(2);
+        }
+
+        @Test
+        void observesRemoteMergeBeforeRunPersistenceFailure() {
+            setupWindowAndIteration();
+            when(gitBranchPort.getBranchStatus(any(), any(), any()))
+                    .thenReturn(GitBranchPort.BranchStatus.present("known-sha"));
+            var remoteMerged = new java.util.concurrent.atomic.AtomicBoolean();
+            when(gitBranchPort.mergeBranch(any(), any(), any(), any(), any())).thenAnswer(invocation -> {
+                remoteMerged.set(true);
+                return GitBranchPort.MergeResult.success();
+            });
+            org.mockito.Mockito.doThrow(new IllegalStateException("INJECTED_PERSISTENCE_FAILURE"))
+                    .when(runPort).save(any());
+
+            assertThatThrownBy(() -> service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester"))
+                    .hasMessage("INJECTED_PERSISTENCE_FAILURE");
+            assertThat(remoteMerged.get()).isTrue();
+            verify(runPort).save(any());
+        }
+
+        @Test
+        void generatesIndependentIdentifiersAcrossRuns() {
+            Run first = Run.start(RunType.WINDOW_ORCHESTRATION, "first", now);
+            Run second = Run.start(RunType.WINDOW_ORCHESTRATION, "second", now);
+            assertThat(first.getId()).isNotEqualTo(second.getId());
+            assertThat(RunItem.create(windowKey, RepoId.of(repoId), IterationKey.of(iterationKey), 1, now).getId())
+                    .isNotEqualTo(RunItem.create(windowKey, RepoId.of(repoId), IterationKey.of(iterationKey), 1, now.plusSeconds(1)).getId());
+        }
+    }
+
+    @Nested
     @DisplayName("startOrchestrate 正常流程")
     class HappyPath {
 

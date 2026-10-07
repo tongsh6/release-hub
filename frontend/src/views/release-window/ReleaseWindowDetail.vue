@@ -365,9 +365,8 @@ const loadIterations = async (windowId: string) => {
     iterations.value = iterationDetails
     
     // 默认展开第一个迭代
-    if (iterationDetails.length > 0) {
-      expandedIterations.value = [iterationDetails[0].key]
-    }
+    const firstIteration = iterationDetails[0]
+    expandedIterations.value = firstIteration ? [firstIteration.key] : []
   } catch (err) {
     handleError(err)
   } finally {

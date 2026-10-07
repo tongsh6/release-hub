@@ -89,7 +89,7 @@ describe('BranchRuleList', () => {
     vm.rules.scopeProjectId[0].validator({}, '', callback)
 
     expect(callback).toHaveBeenCalledWith(expect.any(Error))
-    expect(callback.mock.calls[0][0].message).toBe('branchRule.scopeProjectRequired')
+    expect(callback).toHaveBeenCalledWith(new Error('branchRule.scopeProjectRequired'))
   })
 
   it('clears stale scope ids when scope level changes', async () => {
