@@ -21,7 +21,7 @@
 
 - **日期**：2026-11-21（更新）
 - **关键词**：`Run`、`中断恢复`、`幂等`、`RunItemId`、`UNKNOWN`、`事务`、`租约`、`历史隔离`、`MapsId`、`schema`、`persist`、`checkMergeability`、`归档`、`隐藏写入`
-- **摘要**：S3-A/B1 通过组合反例校正 HTTP APPLIED/业务 UNKNOWN 的会话收口，最终写 URI 固定 numeric project ID，文件 CAS 保留原 revision；独立提交树验收与真实 Spring/HTTP/PG 证据不能被局部绿色替代。
+- **摘要**：S3-A/B1 校正 APPLIED/UNKNOWN、numeric 项目身份与原 revision；B2 用仓库级一次受理、共享窗口锁及在途执行屏障封闭关闭竞态，Tag/CI/核对共享精确证据，nullable 契约贯穿存储、OpenAPI 与实际客户端。
 - **文档**：[lessons/run-recovery-identity-and-boundaries.md](lessons/run-recovery-identity-and-boundaries.md)
 
 ### pnpm 与 CI 版本统一来源

@@ -60,3 +60,16 @@
 - 导出的独立提交验证树放在已核实忽略的 `.ai/reports/validation/`，保持源工作区与 index 不变；提交前比对候选 tree、精确路径和工作区内容，不能把全工作区绿色当作部分提交可编译的证据。
 
 证据：`tasks/records/2026-11-21-sa-013-orchestration-consistency.md`。当前仍无 worker/resume 或本轮真实 GitLab 硬中断验收。
+
+## S3-B2 仓库级收尾与生命周期竞态（2026-11-21）
+
+- 领域 close 的幂等不等于外部副作用幂等。CLOSED、Run、不可变计划须在同一短事务提交；重复请求只读原 receipt，不能用当前绑定重建收尾。计划指纹按 snapshot itemId 匹配来源数据，不能依赖 JPA 集合的物理读序。
+- 关闭窗口的行锁必须与 Attach/Detach、Publish、Freeze/Unfreeze、Delete、Orchestrate/retry 受理共同使用。只串行 close 仍会出现“编排已受理但尚未合并，先关闭并发布旧 release”的竞态；已受理 RUNNING/NEEDS_REVIEW 意图应阻断首次 close，PLANNED 预览不能误阻断。
+- 收尾按 (window, repository) 承责；用 null iterationKey 和真实参与者集合表达仓库级身份。必须核查 JPA、列表、详情、CSV/Markdown、VersionOps、OpenAPI、生成类型和组件的实际消费者，不能借第一个迭代或假迭代名掩盖范围。
+- Tag 使用确认的 mergeSha，不猜默认分支 tip；Pipeline 的 APPLIED 需要 project/id/ref/SHA/url。相同 ref 不是相同执行，恢复读取也必须共享身份判定；不同大小写 SHA 判据不能一端放行、另一端再报 UNKNOWN。GitLab Pipeline API 不提供 expected SHA 原子创建条件，响应不匹配时保留未知结果，不宣称完全避免远端副作用。
+- 检查点保存错误必须在 Git 异常转换之外传播，后继 Tag/CI 零派发。单个窗口不关闭共享全局 Iteration，不创建 archive copy 或删除原分支；明确记录 RETAIN。
+- 测试应按权威计划识别实际 Item。同批 attachAt 相同时由稳定迭代键决定顺序，随机键的创建顺序不等于计划顺序；mock、重试选择和精确次数断言必须使用同一真实身份。
+- Mockito 测试不能代替实际模拟适配器的契约验证。InMemory 是 test profile 的实际实现，必须给出合法且内部一致的合成提交和 MR 证据；不能为让替身通过而放宽真实写入验证。
+- 生成的 OpenAPI 类型也是真实消费者。2.6.0 与 Boot 3.4.1 的 ABI 不匹配，2.8.17 又触发旧 Spring 的 PathPattern 缺陷；本轮实测锁定 2.8.14，不隐藏 Advice 或改变 MVC 匹配。OpenAPI 3.1 用 type union 表达 null，生成物由当前接口描述得到，不手工补另一份类型事实。
+
+依赖定位依据：[springdoc 兼容表](https://springdoc.org/v2/)、[上游路径匹配问题 #3210](https://github.com/springdoc/springdoc-openapi/issues/3210)。实际 RED/GREEN、隔离 PostgreSQL/API 和前端结果见本轮任务记录。C1/C2 恢复执行仍单独验收，现有 run_task 表和只读 observation 不能证明 worker/resume 已存在。

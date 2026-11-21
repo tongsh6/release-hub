@@ -1,6 +1,6 @@
 # 窗口配置与收尾规范增量
 
-Attach/Detach 与 Publish 的 MANUAL 边界属于本轮 S3-A/B1。下述仓库级收尾持久受理和异步恢复是 B2/S4 目标；现有 Close 尚未满足全部场景，不能将 CLOSED 当作收尾成功。
+Attach/Detach 与 Publish 的 MANUAL 边界属于 S3-A/B1；仓库级收尾持久受理属于 S3-B2。后台异步恢复仍属于 S3-C/S4，CLOSED 只表达业务生命周期，不能当作收尾成功。
 
 ## ADDED Requirements
 
@@ -43,13 +43,13 @@ Attach/Detach 与 Publish 的 MANUAL 边界属于本轮 S3-A/B1。下述仓库�
 
 #### Scenario: 任务按顺序执行
 - **GIVEN** 一个包含收尾任务的 Run
-- **WHEN** 调度器执行计划
-- **THEN** 仅在前置任务已确认完成后派发后继任务
-- **AND** task_order 和依赖记录与实际执行一致
+- **WHEN** 首次受理者执行封存计划
+- **THEN** 仅在前置步骤已确认完成后派发后继步骤
+- **AND** plannedOrder、executedOrder 和步骤记录与实际执行一致
 
 #### Scenario: 确认失败停止后继任务
 - **GIVEN** 收尾任务确认失败且不再允许重试
-- **WHEN** 调度器处理结果
+- **WHEN** 执行器处理结果
 - **THEN** 不继续派发依赖该任务的步骤
 - **AND** Run 记录失败及未执行原因；若仍有未知副作用则优先进入恢复或待复核状态
 
@@ -68,3 +68,27 @@ Attach/Detach 与 Publish 的 MANUAL 边界属于本轮 S3-A/B1。下述仓库�
 - **WHEN** 触发 pipeline 的请求可能已被接收但响应丢失
 - **THEN** 系统按操作关联标识和外部证据核对
 - **AND** 不能确认唯一结果时进入人工复核，不自动重复触发
+
+#### Scenario: 重复与并发关闭
+- **WHEN** 多个操作者以同一 CI 选择关闭同一窗口
+- **THEN** 同一窗口行锁内只受理一个 Run/计划，后续请求返回原 Run 和原操作者
+- **AND** 首个 Git 调用前 CLOSED/Run/计划已经提交；第二请求不等待远端步骤完成
+- **AND** 改变 CI 选择返回冲突；CLOSED 缺完整计划拒绝重新派发
+
+#### Scenario: CI 默认关闭与精确证据
+- **WHEN** close 请求省略 triggerCi 或明确 false
+- **THEN** TRIGGER_CI 为 SKIPPED，没有 pipeline POST
+- **WHEN** 用户明确选择 true
+- **THEN** 受理要求明确稳定 Tag，写响应必须匹配 project/id/ref/SHA/url
+- **AND** CI_TRIGGERED 不代表流水线执行通过，UNKNOWN 不解释成未配置 CI
+
+#### Scenario: 只读恢复不能误认相似结果
+- **WHEN** 已知 pipeline ID 的远端响应只有相同 ref、SHA 或项目却不匹配
+- **THEN** 不得判定 FOUND，也不得解除未知写入保护
+- **AND** Tag 名称和 SHA 均须精确匹配；缺少核对身份不通过列表搜索猜测
+
+#### Scenario: 在途编排与关闭互斥
+- **GIVEN** 窗口已有受理并持久化的 RUNNING 或 NEEDS_REVIEW 编排
+- **WHEN** 用户首次关闭窗口
+- **THEN** 在同一窗口锁内拒绝关闭，不创建收尾 Run、不写 Git
+- **AND** PLANNED 预览不阻断；若关闭已先完成受理，后来的 Orchestrate/retry 必须拒绝

@@ -10,7 +10,9 @@
 
 ## 1. 当前阶段目标
 
-2026-11-21：用户已授权持续研发、必要重构和分阶段推送，项目仍在研发阶段。分支已收敛到相同的 main/develop（`d4534cc`），既有改动原样恢复到新 `feature/orchestration-consistency`。S3-A/B1 已通过代码、真实存储与接口、前端门禁和静态扫描，并按 53eed67 / a4007f2 / 71a1487 分阶段推送；当前 HEAD 为 B2 收尾安全：Attach/Detach/Publish 已改为纯配置，Orchestrate 复用持久计划、MR-first 和现有写入账本，统一 Run 状态与精确 Item ID 重试；写入保护默认开启，关闭开关只暂停真实写入。常规后端 486 PASS/5 既有 SKIP，数据库/API 阶段 53 PASS，前端 132 PASS；补充两个组合缺陷反例后，最终 C1 独立提交树 194 PASS、六模块 SpotBugs 0；不宣称已实现后台恢复、自动 resume 或本轮真实 GitLab/UI 全旅程。蓝图及当前完成边界见 `docs/openspec/changes/add-durable-run-recovery/design.md`、`tasks.md`。
+2026-11-21：用户已授权持续研发、必要重构和分阶段推送，项目仍在研发阶段。main/develop 已收敛到共同基线 `d4534cc`，研发位于 `feature/orchestration-consistency`。S3-A/B1 与 **S3-B2 已完成并分阶段推送**；B2 后端提交 `e127023d18b8d03b4756b2daaadf9e8674638dc1`，前端提交 `5ad0666e2dfd40ddf0da69b737f1a9ca8ddc02ac`。当前唯一队首为 **S3-C1 持久四动作与安全中断**，S3-C2 同一执行器的后台驱动、核对与恢复处于后续队列。
+
+当前已交付纯配置 Attach/Detach/Publish、显式 MR-first 编排、统一 Run 状态与精确 Item ID 重试，以及按仓库一次受理的安全收尾。普通后端 54 类 613 项（608 PASS、5 既有 SKIP），六类数据库/API/本地 HTTP fixture 70/70，前端 38 文件 149/149；typecheck、i18n、lint、build 通过，最终静态扫描 SpotBugs 0、lint 0 errors/8 个既有 warning。B2 不提供后台 worker 或自动 resume；本轮未重跑真实 GitLab/UI 全旅程或独立进程硬中断。蓝图和验收边界见 `docs/openspec/changes/add-durable-run-recovery/design.md`、`tasks.md`。
 
 ### 2026-10-08 历史 S2 验收记录
 
@@ -49,7 +51,13 @@
 
 ## 2. 已完成事项
 
-2026-11-21：S3-A/B1 已验收并分阶段推送。Attach/Detach/Publish 不写 Git；Orchestrate 先封存权威范围，MR-first 与文件原 revision 贯穿真实写出口，UNKNOWN 保留仓库 guard，最终 URI 固定 numeric project ID；Run 状态和 Item 精确重试已统一到 API/UI。C1 59 路径独立 clean 验证，另有 H2/PostgreSQL V36→V37 混合数据迁移与 OSIV=false 读取验证。C1/C2 提交和扫描证据见本轮任务记录。B2 收尾、worker/resume、真实 GitLab/UI 全旅程及硬中断未完成。
+2026-11-21：S3-A/B1 与 S3-B2 已验收并推送。Attach/Detach/Publish 不写 Git；Orchestrate 封存权威范围，MR-first、原 revision 与数字 project ID 贯穿真实写出口，UNKNOWN 保留仓库 guard。Run 对外状态统一为 PLANNED/RUNNING/DONE/PARTIAL_FAILED/FAILED/NEEDS_REVIEW，重试使用实际 Item ID。
+
+B2 close 在窗口行锁保护的短事务中一起提交 CLOSED、WINDOW_CLEANUP Run 和不可变计划，之后才执行 Git。按 `(window, repository)` 生成 Item，`iterationKey=null`，`participatingIterationKeys` 保存真实参与者；重复或并发相同选择返回原 Run，改变 `triggerCi` 返回冲突。在途 RUNNING/NEEDS_REVIEW 编排阻止首次收尾，PLANNED 预览不阻止；生命周期写入和编排受理共用窗口锁。
+
+收尾确认真实 release/MR 合并证据后，Tag 指向准确 mergeSha；`triggerCi` 默认 false，显式开启才使用计划 Tag/ref 触发 CI，实际请求与响应以执行后确认的 MR mergeSha 校验，失败或 UNKNOWN 不派发后继写。feature/release 和共享 Iteration 保留，`cleanup.referencePolicy=RETAIN` 明确记录；不自动归档、删除或关闭 Iteration。API/UI/报告已迁移仓库级身份，普通 cleanup retry 继续禁止。V38 放宽仓库级 Item 的 iteration_key 非空约束；普通集成三元组仍由领域约束，不补造历史执行事实。
+
+B2 前的 A/B1 历史验收基线保留：普通后端 486 PASS/5 既有 SKIP、数据库/API 53 PASS、前端 132 PASS；提交前独立 Git 基础树 194 PASS，另有 H2/PostgreSQL V36→V37 混合数据迁移及 OSIV=false 读取验证。该旧提交分组不代表后续 S3-C1/C2 恢复能力已实现。
 
 2026-10-08：S2-A 至 S2-D 实施收口。V35 无历史回填；未知结果和业务回滚保留不随时间或核对成功解除，受控模式下 GitHub 写、自动删除和本地文件回退拒绝。专用测试库保留 1 条未结束 guard 作为真实负向证据，未清库绕过。详见 S2 实施记录。
 
@@ -64,6 +72,8 @@
 2026-10-05：SA-004 生产默认启用 AES-GCM 和只读存量密文校验，仓库与 Settings Token 在重启、SQL 备份恢复后仍可用于连接；无标识旧凭据未迁移，密钥未轮换。
 
 2026-10-05：SA-017 已完成。生产空用户表使用显式凭据创建管理员，支持并发保护和重复启动；已有账户不改动。修复 Compose PostgreSQL 18.1 挂载路径，验证重建后数据保留。
+
+以下功能表保留带日期的历史证据；历史 GitLab/Playwright 通过只代表当时实现。涉及当前 Attach、Run 状态和收尾的事实以 2026-11-21 条目为准，不能用历史自动归档、CI_NOT_CONFIGURED 或旧状态名证明 B2 行为。
 
 | 事项 | 状态 | 证据路径 | 验证方式 | 备注 |
 |---|---|---|---|---|
@@ -101,7 +111,7 @@
 | SA-005 版本解析失败修复引导 | 已实现 | `repositoryApi.syncInitialVersion` + `RepositoryDetail.vue` | Vitest + typecheck/i18n | 详情页在初始版本为空或 `VERSION_UNRESOLVED` 时提供重新解析入口，成功后页面内刷新版本号和来源 |
 | SA-005 仓库组织筛选 | 已实现 | `CodeRepositoryAppService.searchPaged(keyword, groupCode, ...)` + `RepositoryList.vue` | 应用单测 + E2E + Vitest + typecheck/i18n | 仓库列表可选择任意组织节点筛选；选择父组织时包含所有子组织仓库 |
 | SA-005 删除保护扩展 | 已实现 | `CodeRepositoryAppService.delete` + `GroupAppService.deleteByCode/deleteById` + `deleteProtectionMessageKey` | 应用层单测 + Vitest + typecheck/i18n | 仓库被迭代引用时拒绝删除；分组有子分组或被仓库/迭代/发布窗口引用时拒绝删除；前端展示明确阻断提示 |
-| Publish 默认手动执行 | 已重构，联调验收中 | `ReleaseWindowAppService.publish` | 发布零 Run 触发目标单测 | 已删除自动编排 listener/event；配置状态变更不隐式写 Git |
+| Publish 配置边界 | 已验证 | `ReleaseWindowAppService.publish` | 零 Git/零 Run 目标单测及全后端回归 | 已删除自动编排 listener/event；发布仅改变生命周期，集成由显式 Orchestrate 触发 |
 | 验收脚本 v3.2（含 ensure-settings + token 刷新 + 冲突识别） | 已实现 | commit `9eb5444` + `68381b1` + 本会话 | acc-v0.1.11 第 3 轮 25/26 PASS | 闭环 |
 | GitLabGitBranchAdapter URL 双重 encode 修复 | 已实现 | 本会话（uri(...) 包装 + ENC 测试同步） | acc-v0.1.11 终轮 release 分支 3/3、listBranches 18 个 | 闭环 |
 | 场景化验收矩阵基线 | 已验证 | `docs/reports/scenario-acceptance-matrix.md` + `scripts/acceptance/run-acceptance.sh` | 2026-05-21 真实 GitLab 证据复核 | PASS=159 / FAIL=0 / SKIP=0；SA-010 detach 后 release 分支归档真实 GitLab 强证据已补；SA-011 六类风险后端/GitLab 强证据已补；SA-014 Maven 多模块/Gradle 真实写回和批量多仓部分失败证据已补；SA-015/SA-016 真实部分失败重试强证据已补 |
@@ -115,14 +125,15 @@
 | SA-003 code 自动生成当前证据 | 已验证 | `GroupAppServiceValidationTest` + `frontend/e2e/tests/slice-1-group-window.spec.ts` | 应用层单测 + Slice-1 Playwright | code 缺省或空白时，顶层分组按三位数字递增，子分组继承父 code 并追加三位序号；页面创建顶层/子分组留空 code 后可在组织树复核生成值 |
 | 本地环境统一启停脚本 | 已验证 | `scripts/dev/start-local-env.sh` | 2026-05-15 真实前后端联调 | `start|hold|stop|restart|status` 可用；`hold` 托管前后端；前端 `/api` 代理登录 200 |
 | 开源单机源码部署包 | 已实现 | `deploy/compose/docker-compose.yml` + `backend/Dockerfile.prod` + `frontend/Dockerfile.prod` + `docs/deploy/docker-compose.md` | compose 配置校验 + 脚本语法检查 | 面向开源用户的 canonical 部署入口：单台 Docker 主机源码构建前后端，内置 PostgreSQL，外部 GitLab 通过 Settings 配置；提供备份、恢复、升级和健康检查脚本 |
-| SA-016 发布后收尾闭环 | 已验证 | `scripts/acceptance/run-acceptance.sh` + `frontend/e2e/tests/slice-1-group-window.spec.ts` | 2026-05-15 真实 GitLab 证据复核 + 外部 Playwright 页面旅程 | 关闭窗口、重复关闭幂等、关闭后挂载/版本更新拒绝、收尾 Run 可见、前端 CLOSED 窗口隐藏挂载入口 |
+| SA-016 仓库级安全收尾（2026-11-21） | B2 已验收并推送 | `RunPlanAppService.admitCleanup`、`RunAppService`、`RunPlanApiIT` | 真实事务/PostgreSQL/API、本地 HTTP fixture、组件测试 | 同仓一次受理；原 Run 幂等回执；精确 Tag、显式 CI；生命周期锁及在途编排屏障；普通 cleanup retry 禁止 |
+| SA-016 发布后收尾历史闭环 | 历史验证（2026-05-15） | `scripts/acceptance/run-acceptance.sh` + `frontend/e2e/tests/slice-1-group-window.spec.ts` | 当时的真实 GitLab 证据复核 + 外部 Playwright | 保留关闭、重复关闭和页面可见性证据；不作为 B2 仓库级 receipt、Tag/CI 或共享引用保护的本轮验收 |
 | SA-016 发布窗口报告导出 | 已实现 | `ReleaseWindowReportController` + `ExportAppService` + `ReleaseWindowDetail.vue` | MockMvc + Vitest + typecheck/i18n | 窗口维度 JSON/CSV 汇总 window、Run、RunItem、RunStep、结果分布；详情页可导出 CSV 报告 |
 | SA-016 发布报告制品包归档 | 已实现 | `ReleaseWindowReportController` + `ReleaseWindowDetail.vue` | MockMvc + Vitest | 发布窗口可下载 `release-window-<windowKey>-evidence.zip`，包内固定包含 manifest、JSON、CSV、Markdown 四个证据文件；详情页导出菜单提供制品包入口 |
-| SA-016 CI pipeline 触发状态 | 已验证 | `RunAppService.executeCleanup` | 后端单测 | 收尾 Run 区分 `CI_TRIGGERED` 和 `CI_NOT_CONFIGURED`；未配置 CI 时 RunItem finalResult 不伪装为 `SUCCESS` |
-| SA-016 关闭后 GitLab 收尾证据 | 已验证 | `RunAppService.executeCleanup` + `scripts/acceptance/run-acceptance.sh` | 应用层单测 + 真实 GitLab 验收脚本 | 关闭后 release 合并到默认分支、tag 创建、feature/release 分支归档均可按 `windowKey/iterationKey/repoId` 复核；2026-05-23 全量验收 `PASS=169 / FAIL=0 / SKIP=0` |
+| SA-016 显式 CI 及精确证据 | B2 已验证 | `GitBranchPort`、`GitLabGitBranchAdapter`、`RunAppService.executeCleanup` | typed adapter 单测 + HTTP/PG 组合测试 + API/组件 | `triggerCi=false` 默认 SKIPPED；显式 true 要求稳定 Tag，成功核实 project/id/ref/SHA/url；CI_TRIGGERED 只表示已触发，UNKNOWN 保留 guard |
+| SA-016 关闭后 GitLab 收尾历史证据 | 历史验证（2026-05-23） | 当时的 `run-acceptance.sh` / 任务记录 | 当时的真实 GitLab 验收 `169 PASS / 0 FAIL / 0 SKIP` | 旧归档和按迭代收尾语义仅作历史；B2 保留 feature/release 与 Iteration，本轮未重跑真实 GitLab |
 | SA-010 解除挂载外部 Playwright 页面复核 | 已验证 | `frontend/e2e/tests/slice-1-group-window.spec.ts` | 2026-05-19 Slice-1 Playwright | UI 创建迭代、挂载到窗口、详情页解除挂载、`detach` 请求成功、关联列表为空和发布计划隐藏 |
-| SA-010 解除挂载 GitLab 分支归档复核 | 已验证 | `scripts/acceptance/run-acceptance.sh` 4.2 | 2026-05-20 真实 GitLab 证据复核 | 独立窗口/迭代 attach 后 `release/<windowKey>` 存在；detach 后 `WindowIteration` 为空、原 release 分支删除、`archive/unpublished/release-<windowKey>` 存在 |
-| SA-010 同分组挂载范围约束 | 已验证 | `AttachAppService` + `AttachIterationsDialog.vue` | 后端单测 + typecheck/i18n + 静态扫描 | 跨分组迭代在写入关联、创建 release 分支和保存 Run 前被 `RW_013` 拒绝；前端挂载弹窗禁选非同分组行 |
+| SA-010 解除挂载 GitLab 分支归档历史证据 | 历史验证（2026-05-20） | 当时的 `run-acceptance.sh` 4.2 | 当时的真实 GitLab 证据复核 | 旧 detach 归档行为已经删除；当前 Attach/Detach 只维护绑定，不创建、归档或删除分支 |
+| SA-010 同分组挂载范围约束 | 已验证 | `AttachAppService` + `AttachIterationsDialog.vue` | 后端单测 + API/组件 + 静态扫描 | 跨分组迭代完整预校验后拒绝，零绑定写入；配置操作零 Git、零执行 Run；前端禁选非同分组行 |
 | SA-010 发布后发布计划变更锁定 | 已验证 | `AttachAppService` + `ReleaseWindowDetail.vue` | 后端单测 + Vitest | PUBLISHED/CLOSED 窗口 attach/detach 均被 `RW_009` 拒绝；详情页发布后隐藏挂载和解除挂载入口 |
 | SA-012 REPO_AHEAD 接受仓库版本 | 已验证 | `IterationAppService.resolveVersionConflict` + `ConflictPanel.vue` + `ReleaseWindowDetail.vue` | 后端单测 + Vitest + typecheck/i18n | 仓库版本较新可提交 `USE_REPO`，后端更新系统版本并标记来源 `REPO`，前端显示“接受仓库版本” |
 | SA-014 批量版本更新前端入口 | 已验证 | `VersionUpdateDialog.vue` + `releaseWindowApi` | Vitest + typecheck/i18n | 多仓窗口可切换到批量范围，按窗口关联仓库提交既有批量版本更新端点 |
@@ -136,6 +147,20 @@
 ---
 
 ## 3. 已验证事项
+
+### 2026-11-21 B2 最终验证
+
+| 验证边界 | 结果 | 证据 |
+|---|---|---|
+| 普通后端回归 | 54 类 613 项：608 PASS、5 既有 SKIP，0 FAIL/ERROR | `.ai/reports/validation/b2-backend-final.log` |
+| 六类数据库/API/本地 HTTP fixture | 70/70 PASS；包括 H2/PostgreSQL V37/V38、真实事务受理/并发、严格 HTTP 写入证据 | `.ai/reports/validation/b2-api-final.log` |
+| 前端组件与类型/构建 | 38 文件 149/149；typecheck、i18n:lint、lint、build 通过 | `.ai/reports/validation/b2-frontend-final.log` |
+| OpenAPI 与生成类型 | springdoc 2.8.14 实际 API 200；OpenAPI 3.1 可空字段、可选 close body 和 Run 响应已断言；99 paths/171 schemas 同步真实消费者 | `.ai/reports/validation/b2-openapi-green.log` |
+| 最终静态扫描 | SpotBugs 0；lint 0 errors/8 个既有 fixture warning，新增 warning 已清零 | `.ai/reports/static-scan/20261121-153304/summary.md` |
+
+E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做语法验证；本轮未运行完整 Playwright、真实 GitLab 收尾、独立进程 kill/restart 或 worker/resume。各轮定向测试与全量结果不累加。
+
+### 历史验证记录
 
 2026-10-08 SA-018：真实类型检查覆盖应用与全部工具配置；Vue/配置故障注入阻断，清理后通过。107 项前端单测、消费端与提供端 Pact 各 6 项、生产构建、i18n 通过；静态扫描无错误、8 条既有 lint warning。记录及报告见 `tasks/records/2026-10-08-sa-018-real-typecheck.md`。
 
@@ -193,7 +218,7 @@
 | SA-011 版本领先风险前端观察 | `pnpm exec playwright test e2e/tests/slice-2-full-flow.spec.ts` | `docs/reports/scenario-acceptance-matrix.md` | **22 PASS / 0 FAIL / 0 SKIP**；新增 `REPO_AHEAD` / `SYSTEM_AHEAD` 详情观察和同步请求语义断言 |
 | SA-016 发布窗口报告导出 | `mvn -pl releasehub-bootstrap -am -Dtest=WindowRunApiTest -Dsurefire.failIfNoSpecifiedTests=false test` + `pnpm exec vitest run src/views/release-window/__tests__/ReleaseWindowDetail.spec.ts` + `pnpm run typecheck` + `pnpm i18n:lint` | `tasks/records/2026-05-17-sa-016-release-report-export.md` | 后端 JSON/CSV 报告导出和前端详情页 CSV 导出入口通过 |
 | SA-016 发布报告制品包归档 | `mvn -pl releasehub-bootstrap -am -Dtest=WindowRunApiTest -Dsurefire.failIfNoSpecifiedTests=false test` + `pnpm exec vitest run src/views/release-window/__tests__/ReleaseWindowDetail.spec.ts` + `pnpm run typecheck` + `pnpm i18n:lint` + 静态扫描 | `tasks/records/2026-05-23-sa-016-report-artifact-package.md` | 后端 **1 PASS / 0 FAIL / 0 SKIP**；前端 **8 PASS / 0 FAIL / 0 SKIP**；ZIP 包内 manifest、JSON、CSV、Markdown 可解包复核；静态扫描报告 `.ai/reports/static-scan/20260523-134733/summary.md` |
-| SA-016 CI pipeline 触发状态 | `mvn -pl releasehub-application -am -Dtest=RunAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test` | `tasks/records/2026-05-21-sa-016-ci-trigger-status.md` | 后端 **12 PASS / 0 FAIL / 0 SKIP**；`CI_TRIGGERED` 保留 pipeline id，`CI_NOT_CONFIGURED` 不伪装成 `SUCCESS` |
+| SA-016 CI pipeline 触发状态（2026-05-21 历史） | `mvn -pl releasehub-application -am -Dtest=RunAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test` | `tasks/records/2026-05-21-sa-016-ci-trigger-status.md` | 后端 **12 PASS / 0 FAIL / 0 SKIP**；当时的 `CI_TRIGGERED` 保留 pipeline id，`CI_NOT_CONFIGURED` 不伪装成 `SUCCESS` |
 | SA-016 关闭后 GitLab 收尾证据 | `mvn -pl releasehub-application -am -Dtest=RunAppServiceTest,IterationAppServiceTest -Dsurefire.failIfNoSpecifiedTests=false test` + `bash -n scripts/acceptance/run-acceptance.sh` + `bash scripts/acceptance/run-acceptance.sh` + 静态扫描 | `tasks/records/2026-05-23-sa-016-close-gitlab-evidence.md` | 后端 **37 PASS / 0 FAIL / 0 SKIP**；真实 GitLab 验收 **169 PASS / 0 FAIL / 0 SKIP**；关闭后真实 GitLab merge/tag/archive 复核通过，SA-011 Git 访问异常探针不再因 setup 外部 I/O 异常 500；静态扫描报告 `.ai/reports/static-scan/20260523-150144/summary.md` |
 | SA-016 种子分支清理执行保护 | `bash -n scripts/e2e/reset-gitlab-seed-branches.sh` + `scripts/e2e/reset-gitlab-seed-branches.sh --report-dir .ai/reports/gitlab-seed-branch-reset/sa016-dry-run-before` + `scripts/e2e/reset-gitlab-seed-branches.sh --execute --report-dir .ai/reports/gitlab-seed-branch-reset/sa016-execute` + `scripts/e2e/reset-gitlab-seed-branches.sh --execute --report-dir .ai/reports/gitlab-seed-branch-reset/sa016-execute-repeat` + 静态扫描 | `tasks/records/2026-05-23-sa-016-seed-branch-cleanup-evidence.md` | dry-run 候选 **799**；execute 删除 **799** 且 `POST_REMOVED=799`；repeat execute 删除 **0**；7 个 seed branch 全程保留，JSONL 按行合法；静态扫描报告 `.ai/reports/static-scan/20260523-154248/summary.md` |
 | URL 双重 encode 修复连带 release 分支创建 | 同上场景 4 | 同上 | 1/3 → **3/3** |
@@ -210,8 +235,8 @@
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| 场景矩阵驱动推进 | 2026-05-24 已完成 SA-001 受控发布候选 dogfood/staging 验证：后端/真实 GitLab 全量验收 170 PASS / 0 FAIL / 0 SKIP，完整前端 E2E 49 PASS / 0 FAIL，关键页面组件 21 PASS / 0 FAIL，静态扫描通过；同日完成 SA-002 数据质量人工复核处置策略、受控处置执行审计设计、处置 case 最小实现、处置 case 页面验收、BranchCreationMode 独立迁移服务设计、proposal 评审门禁和最小 dry-run，并补齐产品仓库 Mock Provider 持久化边界：产品 UI/API 不再允许 `MOCK` provider 落库，历史 Mock Provider 进入 dry-run 风险复核。发布候选交付证据包已收敛为当前人工评审真源。2026-05-23 已完成 SA-015 前端场景复跑与证据边界更新、SA-002 验收脚本与应用 API 数据源口径统一、SA-002 验收数据命名空间与保留策略、SA-001 发布候选评审页、SA-002 数据质量复核队列、SA-001 发布候选收口报告和 Phase 2 清账项 | 按 `docs/execution-roadmap.md` 当前 HEAD 完成 SA-013 S3-A/B1 验收与分阶段推送；再接 B2、C | 每个场景都同时具备前端用户旅程、后端业务约束、真实 GitLab/数据证据，并在矩阵中更新状态 |
-| 前端用户旅程自动化验证 | 2026-05-24 完整 E2E 49/0/0：登录、分支规则、版本策略继承、Slice-1 分组/窗口、Slice-2 发布编排、冲突、失败版本更新、Run/窗口复核和版本更新请求契约均通过。既有 route-level stub 仍只作为前端观察证据，不替代后端/GitLab 强证据 | 后续保持回归 | Playwright 能从前端完成关键动作、观察结果，并与后端/GitLab 强证据形成闭环 |
+| S3-C1 持久四动作与安全中断 | A/B1、B2 已提交推送；C1 处于窄契约约定，尚未实现 | 按唯一 HEAD 复用 Run/Item/Step、run_task、计划和账本，形成请求线程消费持久任务的唯一执行路径 | 请求幂等、MR 分段 checkpoint、task 结果 CAS 与 Item/Step/Run/绑定/guard 同事务；真实进程中断后可查原 receipt 且安全停住，不交付 worker/resume |
+| 前端用户旅程自动化验证 | 2026-05-24 的完整 E2E 49/0/0 为历史；本轮组件 149 PASS 与 E2E fixture 编译不等于页面旅程 | 按后续受控验收范围补真实 GitLab/UI 全旅程；S3-C2 才接同一执行器的后台驱动和恢复 | 页面创建/变更业务数据，API/数据库/GitLab 只作后置复核；stub 不替代真实写入证据 |
 
 ---
 
@@ -233,8 +258,9 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| P1 | SA-013/SA-016 S3-B2 收尾安全 | 当前收尾按迭代重复仓库动作、失败后仍写、共享迭代提前关闭、重复 close 不幂等 | 仓库级一次持久受理，明确 SHA，失败/UNKNOWN 零后继写，保留共享引用；后接 C 恢复执行 |
-| P1 | SA-002 BranchCreationMode 执行计划评审门禁 | 最小 dry-run 已完成；下一步只能评审是否进入执行计划切片 | 评审 dry-run 输出是否足以支撑执行计划；未批准前不得实现执行 API、数据库写入、迁移表或 GitLab 操作 |
+| HEAD | SA-013 S3-C1 持久四动作与安全中断 | B2 安全收尾已完成；唯一编排路径仍需持久任务和分段提交才能安全处理中断 | 复用现有协议完成幂等受理、请求线程消费 task、MR checkpoint、结果 CAS 与 guard 原子提交；独立进程 kill 后安全停住，不宣称自动恢复 |
+| 后续 | SA-013 S3-C2 同一执行器的后台驱动、核对与恢复 | 依赖 C1，不新建第二条执行路径 | 有界 worker、202/轮询、持久扫描、租约接管及精确证据驱动 resume，分别保留故障反例 |
+| 后续 | SA-002 BranchCreationMode 执行计划评审门禁 | 原队列保留，最小 dry-run 已完成 | 评审是否进入执行计划切片；未批准前不实现执行 API、数据库写入、迁移表或 GitLab 操作 |
 
 ---
 
@@ -242,10 +268,10 @@
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 当前研发交付 | `tasks/records/2026-11-21-sa-013-orchestration-consistency.md` | 分支收敛、C1/C2 分阶段推送、目标测试与真实 HTTP/PG 组合反例；不含本轮完整 GitLab/UI 旅程 |
-| 当前静态扫描 | `.ai/reports/static-scan/20261121-140308/summary.md`、`.ai/reports/static-scan/20261121-c1-cf918c64/summary.md` | TopN 已处理并复扫：后端 0 bugs；前端 0 errors/8 既有测试 fixture warnings 保留并说明 |
-| 场景矩阵 | `docs/reports/scenario-acceptance-matrix.md` | 当前 B2 收尾缺口与后续真实旅程验收，历史结果保留但不替代本轮证据 |
-| 发布候选收口报告 | `docs/reports/release-candidate-2026-05-23.md` | 当前分支已通过受控候选验证，交付证据包已汇总全量验收、前端 E2E、关键组件、SA-002 处置 case 页面验收和静态扫描；仍为 dogfood/staging 候选 |
+| 当前研发交付 | `tasks/records/2026-11-21-sa-013-orchestration-consistency.md` | A/B1 与 B2 已推送；B2 后端 e127023、前端 5ad0666；S3-C1 为下一队首，C2 后续；不含本轮完整 GitLab/UI 旅程 |
+| 当前静态扫描 | `.ai/reports/static-scan/20261121-153304/summary.md` | B2 最终 TopN 处理并复扫：SpotBugs 0，lint 0 errors/8 既有 fixture warnings；本轮新增 warning 已清零 |
+| 场景矩阵 | `docs/reports/scenario-acceptance-matrix.md` | B2 已完成的代码/数据库/API/组件边界与 S3-C1/C2 队列；历史结果不替代新行为的真实旅程 |
+| 发布候选收口报告 | `docs/reports/release-candidate-2026-05-23.md` | 2026-05-24 当时分支已通过受控候选验证，交付证据包已汇总全量验收、前端 E2E、关键组件、SA-002 处置 case 页面验收和静态扫描；仍为 dogfood/staging 候选 |
 | 发布候选评审页 | `frontend/src/views/release-governance/ReleaseCandidateReview.vue` + `GET /api/v1/release-governance/candidate-review` + `POST /api/v1/release-governance/candidate-review/signoffs` | 聚合候选结论、验收证据、风险边界、检查清单和人工签核；签核不触发发布、清理、GitLab 或数据状态变更 |
 | 数据质量复核队列 | `frontend/src/views/data-quality/DataQualityReviewQueue.vue` + `POST /api/v1/data-quality/cleanup-review` | 导入 dry-run JSONL 后可按资源、风险、状态和资产范围筛选；页面展示数据源口径、命名空间、复核批次、资产范围、保留策略、处置等级、允许动作、回滚边界和审计记录；所有结果仍不允许直接执行 |
 | 数据质量处置执行审计设计 | `docs/openspec/changes/update-data-quality-disposition-audit/` + `docs/requirements/in-progress/SA-002-数据质量受控处置执行审计.md` | 定义处置 case、状态机、幂等键、脱敏快照、失败恢复、重复提交处理和处置等级边界；下一步实现最小 case 模型 |
@@ -256,7 +282,7 @@
 | 前端 E2E 基线 | `frontend/e2e/tests` | 2026-05-24 完整 E2E 回归：49 PASS / 0 FAIL；覆盖登录、版本策略继承、Slice-1 分组/窗口和 Slice-2 发布链路。入口 `cd frontend && pnpm run test:e2e` |
 | v0.1.11 真实 GitLab 报告 | `docs/reports/acceptance-v0.1.11-real-gitlab.md` | 25 PASS / 0 FAIL / 1 SKIP |
 | 上轮验收报告 | `docs/reports/archive/acceptance-v0.1.10-real-gitlab.md` | 20/20 PASS，含 2 处已知限制 |
-| 验收脚本 | `scripts/acceptance/run-acceptance.sh` + `scripts/acceptance/sa009-remove-repo-gitlab-evidence.sh` | 全量脚本含服务生命周期、SA-010/SA-011/SA-014/SA-015/SA-016 强证据；SA-009 专用脚本固定复核移除仓库 feature 分支归档和已挂窗锁定保护 |
+| 验收脚本 | `scripts/acceptance/run-acceptance.sh` + `scripts/acceptance/sa009-remove-repo-gitlab-evidence.sh` | B2 已迁移 close 的 Run 回执、显式 CI、精确 Tag 和 RETAIN 断言，仅语法验证；历史真实 GitLab 结果按日期读取，未重跑本轮完整脚本 |
 | 存量数据安全清理 | `scripts/acceptance/sa002-safe-cleanup.sh` + `POST /api/v1/data-quality/cleanup-review` | SA-002 dry-run 清理报告、人工复核入口和处置策略；输出 `summary.md`、`actions.md`、`actions.jsonl`，`summary.md` 使用 `API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS`、`REVIEW_QUEUE_ACTIONS` 区分应用可见资产、数据库审计资产和复核队列动作；接口拒绝越权执行，响应保留处置等级、允许动作、回滚边界和审计记录 |
 | 本地开发库清理 | `scripts/dev/cleanup-dev-database.sh` | 本地开发阶段可重复执行的业务数据清理入口；默认 dry-run，`--execute` 才清理候选业务表；仅允许 `releasehub-postgres/release_hub`，不删除 schema、Flyway 元数据、用户和系统设置，不触碰 GitLab 远端 |
 | 版本解析异常诊断 | `GET /api/v1/repositories/{id}/initial-version` | 2026-05-23 SA-014 异常样本治理；返回 `VERSION_FILE_MISSING` / `VERSION_DECL_MISSING` / `VERSION_INVALID` / `VERSION_READ_ERROR`、默认分支、检查路径和说明文案 |
@@ -265,8 +291,8 @@
 | 种子分支清理 | `scripts/e2e/reset-gitlab-seed-branches.sh` | 默认 dry-run 并输出 `summary.md`、`branches.md`、`branches.jsonl`；`--execute` 清理非种子分支，保留 main 与 seed feature 分支，并记录执行后 `POST_KEEP/POST_REMOVED` |
 | 启动脚本 | `backend/scripts/run.sh` | `mvn spring-boot:run -pl releasehub-bootstrap` |
 | 本地容器 | `releasehub-postgres`(5433) + `releasehub-gitlab`(9080) | 模式 A 常驻；端口策略见 memory `feedback_mode_a_b_port_isolation.md` |
-| Flyway 最新迁移 | `V37__normalize_run_execution_status.sql` | Run 类型/状态单向规范化，H2/PostgreSQL 各 15 类混合数据 V36→V37 通过；不补造外部执行事实 |
-| 测试基线 | 本轮任务记录与 Surefire XML | 常规后端 486 PASS/5 既有 SKIP；前端 132 PASS；最终 C1 精确 tree 194 PASS，重复轮次不相加 |
+| Flyway 最新迁移 | `V38__allow_repository_scoped_run_items.sql` | 允许仓库级 Item 的 iteration_key 为 null；普通集成三元组仍由领域约束。H2/PostgreSQL 已验证，历史数据保留。V37 的类型/状态规范化及 V36→V37 混合回填证据继续有效，不补造外部事实 |
+| 当前测试基线 | `.ai/reports/validation/b2-backend-final.log`、`b2-api-final.log`、`b2-frontend-final.log` | 普通后端 608 PASS/5 既有 SKIP；六类数据库/API/HTTP fixture 70 PASS；前端 149 PASS；不同轮次和层次不累加为真实 E2E |
 | 项目变更日志 | `docs/PROJECT_PROGRESS.md` | 246 行，承担「变更日志」职责，事实基线请看本文件 |
 | 需求索引 | `docs/requirements/INDEX.md` | 进行中：SA-002 BranchCreationMode 独立迁移服务设计、SA-002 数据质量受控处置执行审计 |
 

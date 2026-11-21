@@ -7,7 +7,7 @@
 [![Vue](https://img.shields.io/badge/Vue-3.5+-blue.svg)](https://vuejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-blue.svg)](https://www.typescriptlang.org/)
 
-核心能力：窗口/迭代/仓库与绑定、权威计划预览、显式 MR-first 编排、Run/Item 结果与证据、失败项精确重试。Attach/Detach/Publish 默认不写 Git；结果未知时保留仓库阻断并要求核对。后台恢复执行仍在研发中。
+核心能力：窗口/迭代/仓库与绑定、权威计划预览、显式 MR-first 编排、Run/Item 结果与证据、失败项精确重试。Attach/Detach/Publish 只维护配置和生命周期；关闭按仓库受理收尾，重复请求返回原 Run，Tag 使用确认的合并提交，CI 默认关闭并由用户显式选择。共享分支与迭代保留，结果未知时保留仓库阻断并要求核对。后台恢复执行仍在研发中。
 
 > 📋 **新会话/新成员请先读：[`docs/project-ledger.md`](docs/project-ledger.md)** — 项目事实台账（当前阶段目标 / 已验证 / Top Priority / 关键证据索引）。
 > 🎯 **需要挑任务时读取：[`docs/execution-roadmap.md`](docs/execution-roadmap.md)** — 当前唯一队首任务与后续执行队列。

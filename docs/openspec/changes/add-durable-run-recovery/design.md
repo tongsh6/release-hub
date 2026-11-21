@@ -1,6 +1,6 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1 已验收并分阶段推送，当前进入 S3-B2 收尾安全。实际已验收边界见 `s1-implementation.md`、`s2-implementation.md` 及 tasks.md。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2 已验收并分阶段推送，当前进入 S3-C1 持久四动作与安全中断；C2 继续同一执行器的后台驱动和恢复。实际已验收边界见 `s1-implementation.md`、`s2-implementation.md` 及 tasks.md。
 
 
 ## 0. 当前研发蓝图与授权（2026-11-21）
@@ -32,11 +32,36 @@
 
 新增记录或辅助对象必须有上述实际消费者；不预建完整任务平台。已有 `run_task` 表没有实际执行器，表名不能作为实现证据。先删除无人承责的旧写路径，再将持久执行接入唯一入口。
 
+### S3-B2：仓库级关闭受理与收尾执行
+
+本切片复用 RunPlanAppService、SavedRunPlan、Run/Item、GitBranchPort 与操作账本，不新增收尾实体、Port 或任务平台。收尾 Item 的 iterationKey 为 null；participatingIterationKeys 保存真实参与者。V38 仅放宽该字段的非空约束，普通集成仍保持三元组身份。
+
+关闭短事务对窗口行加 PESSIMISTIC_WRITE 锁，完整校验引用、仓库映射、默认/release 分支及版本后，一起保存 CLOSED、WINDOW_CLEANUP Run 和不可变计划。Attach/Detach、Publish、Freeze/Unfreeze、Delete 与普通 Orchestrate/retry 受理使用同一窗口锁，避免旧状态覆盖关闭或关闭后再受理写入。首次 cleanup 在锁内拒绝该窗口已有 RUNNING/NEEDS_REVIEW 的执行意图；PLANNED 预览不阻断。这样已受理编排不会在旧 release 完成收尾后继续写入。相同窗口重复 close 核对原完整计划并返回同一 Run；操作者仍为首次受理者，改变 triggerCi 返回冲突。CLOSED 缺计划不得凭当前配置重建执行。只有首次受理者执行远端动作，事务已在首个 Git 调用前提交。
+
+一个仓库只执行 MERGE_TO_MASTER → CREATE_TAG → TRIGGER_CI。各仓独立，仓内步骤失败或 UNKNOWN 停止后继，检查点持久化失败直接中断派发。release 缺失不回退 main；同仓参与迭代的不同目标版本整批拒绝，缺任一明确版本不猜 Tag。Tag 指向已确认 MR 的 mergeSha，不采用移动的 main tip；同名同 SHA 只读复用，同名异 SHA 失败，确认拒绝后仅允许读取并发创建的精确 Tag，不重发 POST。若 ALREADY_MERGED 只有包含关系而没有 mergeSha，计划中的 Tag 明确失败。
+
+POST close 可选请求体 {triggerCi:boolean}，省略为 false；显式 true 必须有稳定 Tag，ciRef 封存为同一 Tag。返回实际 RunView，界面刷新 CLOSED 并展示 Run，不以 HTTP 200 宣称收尾成功。Pipeline APPLIED 必须匹配 project/id/ref/SHA/url；4xx 明确拒绝，408、5xx、传输异常和不完整或不匹配 2xx 为 UNKNOWN。CI_TRIGGERED 只说明触发成功，未选择 CI 记录 SKIPPED。
+
+Tag/CI 使用确认的 numeric project ID，命名空间变化在派发前阻断；内部门禁 header 不外发。写响应与只读核对复用严格身份/SHA 判定。只读核对缺 pipeline ID 或 expected SHA 不猜列表结果；错误 Tag 名、同 ref 异 SHA 不能认定 FOUND。未知结果保留 guard，普通 retry 不接受收尾。feature/release 与全局 Iteration 均保留，metadata cleanup.referencePolicy=RETAIN 表达真实策略；没有 ARCHIVE_BRANCH 或 DELETE 副作用。
+
+该受理和检查点模型尚不提供后台 worker 或自动 resume；受理后进程退出，重复 close 只返回原记录，不恢复执行。恢复能力继续在 S3-C/S4 验收。
+
+### S3-C1/C2：同一任务协议分步接入
+
+C1 将请求线程接入唯一 WINDOW_ORCHESTRATION 持久任务路径，固定 ENSURE_FEATURE / ENSURE_RELEASE / ENSURE_MR / TRY_MERGE。复用 V21 的 run_task、既有 RunPort/RunPlanPort、Run/Item/Step 和操作账本；不新增 DAG、依赖表或尝试账本。原始 request key 与带动作域的请求指纹共同限定受理；同主体同 key 同请求先返回原 receipt，再考虑当前窗口是否变化，异动作或 payload 返回冲突。Run、Item、计划和任务同事务提交；旧 Run 只供查询，不猜测补造任务。
+
+C1 采用一次领取凭据，PENDING → RUNNING 后由 taskId/claimToken/status 约束 journal begin、SEND_STARTED 和结果提交。没有重领入口，不预建无人消费的租约、心跳或 generation 平台。Task 结果、唯一 Step、所属 Item、Run 汇总、绑定投影及 guard 确认必须同一短事务；远端事实先独立记录，但 adapter 返回不等于业务提交。禁止新任务协议回到整份 Run 级联保存。不同仓库的短事务投影必须保留彼此进度，同仓任务仍按稳定顺序执行。
+
+ENSURE_MR 持久保存项目 ID、IID/URL、source/target、冻结 source SHA 与 disposition；TRY_MERGE 只从该检查点继续，并固定预期项目身份。MR 创建成功后结果提交失败、Git 合并成功后投影失败、进程在两阶段之间退出，都不得重新创建 MR 或派发后继写入。SEND_STARTED 后即使旧线程暂停、超时或只读查询暂时 404，仍不能证明可以再发一次。
+
+C1 的独立验收是重复请求返回原回执，已确认步骤具有持久事实，中断后可查询且安全停住；它不声称自动恢复。C2 使用同一个执行器增加有界 worker、202/前端轮询、数据库扫描、租约和证据驱动的核对/继续；AFTER_COMMIT 仅作唤醒提示。完整硬中断、重启继续、双 worker 与丢失唤醒在 C2 验收。两阶段都不提供 force 绕过未知事实，收尾恢复仍属于 S4。
+
 ### 分阶段依赖与交付
 
 - S3-A：配置/执行边界、文件原 revision、防止跨仓阻塞传播、权威范围、统一状态和界面；带独立 RED/GREEN 与静态扫描。
 - S3-B：MR 重用、阻塞分类及完整证据、失败项重试、收尾结果与共享引用安全；不引入第二套合并流程。
-- S3-C：持久受理与单一执行器、短事务、进度与未知结果恢复；复用 S1/S2，完成真实存储/进程故障验收。
+- S3-C1：请求线程消费唯一持久四动作，完成请求幂等、MR 分段、结果/guard 原子确认及真实进程中断安全验收。
+- S3-C2：同一执行器的后台驱动、持久扫描、202/轮询和证据驱动恢复，验证硬中断后继续、双 worker 与唤醒丢失。
 - S4/S5：版本更新与收尾完整恢复、受控 GitLab/UI 旅程和运维验证，依照本文后续矩阵推进。
 
 每阶段完成代码审查、相关回归、静态扫描 TopN 处理及复扫后分组 commit/push。未完成能力仍在任务队列，不以模拟测试替代真实 GitLab/硬中断证据。真实外部写验收仅使用明确隔离 fixture，不触碰未授权业务仓库。
@@ -208,9 +233,9 @@ UI 在受理后轮询 Run/Task，达到终态、离开页面或取消观察时�
 
 旧协议的查询和导出保留；缺少任务/attempt 的历史 Run 不支持自动恢复。旧失败项重试在接管的动作类型上改为受控复核后创建新计划，保留原记录和来源链接；该变化在切换前明确告知。版本更新与收尾在 S4 完成前不宣称已经获得相同恢复保障。
 
-关闭窗口与收尾是两个状态维度。未来关闭事务保存业务 CLOSED 与持久收尾意图；收尾失败不能伪装为全部成功，也不能自动把窗口改回 PUBLISHED。
+关闭窗口与收尾是两个状态维度。S3-B2 的短事务保存业务 CLOSED 与持久收尾计划；收尾失败不能伪装为全部成功，也不能自动把窗口改回 PUBLISHED。后台调度、恢复与异步返回仍属于后续切片。
 
-此处明确选择与当前已验收页面一致的“关闭触发收尾”，修订旧规范中“关闭前独立收尾”的描述；该产品语义与异步返回一起进入提案评审，不隐式改变用户流程。
+关闭入口触发一次仓库级收尾，返回独立 Run 事实；后续异步化沿用这一入口与持久计划，不增加平行的关闭执行路径。
 
 ## 9. 实施顺序与非目标
 
