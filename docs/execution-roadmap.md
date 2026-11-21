@@ -1,151 +1,43 @@
 # Execution Roadmap / 执行路线图
 
-> 本文件只回答一个问题：下一步做什么。
-> 事实来源以 `docs/reports/scenario-acceptance-matrix.md` 和 `docs/project-ledger.md` 为准；本文件不得复制长篇证据、历史记录或实现细节。
-
----
+> 本文件只回答下一步做什么；事实以 `docs/project-ledger.md`、`docs/reports/scenario-acceptance-matrix.md` 和任务记录为准。
 
 ## 1. 当前唯一主线
 
-场景矩阵驱动收口；2026-10-05 按用户授权优先修复首次部署登录断点。
+2026-11-21 用户授权持续研发、必要重构、分组提交与分阶段推送。先统一可核实的编排语义，再接入可恢复执行。已完成分支收敛：main/develop 同指 `d4534cc`，研发从 `feature/orchestration-consistency` 推进。
 
-权威来源：
-
-- `docs/reports/scenario-acceptance-matrix.md`
-- `docs/project-ledger.md`
-- `tasks/records/`
-
-执行规则：
-
-- 每次用户要求“挑任务执行”时，只能选择第 2 节中标记为 `HEAD` 的队首任务。
-- 不得从“后续保持回归”的事项中挑任务。
-- 如果队首任务已完成，必须先更新本文件，再继续挑下一个任务。
-
----
+- 任务只从下表唯一 HEAD 选择。
+- 每个切片独立定义正反例，核实已有职责与实际消费者，验收后继续下一切片。
+- 历史验收不能替代新行为验证；测试替身不等于真实 GitLab 或完整页面旅程。
 
 ## 2. 当前执行队列
 
 | 顺序 | 标记 | SA | 任务 | 来源 | 选择理由 |
 |---|---|---|---|---|---|
-| 1 | HEAD | SA-013 | S2 操作证据与仓库写入门禁范围评审 | S1 和真实类型门禁修复已完成，S2 未批准 | 先收口验收和授权范围，Git 执行与恢复 worker 保持关闭 |
-| 2 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队首保留 | 仍只允许评审执行计划，禁止历史迁移写库和 GitLab 操作 |
+| 1 | DONE | SA-013 | S3-A/B1 唯一编排语义与阶段交付 | 提交 53eed67、a4007f2、71a1487 已分阶段推送 | 纯配置、不可变计划、MR-first、精确重试、统一状态与写入证据完成目标验收 |
+| 2 | HEAD | SA-013 | S3-B2 收尾失败传播与共享引用保护 | 已授权蓝图下一切片 | 以仓库为单位受理；tag/CI 失败停止后继；共享迭代与分支保留；重复 close 不重放 |
+| 3 | QUEUED | SA-013 | S3-C 持久执行、核对与恢复 | 复用 S1 计划和 S2 操作账本 | worker/resume 尚未实现，须以进程中断和真实存储验证，不能由同步测试推定 |
+| 4 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队列保留 | 历史数据处置仍先核实计划，不自动迁移或清库 |
 
----
+## 3. 当前队首验收出口
 
-## 3. 当前队首任务
+S3-A/B1 已完成单元、H2/PostgreSQL/API、前端门禁、静态扫描与交叉审查，并推送到 feature。C1 独立提交树 194 项测试全过、六模块 SpotBugs 0；两个提交前组合缺陷有真实 RED→GREEN 证据。main/develop 保持共同基线。
 
-任务：SA-013 S2 操作证据与仓库写入门禁范围评审。
+当前 B2 先封闭收尾错误副作用，再以现有 Run/Item/计划承载 `(window, repository)` 受理。目标反例包括共享仓库只执行一次、Tag/CI 失败零后继写、release 缺失零发布副作用、共享 Iteration 不关闭、重复/并发 close 只受理一次。没有已验证的原子删除条件，必须在创建 archive copy 前停止自动归档，不放开 DELETE。
 
-验收出口：基于现有完整蓝图形成 S2 的具体改动清单、全写入口覆盖表、并发及未知结果验收和回退边界，供用户审阅。S2 实施尚未授权；本队首先做评审，不编写或启用写执行能力。
-
-2026-10-08：SA-018 真实类型门禁修复完成并出队。`typecheck` 覆盖 158 个源码/测试文件和 3 个工具配置，44 个错误清零；Vue 与配置错误注入均被阻断。前端 107 项测试、6 项 Pact、生产构建通过，严格配置和锁文件不变。记录见 `tasks/records/2026-10-08-sa-018-real-typecheck.md`。
-
-2026-10-08 S1 交付时：身份隔离、幂等受理、持久预览 API/UI 和零 Git 调用验证完成；当时显式类型检查暴露 44 个存量错误（HEAD 基线 45 个，S1 新增 0 个），已由后续 SA-018 修复。此前空项目检查不能作为历史源码正确的证据。记录见 `tasks/records/2026-10-08-sa-013-s1-run-plan-preview.md`。
-
-S2–S5 仍未批准；不得自动推进 Git 写入门禁、worker、恢复执行或历史迁移。
-
-SA-013 设计阶段已于 2026-10-05 完成，23 项定向检查通过，其中 6 项新增证据确认当前缺口；这不代表恢复功能已经实现。记录见 `tasks/records/2026-10-05-sa-013-run-recovery-design.md`。
-
-SA-018 的版本统一切片已于 2026-10-05 完成并出队，证据见 `tasks/records/2026-10-05-sa-018-build-ci-consistency.md`。pnpm 固定 10.33.0，Node 统一 24，三个 CI 工作流覆盖 develop 和 PR；当时本地 95 项单测、6 项 Pact、生产构建通过。2026-10-08 因真实类型门禁缺口重新入队。
-
-SA-004 已于 2026-10-05 完成并出队，证据见 `tasks/records/2026-10-05-sa-004-production-token-crypto.md`。生产加密默认配置、错钥阻断和隔离库恢复已验证；历史凭据迁移和密钥轮换仍需独立评审。
-
-SA-017 已于 2026-10-05 完成并出队，证据见 `tasks/records/2026-10-05-sa-017-initial-admin-bootstrap.md`。
-
-### 保留的 SA-002 迁移评审边界
-
-以下为原队首输入和限制，仅适用于历史迁移；本轮用户授权的空库账户初始化及生产加密配置修复不属于历史数据清理。
-
-任务：SA-002 BranchCreationMode 执行计划评审门禁。
-
-验收出口：
-
-- 评审最小 dry-run 输出能否作为执行计划输入。
-- 明确是否批准进入执行计划切片；未批准前不得实现 `approve-plan`、`execute`、`verify`、`rollback-plan` API。
-- 若批准执行计划切片，下一阶段仍只能生成计划和人工确认模型，不得执行真实写库。
-- 若评审要求补充 dry-run 分类或报告字段，先回补应用服务、测试、spec 和任务记录。
-- 完成后运行 `bash scripts/dev/check-roadmap.sh`、`pnpm run typecheck`、`pnpm i18n:lint`、`git diff --check` 和静态扫描。
-
-当前输入基线：
-
-- 发布候选报告：`docs/reports/release-candidate-2026-05-23.md`。
-- 数据质量 OpenSpec：`docs/openspec/specs/data-quality/spec.md`。
-- 数据质量复核队列：`frontend/src/views/data-quality/DataQualityReviewQueue.vue`。
-- 存量清理 dry-run：`scripts/acceptance/sa002-safe-cleanup.sh`。
-- 全量验收基线：2026-05-24 受控验证 170 PASS / 0 FAIL / 0 SKIP。
-- 完整前端 E2E 基线：2026-05-24 49 PASS / 0 FAIL。
-- 数据质量风险：188 条待复核动作，已具备应用内复核队列。
-- 最新静态扫描：`.ai/reports/static-scan/20260524-162409/summary.md`。
-- 命名空间元数据：`dataNamespace`、`reviewBatchId`、`assetScope`、`retentionPolicy` 已落到 safe-cleanup 动作、复核 API 和复核队列页面。
-- 数据源口径：`API_VISIBLE_ASSETS`、`DB_AUDIT_ASSETS`、`REVIEW_QUEUE_ACTIONS` 已落到全量验收输出、safe-cleanup 报告、复核 API 和复核队列页面。
-- 处置策略：`dispositionLevel`、`allowedAction`、`rollbackBoundary`、`auditRecord` 已落到复核 API 和复核队列页面；所有结果仍 `executionPermitted=false`。
-- 执行审计设计：`docs/openspec/changes/update-data-quality-disposition-audit/` 已形成；本机 `openspec` CLI 不可用，未安装新工具。
-- 处置 case 最小实现：`POST/GET /api/v1/data-quality/disposition-cases` 及 start/verify/fail/cancel 已落地；前端复核队列可创建和查看 case。
-- 处置 case 页面验收：`frontend/e2e/tests/data-quality-disposition-case.spec.ts` 已覆盖真实页面导入 dry-run、提交复核、创建 case、打开详情、开始人工处置和记录复核通过，API 只作后置证据。
-- 发布候选交付证据包：`tasks/records/2026-05-24-sa-001-release-candidate-delivery-evidence.md` 已记录当前 dogfood/staging 候选证据与人工评审出口。
-- BranchCreationMode 迁移服务设计：`docs/openspec/changes/add-branch-creation-mode-migration-service/` 已形成；proposal 评审结论为 `APPROVE_DRY_RUN_ONLY`。
-- BranchCreationMode 最小 dry-run：`POST /api/v1/data-quality/branch-creation-mode-migrations/dry-run` 已落地，返回四类候选、统计、JSON 结构和 Markdown 报告，且 `executionPermitted=false`。
-- 最新前端场景复跑：Slice-2 23 PASS / 0 FAIL；产品 UI 旅程不得写入 `MOCK` provider，Mock 仅限隔离测试边界。
-
-已完成的前置事项：
-
-- SA-001 发布候选收口报告已形成：`docs/reports/release-candidate-2026-05-23.md`。
-- SA-001 发布候选评审页 / 发布经理检查清单已页面化：`frontend/src/views/release-governance/ReleaseCandidateReview.vue`。
-- release-governance OpenSpec 已新增：`docs/openspec/specs/release-governance/spec.md`。
-- SA-002 数据质量复核队列已页面化：`frontend/src/views/data-quality/DataQualityReviewQueue.vue`。
-- SA-002 验收数据命名空间与保留策略已落地：`tasks/records/2026-05-23-sa-002-acceptance-data-namespace-retention.md`。
-- SA-002 验收脚本与应用 API 数据源口径已统一：`tasks/records/2026-05-23-sa-002-data-source-boundary-alignment.md`。
-- SA-002 数据质量人工复核处置策略已完成：`tasks/records/2026-05-24-sa-002-cleanup-disposition-strategy.md`。
-- SA-002 数据质量受控处置执行审计设计已完成：`tasks/records/2026-05-24-sa-002-disposition-execution-audit-design.md`。
-- SA-002 数据质量受控处置 case 最小实现已完成：`tasks/records/2026-05-24-sa-002-disposition-case-minimal-implementation.md`。
-- SA-002 数据质量处置 case 场景验收与证据归档已完成：`tasks/records/2026-05-24-sa-002-disposition-case-ui-evidence.md`。
-- SA-001 发布候选交付证据收口与人工评审准备已完成：`tasks/records/2026-05-24-sa-001-release-candidate-delivery-evidence.md`。
-- SA-002 BranchCreationMode 独立迁移服务设计已完成：`tasks/records/2026-05-24-sa-002-branch-creation-mode-migration-design.md`。
-- SA-002 BranchCreationMode 迁移服务 proposal 评审门禁已完成：`tasks/records/2026-05-24-sa-002-branch-mode-migration-proposal-review.md`。
-- SA-002 BranchCreationMode 最小 dry-run 实现已完成：`tasks/records/2026-05-24-sa-002-branch-mode-migration-dry-run.md`。
-- SA-015 前端场景复跑与证据边界已完成：`tasks/records/2026-05-23-sa-015-frontend-scenario-rerun.md`。
-- SA-001 受控发布候选 dogfood/staging 验证已完成：`tasks/records/2026-05-24-sa-001-controlled-rc-validation.md`。
-- 同步更新 `scenario-acceptance-matrix.md`、`docs/project-ledger.md`、`docs/execution-roadmap.md` 和 `tasks/records/`。
-
-非目标：
-
-- 不做 RBAC。
-- 不做通知。
-- 不做批量组织重构或资源迁移向导。
-- 不做仓库自动拆分、跨分组批量迁移或自动容量规划。
-- 不自动关闭 DRAFT 发布窗口。
-- 不直接修改数据库，不删除或迁移业务数据。
-- 不触碰 GitLab 远端资源。
-- 不引入 RBAC、通知或新的审批工作流引擎。
-- 不改变分支创建、发布编排、关闭窗口、CI 触发状态、retry、Maven/Gradle 或已有版本更新写回语义。
-- 不引入新的全局工具安装或系统级依赖；若需要新依赖，必须先按本机策略确认。
-- 不通过数据库脚本绕过应用层不变量来执行清理动作。
-- 不把 PDF 导出、RBAC、通知或批量组织迁移重新塞入当前阶段，除非清账结果明确将其列为下一阶段候选并写清验收标准。
-
----
+完整范围及分阶段依赖见 `docs/openspec/changes/add-durable-run-recovery/design.md` 与 `tasks.md`。后台 worker、自动 resume、独立进程硬中断、真实 GitLab/UI 全旅程尚未验收。当前真实外部写验证限明确隔离 fixture，未对业务 GitLab 仓库执行写操作。
 
 ## 4. 暂缓项
 
 | 事项 | 原因 |
 |---|---|
-| RBAC | `docs/project-ledger.md` 明确当前阶段不做 |
-| 通知 | `docs/project-ledger.md` 明确当前阶段不做 |
-| CI 深集成 | 当前阶段不做；SA-016 发布证据归档形态已按制品包收口 |
-| 批量组织重构/资源迁移向导 | SA-003 已按受控空叶子分组移动收口；批量资源迁移、跨 Git provider 迁移和重写发布范围不进入当前阶段 |
-| 自动批量删除存量数据 | SA-002 当前只允许以 dry-run、人工复核和最小可审计动作推进 |
+| RBAC、通知、CI 深集成 | 与当前编排可靠性目标无关 |
+| 批量组织重构或跨 provider 迁移 | 不引入无实际消费者的通用平台 |
+| 自动批量删除存量数据 | 仍需明确范围和可核实处置依据 |
+| 扩展新的版本更新能力 | 当前只修已有文件写入的数据一致性；不扩大发布 MVP |
 
----
+## 5. 队列约束
 
-## 5. 防腐败规则
-
-- 本文件只保留任务队列指针，不沉淀验收证据。
-- `HEAD` 必须且只能有一个。
-- `HEAD` 行必须包含一个 `SA-xxx` 编号，且该编号必须存在于 `scenario-acceptance-matrix.md`。
-- `HEAD` 行不得包含“或”“任选”“待定”“二选一”等不确定词。
-- `HEAD` 行不得是“后续保持回归”。
-- 队首任务完成后必须出队；不能把已完成任务长期留在 `HEAD`。
-- 每次修改本文件后运行：
-
-```bash
-bash scripts/dev/check-roadmap.sh
-```
+- HEAD 必须且只能有一个，SA 编号必须存在于场景矩阵。
+- 验收完成后先更新队列再接下一项；未验收能力不得标记完成。
+- 修改后运行 `bash scripts/dev/check-roadmap.sh`。

@@ -1,13 +1,13 @@
 # ReleaseHub
 
-**多仓库发布编排与自动化平台** — 统一管理多个 Git 仓库的发布窗口、版本策略和分支规则。
+**发布窗口驱动的跨仓分支与集成编排系统（GitLab）**：一个窗口关联多个迭代，迭代关联可重叠的仓库，按仓库将所选 feature 分支依次集成到窗口 release 分支。
 
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4.x-green.svg)](https://spring.io/projects/spring-boot)
 [![Vue](https://img.shields.io/badge/Vue-3.5+-blue.svg)](https://vuejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-blue.svg)](https://www.typescriptlang.org/)
 
-核心能力：发布窗口管理、迭代与仓库关联、GitFlow 分支自动化、版本策略管理、冲突预检、编排执行。
+核心能力：窗口/迭代/仓库与绑定、权威计划预览、显式 MR-first 编排、Run/Item 结果与证据、失败项精确重试。Attach/Detach/Publish 默认不写 Git；结果未知时保留仓库阻断并要求核对。后台恢复执行仍在研发中。
 
 > 📋 **新会话/新成员请先读：[`docs/project-ledger.md`](docs/project-ledger.md)** — 项目事实台账（当前阶段目标 / 已验证 / Top Priority / 关键证据索引）。
 > 🎯 **需要挑任务时读取：[`docs/execution-roadmap.md`](docs/execution-roadmap.md)** — 当前唯一队首任务与后续执行队列。
@@ -35,7 +35,7 @@ cd backend && SPRING_PROFILES_ACTIVE=local,real ./scripts/run.sh
 cd frontend && corepack pnpm install --frozen-lockfile && corepack pnpm dev
 ```
 
-> **适配器模式**：默认使用 Mock 适配器（不访问真实 Git 平台）。叠加 `real` profile 启用真实 GitLab API 调用。详见 [部署指南](docs/deployment.md#23-git-平台适配器模式重要)。
+> **适配器模式**：默认 Mock 模式不访问真实 Git 平台，用于本地配置页面开发；真实编排须叠加 `real` profile 并配置 GitLab。真实 HTTP 写入保护默认开启；显式关闭保护时写请求被拒绝，不回退为无保护执行。模式配置见 [部署指南](docs/deployment.md#23-git-平台适配器模式重要)，当前验收边界见下方研发记录。
 
 前端使用 `.nvmrc` 声明的 Node 24 主版本及 `frontend/package.json` 固定的 pnpm 10.33.0。CI 和两个前端 Docker 构建入口读取同一 pnpm 版本声明；已有依赖无需重复安装。详见 [前端开发指南](frontend/README-DEV.md)。
 
@@ -62,6 +62,8 @@ deploy/scripts/healthcheck.sh
 - [架构文档](docs/context/tech/architecture/) — 系统架构与技术栈
 - [开发规范](docs/context/tech/conventions/) — 代码规范与测试策略
 - [执行路线图](docs/execution-roadmap.md) — 当前唯一队首任务
+- [当前编排研发记录](tasks/records/2026-11-21-sa-013-orchestration-consistency.md) — 手动编排、状态/重试、默认写入保护、验收与未完成边界
+- [S2 历史交付](docs/openspec/changes/add-durable-run-recovery/s2-implementation.md) — 2026-10-08 的操作账本、核对 API 与隔离 GitLab 证据；配置以当前研发记录为准
 - [工作流](docs/workflow/) — AI 辅助开发工作流
 - [API 契约](backend/docs/architecture.md) — REST API 概览
 

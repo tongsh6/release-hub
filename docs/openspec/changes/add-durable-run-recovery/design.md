@@ -1,6 +1,45 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1 已获批并于 2026-10-08 完成；S2–S5 尚未批准或实现。S1 实际边界见 `s1-implementation.md`。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1 已验收并分阶段推送，当前进入 S3-B2 收尾安全。实际已验收边界见 `s1-implementation.md`、`s2-implementation.md` 及 tasks.md。
+
+
+## 0. 当前研发蓝图与授权（2026-11-21）
+
+用户已明确授权持续研发、必要重构、分组提交和分阶段推送。项目尚未上线，本轮不保留旧写入口、兼容层或双轨执行；此前 S3–S5“尚未批准”的记录仅是历史状态。实现与验收仍逐切片记录，授权不等于能力已经完成。接手基线为 `5d85b17` 加工作区 S2 改动，119 项针对性测试和 26 项前端组件测试仅用于定位；现已将 `main`、`develop` 收敛到 `d4534cc`，开发位于 `feature/orchestration-consistency`。当前验收与提交证据见本轮任务记录，不以既有测试决定业务正确性。
+
+### 端到端目标
+
+1. Attach/Detach 仅维护窗口与迭代关系；完整校验后原子写入，重复挂载不改变 attachAt。发布仅改变业务状态，默认 MANUAL 不隐式写 Git。
+2. 页面从现有 plan 获取权威仓库并集与三元组，不从详情请求成功的子集缩小执行范围。用户选仓库与迭代、确认阻塞策略后，仅由 Orchestrate 执行 feature → release；关闭窗口才进入既有收尾流程。
+3. 编排先完整校验范围，按 attachAt 和稳定次序确定队列。复用现有 Run/Item/Step、计划快照及 Git 操作账本，先落可查询计划与执行意图，再执行逐项记录。不同仓库互不传播普通失败；同仓串行。
+4. 默认 FAIL_FAST：阻塞后该仓库剩余项显式 SKIPPED_DUE_TO_BLOCK、executedOrder 为 0；其他仓库继续。CONTINUE_ON_BLOCK 仅用户显式选择。UNKNOWN 始终停止该仓库后续写入，不能普通重试。
+5. GitLab 集成始终 MR-first，已有 opened MR 可复用，已确认 merged 不重复制造副作用；真实 MR IID/URL、项目、分支、窗口、迭代、原因与请求证据进入现有 Item/Step/操作账本。
+6. Run 状态由领域统一汇总：全仓完成 DONE；部分仓失败 PARTIAL_FAILED；全部仓失败或无有效范围 FAILED。前端、列表、详情、导出和版本操作消费同一状态；时间戳不构成成功证据。
+7. 文件更新携带业务读取时的原 revision；读取 A 后远端变为 B，A 派生内容不得覆盖 B。复用 GitLabFilePort 和原有文件更新器，不另造同义接口。
+8. 收尾失败必须真实呈现；tag 失败不得继续宣称成功或归档。跨窗口共享分支不得由单个 Detach/Close 自动删除。重试按原动作和原计划执行，不把收尾误当作 feature → release。
+9. 可恢复异步执行在以上语义统一后接入已有持久计划与操作账本，完成短事务、领取、逐步结果和未知核对；未通过独立进程中断及重启验收前，页面不得宣称可恢复或提供空壳 resume。
+
+### 职责查重与反例
+
+| 已有承载者 | 本轮职责 | 必须推翻旧行为的反例 |
+|---|---|---|
+| WindowIterationPort / AttachAppService | 纯绑定、去重与稳定 attachAt | 混组批次校验失败零写；重复挂载不重排；解除共享仓库零 Git |
+| 现有 plan / RunAppService / RunItem | 唯一集成入口、完整范围、计划与实际顺序 | I1 阻塞导致同仓 I2 被记录跳过，但 R2 仍执行；不存在仓库不能静默省略 |
+| Run / RunExecutionStatus | 唯一状态事实 | MERGED 应完成；有 FAILED 步骤不能被后续 SUCCESS 掩盖；空执行不成功 |
+| GitMergeWorkflow / GitMergeRequestPort / 操作账本 | 窄 MR 动作、重用和证据 | 同 source/target 重试不再造 MR；未知结果不重放 |
+| GitLabFilePort / 文件适配器 | 内容与读取版本同源 | A→B→A′ 必须拒绝，缺读取 revision 零写 |
+| 现有前端 API/组件与无状态展示工具 | 权威 scope、精确状态、入口收敛 | 详情 503 不缩小请求；共享 repo 只计一次；集成按钮不描述收尾 |
+
+新增记录或辅助对象必须有上述实际消费者；不预建完整任务平台。已有 `run_task` 表没有实际执行器，表名不能作为实现证据。先删除无人承责的旧写路径，再将持久执行接入唯一入口。
+
+### 分阶段依赖与交付
+
+- S3-A：配置/执行边界、文件原 revision、防止跨仓阻塞传播、权威范围、统一状态和界面；带独立 RED/GREEN 与静态扫描。
+- S3-B：MR 重用、阻塞分类及完整证据、失败项重试、收尾结果与共享引用安全；不引入第二套合并流程。
+- S3-C：持久受理与单一执行器、短事务、进度与未知结果恢复；复用 S1/S2，完成真实存储/进程故障验收。
+- S4/S5：版本更新与收尾完整恢复、受控 GitLab/UI 旅程和运维验证，依照本文后续矩阵推进。
+
+每阶段完成代码审查、相关回归、静态扫描 TopN 处理及复扫后分组 commit/push。未完成能力仍在任务队列，不以模拟测试替代真实 GitLab/硬中断证据。真实外部写验收仅使用明确隔离 fixture，不触碰未授权业务仓库。
 
 ## 1. 设计时事实基线与证据边界（2026-10-05）
 
@@ -30,7 +69,7 @@
 3. **身份与幂等分离**：UUID 标识执行实例；幂等键标识同一次提交意图，不能用相同 ID 覆盖历史。
 4. **结果未知不是失败**：请求可能到达外部系统但未获得完整响应时，进入 UNKNOWN，禁止直接重试。
 5. **数据库租约不是 Git fencing**：租约代次只能拒绝旧 worker 的数据库更新，不能撤销已发出的 Git 请求。
-6. **历史兼容不等于可恢复**：旧 Run 保留查询导出，不伪造任务意图、attempt 或自动重放。
+6. **证据不补造**：不保留旧执行协议或兼容写路径；已有执行事实不得伪造任务意图、attempt 或自动重放。
 7. **补偿是新操作**：不自动 revert 合并、删除已有分支/tag 或取消 pipeline；需要独立计划和明确授权。
 
 不承诺通用 exactly-once。目标是持久受理、可核对的至少一次调度，以及未知结果下保守停止。
@@ -38,8 +77,8 @@
 ## 3. 架构与事务边界
 
 ```mermaid
-flowchart LR
-    A[页面或发布事件] --> B[受理与幂等校验]
+flowchart TD
+    A[显式 Orchestrate] --> B[受理与幂等校验]
     B --> C[(Run 与计划任务)]
     C --> D[数据库队列和有界 Worker]
     D --> E[仓库写入门禁]
@@ -52,16 +91,16 @@ flowchart LR
 ```
 
 - Domain：Run / RunTask / Attempt 状态、依赖、恢复决策与计划不变量；不依赖 Spring、JPA 或 GitLab。
-- Application：`RunAdmissionService`、`RunCoordinator`、`RunJournalService`、`RunReconciliationService`；定义 Journal、Queue、RepositoryGuard、GitOperation Port。
+- Application：当前由 `RunPlanAppService` 负责受理与封存，`RunAppService` 消费计划，`GitMergeWorkflow` 承担 MR-first，`GitOperationAppService` 承担证据查询与核对；S3-C 优先扩展这些职责和现有 Port，只有证实现有对象不能承责且有实际消费者时才提取新的类或接口。
 - Infrastructure：PostgreSQL 持久化与 CAS、租约、有界线程池；GitLab 操作与证据适配器。先使用现有 PostgreSQL，不新增消息中间件。
 - Interfaces：认证主体来自服务端上下文；校验幂等键、请求指纹和恢复动作，不信任请求体 operator。
-- Frontend / Export：消费统一后端状态和证据；仅历史协议保留既有状态映射。
+- Frontend / Export：消费统一后端状态和证据；删除自行推断和旧协议状态映射。
 
 事务分段：
 
 | 阶段 | 数据库事务 | Git I/O |
 |---|---|---|
-| 受理 | 保存 Run、局部范围快照、幂等键及触发意图 | 无写入；发布事务内也不做远程读取 |
+| 受理 | 保存 Run、完整选定范围快照、幂等键及显式执行意图 | 无 Git I/O；默认 Publish 不进入此阶段 |
 | 计划准备 | 读取 Git 前置证据后，校验本地范围未变并封存计划和 DAG | 只读查询在事务外 |
 | 领取 | 原子领取任务、增加代次、建立仓库保留与 attempt | 无 |
 | 发出前 | 提交 SEND_STARTED，核验代次和前置证据 | 随后只发一个明确副作用 |
@@ -70,11 +109,13 @@ flowchart LR
 
 协调器没有包围整轮流程的事务。短事务必须通过独立 Bean / Port 调用，不能依赖同类自调用的事务注解。外部成功但结果提交失败，已有 SEND_STARTED 会成为恢复依据。
 
-发布场景在同一事务内提交窗口状态与持久受理意图，使用发布代次作为唯一触发键；AFTER_COMMIT 只做唤醒，遗漏唤醒由数据库轮询恢复。不能依赖现有普通 version 字段提供锁，必须新增真实 CAS / 乐观锁或显式行锁规则。
+默认 MANUAL 下，Publish 只改变窗口状态，不产生 Git 执行意图。S3-C 在显式 Orchestrate 的短事务中封存 Run、计划及任务，AFTER_COMMIT 仅可唤醒，遗漏唤醒由持久队列发现。可选 AUTO_ON_ATTACH 若以后实现，须显式开关并复用同一受理入口，不能恢复隐式 Publish 写入。并发规则必须由真实 CAS、唯一约束或行锁验证，不能把普通 version 字段当作锁。
 
 ## 4. 数据模型与身份
 
-仅新增或扩展结构，不改写历史证据；具体 Flyway 版本号在实施时取当时下一空号。
+2026-10-08 S2 评审细化见 [s2-review.md](s2-review.md)。旧入口包含没有持久 RunTask 的冲突检查和迭代初始化，故操作账本独立于任务存在；S3 复用同一账本，不新建同义尝试表。
+
+优先扩展现有结构；下表的未实现结构是待验证设计候选，不是新建授权清单。引入前须查重、说明现有对象为何不能承责和实际消费者。状态规范化可做单向迁移，但不得补造或改写外部执行证据；具体 Flyway 版本号取当时下一空号。
 
 | 结构 | 关键字段与约束 |
 |---|---|
@@ -82,7 +123,8 @@ flowchart LR
 | run_item | 新执行项独立 UUID；唯一 `(run_id, repo_id, iteration_key, ordinal)`；业务范围键仅供展示和选择，不再作全局主键 |
 | run_task 扩展 | 复用现有表；run_id 长度对齐 run.id，新增 item_id、action、ordinal、state_version、lease_owner、lease_until、generation、operation_key、前置条件和目标快照；保留旧行 |
 | run_task_dependency | 前后任务边，禁止环；首版按仓库串行，跨仓并发待门禁验收后再开启 |
-| run_task_attempt | 追加式 attempt UUID、次数、代次、INTENT_RECORDED / SEND_STARTED / 结果、时间、MR IID / 提交 SHA / tag / pipeline ID、脱敏错误与观察证据 |
+| git_operation / git_operation_event | 独立操作及追加式尝试事件；attempt UUID、次数、代次、INTENT_RECORDED / SEND_STARTED / 结果、时间和脱敏外部证据；ownerType/ownerId 不依赖未提交 Run，S3 用 task 关联复用 |
+| git_operation_observation | 只读核对的幂等键、观察版本、完整性、远端证据与结论；不覆盖历史观察 |
 | repo_execution_guard | 按规范化 provider/project 仓库标识唯一保留，持有者、代次及阻断原因；未决副作用保留独立于 worker 租约存活 |
 | run_recovery_decision | 操作者、幂等键、原因、观察版本、证据摘要、决策、源 Run/Task/Attempt；不能只手工修改状态字符串 |
 
@@ -96,7 +138,7 @@ flowchart LR
 
 ## 5. 状态与恢复决策
 
-Run：PLANNED → PENDING → RUNNING → COMPLETED / FAILED；中断进入 RECOVERING，再进入 RUNNING / NEEDS_REVIEW / 终态。取消仅停止未发出的任务；已发出的请求必须核对，页面显示已有副作用。
+Run：PLANNED → PENDING → RUNNING → DONE / PARTIAL_FAILED / FAILED；中断进入 RECOVERING，再进入 RUNNING / NEEDS_REVIEW / 终态。取消仅停止未发出的任务；已发出的请求必须核对，页面显示已有副作用。
 
 Task：PENDING → RUNNING → COMPLETED / FAILED / UNKNOWN。UNKNOWN 经核对进入 COMPLETED、PENDING（已证明未发出或未生效）或 NEEDS_REVIEW；不能直接交给普通 retry。SKIPPED / CANCELLED 只适用于未执行或被规则跳过的任务。
 
@@ -104,7 +146,7 @@ Task：PENDING → RUNNING → COMPLETED / FAILED / UNKNOWN。UNKNOWN 经核对�
 
 确认 FAILED 的终态 Run 保持不可变：retry 创建带来源链接的新 Run/Item/Task 和 attempt，只选择确认失败项；原成功步骤通过证据引用继承，不重新执行。resume 仅继续尚未终结的 RECOVERING/NEEDS_REVIEW Run，经核对后的任务才可进入下一步。这样保留现有“retry 返回新 Run ID”的用户路径，同时避免把历史终态改回运行中。
 
-聚合状态由后端统一判定：任何未决副作用优先显示 RECOVERING/NEEDS_REVIEW，不能仅凭部分成功或 finishedAt 显示完成。failFast=true 时确认失败停止后续派发；未知结果始终阻断同仓写入，其他仓库是否继续按计划的 failFast 策略处理，并明确记录未执行原因。
+聚合状态由后端统一判定：任何未决副作用优先显示 RECOVERING/NEEDS_REVIEW，不能仅凭部分成功或 finishedAt 显示完成。failFast=true 时确认失败仅停止同仓后续派发并显式记录 SKIPPED_DUE_TO_BLOCK；其他仓库继续。未知结果无论策略如何始终阻断同仓写入，并明确记录未执行原因。
 
 | 中断位置 / 证据 | 决策 |
 |---|---|
@@ -143,6 +185,8 @@ Task：PENDING → RUNNING → COMPLETED / FAILED / UNKNOWN。UNKNOWN 经核对�
 仓库保留与 worker 租约分离：worker 消失不等于外部请求结束。租约过期只允许新 worker 接管核对，不自动取得继续写入权。每个外部写入之前重新核验代次；同一仓库最多一个在途写操作。
 
 必须覆盖的内部写入口包括 Run 编排/重试/版本更新/收尾、`AttachAppService`、`IterationAppService`、`CodeMergeService`、`ReleaseBranchService` 以及其 Git 分支和文件 Port。旧入口必须原子登记写入保留，而不只是先查一个布尔值；否则查询到派发间有竞争窗口。无法纳入门禁的入口，在新协议启用范围内显式拒绝执行。
+
+S2 核对补充：`ConflictDetectionAppService.checkMergeability` 会创建和关闭临时 MR/PR，也必须进入写账本。文件更新的本地路径若不能识别目标并受保护，须在写前拒绝。仓库和连接配置不得在活跃/未知操作期间改变远端映射；详细覆盖表、事务分段和启用边界见 [S2 评审](s2-review.md)。只读核对禁止复用这些带副作用的旧检查方法。
 
 系统无法阻止 GitLab 上的人工或其他 CI 写入。源/目标漂移必须进入复核；不声称内部租约可以阻止外部写入。未知旧请求未明确终结前，不能因超时就释放仓库保留给另一个 Run。
 
@@ -197,4 +241,4 @@ S3/S5 使用独立应用进程和外部 fixture，在持久检查点间实施真
 
 ## 12. 评审决策
 
-建议首先只批准 S1：修复 ID/历史隔离，并提供持久计划预览；不启用 worker、不写 Git、不迁移历史记录。S2 以后须以对应切片验收和 Provider 能力证据作为放行条件。本轮不代替用户作出批准结论。
+2026-10-05 首次评审仅批准 S1；2026-10-08 S2 获批。2026-11-21 用户明确授权继续研发、重构和分阶段推送，按第 0 节及 tasks.md 推进；每切片仍须有独立目标、验证和 Provider 能力证据，不将授权记作验收完成。

@@ -54,13 +54,13 @@
 | SA-007 | Admin Setup | 系统管理员 | 配置版本策略 | 基础策略、SemVer、版本校验、Maven 单模块真实写回前置 | 已覆盖 |
 | SA-008 | Release Planning | 发布经理 | 创建发布窗口 | 叶子分组创建、windowKey、DRAFT、空窗口发布拒绝、列表/日历可见 | 已覆盖 |
 | SA-009 | Release Planning | 技术负责人 | 创建迭代并选择已纳管仓库 | 叶子分组创建、同分组仓库选择、iterationKey、分支模式、版本/分支记录 | 已覆盖 |
-| SA-010 | Release Planning | 发布经理 | 挂载迭代到发布窗口 | 同分组挂载、多迭代多仓计划、release 分支真实创建、细粒度 attach 结果、冲突阻断 | 已覆盖 |
+| SA-010 | Release Planning | 发布经理 | 挂载迭代到发布窗口 | 只保存同分组绑定、重复 attachAt 不变、多迭代仓库并集；Detach 零 Git | 新语义业务/API已验证；本轮 UI/GitLab 旅程未重跑 |
 | SA-011 | Risk & Execution | 测试人员 | 检查冲突与发布风险 | 冲突扫描、类型分布、阻塞发布、解决后重扫清零；`MERGE_CONFLICT`、`CROSS_REPO_VERSION_MISMATCH`、`REPO_AHEAD`、`SYSTEM_AHEAD`、`GIT_PERMISSION_DENIED`、`GIT_UNAVAILABLE` 具备真实 GitLab 强证据 | 已覆盖 |
 | SA-012 | Risk & Execution | 技术负责人 | 解决冲突 | 版本冲突 `USE_SYSTEM` 解决、重扫为 0、发布可继续；feature 缺失、release 已存在、分支名不合规具备后端/GitLab 强证据 | 已覆盖 |
-| SA-013 | Risk & Execution | 技术负责人 | 触发发布编排 | 无阻塞冲突后 Run COMPLETED/SUCCESS、RunItem > 0、GitLab 状态一致、未解决冲突阻断 | 已覆盖 |
+| SA-013 | Risk & Execution | 技术负责人 | 触发发布编排 | 手动 MR-first、完整计划、仓库内 FAIL_FAST、真实证据与统一 Run 状态、精确重试 | S3-A/B1 已分阶段推送；本轮完整旅程仍待验证 |
 | SA-014 | Risk & Execution | 技术负责人 | 执行版本更新 | Maven 单模块真实写回 release 分支、Run COMPLETED/SUCCESS、GitLab commit 可验证 | 已覆盖 |
 | SA-015 | Risk & Execution | 测试人员 | 复核发布状态和执行证据 | 窗口/Run 列表与详情、状态和执行明细可见 | 已覆盖 |
-| SA-016 | Post Release | 发布经理 | 关闭发布窗口并完成收尾 | 关闭状态流转、关闭后禁止关键操作、收尾 Run 可见 | 已覆盖 |
+| SA-016 | Post Release | 发布经理 | 关闭发布窗口并完成收尾 | 仓库级收尾、失败停止后继、共享资源保护、重复 close 不重放 | 当前存在已核实缺口；S3-B2 队首修复 |
 | SA-017 | Admin Setup | 部署管理员 | 全新生产部署首次登录 | 自定义凭据、空库初始化、幂等、并发保护、密码不泄露 | 已验证（生产配置/API/数据库；未声称浏览器旅程），见 `tasks/records/2026-10-05-sa-017-initial-admin-bootstrap.md` |
 | SA-018 | 验收运行治理 | 维护者 | 固定构建环境与 CI 门禁 | 项目 pnpm 固定、CI/部署一致、develop 与 PR 检查 | 版本/触发配置和真实类型门禁已完成；158 个源码/测试文件、3 个工具配置检查通过，见 `tasks/records/2026-10-08-sa-018-real-typecheck.md` |
 
@@ -423,30 +423,22 @@ P0 验收焦点：
 
 ### SA-013：技术负责人触发发布编排
 
-目标业务场景：技术负责人确认无阻塞冲突后触发发布编排，系统产生可追踪 Run。
+当前行为标准（2026-11-21）：Attach/Detach/Publish 只维护配置或生命周期。用户从窗口选择仓库与迭代、明确阻塞策略后，手动 Orchestrate 执行 GitLab feature → release。
 
-P0 验收焦点：
+验收目标：
 
-- 无阻塞冲突后编排成功。
-- Run 状态为 COMPLETED 或 SUCCESS。
-- RunItem 数量大于 0。
-- RunStep 分布可见。
-- GitLab release 分支、合并结果等状态一致。
-- 未解决冲突时阻断。
+- 计划仓库来自窗口迭代仓库并集；输入失效时完整拒绝，不静默缩小范围。
+- 同仓按 attachAt 稳定顺序执行；默认 FAIL_FAST，显式记录后续 SKIPPED_DUE_TO_BLOCK，其他仓库继续。
+- 先持久化 Run 与不可变快照；Git 写入经过既有 journal 和仓库保留。
+- 成功项必须有 MR-first 或当前 target 包含 source SHA 的证据；分支存在不代表合并成功。
+- Run 统一为 PLANNED/RUNNING/DONE/PARTIAL_FAILED/FAILED/NEEDS_REVIEW；UNKNOWN 优先停止该仓库且不能普通重试。
+- 重试只接受明确选择的实际 Item ID，沿用原计划，保留来源，不自动扩大范围；FAIL_FAST skipped 必须显式选择更早阻塞项。
+- API 的操作者来自认证上下文，计划和证据不保存 Token。
+- 收尾 Run 使用独立 WINDOW_CLEANUP；不允许按 feature → release 协议重试收尾。
 
-当前覆盖：
+本轮完成全后端常规回归 486 PASS/5 既有 SKIP、6 类数据库/API 53 PASS、前端 132 PASS；追加真实 HTTP/PG 反例后 GitWriteSafetyIT 19、journal 8 全过。最终 C1 独立树 194 项全过、SpotBugs 六模块 0。历史 GitLab 与 Playwright 结果只代表其记录时实现，本轮未执行真实 GitLab/UI 全旅程或独立进程硬中断。
 
-- `run-acceptance.sh` 场景 5.2 有干净窗口黄金路径。
-- 场景 7 读取 Run 详情和 Step 分布。
-- 干净路径已升级为正式 PASS/FAIL 验收项，断言 Run `COMPLETED/SUCCESS`、`RunItem > 0`、`RunStep > 0`。
-- 真实 GitLab 验收已验证干净窗口编排 `COMPLETED`，且 RunItem/RunStep 中包含 `MERGED`。
-- Playwright 已覆盖前端真实旅程：通过 UI 创建分组、纳管仓库、创建迭代、挂载仓库、创建发布窗口、挂载迭代、发布窗口，并从窗口详情触发编排请求；请求体断言包含 UI 创建出的仓库和迭代作用域。
-- 窗口详情发布编排面板已补“最新 Run 复核”摘要：编排返回 Run ID 后立即读取详情并展示状态、执行项数量、失败项数量；存在失败项时展示发布窗口/仓库/迭代上下文、失败步骤和失败原因，并提供 Run 详情入口。
-- Run 分页按 `startedAt` 倒序返回，避免窗口详情最近执行记录拿到旧 Run；`RunPagedApiTest` 覆盖同一窗口下新 Run 排在旧 Run 前。
-
-缺口：
-
-- 后续保持回归；单条连续 UI 旅程直接跑到真实 GitLab Run 成功仍由 `run-acceptance.sh` 强证据补齐，不把 route-level stub 当作场景化验收通过。
+当前推进：S3-A/B1 已分组提交并推送 53eed67、a4007f2、71a1487，进入 B2 收尾安全，之后为 C 持久执行与恢复。细节见 `docs/openspec/changes/add-durable-run-recovery/tasks.md`。
 
 ### SA-014：技术负责人执行版本更新
 
@@ -506,35 +498,27 @@ P0 验收焦点：
 
 ### SA-016：发布经理关闭发布窗口并完成收尾
 
-目标业务场景：上线完成后关闭窗口，系统完成发布收尾并留下证据。
+目标业务场景：上线完成后关闭窗口，系统按仓库只执行一次明确的收尾计划，并分别展示 CLOSED 与收尾 Run 结果。
 
-P0 验收焦点：
+2026-11-21 源码复核推翻了此前仅凭 CLOSED、pipeline id/null 和步骤顺序宣称完整覆盖的结论。历史 Slice4/Playwright/验收脚本仍作为当时证据保留，不能证明当前默认写保护下收尾可完成。
 
-- 已发布窗口可关闭。
-- 关闭后状态变为 CLOSED。
-- 关闭后禁止挂载迭代、修改关键配置、执行版本更新。
-- 收尾 Run 可见。
+当前已核实缺口：
 
-当前覆盖：
+- 同一仓库被多个迭代引用时重复 merge/tag/CI；关闭一个窗口直接关闭全局 Iteration。
+- release 缺失后仍可能向默认分支打 Tag/触发 CI；Tag 明确失败后仍继续依赖步骤。
+- pipeline null 混合未配置、拒绝、超时与不完整响应；MR UNKNOWN/BLOCKED 未保留完整语义。
+- 归档先创建副本，再遇到真实 DELETE 保护拒绝；不能为通过流程而放开删除。
+- close 的领域幂等未覆盖重复外部副作用；长事务和 catch 不能保证关闭与 Run 都可提交。
 
-- 用户故事和历史 Slice 4 设计包含收尾。
-- 后端存在 `Slice4_Post_Release_Cleanup_E2ETest`。
-- Playwright Slice-1 已通过 UI 创建含迭代的发布窗口，发布后关闭窗口，并断言状态为 `CLOSED`。
-- `run-acceptance.sh` 已把关闭窗口、关闭后禁止挂载迭代、关闭后禁止版本更新、收尾 Run 可见作为 SA-016 主线断言。
-- `run-acceptance.sh` 已补重复关闭幂等断言：首次关闭后再次关闭仍返回成功，状态保持 `CLOSED`。
-- 收尾 Run 已能按窗口 `windowKey` 查询，并包含 `ARCHIVE_BRANCH`、`MERGE_TO_MASTER`、`CREATE_TAG`、`TRIGGER_CI` 等步骤证据。
-- CI 触发结果已补应用层证据：provider 返回 pipeline id 时 `TRIGGER_CI/CI_TRIGGERED` 记录 id 与 ref；未配置 CI 时 `TRIGGER_CI/CI_NOT_CONFIGURED` 写入步骤且 RunItem finalResult 不伪装为 `SUCCESS`。
-- 关闭收尾顺序已收敛为 release 合并到默认分支、创建 tag、触发 CI、归档 feature 分支和 release 分支；应用层单测断言 tag/CI 之后才执行两个归档动作。
-- `run-acceptance.sh` 已补关闭窗口后真实 GitLab 复核：按 `windowKey/iterationKey/repoId` 验证 release 合并到 main 的 commit、tag 存在、feature/release 原分支不再活跃，且 `archive/released/...` 归档分支存在。
-- `scripts/e2e/reset-gitlab-seed-branches.sh` 已补受控清理证据：默认 dry-run 输出候选清单，`--execute` 只删除三个种子仓库中的非种子分支，执行后记录 `POST_KEEP/POST_REMOVED`，重复执行删除 0 个分支。
-- 前端已在 CLOSED 状态隐藏列表页和详情页的挂载入口；编排面板按真实 `windowKey` 加载最近 Run。
-- `run-acceptance.sh` 5.9 已补真实部分失败重试后端/GitLab 强证据：部分成功/部分阻塞 attach Run 可选择失败项重试，成功项不会被重复执行。
-- 发布窗口报告导出已补：`GET /api/v1/release-windows/{id}/report.json` 返回窗口级结构化报告，`GET /api/v1/release-windows/{id}/report.csv` 返回可下载 CSV，`GET /api/v1/release-windows/{id}/report.md` 返回可归档 Markdown，`GET /api/v1/release-windows/{id}/report.zip` 返回包含 manifest、JSON、CSV、Markdown 的可归档制品包；前端发布窗口详情页可选择 CSV、JSON、Markdown 或制品包。
+B2 验收焦点：
 
-缺口：
+- 复用 Run/Item/不可变计划，按 `(window, repository)` 完整校验后一次受理；不同操作者并发 close 只产生一个收尾 Run。
+- MR、Tag、明确选择的 CI 依次执行；失败或 UNKNOWN 停止后继，后者进入 NEEDS_REVIEW 且不普通 retry。
+- Tag 指向明确确认的 SHA；同名同 SHA 复用，异 SHA 阻塞；CI 记录项目、ID、ref、SHA、URL。
+- 不自动关闭共享 Iteration，不创建 archive copy 或删除原 feature/release。
+- 在真实事务代理、PostgreSQL、HTTP 请求计数下验证受理先提交、失败可追踪；API 与组件结果不称为完整页面旅程。
 
-- 后续保持回归；PDF 留作后续扩展，不进入当前队首。
-
+现有报告导出与 Run 可见性继续复用。当前 B2 尚未完成，完整用户旅程和真实 GitLab 实物验收另行记录。
 ## 五、第一批落地顺序
 
 脚本输出应包含 SA 编号，验收报告引用脚本日志时必须保留这些编号。
@@ -569,7 +553,9 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
 | P1 | SA-018 真实 TypeScript 门禁与存量类型修复 | 原检查为空项目；显式应用检查 44 个存量错误，S1 新增 0 个 | 修复真实检查入口与类型基线，不放宽类型规则 |
-| 已完成 | SA-013 S1 身份隔离与持久预览 | UUID、历史隔离、事务、幂等、API/UI 和 local schema 已验证 | S2–S5 尚未批准或实现 |
+| 已完成 | SA-013 S1 身份隔离与持久预览 | UUID、历史隔离、预览幂等与快照已验证 | S3 复用同一 Run/Item/快照，不另建计划协议 |
+| 已交付 | SA-013 S3-A/B1 唯一编排语义 | 目标反例、数据库/API、前端与静态扫描通过，已分阶段推送 | 完整 GitLab/UI 旅程和硬中断仍单独追踪 |
+| P1 | SA-013/SA-016 S3-B2 收尾安全 | 已确认 Tag/CI 失败传播、共享资源、重复 close 与事务边界缺口 | 仓库级一次受理、精确 SHA 与失败零后继写；不自动归档/删除 |
 | 已完成 | SA-018 固定构建环境与 CI 门禁 | pnpm 10.33.0、Node 24、CI/Docker 同一版本来源和 develop/PR 触发声明已统一 | 本地 95 项单测、6 项 Pact、生产构建通过；未声称远程 CI 已运行 |
 | 已完成 | SA-004 生产 Git Token 加密配置与恢复验证 | 2026-10-05 生产默认加密、只读密文校验、SQL 备份恢复和 HTTP 凭据请求验证通过 | 保持回归；历史无标识凭据迁移、密钥轮换独立评审 |
 | P1 | SA-002 BranchCreationMode 执行计划评审门禁 | 最小 dry-run 已实现，当前只输出四类候选、统计、JSON 结构和 Markdown 报告，且 `executionPermitted=false` | 评审 dry-run 输出是否足以进入执行计划切片；未批准前不得实现执行 API、数据库写入、迁移表或 GitLab 操作 |
@@ -3076,3 +3062,17 @@ S1 完成新标识隔离、持久计划与幂等受理，API 和 UI 明确预览
 ### 2026-10-08 SA-018 真实类型门禁修复
 
 显式检查 app/node 配置，覆盖 158 个源码与测试文件及 3 个工具配置；44 项存量错误清零，Vue 与配置错误注入均能阻断。107 项前端单测、消费端 Pact 6 项与提供端 Pact 6 项、生产构建及 i18n 通过；lint 无错误，保留 8 条既有 warning。严格设置、源码类型检查范围和依赖未放宽。此为本地工程门禁验证，不代表远程 GitHub Actions 或完整浏览器旅程已执行。详见 `tasks/records/2026-10-08-sa-018-real-typecheck.md`。
+
+### 2026-10-08 SA-013 S2 范围评审
+
+已完成基于提交 `5d85b17` 的写入口和外部传输源码核对，形成 S2-A 至 S2-D 的实施清单、独立操作账本、负向验收和回退边界。临时 MR/PR 检查与本地/远端文件副作用纳入覆盖，归档创建失败仍删源分支列为优先修复。仅评审文档完成，产品实现和 GitLab fixture 未开始；不增加场景验收 PASS 数。详见 `tasks/records/2026-10-08-sa-013-s2-scope-review.md`。
+
+### 2026-10-08 SA-013 S2 实施与隔离验证
+
+S2-A 至 S2-D 完成。后端 356 PASS / 5 SKIP、定向集成 48 PASS、前端 111 PASS；SpotBugs 7 项修复、2 项共享依赖理由抑制，复扫 0 项。V35 只新增账本，无历史回填。
+
+桌面 CUA/Playwright 页面创建组、仓库、迭代、窗口并关联，真实分支和 MR 写入有独立证据。版本更新因冲突回滚，MR 外部效果仍保留为 NEEDS_REVIEW；页面只读核对匹配后仍阻断。这是 S2 证据与保护验证，不是版本更新成功或恢复执行通过。没有复跑既有外部 Playwright CLI 全量场景，不增加其 PASS 数。
+
+专用 GitLab 17.11.3 项目 4 的外部 fixture 验证文件 stale revision 拒绝、MR SHA 409、tag SHA 和 pipeline ID；与 ReleaseHub 页面旅程分别记载。已有 guard 时关闭保护的真实进程启动被拒绝。S3–S5、硬中断恢复和生产切换未实现，下一 HEAD 为 S3 范围评审。
+
+详见 `docs/openspec/changes/add-durable-run-recovery/s2-implementation.md` 和 `tasks/records/2026-10-08-sa-013-s2-implementation.md`。

@@ -19,9 +19,9 @@
 
 ### Run 恢复的身份与持久化边界
 
-- **日期**：2026-10-08（更新）
-- **关键词**：`Run`、`中断恢复`、`幂等`、`RunItemId`、`UNKNOWN`、`事务`、`租约`、`历史隔离`、`MapsId`、`schema`、`persist`
-- **摘要**：独立 UUID 保留历史归属；同主体请求键保护不可变快照，JPA 映射须覆盖 local schema；未知外部结果仍不能直接重试，预览不等于恢复执行。
+- **日期**：2026-11-21（更新）
+- **关键词**：`Run`、`中断恢复`、`幂等`、`RunItemId`、`UNKNOWN`、`事务`、`租约`、`历史隔离`、`MapsId`、`schema`、`persist`、`checkMergeability`、`归档`、`隐藏写入`
+- **摘要**：S3-A/B1 通过组合反例校正 HTTP APPLIED/业务 UNKNOWN 的会话收口，最终写 URI 固定 numeric project ID，文件 CAS 保留原 revision；独立提交树验收与真实 Spring/HTTP/PG 证据不能被局部绿色替代。
 - **文档**：[lessons/run-recovery-identity-and-boundaries.md](lessons/run-recovery-identity-and-boundaries.md)
 
 ### pnpm 与 CI 版本统一来源

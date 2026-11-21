@@ -1,8 +1,8 @@
 # 设计自查与实施门禁
 
-日期：2026-10-05。
+初始评审：2026-10-05；当前研发复核：2026-11-21，见末尾。
 
-结论：`APPROVED_S1_ONLY`。2026-10-05 用户针对已呈现的 S1 范围明确回复“同意”，`implementationApproved=true` 仅适用于 S1：身份隔离、幂等受理和持久化计划预览。S2–S5、真实 GitLab 写入及历史数据迁移未批准。
+历史结论（当前状态见末尾持续研发复核）：`APPROVED_S1_ONLY`。2026-10-05 用户针对已呈现的 S1 范围明确回复“同意”，`implementationApproved=true` 仅适用于 S1：身份隔离、幂等受理和持久化计划预览。S2–S5、真实 GitLab 写入及历史数据迁移未批准。
 
 ## 已收敛的问题
 
@@ -32,3 +32,30 @@
 ## S1 交付状态（2026-10-08）
 
 已完成批准范围内的实现与目标回归。快照使用 JPA 映射支持 local schema，并以 persist 方式只新增；请求集合采用防御性复制。真实类型检查暴露存量基线问题，未将空集合检查当作成功。S2–S5 仍需独立放行，S1 完成不表示已具备恢复执行能力。
+
+## S2 范围评审（2026-10-08）
+
+结论：`READY_FOR_S2_APPROVAL`。实施授权仍为 S1；后续 SA-018 已修复真实类型门禁，所有既有代码已随 `5d85b17` 推送。本轮按 HEAD 完成 [S2 评审方案](s2-review.md)，没有实施产品逻辑或外部写入。
+
+新增发现：合并检查有临时 MR/PR 写入；GitLab 归档创建失败仍删除源分支；独立文件更新和本地文件模式会漏过分支工厂；旧查询折叠错误/截断分页，不能作恢复证据。原任务清单需扩大为全出口保护，操作账本须独立于尚未持久化的 RunTask。
+
+建议按 S2-A 原子语义、S2-B 账本与全入口门禁、S2-C 查询核对页面、S2-D 隔离 Provider 验证依次实施。实施及新建本机专用 GitLab fixture 写入等待用户批准；不批准 S3 执行器、生产启用、历史重放或非隔离项目写入。
+
+## S2 实施批准（2026-10-08）
+
+用户针对完整 S2-A 至 S2-D 和新建本机专用 GitLab fixture 明确回复“同意”。授权状态更新为 APPROVED_S2；此前 READY_FOR_S2_APPROVAL 是历史评审状态。S3–S5 与生产/非隔离资源操作不随之批准。
+
+## S2 交付（2026-10-08）
+
+S2-A 至 S2-D 已完成，实际收口边界与证据见 [s2-implementation.md](s2-implementation.md)。S3–S5、生产启用、历史重放尚未批准。
+
+## 持续研发复核（2026-11-21）
+
+用户已授权后续研发和分阶段推送；前述批准范围均为对应日期的历史记录。当前 S3-A/B1 的职责已收敛到现有 Run/Item、RunPlanAppService、GitMergeWorkflow 和操作账本，删除 Attach/Publish 隐式写与旧手工合并路径。
+
+- 已验证：Attach/Detach 纯配置；封存权威范围与原分支模式；按原 Item ID 重试；同仓阻塞传播；统一 Run 状态及 API/UI；原文件 revision；MR 复用与来源证据；H2/PostgreSQL 状态迁移。
+- 提交前发现的两个组合缺陷已修复：HTTP APPLIED/业务 UNKNOWN 保留 guard；身份解析后的真实写固定 numeric project ID。单位反例先 3 个失败，真实 Spring/HTTP/PostgreSQL 反例先 4 个失败，修复后完整目标全过；精确 C1 tree 194 PASS、六模块 SpotBugs 0，已提交推送 53eed67。
+- 后端唯一编排和前端事实展示分别提交 a4007f2、71a1487，第二阶段已推送；本轮 API/组件证据不冒称真实 GitLab 用户旅程。
+- 仍未验收：B2 仓库级收尾、重复 close 持久幂等、Tag/CI 依赖与精确 SHA；C worker、resume 及独立进程中断恢复；真实 GitLab 页面旅程。
+
+本轮证据、阶段提交与未完成项以 `tasks/records/2026-11-21-sa-013-orchestration-consistency.md` 为准。
