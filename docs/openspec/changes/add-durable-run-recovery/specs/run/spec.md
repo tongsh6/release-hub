@@ -651,7 +651,7 @@ C2-B5 已交付：独立 RED、本地门禁、分阶段推送及固定后端完�
 
 ### Requirement: 原 MERGE 未发送意图的本地结果收口
 
-C2-B6 为当前唯一实施队首；以下独立契约已完成 RED→GREEN 与本地门禁，实现 4e992e9 已推送，固定实现 SHA 的 Full-Link 44940092094 执行中，事实见 tasks 与任务记录 19。系统 SHALL 仅以当前 Task fence、原完整 MERGE INTENT、同 attempt 严格唯一 sequence 0 且无 SEND/Step，以及同物理事务的 NOT_SENT 与 Task 终态证明释放原 reservation；不得使用 BlockReason 白名单或业务读取是否确定代替未发送证明。
+C2-B6 已 DONE：独立契约、RED→GREEN 与本地门禁完成，实现 4e992e9、文档 29ec005 已推送，固定实现完整 SHA 的 Full-Link 44940092094 为 5/5，事实见 tasks 与记录 19.9。系统 SHALL 仅以当前 Task fence、原完整 MERGE INTENT、同 attempt 严格唯一 sequence 0 且无 SEND/Step，以及同物理事务的 NOT_SENT 与 Task 终态证明释放原 reservation；不得使用 BlockReason 白名单或业务读取是否确定代替未发送证明。
 
 #### Scenario: 原结果事务内记录未发送事实
 
@@ -717,6 +717,92 @@ C2-B6 为当前唯一实施队首；以下独立契约已完成 RED→GREEN 与�
 - **WHEN** 列表或详情包含 NOT_SENT 状态和事件
 - **THEN** 现有 zh/en 标签与组件展示该本地事实，blocked 仍据实际返回显示，不伪造远端响应或增加动作入口
 - **AND** 以组件验收证明真实消费者；完整 UI 黄金旅程仍需独立验收，state/event 字符串无需新增 schema 迁移
+
+### Requirement: 原 CREATE_BRANCH 未发送意图的安全接续与本地收口
+
+C2-B7 为当前唯一实施队首；以下是经根侧及两路只读反驳收敛的独立实施前契约，源码和新测试尚未实施、待 RED，事实见 tasks 与记录 20。系统 SHALL 只在 ENSURE_FEATURE、ENSURE_RELEASE 的原完整 CREATE_BRANCH/INTENT 具有当前 fence、匹配 guard、同 attempt 唯一 seq0、无 SEND/自身 Step 时沿原 Task 接续或本地结束，不因快照、到期或任意 FOUND 授权写入。
+
+#### Scenario: 原准备路径交付既有操作快照但不交付绕过权限
+
+- **GIVEN** 原 CREATE_BRANCH 满足完整未发送资格，或既有 MERGE 仍满足其各自资格
+- **WHEN** 原 prepare 原位重命名并由唯一领取路径调用
+- **THEN** 返回 Optional<Operation>，现 TaskClaim 携带 nullable 已有 Operation，metadata/plan 不被补写或替换
+- **AND** Context 在 provider 预检前绑定原数值项目 I，bindProjectId 保留快照；prepare/begin/sending 仍分别按当前 DB fence/guard/无 SEND 证据核对，不把快照当作权限
+- **AND** 不增加平行 prepare、查询接口、持久实体、DTO 或兼容通道；Operation.version 不成为独立权限，不增加发送 expectedVersion 参数
+- **AND** 仅 observe 增长审计版本而原意图/fence/guard/target 仍合法时可继续，只有实时执行事实失效才拒绝；既有观察版本校验保持
+
+#### Scenario: 原分支命令的严格 canonical 请求被实际发送
+
+- **GIVEN** typed target 严格包含 method=POST、suffix=/repository/branches、branch、ref、sourceRef，sourceRef 匹配原计划，ref 为原 40/64 位 SHA
+- **WHEN** 首次请求或原操作接续经过 begin
+- **THEN** begin 原位返回已核准的已有 Operation，唯一 interceptor 消费其 target 构造 body；不保留 String 返回兼容入口
+- **AND** 实际 POST 只有 branch/ref，canonical 次序为 branch、ref，使用 UTF-8 并保留 ref 原始大小写，URI 无 query 组件
+- **AND** requestHash 等于 SHA256("POST|" + remoteKey + "|/repository/branches||" + SHA256(canonicalUtf8Body) + "|")；规范化由现 GitLabGitBranchAdapter 承担并供 interceptor/Journal 消费，不记录 secret、不加通用请求实体或旧/新 hash 双轨
+
+#### Scenario: sourceRef 前进或删除不改变原冻结提交
+
+- **GIVEN** 原 INTENT 已冻结 SHA A，原 sourceRef 随后前进至其他提交或被删除
+- **WHEN** 当前 owner 沿完整未发送证明继续创建分支
+- **THEN** 实际 POST ref 仍为 A，新增 sourceRef 解析为 0，sourceRef 只与原计划匹配
+- **AND** 不从当前符号引用重新生成请求、不改原 operation/attempt/seq0 或冻结计划
+
+#### Scenario: namespace 重映射不能把原意图带到另一个项目
+
+- **GIVEN** 原操作数值项目为 I，而当前 namespace 解析为 J
+- **WHEN** 原任务重新进入 provider 预检
+- **THEN** Context 已携带 I，现 resolver 按 expected I 拒绝，J 的 branch GET/POST 均为 0
+- **AND** 保留真实 FAILED 分类，不为本地收口硬转 UNKNOWN；结果 patch 若含 git.projectId，只能为 I
+
+#### Scenario: 合法本地结果原子结束未发送分支意图
+
+- **GIVEN** 当前完整未发送 CREATE_BRANCH 得到真实 ALREADY_EXISTS、FAILED 或 UNKNOWN，实际 patch 为空、仅 git.projectId 或含可选 git.blockReason
+- **WHEN** 原 completeTask/acknowledgeTask 接受该本地结果
+- **THEN** 原操作 NOT_SENT、同 attempt seq1 本地事件、Task/Step/metadata/队列/绑定/Run 与匹配 guard 同物理事务提交，原 owner/session/attempt/seq0 保持
+- **AND** project patch 若提供必须为原 I，不强制合并专属成功字段或补 blockReason；无 SEND 却 CREATED、错项目或结果身份污染被拒绝
+- **AND** 后继、普通 retry 与 UNKNOWN 的既有限制保持，不因释放已知未发送 reservation 而扩大重试权
+
+#### Scenario: 已有目标分支可以不同于原创建基点
+
+- **GIVEN** 原 INTENT 准备从 A 创建目标分支，而预检确认目标已存在于合法 B，B 可不等于 A
+- **WHEN** 当前 owner 按 ENSURE 语义完成
+- **THEN** 以零创建 POST 收口 NOT_SENT/ALREADY_EXISTS，不把分支改回 A
+- **AND** 不用本次 HTTP 201 创建成功证明否定合法 ALREADY_EXISTS，也不伪造 CREATED
+
+#### Scenario: 类型、指纹和原始资格缺口不能由快照补齐
+
+- **GIVEN** target 缺字段、类型不符、多字段/query、canonical hash 不匹配，或 fence/guard/attempt/事件/自身 Step 不符合原资格
+- **WHEN** prepare、begin、sending 或本地完成复核
+- **THEN** 拒绝相应换权、发送或收口，不回填缺失事实、不消费快照绕过实时 DB 保护
+- **AND** ENSURE_FEATURE/ENSURE_RELEASE、same/new owner 和 40/64 位 SHA 分别定义正反例；AUTO/NAMED/EXISTING 保持既有模式，不制造非法创建 INTENT
+
+#### Scenario: begin 与 SEND 之间的真实竞争不产生迟到写入
+
+- **GIVEN** 一名 owner 已获得 begin 的 Operation，另一方在 sending 前完成换权、NOT_SENT 或赢得 SEND
+- **WHEN** 原 owner 或重复本地收口者继续执行
+- **THEN** 真实数据库锁和当前 fence 拒绝迟到 sending/finish/complete，原快照不授予 HTTP 权限；最多一名有效 sender 或一个 NOT_SENT/Step
+- **AND** CREATE_BRANCH/SEND_STARTED 尚无 seq2 时拒绝提前本地 UNKNOWN，保留真实 finish；已有真实 seq2 UNKNOWN 仍保留 guard，不自动重发
+
+#### Scenario: 领取和结果原子性通过真实数据库回滚验证
+
+- **GIVEN** prepare 或结果事务已形成对应的版本、NOT_SENT/事件和结果变化
+- **WHEN** 外层事务回滚，或实际最终 Task UPDATE 返回 0
+- **THEN** 对应 operation/version/事件、Task/Step/metadata/队列/Run/guard 整体回滚
+- **AND** 真实 PG 锁等待与 CAS 拒绝证据必须证明执行到相应阶段，不以提前资格拒绝代替回滚证明
+
+#### Scenario: 换权发送后的 APPLIED 按实际 sender 恢复原分支结果
+
+- **GIVEN** 原 INTENT 换权后由当前 owner 发送，真实 seq1 已记录 sender，原 CREATE_BRANCH/APPLIED 的 201/name/SHA 响应证明完整
+- **WHEN** APPLIED 后、业务结果前再次强杀并由第三 JVM 恢复
+- **THEN** 按真实 seq1 sender 核对原 Task，恢复阶段 HTTP=0；原 op.claimToken/session 仍是历史归属，不要求改写为新 owner
+- **AND** 保持 B2 既有 201/name/SHA 成功证明，不把本片新 canonical hash 强加到 APPLIED 投影，也不新增 hash 兼容双轨
+
+#### Scenario: 独立进程只恢复有完整未发送证据的原分支命令
+
+- **GIVEN** 独立 JVM 在原 CREATE_BRANCH INTENT 后强杀，或在 SEND 后（即使 HTTP 尚未到达）强杀
+- **WHEN** 默认 worker 重启扫描
+- **THEN** 完整未发送意图只沿原操作续发一次 branch POST，随后 APPLIED 再强杀的第三 JVM 零 HTTP 补原结果
+- **AND** 已 SEND/UNKNOWN 不自动重发；回归 B2–B6、后继及普通 retry/观察保护
+- **AND** CREATE_MR 原摘要不含完整 title/description/源分支删除选项 且含随机 marker，不能借本片宽松续用；其他动作和完整 UI 另行验收
 
 ## MODIFIED Requirements
 

@@ -1,6 +1,6 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。C2-B2 已分组推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5；规范化建分支成功证明与 APPLIED 结果投影恢复已交付。C2-B3 后端 d87dfa8、文档 544983b 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE；本地最终 403/48/738、静态与历史轮次证据见记录 16.2–16.6。C2-B4、B5 已完成本地与各自固定 SHA CI 验收并推送，证据见记录 17.5、18.9。当前唯一 HEAD 为 C2-B6 原 MERGE 未发送意图的本地结果收口，独立 RED→GREEN、相关单次 749/API 48/普通 816、前端 217 及静态已通过；实现 4e992e9 已推送，固定实现 SHA 的 Full-Link 44940092094 执行中，事实见记录 19。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。C2-B2 已分组推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5；规范化建分支成功证明与 APPLIED 结果投影恢复已交付。C2-B3 后端 d87dfa8、文档 544983b 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE；本地最终 403/48/738、静态与历史轮次证据见记录 16.2–16.6。C2-B4、B5 已完成本地与各自固定 SHA CI 验收并推送，证据见记录 17.5、18.9。C2-B6 原 MERGE 未发送意图的本地收口已完成：相关单次 749/API 48/普通 816、前端 217 与静态通过，实现 4e992e9、文档 29ec005 已推送，固定实现 SHA 的 Full-Link 44940092094 为 5/5（记录 19.9）。当前唯一 HEAD 为 C2-B7 原 CREATE_BRANCH 未发送意图的安全接续与本地收口，独立契约与两路只读反驳完成，源码与新测试待 RED，见记录 20。
 
 
 ## 0. 当前研发蓝图与授权（2026-11-21）
@@ -246,9 +246,9 @@ B4 交付后实施本片：先定义正反例并只读核对职责，再在旧�
 
 有效独立 RED 共 106 个新实例；首轮定向 108/108 包含两个 producer null/empty 边界，真实 PG 等待关系、旧/新 owner 竞争及三个独立进程中断场景均有证据。相关回归首轮 691/1 FAIL 为旧 HTTP 候选断言；随后仅修两份测试，真实 Task CAS 返回 0 的补充反例已独立 RED→GREEN，不能用主动 setRollbackOnly 代替。最终相关 13 套 692 项为按源码核对的分批汇总，API 48、普通 816（811 PASS/5 既有 SKIP）和静态门禁通过，详见记录 18.6–18.7。后端 064282887ae825255360bcf3b04d0377163219aa 与文档 62d075c36bd96c35d14bc541957787c5173559f8 已推送，固定前者的 Full-Link 44935216788 为 5/5，证据见 18.9。CI 仍限后端 API 与隔离 GitLab，不扩大为后续文档 SHA、完整 UI 或 Slice4/5。B5 的未发送本地结果限制由下节 B6 独立接续；其他 INTENT 动作、SEND/UNKNOWN 恢复、cleanup/version 与完整 UI 仍分别验收。
 
-##### C2-B6：原 MERGE 未发送意图的本地结果收口（当前子片 / HEAD，本地验收通过）
+##### C2-B6：原 MERGE 未发送意图的本地结果收口（已交付 / DONE）
 
-B5 的固定后端 SHA CI 已通过后接续本片。根侧与 provider/持久化两路先收敛独立契约，再以 9f72670 旧生产冻结树保存 RED；实现、定向 57、相关单次 749/API 48/普通 816、前端 217 及静态已通过，源码绑定和审查见 tasks 与记录 19。实现 `4e992e9c2406586ec23fa7636292e3d48c163118` 已推送，固定该 SHA 的 [Full-Link 44940092094](https://github.com/tongsh6/release-hub/actions/runs/44940092094) 执行中，B6 保持 HEAD。B5 对未发送 INTENT 的保守结果边界保留为历史验收，本片单独承担其变更。
+B5 的固定后端 SHA CI 通过后实施本片。根侧与 provider/持久化两路先收敛独立契约，再以 9f72670 旧生产冻结树保存 RED；实现、定向 57、相关单次 749/API 48/普通 816、前端 217 及静态通过，源码绑定和审查见 tasks 与记录 19。实现 `4e992e9c2406586ec23fa7636292e3d48c163118`、文档 `29ec00586be20730e66cf37da12614e6450d240d` 已推送，固定该实现 SHA 的 [Full-Link 44940092094](https://github.com/tongsh6/release-hub/actions/runs/44940092094) 为 5/5，B6 已 DONE。B5 的保守边界与 B6 全部历史轮次保留，最终收口见记录 19.9。
 
 释放依据是当前 Task fence、原完整 MERGE INTENT、同 attempt 严格唯一 sequence 0 且无 SEND，以及同一物理事务中的 NOT_SENT 与 Task 终态。收口不要求 lease 再次到期：未过期原 owner 与经 B5 到期换权后的当前 owner 都是正例，只有换权本身要求 expired。业务读取是否确定、BlockReason 是否在白名单，都不能代替这个证明。当前 interceptor 先 begin，再由独立事务提交 sending，之后才执行 HTTP；因此本地 NOT_SENT 必须与 SEND_STARTED 竞争同一原锁并互斥。它是未发送事实，不新增 GitWriteResult.Outcome，不伪造 HTTP status、响应或 requestId。
 
@@ -282,6 +282,52 @@ Operation.blocked 仍表示该 remote 当前是否有任一 guard。历史 NOT_S
 MERGE operation 已 UNKNOWN 且具有真实 sequence 2 响应时，既有 UNKNOWN 确认继续允许；上述 SEND 无响应边界只保护实际发送者，不扩展 SEND 恢复。
 
 本片仅接续原 MERGE 未发送意图；其他 INTENT 动作、SEND/UNKNOWN 恢复、cleanup/version 与完整 UI 仍独立排队。回滚先停派发并保留原事实，不撤销远端写，不重新发送已 NOT_SENT 的原操作。
+
+##### C2-B7：原 CREATE_BRANCH 未发送意图的安全接续与本地收口（当前子片 / HEAD，实施前契约）
+
+B6 已完成本地及固定实现 SHA 的 Full-Link 5/5；本片只覆盖 ENSURE_FEATURE、ENSURE_RELEASE 的原 CREATE_BRANCH/INTENT。根侧及两路只读反驳已收敛以下独立契约；B7 源码与新测试尚未实施、待 RED，定位与决策见记录 20。CREATE_MR、已 SEND/UNKNOWN 的重发及其他动作仍不在本片范围。
+
+安全接续必须继续原已冻结的创建命令。原 sourceRef 后来前进或删除，不改变原请求中的 SHA A；target 已存在于合法 SHA B（B 可不等于 A）时，ENSURE 的目标已经满足，ALREADY_EXISTS 不要求把目标改回 A，也不能套用“本次 HTTP 201 创建成功”的 SHA 证明。原数值项目 I 则必须在 provider 预检之前生效：namespace 已重映射至 J 时，沿现 resolver 的 expected I 校验拒绝；不得先读取 J 的分支再靠 interceptor 阻止 POST。
+
+| 复用的职责 | 本片调整与实际消费者 |
+|---|---|
+| 原 prepareUnsentMergeClaim 与唯一领取路径 | 原位重命名并返回 Optional<Operation>，覆盖既有 MERGE 与本片 CREATE_BRANCH 的各自严格资格；领取结果向现 TaskClaim 传递已有 Operation 的 nullable 快照，不建平行 prepare 或查询接口 |
+| TaskClaim 与 GitOperationContext | 增加 nullable 的已有 Operation，提前绑定原数值项目 I；bindProjectId 重建上下文时保留快照；不改冻结 metadata/plan，不新建持久对象或 DTO |
+| 现 GitLabGitBranchAdapter | 承担 CREATE_BRANCH method/suffix/branch/ref/sourceRef 与 canonical hash 的严格规范化，由 interceptor 和 Journal 实际消费；不增加通用请求实体 |
+| 原 Journal.begin 与唯一生产消费者 interceptor | 原位改为返回已有 Operation，不保留 String 返回的兼容入口；首次发送与续发 body 都消费 begin 已核准的 typed target |
+| 原 prepare/begin/sending、Task CAS 与 guard | 每次依据数据库当前 fence、原 guard、无 SEND、同 attempt 唯一 seq0、无自身 Step 和完整计划/请求核资格；快照只提供值，不成为权限凭证 |
+| 原 acknowledgeTask/completeTask | 以本片完整未发送证明，同物理事务提交原操作 NOT_SENT、同 attempt 本地事件、实际结果及匹配 guard 释放；不新开结果路径 |
+| 原 CREATE_BRANCH/APPLIED 投影 | 换权后使用真实 seq1 sender 证明当前 Task，而不是仍比较原 op.claimToken；B2 原 201/name/SHA 响应证明保持，不追加本片新 canonical hash 门禁 |
+
+Operation.version 是观察审计快照字段，不是独立发送权，也不引入新的发送 expectedVersion 参数。仅 observe 更新审计版本而原执行事实仍合法，不应使恢复失效；DB 原意图、fence、guard 或 target 真正失效时，由 begin/sending 实时复核拒绝。既有观察 API 的版本校验语义保持。
+
+原 typed target 严格限定 method=POST、suffix=/repository/branches、branch、ref、sourceRef。sourceRef 只与冻结计划匹配，恢复时不重新读取；ref 保留原 40/64 位 SHA 及大小写。实际 POST body 只有 branch/ref，canonical 字段次序固定为 branch、ref，按 UTF-8 编码；无 query。请求指纹为：
+
+`requestHash = SHA256("POST|" + remoteKey + "|/repository/branches||" + SHA256(canonicalUtf8Body) + "|")`
+
+首次和续发都采用这一规范；不把 token 或其他 secret 放入 target、hash 封套或证据，不为历史 INTENT 增加旧/新 hash 双轨或回填。此严格请求证明只约束未发送意图，不侵入已经以真实响应证明成功的 B2 APPLIED 投影。原 operation/attempt/seq0、owner claim/session 与历史 reservation 归属保持，实际发送者写入原同 attempt seq1。
+
+原未发送操作可随真实 ALREADY_EXISTS、FAILED、UNKNOWN 本地结果收口 NOT_SENT；允许实际空 patch、仅 git.projectId 的 patch 及可选 git.blockReason，project patch 若提供必须是原 I。不能要求合并专属 mrDisposition/mergeSha 或强制补 blockReason，更不能把已明确 FAILED 的身份拒绝硬转 UNKNOWN。无 SEND 却 CREATED 必须拒绝；已有 target 的 ALREADY_EXISTS 不冒充本次创建成功。Task/Step/metadata/队列/绑定/Run/匹配 guard 与本地事件同事务，后继、普通 retry 和 UNKNOWN 的既有限制不变。
+
+CREATE_BRANCH/SEND_STARTED 已提交但尚无 seq2 时拒绝提前本地 UNKNOWN，保留真实迟到 finish；已有真实 seq2 UNKNOWN 继续保留 guard，不借本片自动重发。begin 返回快照与 sending 之间如发生换权、NOT_SENT 或另一发送者先赢，sending 必须按实时数据库资格拒绝，不能因曾获得快照而继续 HTTP。旧 worker 不能写入或覆盖当前结果。
+
+| 独立正反例 | 待先 RED 验证的出口 |
+|---|---|
+| ENSURE_FEATURE / ENSURE_RELEASE；same/new owner；40/64 位 SHA | 沿原 Task/op/attempt 接续，保留历史身份、首次时间与实际顺序；换权只发生于完整到期资格，未过期同 owner 可完成本地结果 |
+| 原 sourceRef 前进至 B 或被删除 | 仍发送冻结 A，新增 sourceRef 解析为 0，body 来自 begin 已核准原 target，不重新求值符号引用 |
+| namespace 的数值项目 I 变为 J | provider 预检前绑定 I；沿现 resolver 拒绝，J 的 branch GET/POST 为 0，真实 FAILED 不硬转 UNKNOWN |
+| target 已存在，合法 B 不等于 A | 零创建 POST，原 INTENT 原子 NOT_SENT/ALREADY_EXISTS；不要求 201 证明或把分支移回 A |
+| 空/仅 project/可选 blockReason patch；错误项目或无 SEND 的 CREATED | 接受实际合法 FAILED/UNKNOWN/ALREADY_EXISTS；拒绝身份污染、伪造创建和不属于本动作的结果字段 |
+| 缺/错类型字段、额外字段/query、错误 hash、stale fence、错 guard/attempt、多事件/自身 Step | 原资格拒绝，无新增发送、换权或结果事实；快照与候选发现不代替锁内证明 |
+| AUTO / NAMED / EXISTING | 保持既有模式语义，只在真实创建路径形成合法 INTENT；已存在或 EXISTING 路径不能被恢复逻辑变成创建写 |
+| 真实 PG 锁等待、begin→SEND 竞争、双领取/双本地收口 | SEND 与 NOT_SENT 互斥，旧/迟到调用拒绝；当前发送者有且只有一次有效发送权 |
+| prepare/结果事务的真实 CAS=0 与外层回滚 | 对应 op/version/事件、Task/Step/metadata/队列/Run/guard 完整回滚，不能把 ack/prepare 前拒绝冒充回滚证据 |
+| INTENT 后强杀→续发→APPLIED 后再次强杀→第三 JVM | 原操作续发一次 branch POST；第三 JVM 按真实 seq1 sender 做原结果投影，恢复阶段 HTTP=0，不强加新 hash 或另造操作 |
+| SEND 后强杀，包括 HTTP 尚未到达 | 保留在途未知保护，不自动重发；真实 seq2 UNKNOWN 与本地未知分开验证 |
+| 仅 observe 导致审计 version 增长 | 原意图/fence/guard/target 仍合法时可继续，不以快照版本过期新增发送门禁 |
+| B2–B6 与后继/普通 retry/观察消费者 | 既有成功投影、MERGE 接续/收口和队列语义保持；历史归属与当前 sender 不混淆，NOT_SENT 沿现有 UI/API 展示 |
+
+回滚先停派发并保留事实，不撤销远端分支、不重发已 NOT_SENT 或 SEND/UNKNOWN 的操作。本片没有新表、迁移、持久 DTO、独立接口或兼容层。CREATE_MR 原意图摘要尚不含完整 title/description/源分支删除选项 请求且描述含随机 operation marker，不能凭“同为 INTENT”宽松推广本片重放资格；完整请求责任另片定义。
 
 ### 分阶段依赖与交付
 

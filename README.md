@@ -27,7 +27,9 @@ C2-B2 的范围仅为 ENSURE_FEATURE/ENSURE_RELEASE 的 CREATE_BRANCH/APPLIED。
 
 后端 [`064282887ae825255360bcf3b04d0377163219aa`](https://github.com/tongsh6/release-hub/commit/064282887ae825255360bcf3b04d0377163219aa) 与文档 `62d075c36bd96c35d14bc541957787c5173559f8` 已分阶段推送，固定该后端 SHA 的 [Full-Link 44935216788](https://github.com/tongsh6/release-hub/actions/runs/44935216788) 为 5/5，B5 已 DONE。完整 RED/GREEN、源码绑定及失败路径见[验收记录第 18 节](tasks/records/2026-11-21-sa-013-orchestration-consistency.md)。
 
-当前按[执行路线图](docs/execution-roadmap.md)接续 B6「原 MERGE 未发送意图的本地结果收口」，已完成独立 RED→GREEN 与本地门禁，仍为唯一 HEAD。锁内核完整未发送证明后，当前 Task 结果、原操作 NOT_SENT 与匹配 guard 释放同事务完成；已开始 SEND 的操作拒绝提前 UNKNOWN，保留真实响应处理权。业务 UNKNOWN 仍阻断同仓后继及普通/自动重试。相关单次 749/749、API 48/48、普通 816 项（811 PASS/5 既有 SKIP）、前端 217/217 和静态通过，详见[验收记录第 19 节](tasks/records/2026-11-21-sa-013-orchestration-consistency.md)。实现 [`4e992e9c2406586ec23fa7636292e3d48c163118`](https://github.com/tongsh6/release-hub/commit/4e992e9c2406586ec23fa7636292e3d48c163118) 已分阶段推送，固定该完整 SHA 的 [Full-Link 44940092094](https://github.com/tongsh6/release-hub/actions/runs/44940092094) 已启动、仍在执行中；其他 INTENT、SEND/UNKNOWN 与完整 UI 黄金旅程仍独立验收。
+**S3-C2-B6 已完成并分阶段推送**：锁内核完整未发送证明后，当前 Task 结果、原操作 NOT_SENT 与匹配 guard 释放同事务完成；已开始 SEND 的操作拒绝提前 UNKNOWN，保留真实响应处理权。业务 UNKNOWN 仍阻断同仓后继及普通/自动重试。相关单次 749/749、API 48/48、普通 816 项（811 PASS/5 既有 SKIP）、前端 217/217 和静态通过。实现 [`4e992e9c2406586ec23fa7636292e3d48c163118`](https://github.com/tongsh6/release-hub/commit/4e992e9c2406586ec23fa7636292e3d48c163118)、文档 `29ec00586be20730e66cf37da12614e6450d240d` 已推送，固定该实现完整 SHA 的 [Full-Link 44940092094](https://github.com/tongsh6/release-hub/actions/runs/44940092094) 为 5/5，B6 已 DONE，详见[验收记录第 19 节](tasks/records/2026-11-21-sa-013-orchestration-consistency.md)。
+
+当前按[执行路线图](docs/execution-roadmap.md)接续 B7「原 CREATE_BRANCH 未发送意图的安全接续与本地收口」：先独立验证 feature/release 两类分支仍消费原冻结 SHA、原数值项目和完整未发送证明，并完成可证明无写时的本地 NOT_SENT。原 sourceRef 前进或删除不重新求值；项目重映射不把请求带到新项目。独立契约与两路只读审查完成，源码及新测试尚未实施、待 RED；CREATE_MR、SEND/UNKNOWN 与完整 UI 黄金旅程继续独立验收。
 
 > **协作入口：[`AGENTS.md`](AGENTS.md)** — 唯一项目画像、工程规则与知识导航；生命周期、工作模式和发布事实分别记录。
 > 📋 **实现与验证事实：[`docs/project-ledger.md`](docs/project-ledger.md)** — 已交付基线、当前任务目标与验收边界。

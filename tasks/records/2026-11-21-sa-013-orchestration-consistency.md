@@ -1,6 +1,6 @@
 # 2026-11-21 SA-013：分支收敛与唯一编排语义
 
-状态：已交付阶段及其固定 SHA 证据按各节保留；C2-B5 后端 0642828、文档 62d075c 已分阶段推送，固定后端完整 SHA 的 Full-Link 44935216788 为 5/5，B5 已 DONE，详见 18.9。当前唯一 HEAD 为 C2-B6 原 MERGE 未发送意图的本地结果收口，独立 RED→GREEN、相关单次 749/API 48/普通 816、前端 217 与静态门禁已通过；实现 4e992e9 已推送，固定实现 SHA 的 Full-Link 44940092094 执行中，见第 19 节。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
+状态：已交付阶段及其固定 SHA 证据按各节保留。C2-B6 实现 `4e992e9c2406586ec23fa7636292e3d48c163118`、文档 `29ec00586be20730e66cf37da12614e6450d240d` 已分阶段推送，固定实现完整 SHA 的 Full-Link 44940092094 为 5/5，B6 已 DONE，详见19.9；此前本地门禁与历史轮次不变。当前唯一 HEAD 为 C2-B7 原 CREATE_BRANCH 未发送意图的安全接续与本地收口，独立契约及两路只读反驳已完成，源码与新测试待 RED，见第20节。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
 
 ## 1. 目标与范围
 
@@ -841,7 +841,7 @@ B5 当时的本地验收中，前置读取已包含 A/BLOCKED 只验证整事务
 
 ## 19. C2-B6：原 MERGE 未发送意图的本地结果收口
 
-B5 交付后，当前唯一 HEAD 接续 B6。19.1–19.3 保留先于实现定义的职责、独立正反例和验收出口；19.4 起记录实际 RED、实现、本地验收与审查。详细规范集中于原 design/Run delta，执行清单见 tasks。当前本地门禁已通过，实现 4e992e9 已推送，固定实现 SHA 的 Full-Link 44940092094 执行中，未将 B6 标记 DONE。
+B5 交付后当时队首接续 B6。19.1–19.3 保留先于实现定义的职责、独立正反例和验收出口；19.4–19.8 保留实际 RED、实现、本地门禁、审查及阶段交付历史。详细规范集中于原 design/Run delta，执行清单见 tasks。B6 最终已按19.9完成文档推送与固定实现 SHA CI，标记 DONE；当前 B7 队首见第20节。
 
 ### 19.1 第一性原理与首选方案反证
 
@@ -916,3 +916,47 @@ MERGE/SEND_STARTED 尚无响应时拒绝所有提前本地完成，包括同 fen
 推送时 main/develop 仍共同指向 `d4534ccc34fedb9bbf394ced89b4726f43ec197c`，远端恰为 main、develop 与当前 feature 三分支。此处只确认实现阶段，不把未提交的本地验收文档写成已推送。
 
 固定实现完整 SHA `4e992e9c2406586ec23fa7636292e3d48c163118` 的 [Full-Link 44940092094](https://github.com/tongsh6/release-hub/actions/runs/44940092094) 已实际触发并核对 headSha；创建于 `2026-11-21T19:17:03Z`，即北京时间 `2026-11-22 03:17:03`。本次记录观察状态为 in_progress，尚无完成或通过结论，证据为 `full-link/initial-run.json`。B6 保持 HEAD，待该 run 完成后按实际结论收口；不使用 B5 CI 代替本片验收。
+
+### 19.9 文档阶段推送与固定实现 SHA CI 最终收口
+
+验收文档提交 `29ec00586be20730e66cf37da12614e6450d240d` 已分阶段推送，父提交为实现 `4e992e9c2406586ec23fa7636292e3d48c163118`，说明 `docs: record unsent merge completion validation`。根侧核实时工作区干净，main/develop 仍共同指向 `d4534ccc34fedb9bbf394ced89b4726f43ec197c`。19.7 结尾及 19.8 保留当时的本地验收、CI in_progress 与文档未推送状态，本节记录其后已完成的事实。
+
+固定实现完整 `4e992e9c2406586ec23fa7636292e3d48c163118` 的 [Full-Link 44940092094](https://github.com/tongsh6/release-hub/actions/runs/44940092094) 为 completed/success；job `136955172873` 同为 completed/success，watchExitCode=0。原始汇总 Passed: 5 / Failed: 0，时间 `2026-11-21T19:24:20.4221573Z`，即北京时间 `2026-11-22 03:24:20`；run 创建于 `2026-11-21T19:17:03Z`，更新完成于 `2026-11-21T19:24:36Z`。证据为 `.ai/reports/validation/c2-b6/full-link/result.json` 与同目录 `136955172873.log`。
+
+实现与本地已验收源码保持一致，B6 标记 DONE；该 CI 精确绑定实现 SHA，未将后续文档 29ec005 当作 headSha。19.4–19.7 的独立 RED、测试语义校正、单次相关 749、其余门禁与源码绑定原样保留，重叠测试不累加。5/5 仍限后端 API 与隔离 GitLab，不扩大完整 UI、Slice4/5 或其他未知写恢复的覆盖。唯一 HEAD 接续 B7，独立实施前契约见第 20 节。
+
+## 20. C2-B7 实施前：原 CREATE_BRANCH 未发送意图的安全接续与本地收口
+
+B6 验收完成后，B7 成为唯一 HEAD。根侧及两路只读反驳已收敛独立契约；本节基线为 `29ec00586be20730e66cf37da12614e6450d240d`，B7 源码和新测试尚未实施、待 RED。以下源码定位与正反例不构成已测缺陷或 GREEN；完整规范集中于原 design/Run delta，执行清单见 tasks，不另建平行计划。
+
+### 20.1 第一性原理、反证与实际定位
+
+已提交的创建意图冻结了项目 I、目标分支和 SHA A；恢复应消费这个命令的值。重新读取已前进或删除的 sourceRef 会改变或丢失原意图，不能把“重新请求当前 base”当作续发。只在 interceptor 写前检查 I 也太晚：provider 可能已按重映射 namespace 读取 J 的分支。因此快照必须经现 TaskClaim/Context 在预检前绑定 I，同时保留实时 DB fence 的发送权检查。
+
+实施前源码已核：GitWriteHttpInterceptor 75–82 对 CREATE_BRANCH 每次解析 ref；99 先构造 body，120–122 的 begin 只返回 ID 后即 sending。RunPort.TaskClaim 79–82 仅有现有任务字段/metadata，GitOperationContext 22–44 从 metadata 取项目且 bindProjectId 重建上下文；它们尚无原 Operation 快照。Journal.prepareUnsentMergeClaim 158–174 仅接收 TRY_MERGE；confirmedAppliedBranchProject 179–196 则独立消费 B2 原 201/name/SHA 响应证明。上述位置是本片职责核对依据，不以当前实现定义正确性。
+
+“所有恢复失败都转 UNKNOWN”也被反例推翻：I→J 由 expected I resolver 明确拒绝，可保留真实 FAILED；完整无 SEND 证明足以原子收口，不依赖业务不确定分类。“已有 target 必须仍等于 A”则混淆了 ENSURE 和本次创建成功：合法目标已经在 B，B≠A 仍可 ALREADY_EXISTS，不回移分支，也不借 201 证明否定已有分支。
+
+### 20.2 最小责任调整与冻结请求
+
+原 prepare 原位重命名并返回 Optional<Operation>；现 TaskClaim 增加 nullable 已有 Operation，Context 提前绑定原 I，bindProjectId 保留快照。metadata/plan 不改，不新建持久对象、DTO、独立 prepare/查询接口。begin 原位返回已有 Operation，实际唯一生产消费者仍为 interceptor，不保留 String 兼容返回；首次/续发 body 都消费 begin 已核准的 typed target。
+
+CREATE_BRANCH 的 method/suffix/branch/ref/sourceRef 与 canonical hash 由现 GitLabGitBranchAdapter 负责，interceptor 和 Journal 为实际消费者。原 sourceRef 仅匹配计划，恢复读取次数为 0；实际 POST 仅 branch/ref，canonical 次序 branch、ref，保留 ref 原始大小写并以 UTF-8 编码、无 query。hash 封套为 `POST|remoteKey|/repository/branches||SHA256(canonicalUtf8Body)|`，外层再 SHA256；不记录 secret，不加新/旧 hash 双轨或历史 INTENT 回填。
+
+快照只提供原值，不承担权限。prepare/begin/sending 仍实时核 DB 当前 fence、原 guard、完整 typed 请求/hash、同 attempt 唯一 seq0、无 SEND/自身 Step；Operation.version 不引入新发送 expectedVersion。仅 observe 增长审计版本而原事实仍合法是正例，DB 意图/fence/guard/target 真正失效才拒绝。原 op/attempt/seq0/owner/session、首次时间和实际顺序保持。
+
+### 20.3 本地结果、发送竞争与 APPLIED 边界
+
+完整未发送 CREATE_BRANCH 的真实 ALREADY_EXISTS/FAILED/UNKNOWN 可沿原结果事务形成 NOT_SENT。接受实际空、仅 git.projectId 或含可选 blockReason 的 patch；project 若提供必须为 I，不能强制合并专属成功字段或补理由。无 SEND 的 CREATED、错项目或身份污染拒绝。NOT_SENT 本地事件、Task/Step/metadata/队列/绑定/Run 与匹配 guard 同事务；后继、普通 retry 与 UNKNOWN 限制不变。
+
+CREATE_BRANCH SEND_STARTED 尚无 seq2 时拒绝提前 UNKNOWN，保留真实 finish；已有真实 seq2 UNKNOWN 继续保留 guard，不自动重发。begin→sending 间换权或收口后，原快照不能让迟到 worker 发出 HTTP。新 owner 续发后 APPLIED 再强杀，第三 JVM 必须按真实 seq1 sender 投影原 Task，而非要求历史 op.claimToken 已改写；只修这项归属检查，不把新 canonical hash 加到 B2 原 201/name/SHA APPLIED 证明，也不建立兼容 hash 分支。
+
+### 20.4 独立 RED 与交付出口
+
+先覆盖两个 branch 动作、same/new owner、40/64 位 SHA 和 AUTO/NAMED/EXISTING，确认无非法创建 INTENT。sourceRef 前进/删除仍发送原 A、零重解析；namespace I→J 时 J branch GET/POST 为 0且保留真实 FAILED；已有目标 B≠A 可本地 ALREADY_EXISTS；空/仅 project/可选 reason patch 与无 SEND 的 CREATED/身份污染分别验证。
+
+真实 PostgreSQL 用例应覆盖完整资格破损、锁等待、begin→SEND 竞争、双领取/收口、旧 worker 迟到、实际 Task CAS=0 和外层回滚，分别证明到达准备/结果阶段后全部相关事实回滚。只读观察仅改变审计 version 的正例也须保留，不能把 snapshot.version 相等新增成发送门禁。
+
+独立 JVM 先在 INTENT 后强杀，默认 worker 换权后按原操作续发 1 次 branch POST，再在 APPLIED 后强杀，第三 JVM 恢复阶段 HTTP=0；另外验证 SEND 后强杀不自动复发。回归 B2–B6、后继/普通 retry 与既有 NOT_SENT UI/API 消费者；完成相关/API/前端/静态 TopN、源码绑定、review、分组提交推送及本片固定 SHA CI 后才收口。
+
+CREATE_MR 原摘要不含完整 title/description/源分支删除选项 请求，interceptor 还会注入随机 operation marker；不能凭“也没有 SEND”宽松重放未知原请求。其 INTENT、SEND/UNKNOWN 与其他动作恢复另片定义。回滚停派发并保留证据，不撤销远端分支、不重发 NOT_SENT 或未知在途操作；不扩大完整 GitLab/UI 验收边界。
