@@ -57,6 +57,7 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { gitOperationApi, type GitOperation, type GitOperationDetail } from '@/api/gitOperationApi'
 import { handleError } from '@/utils/error'
+import { createRequestKey } from '@/utils/executionIntent'
 
 const props = defineProps<{ repoId?: string; runId?: string }>()
 const { t } = useI18n()
@@ -99,8 +100,7 @@ async function reconcile() {
   busy.value = true
   try {
     if (!retryRequest || retryRequest.id !== id || retryRequest.version !== version) {
-      const bytes = crypto.getRandomValues(new Uint8Array(16))
-      retryRequest = { id, version, key: Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('') }
+      retryRequest = { id, version, key: createRequestKey() }
     }
     await gitOperationApi.reconcile(id, version, retryRequest.key)
     if (current !== generation) return

@@ -100,7 +100,7 @@ const { query, loading, list, total, search, reset, onPageChange, onPageSizeChan
   }
 })
 
-function canRetry(row: Run) { return isRetryableRun(row.status, row.runType) }
+function canRetry(row: Run) { return isRetryableRun(row.status, row.runType, row.executionVersion) }
 
 function openDetail(row: any) {
   drawerRef.value?.open(row.id)

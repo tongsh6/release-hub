@@ -62,6 +62,10 @@
       </el-button>
     </div>
 
+    <p v-if="acceptedRunId && latestRunDetail?.id !== acceptedRunId" class="run-review-summary" data-test="accepted-run">
+      {{ t('run.request.accepted') }}: {{ acceptedRunId }}
+      <el-button link type="primary" @click="router.push(`/runs/${acceptedRunId}`)">{{ t('orchestration.viewRunDetail') }}</el-button>
+    </p>
     <div v-if="latestRunDetail" class="run-review-summary">
       <div class="section-title">{{ t('orchestration.latestRun') }}</div>
       <div class="run-review-grid">
@@ -108,13 +112,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { releaseWindowApi, type PlanItemView } from '@/api/modules/releaseWindow'
 import { runApi, type Run, type RunDetail } from '@/api/runApi'
 import { isFailedResult, runStatusTagType, runTypeKey } from '@/utils/runPresentation'
 import { handleError } from '@/utils/error'
+import { useUserStore } from '@/stores/user'
+import { readExecutionIntent, saveExecutionIntent, acknowledgeExecutionIntent } from '@/utils/executionIntent'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import RunPlanPreviewDialog from './RunPlanPreviewDialog.vue'
 
@@ -129,6 +135,7 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'open-version-update'): void; (e: 'refresh'): void }>()
 const { t } = useI18n()
 const router = useRouter()
+const user = useUserStore()
 const selectedRepoId = ref('')
 const selectedIterationKeys = ref<string[]>([])
 const blockPolicy = ref<'FAIL_FAST' | 'CONTINUE_ON_BLOCK'>('FAIL_FAST')
@@ -137,6 +144,15 @@ const orchestrating = ref(false)
 const savedPlanVisible = ref(false)
 const recentRuns = ref<Run[]>([])
 const latestRunDetail = ref<RunDetail>()
+const acceptedRunId = ref<string>()
+let disposed = false
+let viewGeneration = 0
+let recentLoadGeneration = 0
+
+function isCurrentView(windowId: string, generation: number): boolean {
+  return !disposed && props.windowId === windowId && viewGeneration === generation
+}
+onUnmounted(() => { disposed = true; viewGeneration++ })
 
 const availableRepoIds = computed(() => [...new Set(props.planItems.map(item => item.repoId))].sort())
 const repositoryPlan = computed(() => props.planItems.filter(item => !selectedRepoId.value || item.repoId === selectedRepoId.value))
@@ -144,8 +160,9 @@ const availableIterationKeys = computed(() => [...new Set(repositoryPlan.value.m
 const selectedPlan = computed(() => repositoryPlan.value.filter(item => selectedIterationKeys.value.includes(item.iterationKey)))
 const repoIds = computed(() => [...new Set(selectedPlan.value.map(item => item.repoId))].sort())
 const iterationKeys = computed(() => [...new Set(selectedPlan.value.map(item => item.iterationKey))])
-const canExecute = computed(() => props.scopeReady && !props.frozen && !orchestrating.value
+const scopeExecutable = computed(() => props.scopeReady && !props.frozen
   && ['DRAFT', 'PUBLISHED'].includes(props.windowStatus) && selectedPlan.value.length > 0)
+const canExecute = computed(() => scopeExecutable.value && !orchestrating.value)
 const failedItems = computed(() => latestRunDetail.value?.items.filter(item => isFailedResult(item.finalResult)) ?? [])
 const firstFailedItem = computed(() => failedItems.value[0])
 const firstFailedStep = computed(() => firstFailedItem.value?.steps.find(step => isFailedResult(step.result)))
@@ -162,46 +179,72 @@ watch([() => props.windowId, selectedRepoId, availableIterationKeys, () => props
     selectionContext = context
   }, { immediate: true })
 watch(() => props.windowId, () => {
+  viewGeneration++
+  orchestrating.value = false
   selectedRepoId.value = ''
   blockPolicy.value = 'FAIL_FAST'
   latestRunDetail.value = undefined
+  acceptedRunId.value = undefined
   recentRuns.value = []
 })
 
 function requestScope() {
-  return { repoIds: [...repoIds.value], iterationKeys: [...iterationKeys.value], failFast: failFast.value }
+  return { repoIds: [...repoIds.value].sort(), iterationKeys: [...iterationKeys.value].sort(), failFast: failFast.value }
 }
 async function handleOrchestrate() {
-  if (!canExecute.value) return
+  if (disposed || !canExecute.value) return
+  const subject = user.profile?.username
+  if (!subject) { ElMessage.warning(t('common.permissionDenied')); return }
   const windowId = props.windowId
+  const generation = viewGeneration
   const request = requestScope()
+  const payload = JSON.stringify(request)
+  const operation = `ORCHESTRATE:${windowId}`
+  orchestrating.value = true
   try {
-    await ElMessageBox.confirm(t('orchestration.confirmIntegrate'), t('common.confirm'), { type: 'warning' })
-    if (!canExecute.value || props.windowId !== windowId || JSON.stringify(request) !== JSON.stringify(requestScope())) {
+    const pending = readExecutionIntent(subject, operation)
+    const confirmKey = pending ? pending.payload === payload
+      ? 'run.request.repeatUnconfirmed' : 'run.request.replaceUnconfirmed'
+      : 'orchestration.confirmIntegrate'
+    await ElMessageBox.confirm(t(confirmKey), t('common.confirm'), { type: 'warning' })
+    if (!isCurrentView(windowId, generation)) return
+    if (!scopeExecutable.value || props.windowId !== windowId || user.profile?.username !== subject
+      || payload !== JSON.stringify(requestScope())) {
       ElMessage.warning(t('orchestration.scopeChanged'))
       return
     }
-    orchestrating.value = true
-    const runId = await releaseWindowApi.orchestrate(windowId, request)
-    if (props.windowId !== windowId) return
-    if (runId) latestRunDetail.value = await runApi.getRunById(String(runId))
+    const intent = saveExecutionIntent(subject, operation, payload)
+    const runId = await releaseWindowApi.orchestrate(windowId, request, intent.key)
+    if (typeof runId !== 'string' || !runId.trim()) throw new Error(t('run.request.missingReceipt'))
+    acknowledgeExecutionIntent(subject, operation, intent.key)
+    if (!isCurrentView(windowId, generation) || user.profile?.username !== subject) return
+    acceptedRunId.value = runId
+    recentLoadGeneration++
+    const result = await runApi.getRunById(runId)
+    if (!isCurrentView(windowId, generation) || user.profile?.username !== subject) return
+    latestRunDetail.value = result
     await loadRecentRuns()
-    emit('refresh')
+    if (isCurrentView(windowId, generation)) emit('refresh')
   } catch (error) {
-    if (error !== 'cancel') handleError(error)
-  } finally { orchestrating.value = false }
+    if (isCurrentView(windowId, generation) && error !== 'cancel' && error !== 'close') handleError(error)
+  } finally { if (isCurrentView(windowId, generation)) orchestrating.value = false }
 }
 async function loadRecentRuns() {
+  const windowId = props.windowId
   const windowKey = props.windowKey
+  const generation = viewGeneration
+  const requestGeneration = ++recentLoadGeneration
+  const isCurrent = () => isCurrentView(windowId, generation)
+    && props.windowKey === windowKey && requestGeneration === recentLoadGeneration
   try {
     const result = await runApi.list({ page: 1, pageSize: 5, windowKey })
-    if (props.windowKey !== windowKey) return
+    if (!isCurrent()) return
     recentRuns.value = result.list
     if (result.list[0]?.id) {
       const detail = await runApi.getRunById(result.list[0].id)
-      if (props.windowKey === windowKey) latestRunDetail.value = detail
+      if (isCurrent()) latestRunDetail.value = detail
     }
-  } catch (error) { handleError(error) }
+  } catch (error) { if (isCurrent()) handleError(error) }
 }
 function viewRunDetail(run: Run | RunDetail) { router.push(`/runs/${run.id}`) }
 watch(() => props.windowKey, loadRecentRuns, { immediate: true })

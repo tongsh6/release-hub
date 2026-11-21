@@ -64,65 +64,52 @@
       <RunPlanSnapshotView :plan="previewPlan" />
     </el-card>
 
-    <!-- 运行任务列表 -->
-    <el-card v-if="detail?.status !== 'PLANNED'" v-loading="tasksLoading" style="margin-top: 16px;">
+    <!-- 持久任务只展示事实；失败项通过执行项选择重试。 -->
+    <el-card v-if="detail && detail.status !== 'PLANNED'" v-loading="tasksLoading" style="margin-top: 16px;">
       <template #header>
         <div class="card-header">
           <span>{{ t('run.detail.tasksTitle') }}</span>
-          <span class="task-summary">
-            {{ t('run.detail.taskSummary', {
-              total: taskSummary.total,
-              failed: taskSummary.failed,
-              retryable: taskSummary.retryable
-            }) }}
-          </span>
+          <span class="task-summary">{{ t('run.detail.taskSummary', taskSummary) }}</span>
           <el-button size="small" @click="fetchTasks">{{ t('common.refresh') }}</el-button>
         </div>
       </template>
-      <el-table :data="tasks" style="width: 100%">
+      <el-table :data="tasks" row-key="taskId" style="width: 100%">
         <el-table-column prop="taskOrder" :label="t('run.task.order')" width="80" />
-        <el-table-column prop="taskType" :label="t('run.task.type')" width="200">
+        <el-table-column prop="actionType" :label="t('run.task.type')" width="200">
           <template #default="{ row }">
-            <span class="task-type">{{ formatTaskType(row.taskType) }}</span>
+            <span class="task-type">{{ formatTaskType(row.actionType) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="targetType" :label="t('run.task.targetType')" width="120">
+        <el-table-column prop="itemId" :label="t('run.task.itemId')" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="status" :label="t('run.columns.status')" width="150">
           <template #default="{ row }">
-            <el-tag v-if="row.targetType" size="small" type="info">{{ row.targetType }}</el-tag>
+            <el-tag :type="getTaskStatusType(row.status)" size="small">{{ formatTaskStatus(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('run.task.source')" min-width="220">
+          <template #default="{ row }">
+            <template v-if="row.status === 'INHERITED'">
+              <span>{{ t('run.task.inheritedFact') }}</span>
+              <el-button
+                v-if="inheritedSource(row)" link type="primary"
+                @click="router.push({ name: 'RunDetail', params: { runId: inheritedSource(row)!.runId } })">
+                {{ inheritedSource(row)!.runId }} / {{ inheritedSource(row)!.itemId }}
+              </el-button>
+              <span v-else>{{ t('run.detail.notRecorded') }}</span>
+            </template>
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="targetId" :label="t('run.task.targetId')" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="status" :label="t('run.columns.status')" width="120">
-          <template #default="{ row }">
-            <el-tag :type="getTaskStatusType(row.status)" size="small">
-              {{ formatTaskStatus(row.status) }}
-            </el-tag>
-          </template>
+        <el-table-column :label="t('run.columns.start')" min-width="180">
+          <template #default="{ row }">{{ row.startedAt ?? '-' }}</template>
         </el-table-column>
-        <el-table-column prop="retryCount" :label="t('run.task.retries')" width="100">
-          <template #default="{ row }">
-            {{ row.retryCount }} / {{ row.maxRetries }}
-          </template>
+        <el-table-column :label="t('run.columns.end')" min-width="180">
+          <template #default="{ row }">{{ row.finishedAt ?? '-' }}</template>
         </el-table-column>
         <el-table-column prop="errorMessage" :label="t('run.task.error')" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.errorMessage" class="error-message">{{ row.errorMessage }}</span>
             <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="t('common.actions')" width="100" fixed="right">
-          <template #default="{ row }">
-            <el-button 
-              v-if="isRetryableRun(detail?.status, detail?.runType) && row.status === 'FAILED' && row.retryCount < row.maxRetries"
-              link 
-              type="primary" 
-              size="small" 
-              :loading="retryingTasks[row.id]"
-              @click="handleRetryTask(row.id)"
-            >
-              {{ t('run.task.retry') }}
-            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -215,7 +202,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, reactive, onMounted } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import GitOperationsPanel from '@/components/run/GitOperationsPanel.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -227,6 +214,8 @@ import EvidenceChainPanel from '@/components/common/EvidenceChainPanel.vue'
 import DiffViewer from '@/components/run/DiffViewer.vue'
 import { handleError } from '@/utils/error'
 import { hasPerm } from '@/utils/perm'
+import { useUserStore } from '@/stores/user'
+import { readExecutionIntent, saveExecutionIntent, acknowledgeExecutionIntent } from '@/utils/executionIntent'
 import { runPlanApi, type RunPlanPreview } from '@/api/runPlanApi'
 import RunPlanSnapshotView from '@/components/run/RunPlanSnapshotView.vue'
 import RunItemScope from '@/components/run/RunItemScope.vue'
@@ -234,21 +223,23 @@ import { isFailedResult, isSuccessfulResult, isSkippedResult, isRetryableResult,
 
 const route = useRoute()
 const router = useRouter()
-const currentRunId = ref(route.params.runId as string)
+const user = useUserStore()
+const currentRunId = computed(() => typeof route.params.runId === 'string' ? route.params.runId : '')
+let viewGeneration = 0
+let disposed = false
 const { t } = useI18n()
 const loading = ref(false)
 const tasksLoading = ref(false)
 const detail = ref<RunDetail>()
 const previewPlan = ref<RunPlanPreview>()
 const tasks = ref<RunTask[]>([])
-const retryingTasks = reactive<Record<string, boolean>>({})
 const retryingItems = ref(false)
 const selectedRetryItemIds = ref<string[]>([])
 
 const runId = computed(() => currentRunId.value)
 
 const failedItemKeys = computed(() => {
-  if (!isRetryableRun(detail.value?.status, detail.value?.runType)) return []
+  if (!isRetryableRun(detail.value?.status, detail.value?.runType, detail.value?.executionVersion)) return []
   return (detail.value?.items || [])
     .filter(isRetryableItem)
     .map(item => item.id)
@@ -276,7 +267,7 @@ const missingRetryPredecessorsMessage = computed(() => t('run.detail.retryMissin
 }))
 
 function isSelectableRetryItem(item: RunItem): boolean {
-  return isRetryableRun(detail.value?.status, detail.value?.runType) && isRetryableItem(item)
+  return isRetryableRun(detail.value?.status, detail.value?.runType, detail.value?.executionVersion) && isRetryableItem(item)
 }
 function handleRetrySelectionChange(items: RunItem[]) {
   selectedRetryItemIds.value = items.filter(isSelectableRetryItem).map(item => item.id)
@@ -301,8 +292,8 @@ const taskSummary = computed(() => {
     total: tasks.value.length,
     completed: tasks.value.filter(task => task.status === 'COMPLETED').length,
     failed: tasks.value.filter(task => task.status === 'FAILED').length,
-    retryable: isRetryableRun(detail.value?.status, detail.value?.runType)
-      ? tasks.value.filter(task => task.status === 'FAILED' && task.retryCount < task.maxRetries).length : 0
+    inherited: tasks.value.filter(task => task.status === 'INHERITED').length,
+    unknown: tasks.value.filter(task => task.status === 'UNKNOWN').length
   }
 })
 
@@ -312,45 +303,68 @@ const goBack = () => {
   router.push({ name: 'Runs' })
 }
 
-async function fetchDetail() {
-  loading.value = true
+function isCurrentView(id: string, generation: number): boolean {
+  return !disposed && currentRunId.value === id && viewGeneration === generation
+}
+
+async function loadPlan(id: string, generation: number) {
   try {
-    detail.value = await runApi.getRunById(currentRunId.value)
-    selectedRetryItemIds.value = []
-    previewPlan.value = detail.value.executionVersion >= 2 ? await runPlanApi.get(currentRunId.value) : undefined
+    const plan = await runPlanApi.get(id)
+    if (isCurrentView(id, generation)) previewPlan.value = plan
+  } catch (error) {
+    if (isCurrentView(id, generation)) handleError(error)
+  }
+}
+
+async function loadTasks(id: string, generation: number, status: RunDetail['status']) {
+  if (status === 'PLANNED') return
+  if (isCurrentView(id, generation)) tasksLoading.value = true
+  try {
+    const result = await runApi.getTasks(id)
+    if (isCurrentView(id, generation)) tasks.value = result
+  } catch (error) {
+    if (isCurrentView(id, generation)) handleError(error)
   } finally {
-    loading.value = false
+    if (isCurrentView(id, generation)) tasksLoading.value = false
+  }
+}
+
+async function loadRun(id: string) {
+  const generation = ++viewGeneration
+  detail.value = undefined
+  previewPlan.value = undefined
+  tasks.value = []
+  selectedRetryItemIds.value = []
+  retryingItems.value = false
+  tasksLoading.value = false
+  loading.value = Boolean(id)
+  if (!id) return
+  try {
+    const result = await runApi.getRunById(id)
+    if (!isCurrentView(id, generation)) return
+    detail.value = result
+    const queries = [loadTasks(id, generation, result.status)]
+    if (result.executionVersion >= 2
+      && (result.runType === 'WINDOW_ORCHESTRATION' || result.runType === 'WINDOW_CLEANUP')) {
+      queries.push(loadPlan(id, generation))
+    }
+    await Promise.all(queries)
+  } catch (error) {
+    if (isCurrentView(id, generation)) handleError(error)
+  } finally {
+    if (isCurrentView(id, generation)) loading.value = false
   }
 }
 
 async function fetchTasks() {
-  if (detail.value?.status === 'PLANNED') { tasks.value = []; return }
-  tasksLoading.value = true
-  try {
-    tasks.value = await runApi.getTasks(currentRunId.value)
-  } catch (err) {
-    handleError(err)
-  } finally {
-    tasksLoading.value = false
-  }
-}
-
-async function handleRetryTask(taskId: string) {
-  if (!isRetryableRun(detail.value?.status, detail.value?.runType)) return
-  retryingTasks[taskId] = true
-  try {
-    await runApi.retryTask(currentRunId.value, taskId)
-    ElMessage.success(t('common.success'))
-    await fetchTasks()
-  } catch (err) {
-    handleError(err)
-  } finally {
-    retryingTasks[taskId] = false
-  }
+  if (!detail.value || tasksLoading.value) return
+  await loadTasks(currentRunId.value, viewGeneration, detail.value.status)
 }
 
 async function handleRetrySelectedItems() {
-  if (!hasPerm('run:write')) {
+  if (disposed || retryingItems.value || !currentRunId.value) return
+  const subject = user.profile?.username
+  if (!subject || !hasPerm('run:write')) {
     ElMessage.warning(t('common.permissionDenied'))
     return
   }
@@ -362,24 +376,44 @@ async function handleRetrySelectedItems() {
     ElMessage.warning(missingRetryPredecessorsMessage.value)
     return
   }
+  const sourceRunId = currentRunId.value
+  const generation = viewGeneration
+  const items = [...selectedRetryItemKeys.value].sort()
+  const payload = JSON.stringify({ items })
+  const operation = `RETRY:${sourceRunId}`
+  retryingItems.value = true
   try {
-    await ElMessageBox.confirm(t('run.retrySelectionConfirm', { count: selectedRetryItemKeys.value.length }), t('common.warning'), {
-      type: 'warning'
-    })
-    retryingItems.value = true
-    const retryRunId = await runApi.retry(currentRunId.value, selectedRetryItemKeys.value)
-    ElMessage.success(t('run.retrySuccess'))
-    currentRunId.value = retryRunId
-    await router.push({ name: 'RunDetail', params: { runId: retryRunId } })
-    await fetchDetail()
-    await fetchTasks()
-  } catch (err) {
-    if (err !== 'cancel') {
-      handleError(err)
+    const pending = readExecutionIntent(subject, operation)
+    const message = pending
+      ? t(pending.payload === payload ? 'run.request.repeatUnconfirmed' : 'run.request.replaceUnconfirmed')
+      : t('run.retrySelectionConfirm', { count: items.length })
+    await ElMessageBox.confirm(message, t('common.warning'), { type: 'warning' })
+    if (!isCurrentView(sourceRunId, generation)) return
+    if (user.profile?.username !== subject || !hasPerm('run:write') || missingRetryPredecessors.value.length > 0
+      || JSON.stringify({ items: [...selectedRetryItemKeys.value].sort() }) !== payload) {
+      ElMessage.warning(t('run.request.changed'))
+      return
     }
+    const intent = saveExecutionIntent(subject, operation, payload)
+    const retryRunId = await runApi.retry(sourceRunId, items, intent.key)
+    if (typeof retryRunId !== 'string' || !retryRunId.trim()) throw new Error(t('run.request.missingReceipt'))
+    acknowledgeExecutionIntent(subject, operation, intent.key)
+    if (!isCurrentView(sourceRunId, generation) || user.profile?.username !== subject) return
+    ElMessage.success(t('run.retrySuccess'))
+    await router.push({ name: 'RunDetail', params: { runId: retryRunId } })
+  } catch (err) {
+    if (isCurrentView(sourceRunId, generation) && err !== 'cancel' && err !== 'close') handleError(err)
   } finally {
-    retryingItems.value = false
+    if (isCurrentView(sourceRunId, generation)) retryingItems.value = false
   }
+}
+
+function inheritedSource(task: RunTask): { runId: string; itemId: string } | null {
+  if (task.status !== 'INHERITED') return null
+  const metadata = detail.value?.items.find(item => item.id === task.itemId)?.metadata
+  const sourceRunId = metadata?.['retry.sourceRunId']
+  const sourceItemId = metadata?.['retry.sourceItemId']
+  return sourceRunId && sourceItemId ? { runId: sourceRunId, itemId: sourceItemId } : null
 }
 
 function isRetryableItem(item: RunItem): boolean {
@@ -391,8 +425,8 @@ function getTaskStatusType(status: string): string {
   switch (status) {
     case 'COMPLETED': return 'success'
     case 'FAILED': return 'danger'
-    case 'RUNNING': return 'warning'
-    case 'SKIPPED': return 'info'
+    case 'RUNNING': case 'UNKNOWN': return 'warning'
+    case 'SKIPPED': case 'INHERITED': return 'info'
     default: return ''
   }
 }
@@ -442,11 +476,10 @@ function extractDiff(message: string): string | null {
   return null
 }
 
-onMounted(async () => {
-  try {
-    await fetchDetail()
-    await fetchTasks()
-  } catch (error) { handleError(error) }
+watch(currentRunId, loadRun, { immediate: true })
+onUnmounted(() => {
+  disposed = true
+  viewGeneration++
 })
 </script>
 

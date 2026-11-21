@@ -1,10 +1,11 @@
-import { http, apiPost, apiGet } from '@/api/http'
+import { http, apiGet, apiPost } from '@/api/http'
 import type { PageResult, PageQuery, Id } from '@/types/crud'
 import type { RunStatus, RunType, RunItemResult } from '@/types/dto'
 import type { ApiPageResponse } from '@/api/repositoryApi'
 
 export interface Run {
   id: string
+  executionVersion: number
   runType: RunType
   status: RunStatus
   startedAt: string
@@ -13,7 +14,6 @@ export interface Run {
 }
 
 export interface RunDetail extends Run {
-  executionVersion: number
   items: RunItem[]
 }
 
@@ -37,21 +37,16 @@ export interface RunStep {
   message: string
 }
 
-// 运行任务类型
 export interface RunTask {
-  id: string
+  taskId: string
   runId: string
-  taskType: string
+  itemId: string
+  actionType: 'ENSURE_FEATURE' | 'ENSURE_RELEASE' | 'ENSURE_MR' | 'TRY_MERGE'
   taskOrder: number
-  targetType?: string
-  targetId?: string
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED'
-  retryCount: number
-  maxRetries: number
-  errorMessage?: string
-  startedAt?: string
-  finishedAt?: string
-  createdAt: string
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'UNKNOWN' | 'SKIPPED' | 'INHERITED'
+  errorMessage: string | null
+  startedAt: string | null
+  finishedAt: string | null
 }
 
 export const runApi = {
@@ -79,19 +74,13 @@ export const runApi = {
     return normalizeRunDetail(res.data)
   },
 
-  async retry(id: Id, items: string[]): Promise<string> {
-    const res = await http.post<string>(`/v1/runs/${id}/retry`, { items })
-    return res.data
+  async retry(id: Id, items: string[], key: string): Promise<string> {
+    return apiPost<string>(`/v1/runs/${id}/retry`, { items }, { headers: { 'Idempotency-Key': key } })
   },
 
   // 获取运行任务列表
   async getTasks(runId: string): Promise<RunTask[]> {
     return apiGet<RunTask[]>(`/v1/runs/${runId}/tasks`)
-  },
-
-  // 重试失败的任务
-  async retryTask(runId: string, taskId: string): Promise<RunTask> {
-    return apiPost<RunTask>(`/v1/runs/${runId}/tasks/${taskId}/retry`, {})
   }
 }
 

@@ -14,7 +14,7 @@ const item = (id: string, result: RunItem['finalResult'], metadata: Record<strin
 
 describe('blocking evidence board', () => {
   it('groups explicit reasons and keeps absent evidence unknown instead of guessing from text', async () => {
-    const run = { id: 'run-1', runType: 'WINDOW_ORCHESTRATION' as const, status: 'PARTIAL_FAILED' as const,
+    const run = { id: 'run-1', executionVersion: 1, runType: 'WINDOW_ORCHESTRATION' as const, status: 'PARTIAL_FAILED' as const,
       operator: 'tester', startedAt: '', finishedAt: '' }
     vi.mocked(runApi.list).mockResolvedValue({ list: [run], total: 1 })
     vi.mocked(runApi.getRunById).mockResolvedValue({ ...run, executionVersion: 1, items: [
@@ -33,7 +33,7 @@ describe('blocking evidence board', () => {
   })
 
   it('includes review and cleanup failures even though ordinary retry is unavailable', async () => {
-    const base = { operator: 'tester', startedAt: '', finishedAt: '' }
+    const base = { executionVersion: 2, operator: 'tester', startedAt: '', finishedAt: '' }
     vi.mocked(runApi.list).mockResolvedValue({ total: 2, list: [
       { ...base, id: 'review', runType: 'WINDOW_ORCHESTRATION', status: 'NEEDS_REVIEW' },
       { ...base, id: 'cleanup', runType: 'WINDOW_CLEANUP', status: 'FAILED' }

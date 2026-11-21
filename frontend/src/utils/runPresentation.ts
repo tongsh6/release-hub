@@ -32,9 +32,9 @@ export function runStatusTagType(status: RunStatus): 'success' | 'danger' | 'war
     default: return 'info'
   }
 }
-export function isRetryableRun(status: RunStatus | undefined, runType: RunType | undefined): boolean {
+export function isRetryableRun(status: RunStatus | undefined, runType: RunType | undefined, executionVersion: number | undefined): boolean {
   return (status === 'FAILED' || status === 'PARTIAL_FAILED')
-    && (runType === 'WINDOW_ORCHESTRATION' || runType === 'VERSION_UPDATE')
+    && runType === 'WINDOW_ORCHESTRATION' && executionVersion === 3
 }
 const runTypeKeys: Record<RunType, string> = {
   WINDOW_ORCHESTRATION: 'run.types.WINDOW_ORCHESTRATION',

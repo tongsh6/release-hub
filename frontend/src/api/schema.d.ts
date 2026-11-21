@@ -990,6 +990,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get persisted execution tasks for run */
+        get: operations["tasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runs/{id}/plan": {
         parameters: {
             query?: never;
@@ -2153,6 +2170,8 @@ export interface components {
         RunView: {
             id?: string;
             runType?: string;
+            /** Format: int32 */
+            executionVersion?: number;
             status?: string;
             startedAt?: string;
             finishedAt?: string | null;
@@ -2609,6 +2628,27 @@ export interface components {
             code?: string;
             message?: string;
             data?: components["schemas"]["RunView"][];
+        };
+        ApiResponseListTaskView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["TaskView"][];
+        };
+        TaskView: {
+            taskId?: string;
+            runId?: string;
+            itemId?: string;
+            /** @enum {string} */
+            actionType?: "ENSURE_FEATURE" | "ENSURE_RELEASE" | "ENSURE_MR" | "TRY_MERGE" | "UPDATE_VERSION" | "CLOSE_ITERATION" | "ARCHIVE_BRANCH" | "MERGE_TO_MASTER" | "CREATE_TAG" | "TRIGGER_CI";
+            /** Format: int32 */
+            taskOrder?: number;
+            status?: string;
+            /** Format: date-time */
+            startedAt?: string | null;
+            /** Format: date-time */
+            finishedAt?: string | null;
+            errorMessage?: string | null;
         };
         ApiResponseListOperation: {
             success?: boolean;
@@ -3712,7 +3752,9 @@ export interface operations {
     retry: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -3996,7 +4038,9 @@ export interface operations {
     orchestrate: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -4946,6 +4990,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseRunView"];
+                };
+            };
+        };
+    };
+    tasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListTaskView"];
                 };
             };
         };

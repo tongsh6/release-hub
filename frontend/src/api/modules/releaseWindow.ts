@@ -179,8 +179,8 @@ export function listIterations(id: string): Promise<WindowIterationView[]> {
   return apiGet<WindowIterationView[]>(`${BASE}/release-windows/${id}/iterations`)
 }
 
-export function orchestrate(id: string, req: OrchestrateRequest): Promise<string> {
-  return apiPost<string>(`${BASE}/release-windows/${id}/orchestrate`, req)
+export function orchestrate(id: string, req: OrchestrateRequest, key: string): Promise<string> {
+  return apiPost<string>(`${BASE}/release-windows/${id}/orchestrate`, req, { headers: { 'Idempotency-Key': key } })
 }
 
 export function getPlan(id: string): Promise<PlanItemView[]> {

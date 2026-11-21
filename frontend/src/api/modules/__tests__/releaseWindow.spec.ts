@@ -35,8 +35,9 @@ describe('releaseWindowApi.orchestrate', () => {
       failFast: true
     }
 
-    await orchestrate('window-1', request)
+    await orchestrate('window-1', request, 'integration-intent-1')
 
-    expect(apiPost).toHaveBeenCalledWith('/v1/release-windows/window-1/orchestrate', request)
+    expect(apiPost).toHaveBeenCalledWith('/v1/release-windows/window-1/orchestrate', request,
+      { headers: { 'Idempotency-Key': 'integration-intent-1' } })
   })
 })

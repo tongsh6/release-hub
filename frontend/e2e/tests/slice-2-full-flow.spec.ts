@@ -580,6 +580,8 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       .filter({ hasText: 'FAILED' })
       .last()
     await expect(failedRunRow).toBeVisible({ timeout: 10000 })
+    // VERSION_UPDATE 尚未接入持久窗口重试协议，不能暴露可安全重发的入口。
+    await expect(failedRunRow.getByRole('button', { name: L['run.actions.retry'], exact: true })).toHaveCount(0)
     await failedRunRow.locator('button').filter({ hasText: L['run.actions.detail'] }).click(FORCE)
 
     const drawer = page.locator('.el-drawer').last()

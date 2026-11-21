@@ -22,6 +22,7 @@ import { useI18n } from 'vue-i18n'
 import { runPlanApi, type RunPlanPreview, type RunPlanSummary } from '@/api/runPlanApi'
 import RunPlanSnapshotView from '@/components/run/RunPlanSnapshotView.vue'
 import { handleError } from '@/utils/error'
+import { createRequestKey } from '@/utils/executionIntent'
 
 const props = defineProps<{ modelValue: boolean; windowId: string; repoIds: string[]; iterationKeys: string[]; failFast: boolean; canCreate: boolean }>()
 const emit = defineEmits<{ (event: 'update:modelValue', value: boolean): void; (event: 'created'): void }>()
@@ -65,8 +66,7 @@ async function createPreview() {
   saving.value = true
   try {
     if (!pendingKey || selection !== pendingSelection) {
-      // 不依赖仅在安全上下文提供的 randomUUID，兼容现有 HTTP 自托管入口。
-      pendingKey = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('')
+      pendingKey = createRequestKey()
       pendingSelection = selection
     }
     const saved = await runPlanApi.create(windowId, body, pendingKey)

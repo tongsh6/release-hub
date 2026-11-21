@@ -199,7 +199,7 @@ describe('ReleaseWindowDetail', () => {
     vi.mocked(ElMessage.success).mockClear()
     routerPush.mockReset()
     vi.mocked(releaseWindowApi.close).mockResolvedValue({
-      id: 'cleanup-1', runType: 'WINDOW_CLEANUP', status: 'FAILED',
+      id: 'cleanup-1', executionVersion: 2, runType: 'WINDOW_CLEANUP', status: 'FAILED',
       startedAt: '', finishedAt: '', operator: 'admin'
     })
     vi.mocked(hasPerm).mockReturnValue(true)
@@ -302,7 +302,7 @@ describe('ReleaseWindowDetail', () => {
 
   it.each(['FAILED', 'PARTIAL_FAILED', 'NEEDS_REVIEW'] as const)('opens the real cleanup Run for %s without a success toast', async status => {
     vi.mocked(releaseWindowApi.close).mockResolvedValue({
-      id: 'cleanup-1', runType: 'WINDOW_CLEANUP', status,
+      id: 'cleanup-1', executionVersion: 2, runType: 'WINDOW_CLEANUP', status,
       startedAt: '', finishedAt: '', operator: 'admin'
     })
     const wrapper = mountReleaseWindowDetail()

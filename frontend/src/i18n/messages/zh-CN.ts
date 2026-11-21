@@ -386,7 +386,7 @@ export default {
       associatedRepos: '关联仓库',
       noRepos: '暂无关联仓库',
       addRepos: '添加仓库',
-      confirmRemoveRepo: '确认移除仓库 "{repoId}"？',
+      confirmRemoveRepo: '确认从迭代移除仓库 "{repoId}"？将解除关联并删除本迭代的仓库配置，保留 GitLab 分支和历史执行记录。',
       mountedWindows: '挂载窗口',
       attachToWindow: '挂载到窗口',
       orchestrateThisIteration: '编排（此迭代）',
@@ -399,13 +399,13 @@ export default {
       repoPageSummary: '当前页显示 {shown} 个，共 {total} 个仓库'
     },
     branchCreationMode: {
-      label: 'Feature 分支创建方式',
-      AUTO: '自动创建',
-      AUTO_desc: '系统自动创建 feature/{迭代标识}',
+      label: 'Feature 分支配置',
+      AUTO: '默认命名',
+      AUTO_desc: '保存默认命名计划，显式编排时创建缺失的 feature 分支',
       NAMED: '自定义命名',
-      NAMED_desc: '输入分支名，必须在 feature/ 路径下',
+      NAMED_desc: '保存 feature/ 下的自定义分支名，显式编排时创建缺失分支',
       EXISTING: '关联已有',
-      EXISTING_desc: '选择 GitLab 上已存在的 feature 分支',
+      EXISTING_desc: '选择 GitLab 上已有的 feature 分支，保存时只读校验',
       preview: '预览分支名',
       customName: '自定义分支名',
       selectExisting: '选择已有分支',
@@ -552,6 +552,13 @@ export default {
       end: '结束时间',
       operator: '操作人'
     },
+    request: {
+      repeatUnconfirmed: '上次请求尚未确认回执。继续查询或提交同一请求？系统会沿用原请求标识。',
+      replaceUnconfirmed: '上次请求尚未确认回执，当前选择已经改变。确认作为新的执行请求提交？原请求仍可能已受理，请先核对运行记录。',
+      changed: '确认期间登录身份或执行范围已改变，请重新确认。',
+      missingReceipt: '尚未取得运行回执；再次提交相同选择将沿用原请求标识。',
+      accepted: '已取得运行回执'
+    },
     retrySelectionConfirm: '确认重试选中的 {count} 个执行项？',
     selectRetryItems: '请先勾选需要重试的执行项',
     noFailedItems: '没有失败的执行项',
@@ -581,33 +588,30 @@ export default {
       failedItems: '失败',
       retryableItems: '可重试',
       partialFailure: '{success} 个执行项成功，{failed} 个执行项失败',
-      taskSummary: '{total} 个任务，{failed} 个失败，{retryable} 个可重试'
+      taskSummary: '{total} 个任务，{failed} 个失败，{unknown} 个结果待核对，{inherited} 个沿用来源事实'
     },
     steps: '执行步骤',
     task: {
       order: '序号',
-      type: '任务类型',
-      targetType: '目标类型',
-      targetId: '目标 ID',
-      retries: '重试次数',
+      type: '任务动作',
+      itemId: '执行项 ID',
+      source: '来源事实',
+      inheritedFact: '沿用先前结果，本轮未执行',
       error: '错误信息',
-      retry: '重试',
       status: {
         PENDING: '待执行',
         RUNNING: '执行中',
         COMPLETED: '已完成',
         FAILED: '失败',
-        SKIPPED: '已跳过'
+        UNKNOWN: '结果待核对',
+        SKIPPED: '已跳过',
+        INHERITED: '沿用来源事实'
       },
       types: {
-        CLOSE_ITERATION: '关闭迭代',
-        ARCHIVE_FEATURE_BRANCH: '归档 Feature 分支',
-        MERGE_RELEASE_TO_MASTER: '合并到 Master',
-        CREATE_TAG: '创建标签',
-        UPDATE_POM_VERSION: '更新 POM 版本',
-        TRIGGER_CI_BUILD: '触发 CI 构建',
-        CREATE_RELEASE_BRANCH: '创建 Release 分支',
-        MERGE_FEATURE_TO_RELEASE: '合并到 Release'
+        ENSURE_FEATURE: '确保 Feature 分支',
+        ENSURE_RELEASE: '确保 Release 分支',
+        ENSURE_MR: '确保合并请求',
+        TRY_MERGE: '尝试合并'
       }
     },
     diff: {

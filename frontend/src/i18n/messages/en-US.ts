@@ -386,7 +386,7 @@ export default {
       associatedRepos: 'Associated Repositories',
       noRepos: 'No repositories associated',
       addRepos: 'Add Repos',
-      confirmRemoveRepo: 'Are you sure to remove repository "{repoId}"?',
+      confirmRemoveRepo: 'Remove repository "{repoId}" from this iteration? Its association and iteration-specific settings will be removed. GitLab branches and historical execution records will be retained.',
       mountedWindows: 'Mounted Windows',
       attachToWindow: 'Attach to Window',
       orchestrateThisIteration: 'Orchestrate (this iteration)',
@@ -399,13 +399,13 @@ export default {
       repoPageSummary: 'Showing {shown} of {total} repositories'
     },
     branchCreationMode: {
-      label: 'Feature Branch Creation Mode',
-      AUTO: 'Auto Create',
-      AUTO_desc: 'System auto-creates feature/{iteration key}',
+      label: 'Feature Branch Configuration',
+      AUTO: 'Default Name',
+      AUTO_desc: 'Save the default naming plan; explicit orchestration creates missing feature branches',
       NAMED: 'Custom Name',
-      NAMED_desc: 'Enter branch name, must be under feature/',
+      NAMED_desc: 'Save a custom name under feature/; explicit orchestration creates the branch if missing',
       EXISTING: 'Use Existing',
-      EXISTING_desc: 'Select an existing feature branch from GitLab',
+      EXISTING_desc: 'Select an existing GitLab feature branch; saving only checks its existence',
       preview: 'Preview branch name',
       customName: 'Custom branch name',
       selectExisting: 'Select existing branch',
@@ -552,6 +552,13 @@ export default {
       end: 'End',
       operator: 'Operator'
     },
+    request: {
+      repeatUnconfirmed: 'The previous request has no confirmed receipt. Submit the same request again using its original request key?',
+      replaceUnconfirmed: 'The previous request has no confirmed receipt and the selection has changed. Submit a new execution request? The original may already have been accepted; review the runs first.',
+      changed: 'The signed-in user or execution scope changed during confirmation. Confirm the request again.',
+      missingReceipt: 'No run receipt was received. Resubmitting the same selection will reuse the original request key.',
+      accepted: 'Run receipt received'
+    },
     retrySelectionConfirm: 'Retry the {count} selected items?',
     selectRetryItems: 'Select the items to retry first',
     noFailedItems: 'No failed items',
@@ -581,33 +588,30 @@ export default {
       failedItems: 'Failed',
       retryableItems: 'Retryable',
       partialFailure: '{success} items succeeded, {failed} items failed',
-      taskSummary: '{total} tasks, {failed} failed, {retryable} retryable'
+      taskSummary: '{total} tasks, {failed} failed, {unknown} unresolved, {inherited} inherited'
     },
     steps: 'Execution Steps',
     task: {
       order: 'Order',
-      type: 'Task Type',
-      targetType: 'Target Type',
-      targetId: 'Target ID',
-      retries: 'Retries',
+      type: 'Task action',
+      itemId: 'Item ID',
+      source: 'Source evidence',
+      inheritedFact: 'Previous result retained; not executed in this run',
       error: 'Error',
-      retry: 'Retry',
       status: {
         PENDING: 'Pending',
         RUNNING: 'Running',
         COMPLETED: 'Completed',
         FAILED: 'Failed',
-        SKIPPED: 'Skipped'
+        UNKNOWN: 'Needs evidence review',
+        SKIPPED: 'Skipped',
+        INHERITED: 'Inherited evidence'
       },
       types: {
-        CLOSE_ITERATION: 'Close Iteration',
-        ARCHIVE_FEATURE_BRANCH: 'Archive Feature Branch',
-        MERGE_RELEASE_TO_MASTER: 'Merge to Master',
-        CREATE_TAG: 'Create Tag',
-        UPDATE_POM_VERSION: 'Update POM Version',
-        TRIGGER_CI_BUILD: 'Trigger CI Build',
-        CREATE_RELEASE_BRANCH: 'Create Release Branch',
-        MERGE_FEATURE_TO_RELEASE: 'Merge to Release'
+        ENSURE_FEATURE: 'Ensure feature branch',
+        ENSURE_RELEASE: 'Ensure release branch',
+        ENSURE_MR: 'Ensure merge request',
+        TRY_MERGE: 'Try merge'
       }
     },
     diff: {
