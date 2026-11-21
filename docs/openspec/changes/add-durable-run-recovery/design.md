@@ -1,6 +1,6 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。当前唯一 HEAD 为 C2-B2：规范化建分支成功证明与 APPLIED 结果投影恢复，实现与本地门禁通过，待本片远端 CI。当前事实与历史验收分别见 tasks.md 和本轮记录。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。C2-B2 已分组推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5；规范化建分支成功证明与 APPLIED 结果投影恢复已交付。当前唯一 HEAD 为 C2-B3 创建 MR 完整证明与原检查点恢复，尚未实施。当前事实与历史验收分别见 tasks.md 和本轮记录。
 
 
 ## 0. 当前研发蓝图与授权（2026-11-21）
@@ -105,9 +105,9 @@ PostgreSQL CURRENT_TIMESTAMP 固定为事务开始时刻，不能在长锁等待
 
 回滚先停止派发，保留任务、期限和证据；不恢复同步旧循环、不将 RUNNING 改回 PENDING。已有 INTENT 的发送权转移、APPLIED 只补投影、SEND_STARTED/UNKNOWN 精确核对与 guard 确认属于 C2-B 后续子片，不以本片完成宣称完整恢复。
 
-##### C2-B2：规范化建分支证明与投影恢复（当前子片 / HEAD，实现与本地门禁通过，待本片远端 CI）
+##### C2-B2：规范化建分支证明与投影恢复（已交付）
 
-C2-B1 固定 `5441df6` 的远端验收已完成，C2-B2 为当前唯一 HEAD，实现与本地门禁通过，待本片远端 CI。正常创建成功证明的规范化与 CREATE_BRANCH/APPLIED 投影恢复在同一切片交付。用户价值是 CREATE_BRANCH 的 HTTP 结果已持久化、原 ENSURE_FEATURE/ENSURE_RELEASE 结果尚未提交时，后台只补原 Task 投影。恢复阶段不访问网络，不新增实体、API、UI、发送入口或通用恢复平台；MR、INTENT 发送权、SEND_STARTED/UNKNOWN 与其他执行类型仍分别排队。
+C2-B1 固定 `5441df6` 的前置验收与 C2-B2 本地门禁均已完成；B2 三组提交已推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5。正常创建成功证明的规范化与 CREATE_BRANCH/APPLIED 投影恢复在同一切片交付。用户价值是 CREATE_BRANCH 的 HTTP 结果已持久化、原 ENSURE_FEATURE/ENSURE_RELEASE 结果尚未提交时，后台只补原 Task 投影。恢复阶段不访问网络，不新增实体、API、UI、发送入口或通用恢复平台；MR、INTENT 发送权、SEND_STARTED/UNKNOWN 与其他执行类型仍分别排队。
 
 APPLIED 不是业务完整证明。[GitLab 创建分支契约](https://docs.gitlab.com/api/branches/#create-repository-branch)规定成功响应为 201 Created，正文包含分支 name 与 commit.id，ref 可为分支名或提交 SHA。本片仅接受 201 加完整匹配的 name/commit.id；202 Accepted 等其他 2xx 即便正文看似成功也属于未确认。正常创建与既有 HTTP event 的 evidence_json 证明必须共用该创建成功判定，规范化只允许确切 commit.id，commit.sha、object.id/object.sha 或其他字段均不得替代或覆盖；不改变 GET 分支、Tag 或其他动作契约。
 
@@ -139,6 +139,41 @@ APPLIED 不是业务完整证明。[GitLab 创建分支契约](https://docs.gitl
 | 当前 worker 时钟与历史时间存在偏差 | 新 Step 记录本次处理起止，Task 首次时间与 HTTP 历史时间不改 |
 
 回滚先停派发，保留已提交投影、任务、证明及 guard；不重新发送、不清空证据或撤销已发生的分支。MR 的 APPLIED/FOUND 尚不足以构造完整检查点，不在本片取得投影或解除保护的授权。
+
+##### C2-B3：创建 MR 完整证明与原检查点恢复（当前子片 / HEAD，实施前契约）
+
+依赖 B2 的固定 SHA 验收，回连本设计的唯一任务执行、MR 检查点和结果原子提交。用户价值是 CREATE_MR 的完整成功响应已经持久化、原 ENSURE_MR 的业务结果未提交时，重启可补原检查点，再由原 TRY_MERGE 消费相同项目/IID/source SHA。此时只补历史创建事实，不宣称 MR 当前仍可合并。
+
+先独立定义证明：HTTP 201，正文 project_id/source_project_id/target_project_id 均为正整数且等于原 numeric project，source_branch/target_branch 精确匹配原计划，sha 为合法提交且等于原 target.sha，iid 为正整数，web_url 通过既有链接形状校验，state 为 opened。URL 用于定位展示，不替代项目身份；readiness 属于 TRY_MERGE，checking、审批或流水线等待不妨碍确认 CREATED。响应字段缺失不能从请求意图补造；全局 id 不能替代 iid。
+
+CREATE/opened 只证明创建：正常创建和本片恢复的 MrEvidence.mergeSha 均为 null，CREATE event 的规范字段白名单不采用 merge_commit_sha，共用 metadata patch 清除旧 git.mergeSha。反例是附带无关 B 被当作本次合并 SHA：当 target 已包含原 A 时，既有 alreadyMerged 会额外查询 B，可能错误降为 UNKNOWN 或错误归因；先以真实消费者验证，不扩大 GET/MERGE 的解析契约。
+
+官方 17.11 [响应实体](https://gitlab.com/gitlab-org/gitlab/-/blob/v17.11.0-ee/lib/api/entities/merge_request_basic.rb#L35)无条件输出 source/target project ID；[创建服务](https://gitlab.com/gitlab-org/gitlab/-/blob/v17.11.0-ee/app/services/merge_requests/create_service.rb#L53)固定 source 为请求项目，只有显式 target_project_id 才改变目标。[POST 入口](https://gitlab.com/gitlab-org/gitlab/-/blob/v17.11.0-ee/lib/api/merge_requests.rb#L331)默认目标为请求项目并输出该实体。ReleaseHub 不传 target_project_id，因此本片要求三个响应项目 ID 相同；请求参数的默认值不能变成响应字段缺失的默认值。原始核对留于 `.ai/reports/validation/c2-b3/baseline/gitlab-17-11-mr-producer.json`。
+
+查重后沿现有职责落地：
+
+| 原职责 | 本片变化与实际消费者 |
+|---|---|
+| GitLabMergeRequestAdapter / GitMergeWorkflow | 共用窄的创建证明与既有检查点判定；正常 create、HTTP 账本和 Journal 投影消费同一规则，不改变 read/reuse/merge 的契约 |
+| GitWriteHttpInterceptor / event evidence_json | CREATE_MR 仅保存上述规范原响应字段及整数 httpStatus；保留 JSON 类型，不复制完整敏感响应或从意图填空 |
+| 原 operation.target | 已在 begin 前保存 source_branch、target_branch 和冻结 sha；直接消费，不新增第二份冻结字段 |
+| RunPort / RunAppService / RunJpaPersistenceAdapter | 原投影入口改名为 projectNextAppliedTask 并删除旧名；加入 ENSURE_MR 分支，沿 completeTask 提交 CREATED 和原检查点 |
+| GitOperationJournalPort / persistence | 新窄证明方法返回既有 MrEvidence，保持 MANDATORY；复用同 Task/operation/attempt/guard 与持久项目校验，不增加 DTO、表、API 或恢复平台 |
+| 原 taskMergeEvidence 映射 | 移入既有 RunPort 的静态 metadata patch 方法，正常 ENSURE_MR 与投影共同消费；保留 null 删除语义，requestId 仍为 null，不冒充 operationId |
+
+投影仍要求当前 WINDOW 协议、完整到期 RUNNING、正的实际顺序、无当前 Step、仓内前序已满足、唯一 CREATE_MR/APPLIED 与同 attempt 的 sequence 2 事件、原 session/token/generation/guard 归属及原计划/项目一致。原 token、期限、Task 首次时间和 HTTP 事件不变，Step 使用当前 Clock。Run→Task→guard 同一物理事务完成检查点、结果与保护确认；失败整体回滚。ENSURE_MR 后有 PENDING TRY_MERGE，沿现有扫描发现，不扩扫描 SQL。
+
+| 独立正反例 | 本片验收要求 |
+|---|---|
+| 201 完整同仓证明已入账，ENSURE_MR 结果前强杀 | 默认 worker 补原 Task/检查点，投影阶段 HTTP=0；原 MR POST 总数 1，后继沿原 IID/SHA 完成 |
+| 200/202 完整正文；201 缺项目/分支/SHA/URL/IID；fork 项目或响应字段类型错误 | 正常路径和投影均不确认 CREATED，不清保护；先在真实 HTTP→Task 复现错误成功，再修复 |
+| 旧扁平 APPLIED、错误 attempt/guard/计划/冻结 SHA、UNKNOWN owner 先提交、当前 Step 已存在 | 不补检查点，不转 token、不续租、不重发、不补造原响应 |
+| 原 MR 已关闭或 source 已变为 B，target 不含原 A | 纯 DB 补历史 A 检查点；后继 TRY 读原 IID 后保持 UNKNOWN，无新 POST/merge PUT、无替换为 B |
+| target 精确包含原 A | 保留原 TRY 的 ALREADY_MERGED 语义，不因后来关闭 MR 或 source 移动误判失败 |
+| readiness 为 checking/审批/流水线等待 | ENSURE_MR 仍可 CREATED；后继 TRY 单独解释当前阻塞 |
+| 双恢复者、旧 owner 两个胜出顺序、结果事务故障 | 一个 Step；原事实不改；整体回滚；迟到结果不覆盖 |
+
+非目标是 MERGE_MR、INTENT/SEND/UNKNOWN 的恢复或旧摘要迁移。MERGE_MR 是最后动作，没有 PENDING 后继时需要另行验证候选发现和最终汇总，不夹入本片。回滚先停派发，保留已提交任务、检查点、操作及保护；不撤销已创建 MR，不加兼容旧名或第二条执行路径。
 
 ### 分阶段依赖与交付
 
@@ -222,7 +257,7 @@ flowchart TD
 
 ## 4. 数据模型与身份
 
-当前 C1/C2 直接复用 S1/S2 的计划、操作账本和 V21 任务表。下表记录实际承载关系，C2-B1 已实现、验收并推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5；C2-B2 已完成实现、189/189 组合、API 48/48、普通 695 PASS/5 SKIP 与静态门禁，待分组推送及本片固定 SHA CI，不以本地通过代替远端验收。
+当前 C1/C2 直接复用 S1/S2 的计划、操作账本和 V21 任务表。下表记录实际承载关系，C2-B1 已实现、验收并推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5；C2-B2 已完成实现、189/189 组合、API 48/48、普通 695 PASS/5 SKIP 与静态门禁，三组提交及固定 cc80036 的 Full-Link 44917254215 为 5/5，已交付。
 
 | 结构 / 责任 | 当前实际约束 |
 |---|---|

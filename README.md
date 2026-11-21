@@ -9,15 +9,15 @@
 
 核心能力：窗口/迭代/仓库与绑定、权威计划预览、显式 MR-first 编排、Run/Item/Step 与持久任务证据，以及按原计划精确重试。Attach/Detach/Publish 只维护配置和生命周期；Orchestrate 将所选 feature 分支集成到窗口 release 分支。
 
-当前 WINDOW 编排先在事务中保存计划与任务，HTTP 202 返回 Run ID；有界后台 worker 只消费已落库的 ENSURE_FEATURE → ENSURE_RELEASE → ENSURE_MR → TRY_MERGE 四动作。执行和重试必须提供 `Idempotency-Key`；相同主体、键及请求返回原回执，后台沿冻结计划和已确认 GitLab 数值项目 ID 推进。进程重启可继续尚未领取的 PENDING。C2-B1 已完成验收并交付：仅接管期限已到、领取事实完整，且该 task 没有任何 git_operation 或自身 Step 的 RUNNING；Run→Task 锁内重核并按原 token CAS，保留首次领取时间及已有实际顺序，缺失顺序不补造。B1 本身不恢复已有写意图；本地 C2-B2 新增的限定投影见下文，MR、INTENT/SEND/UNKNOWN 仍保持保护。
+当前 WINDOW 编排先在事务中保存计划与任务，HTTP 202 返回 Run ID；有界后台 worker 只消费已落库的 ENSURE_FEATURE → ENSURE_RELEASE → ENSURE_MR → TRY_MERGE 四动作。执行和重试必须提供 `Idempotency-Key`；相同主体、键及请求返回原回执，后台沿冻结计划和已确认 GitLab 数值项目 ID 推进。进程重启可继续尚未领取的 PENDING。C2-B1 已完成验收并交付：仅接管期限已到、领取事实完整，且该 task 没有任何 git_operation 或自身 Step 的 RUNNING；Run→Task 锁内重核并按原 token CAS，保留首次领取时间及已有实际顺序，缺失顺序不补造。B1 本身不恢复已有写意图；C2-B2 已交付的限定投影见下文，MR、INTENT/SEND/UNKNOWN 仍保持保护。
 
 关闭窗口使用独立的仓库级收尾 Run；重复关闭返回原回执，Tag 使用确认的合并提交，CI 默认关闭并由用户显式选择，共享分支与迭代保留。C1 固定 `e5094ba` 的 [Full-Link CI](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 为 5/5。**S3-C2-A 已完成并分组推送**：202、后台扫描、回执找回和进度观察通过本地门禁，固定 `1761572` 的 [Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754) 为 5/5。**S3-C2-B1 已完成并推送**：后端 `3f810c8`、文档 `5441df6`，固定 `5441df6bdc971953dee390c9470d4786fe0eab44` 的 [Full-Link 44911634004](https://github.com/tongsh6/release-hub/actions/runs/44911634004) 为 5/5。
 
-当前唯一队首为 **S3-C2-B2：建分支成功证明与 APPLIED 结果投影恢复**。实现与本地门禁已通过，待分组推送及本片固定 SHA CI：同一源码树的组合 189/189、API 48/48、普通后端 695 PASS/5 既有 SKIP 和静态扫描通过，详细证据见[本轮验收记录](tasks/records/2026-11-21-sa-013-orchestration-consistency.md)。
+**S3-C2-B2 已完成并分组推送**：建分支成功证明 `fe4c006`、原任务投影恢复 `1386ccc`、交付记录 `cc80036`；固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5。同一源码树的组合 189/189、API 48/48、普通后端 695 PASS/5 既有 SKIP 和静态扫描通过，详细证据见[本轮验收记录](tasks/records/2026-11-21-sa-013-orchestration-consistency.md)。
 
 该片修复了其他 SHA 字段覆盖 `commit.id` 而错误确认建分支成功的问题。成功证明统一为 HTTP 201、匹配的文本 name 和确切 commit.id；进程在远端结果已落库、原任务结果未提交时中断，后台可只补原任务记录。实际强杀/重启验证中，投影阶段 HTTP 请求为 0、建分支 POST 总数为 1，原 token、期限及历史事件保持。
 
-范围仅为 ENSURE_FEATURE/ENSURE_RELEASE 的 CREATE_BRANCH/APPLIED；缺少完整证明的旧摘要、MR、INTENT/SEND/UNKNOWN 继续保留保护并排队处理。真实 UI 黄金旅程仍按 S5 独立验收。
+范围仅为 ENSURE_FEATURE/ENSURE_RELEASE 的 CREATE_BRANCH/APPLIED；缺少完整证明的旧摘要、MR、INTENT/SEND/UNKNOWN 仍保留保护。后续从[执行路线图](docs/execution-roadmap.md)的唯一队首推进，当前 C2-B3 聚焦创建 MR 完整证明与原检查点恢复，已完成只读核对、尚未实现或测试。真实 UI 黄金旅程仍按 S5 独立验收。
 
 > **协作入口：[`AGENTS.md`](AGENTS.md)** — 唯一项目画像、工程规则与知识导航；生命周期、工作模式和发布事实分别记录。
 > 📋 **实现与验证事实：[`docs/project-ledger.md`](docs/project-ledger.md)** — 已交付基线、当前任务目标与验收边界。

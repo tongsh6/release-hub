@@ -1,6 +1,6 @@
 # 实施切片与验收追踪
 
-完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已交付；C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754、C2-B1 固定 `5441df6` 的 Full-Link 44911634004 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已分组提交推送。当前唯一队首为 C2-B2，建分支成功证明与 APPLIED 投影恢复已实现并通过本地门禁，待分组推送及本片固定 SHA CI；MR、INTENT/SEND/UNKNOWN 等恢复仍未交付，C2 整体尚未完成。
+完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已交付；C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754、C2-B1 固定 `5441df6` 的 Full-Link 44911634004 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已分组提交推送。C2-B2 三组 fe4c006、1386ccc、cc80036 已推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5，建分支成功证明与 APPLIED 投影恢复已交付。当前唯一队首为 C2-B3 创建 MR 完整证明与原检查点恢复，尚未实施；MR、INTENT/SEND/UNKNOWN 等恢复仍未交付，C2 整体尚未完成。
 
 关联：[需求](../../../requirements/in-progress/SA-013-发布编排中断恢复.md)、[提案](proposal.md)、[Run delta](specs/run/spec.md)、[窗口 delta](specs/release-window/spec.md)。依赖顺序为 S0 → S1 → S2 → S3 → S4 → S5。
 
@@ -127,9 +127,9 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 - [x] 代码 `3f810c8`、文档 `5441df6` 已分组提交推送；本片固定 `5441df6bdc971953dee390c9470d4786fe0eab44` 的 Full-Link 44911634004 / job 136868521085 为 5/5（2026-11-21 22:09:44，Asia/Shanghai），未借用 C2-A 的 5/5；证据 `.ai/reports/validation/c2-b1/full-link/result.json`。
 - 回滚和非目标：停派发、保留事实；不处理任何已有 operation，不宣称任意中断点或完整 UI 旅程可恢复。
 
-#### C2-B2：规范化建分支证明与投影恢复（当前子片 / HEAD）
+#### C2-B2：规范化建分支证明与投影恢复（已交付）
 
-- 依赖与状态：C2-B1 固定 `5441df6` 的远端验收已完成；本片为当前唯一 HEAD，实现与本地门禁已通过，待分组推送及本片固定 SHA CI。正常创建成功证明的规范化与 APPLIED 建分支投影恢复同片交付。
+- 依赖与状态：C2-B1 固定 `5441df6` 的远端验收已完成；本片已完成实现、本地门禁、分组推送及固定 cc80036 的 Full-Link 44917254215 5/5 验收。正常创建成功证明的规范化与 APPLIED 建分支投影恢复同片交付。
 - 用户价值与范围：只恢复 CREATE_BRANCH/APPLIED 对应原 ENSURE_FEATURE/ENSURE_RELEASE 的本地投影，恢复阶段零网络；回连设计 0/3/4/5，复用原任务、账本、guard 与单步入口。
 - [x] 初始 RED 已保留：客户端 55（3 FAIL）、真实 HTTP 9（9 FAIL）、PG 投影 18（3 FAIL）、独立 JVM 1（1 FAIL），均 0 ERROR 且阶段源码稳定。错误 commit.id 被 object.id/commit.sha 覆盖会实际错误 CREATED/APPLIED 并清 guard；正确字段反向受干扰、非 201、规范证明缺失及重启卡住均复现，详见任务记录 15.1。
 - [x] 正常 CREATE_BRANCH 与既有 event evidence_json 共用“201 + 完整匹配 name/commit.id”判定，只允许确切 commit.id，其他字段不得替代或覆盖；不改变 GET 分支/Tag 等契约。同时核对 plan.defaultBranch=target.sourceRef、计划分支=target.branch、target.ref 为合法 SHA 且等于 commit.id，不重读当前 ref。
@@ -138,10 +138,23 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 - [x] PG 验证完整领取/实际顺序、双恢复者、旧 owner 两个胜出顺序、UNKNOWN 排除、guard 归属及失败整体回滚；证明不足不续租、不回 PENDING、不放行后继。
 - [x] 真实 HTTP/独立 JVM 在完整 APPLIED 后、Task/Step 前硬杀，exit=137；默认扫描重启补原 Task，投影阶段 HTTP=0、分支 POST 总数 1、原 token/events 保持，随后原 Run 完成。
 - [x] 同一 backend hash 的组合 189/189、API 48/48、普通后端 700（695 PASS/5 既有 SKIP）及静态门禁完成；六份新鲜 SpotBugs XML 均 0、typecheck PASS、lint 0 errors/8 既有 fixture warnings，TopN 报告 20261121-224714 逐项留痕。
-- [ ] 分组提交、阶段推送及本片固定 SHA Full-Link CI；完成后再移动 HEAD，不借用 B1 5/5 或旧 UI 214 的结论。
+- [x] 分组提交 fe4c006、1386ccc、cc80036 并推送；固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5，B2 已 DONE。未借用 B1 CI 或旧 UI 214 的结论。
 - 回滚与不做项：停派发并保留事实；不新增实体/API/UI/通用恢复平台，不发第二次请求、不迁移或补造旧摘要；MR FOUND、INTENT/SEND/UNKNOWN 和 cleanup/version 不在本片获得恢复授权。
 
-#### C2-B 后续：已有写意图与外部证据
+#### C2-B3：创建 MR 完整证明与原检查点恢复（当前子片 / HEAD）
+
+- 依赖与范围：B2 已完成固定 SHA 验收；仅 CREATE_MR/APPLIED 对应原 ENSURE_MR，纯 DB 恢复历史检查点，再由原 TRY 消费。详细正反例及 provider 契约见 design.md 的 C2-B3。
+- [x] 独立正反例、已有职责与实际消费者核对：原 operation.target.sha 已冻结；原 MrEvidence、Task/Journal/guard、completeTask 与 PENDING 后继足以承责，无需新实体或扫描分支。
+- [ ] RED：客户端与真实 HTTP→Task 复现非 201 完整正文、同名 fork 身份、缺失/错误类型响应等错误成功；PG/独立进程复现完整 APPLIED 后原检查点不能恢复，保留原始失败证据。
+- [ ] 正常 create、HTTP event 和恢复共用严格规范证明；保留项目原字段、iid/url、分支、sha、opened 和 httpStatus，不从意图补造响应，不混入 readiness。
+- [ ] 原 RunPort 投影入口改名并删旧名；Journal 返回既有 MrEvidence；移动原 metadata patch 映射供正常路径与投影共用，保留 null 清除语义和 requestId 来源。
+- [ ] PG 验证原身份/时间/事件保持、整体回滚、双恢复者和 owner 顺序、完整项目检查点、旧摘要/UNKNOWN/错误证明拒绝；不新建 operation、不重发。
+- [ ] 独立 JVM 在 CREATE_MR/APPLIED 后、结果提交前强杀，重启原 ENSURE_MR 投影阶段零 HTTP；总 MR POST=1，原 Run 由原 IID/SHA 继续。
+- [ ] 当前 MR 已关闭或 source 移动且 target 不含原 SHA 时，后继 TRY 停住且无重复写；target 精确包含原 SHA 则保留 ALREADY_MERGED。
+- [ ] 定向、必要回归、静态 TopN、独立复审、文档及固定 SHA Full-Link 验收后分组提交/推送；未验收不标 DONE。
+- 回滚：停派发并保留事实；MERGE_MR、INTENT/SEND/UNKNOWN、版本/收尾恢复与完整 UI 旅程继续独立追踪，不兼容缺证明的旧摘要。
+
+#### C2-B 后续：合并 MR、已有写意图与外部证据
 
 - [ ] 租约与代次具有实际接管消费者；历史 HTTP 事实归属和当前发送/投影权分开，不能旋转 token 后丢失旧操作观察或迟到响应。
 - [ ] UNKNOWN/NEEDS_REVIEW 的精确只读核对、受证据约束的 resume；无 force 绕过或任意 FOUND 自动释放 guard。

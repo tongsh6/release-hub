@@ -6,7 +6,7 @@
 
 系统 SHALL 从窗口绑定关系生成仓库并集和 `(window, iteration, repository)` 计划，完整校验后，在同一受理事务保存协议 3 的 Run、不可变快照与每个 Item 的固定四动作任务，再执行 GitLab MR-first。计划包含真实 feature 分支模式、source/target、ref、提供方、仓库映射和稳定顺序；执行及重试不得重新解释这些目标。Publish/Attach 不因此获得隐式 Git 写入权限。
 
-C1、C2-A 已交付持久四动作、后台扫描与 202。C2-B1 无 operation/Step 的过期 RUNNING 接管已验收并推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。当前 HEAD 为 C2-B2，规范化建分支证明与 APPLIED 投影恢复已实现并通过本地门禁，待分组推送和本片固定 SHA CI。其他恢复仍待独立验收，cleanup 未迁入四动作协议。
+交付与验收事实见 [tasks.md](../../tasks.md) 和项目台账，任务选择以执行路线图的唯一 HEAD 为准。cleanup 未迁入本四动作协议。
 
 #### Scenario: 相同仓库属于多个迭代
 
@@ -400,7 +400,7 @@ C1、C2-A 已交付持久四动作、后台扫描与 202。C2-B1 无 operation/S
 
 ### Requirement: 已确认建分支结果的受控投影恢复
 
-C2-B2 为当前子片与唯一 HEAD，实现与本地门禁已通过，待本片固定 SHA 远端验收；依赖 C2-B1 的固定 SHA 远端验收已满足。规范化成功证明与 APPLIED 建分支投影恢复在同一切片交付。
+C2-B2 已完成本地门禁与固定 cc80036 的 Full-Link 44917254215 5/5 验收并交付；依赖 C2-B1 的固定 SHA 验收已满足。规范化成功证明与 APPLIED 建分支投影恢复在同一切片交付。
 
 系统 SHALL 沿现有任务与账本，只对当前 WINDOW 协议的 ENSURE_FEATURE/ENSURE_RELEASE 补原 Task 投影：Task 为完整到期 RUNNING、实际顺序为正、无当前 Step，唯一 CREATE_BRANCH/APPLIED operation 具有 HTTP 201 及匹配的规范化 name/commit.id 证明。正常创建与事件共用此判定。系统 SHALL 保留原 operation/token/期限，在 Run→Task→guard 同一结果事务提交 Step、Item、绑定、Task 终态、Run 进度并确认 guard；恢复阶段零网络。不新增实体/API/UI/通用平台，不改变 GET 分支或 Tag 契约。
 
@@ -460,6 +460,41 @@ C2-B2 为当前子片与唯一 HEAD，实现与本地门禁已通过，待本片
 - **WHEN** 当前 worker 成功补投影
 - **THEN** 新 Step.startAt/endAt 使用当前 worker 同一 Clock 的处理起止，明确表示本次补记；原 Task.started_at 与 HTTP 历史时间不变
 - **AND** 不伪造原 HTTP 执行时段，不用 max() 修饰跨时钟差异；停止派发回滚时保留已提交事实，不撤销分支或退回 PENDING
+
+### Requirement: 已确认创建 MR 结果的受控检查点恢复
+
+C2-B3 为当前实施队首，以下为目标契约，尚未完成实现和验收。系统 SHALL 复用原 Task、操作账本和结果事务，仅对完整到期的原 ENSURE_MR/CREATE_MR/APPLIED 补历史 CREATED 检查点，随后由原 TRY_MERGE 复核并使用同一项目/IID/source SHA；纯 DB 投影不得重新 GET 或 POST。
+
+#### Scenario: 规范创建证明与原检查点
+
+- **GIVEN** 原 operation 保存计划 source/target 和冻结 source SHA，响应属于同一 attempt 的 sequence 2 APPLIED
+- **WHEN** 原始响应为 HTTP 201，三个项目 ID 为正整数并均等于原 numeric project，分支精确一致，sha 与原冻结值一致，iid 为正整数、web_url 合法且 state 为 opened
+- **THEN** 正常创建、HTTP 账本和恢复使用相同证明；原 Task/Step/Item 检查点与 guard 在同一结果事务提交 CREATED
+- **AND** 保留原 token、期限、首次时间、operation/events 与执行顺序，新 Step 只记当前处理时间；metadata 的 null 清除规则与正常路径共用
+- **AND** readiness 为 checking、审批或流水线等待不阻止 CREATED；当前可合并性由 TRY_MERGE 独立判断
+- **AND** CREATE/opened 的 mergeSha 为 null，创建证明与事件白名单不采用 merge_commit_sha，不让附带值变成本次合并事实
+
+#### Scenario: 非规范响应或历史证明不足
+
+- **GIVEN** 非 201 的完整正文，或 201 缺少字段、字段类型错误、fork 项目不同、分支或冻结 SHA 不同、不是 opened，或只有旧扁平 APPLIED 摘要
+- **WHEN** 正常创建确认响应或恢复验证原证据
+- **THEN** 不确认成功、不补检查点、不解除 guard，不从请求意图补造响应字段，全局 id 不替代 iid
+- **AND** 原 Task 已有 Step、领取不完整、attempt/guard/计划不一致或 owner 已提交 UNKNOWN 时也不恢复；不续租、不回 PENDING、不重发
+
+#### Scenario: 恢复历史创建不越过当前 MR 状态
+
+- **GIVEN** 原完整创建证明允许补记 source SHA A 的检查点，但远端 MR 已关闭或 source 已变成 B
+- **WHEN** 纯 DB 投影提交后原 TRY_MERGE 继续，target 尚未包含 A
+- **THEN** 后继按原 IID/SHA 复核并保持 UNKNOWN，不重新创建 MR、不合并 B、不覆盖原检查点
+- **AND** 若 target 精确包含 A，仍按原规则返回 ALREADY_MERGED，不因后续关闭或源变化误判失败
+
+#### Scenario: 创建结果后的独立进程中断
+
+- **GIVEN** CREATE_MR/APPLIED 与完整规范响应已提交，ENSURE_MR 业务结果尚未提交
+- **WHEN** 独立 JVM 被强杀并由默认 worker 重启继续
+- **THEN** 既有 PENDING 后继使扫描发现原 Run；投影阶段 HTTP=0，原 MR POST 总数=1，原 Task 身份、claim token、期限及首次时间不变，operation/events 不变，后继沿原检查点推进
+- **AND** 双恢复者和原 owner 竞争最多提交一个 Step，迟到结果不能覆盖；结果或 ack 故障整体回滚
+- **AND** 本片不授予 MERGE_MR、INTENT/SEND/UNKNOWN 或其他执行类型的恢复权限
 
 ## MODIFIED Requirements
 

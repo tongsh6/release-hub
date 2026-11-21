@@ -498,10 +498,26 @@ B1 收口后直接进入这一已授权子片，先固定契约与独立正反�
 
 独立 JVM 原始结果：`PROCESS_APPLIED_BRANCH_RESUME run=bec9cda6-3f2c-4f7c-b40a-b828d939f979 killedPid=13969 exit=137 resumedPid=13978 projectionHttp=0 branchPost=1 mrPost=1 mergePut=1 preservedToken=true preservedEvents=3`。第二进程在投影事务返回后、下一 Task 前暂停，直接核对 HTTP 计数未增加、原 operation/events 整行相同、token/expiry/首次时间保持和当前 Step 时间；释放暂停后同一 Run 完成。PENDING 与 CLAIMED_UNWRITTEN 两类既有进程重启也重新通过，各保持前三项成功前缀、MR POST 1、merge PUT 1。
 
-本地门禁完成，当前 C2-B2 仍为 HEAD，等待阶段推送和本片固定 SHA Full-Link。缺少规范证明的旧 APPLIED、MR、INTENT/SEND/UNKNOWN、版本/收尾恢复不在本片交付范围；默认 60 分钟候选期限、无心跳及完整浏览器旅程边界不变。
+本地门禁完成时 C2-B2 仍为 HEAD；后续阶段推送与本片固定 SHA Full-Link 已完成，见 15.3–15.4。缺少规范证明的旧 APPLIED、MR、INTENT/SEND/UNKNOWN、版本/收尾恢复不在本片交付范围；默认 60 分钟候选期限、无心跳及完整浏览器旅程边界不变。
 
 ### 15.3 分组提交与阶段交付
 
 后端已按可评审职责分为两个本地提交：`fe4c0061715d2e9d679a294659ff750ac9b8671a` 修正正常建分支与账本共用的规范成功证明，含客户端及真实 HTTP 反例；`1386ccc358c81b661cfd986bf40e8e10472efde0` 沿原 Task/结果事务补记已确认分支结果，含应用、PG 与独立进程验收。提交后全部 backend 文件 hash 与 15.2 的最终测试、扫描源码仍完全一致；两个测试文件沿用原基线无文件末尾换行的格式，未在门禁后改动源码。
 
-设计、需求、台账、验收矩阵与此记录作为第三组提交。远端交付目标为 `feature/orchestration-consistency`；推送后仅以本片实际提交 SHA 对应的 Full-Link 结果作为远端验收，当前尚未将其记为完成。
+设计、需求、台账、验收矩阵与此记录已作为第三组提交 `cc800362f333418776f4a816e1fa74ee9f08c04f`。三组均已推送 `feature/orchestration-consistency`；远端 main/develop 仍同指 `d4534ccc34fedb9bbf394ced89b4726f43ec197c`，无额外分支。
+
+### 15.4 本片固定 SHA 远端验收
+
+固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5；run head_sha 已与完整提交值核对。job `136885413516` SUCCESS，原始日志 `2026-11-21T15:13:25.8996671Z`（北京时间23:13:25）为 Passed 5 / Failed 0，测试、日志上传及环境清理均成功。证据位于 `.ai/reports/validation/c2-b2/full-link/result.json` 与 `136885413516.log`。本地 189/48/700 与静态扫描的 backend 文件 hash 在三组提交后仍完全相同。
+
+本片行为、事务、故障验证、相关回归、静态 TopN、独立复审、文档与分阶段推送均完成，C2-B2 标记 DONE。本次 Full-Link 是后端 API＋隔离 GitLab，不扩大 Slice4/5 的既有覆盖，也不代替完整浏览器旅程。
+
+## 16. C2-B3 接续：创建 MR 完整证明与原检查点恢复
+
+B2 固定 SHA 验收后，唯一 HEAD 推进 C2-B3；当前仅完成独立正反例、源码职责及官方响应 producer 核对，尚未执行新测试或修改后端代码。目标与验收完整写入原 design/tasks/run spec，不建立新提案或第二套队列。
+
+定位依据：`GitLabMergeRequestAdapter.create/write/evidence/complete` 与 `GitMergeWorkflow.ensureMergeRequest` 分别承担 provider 响应与业务身份确认；现 CREATE_MR HTTP 账本仅凭 2xx+iid 即 APPLIED，事件缺项目、分支和 URL。原 operation.target.sha 已在 begin 前冻结；原 MrEvidence、ENSURE_MR 检查点和 TRY 消费者足以承责。独立强反例是非201完整正文、同名fork、仅iid的旧摘要；待先通过真实 HTTP→Task 复现，不将源码推断写成已测缺陷。
+
+同仓 CREATE_MR 必须使用原始项目/source_project/target_project 身份、分支、IID/URL、冻结SHA与opened证明。GitLab 17.11 producer 的三个官方文件已独立读取并保存 hash/range，见 `.ai/reports/validation/c2-b3/baseline/gitlab-17-11-mr-producer.json`；响应字段缺失不能沿用请求参数默认值。readiness 不等于创建结果，TRY 仍负责当前状态；target 已精确包含原SHA时保留 ALREADY_MERGED 语义。
+
+实施复用原结果事务和 metadata patch；投影入口只改名扩到 ENSURE_MR，删除旧名，新 Journal 证明返回既有 MrEvidence。保留原token/期限/历史事实、新Step用当前Clock，null清除语义与正常路径一致，requestId不伪装成operationId。MERGE_MR终态发现、INTENT/SEND/UNKNOWN与其他动作仍后续独立验收。
