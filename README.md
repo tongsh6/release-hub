@@ -9,7 +9,7 @@
 
 核心能力：窗口/迭代/仓库与绑定、权威计划预览、显式 MR-first 编排、Run/Item/Step 与持久任务证据，以及按原计划精确重试。Attach/Detach/Publish 只维护配置和生命周期；Orchestrate 将所选 feature 分支集成到窗口 release 分支。
 
-当前 WINDOW 编排先在事务中保存计划与任务，HTTP 202 返回 Run ID；有界后台 worker 只消费已落库的 ENSURE_FEATURE → ENSURE_RELEASE → ENSURE_MR → TRY_MERGE 四动作。执行和重试必须提供 `Idempotency-Key`；相同主体、键及请求返回原回执，后台沿冻结计划和已确认 GitLab 数值项目 ID 推进。进程重启可继续尚未领取的 PENDING。C2-B1 已完成验收并交付：仅接管期限已到、领取事实完整，且该 task 没有任何 git_operation 或自身 Step 的 RUNNING；Run→Task 锁内重核并按原 token CAS，保留首次领取时间及已有实际顺序，缺失顺序不补造。B1 本身不恢复已有写意图；C2-B2 已交付建分支结果投影，C2-B3 的 MR 创建检查点恢复已完成本地与固定 SHA 验收并交付。合并 MR、INTENT/SEND/UNKNOWN 仍保持保护。
+当前 WINDOW 编排先在事务中保存计划与任务，HTTP 202 返回 Run ID；有界后台 worker 只消费已落库的 ENSURE_FEATURE → ENSURE_RELEASE → ENSURE_MR → TRY_MERGE 四动作。执行和重试必须提供 `Idempotency-Key`；相同主体、键及请求返回原回执，后台沿冻结计划和已确认 GitLab 数值项目 ID 推进。进程重启可继续尚未领取的 PENDING。C2-B1 已完成验收并交付：仅接管期限已到、领取事实完整，且该 task 没有任何 git_operation 或自身 Step 的 RUNNING；Run→Task 锁内重核并按原 token CAS，保留首次领取时间及已有实际顺序，缺失顺序不补造。B1 本身不恢复已有写意图；C2-B2 已交付建分支结果投影，C2-B3 的 MR 创建检查点恢复已完成本地与固定 SHA 验收并交付。C2-B4 合并 MR 完整证明与原结果恢复已通过本地验收，待阶段推送和本片 CI；INTENT/SEND/UNKNOWN 仍保持保护。
 
 关闭窗口使用独立的仓库级收尾 Run；重复关闭返回原回执，Tag 使用确认的合并提交，CI 默认关闭并由用户显式选择，共享分支与迭代保留。C1 固定 `e5094ba` 的 [Full-Link CI](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 为 5/5。**S3-C2-A 已完成并分组推送**：202、后台扫描、回执找回和进度观察通过本地门禁，固定 `1761572` 的 [Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754) 为 5/5。**S3-C2-B1 已完成并推送**：后端 `3f810c8`、文档 `5441df6`，固定 `5441df6bdc971953dee390c9470d4786fe0eab44` 的 [Full-Link 44911634004](https://github.com/tongsh6/release-hub/actions/runs/44911634004) 为 5/5。
 
@@ -19,7 +19,9 @@
 
 C2-B2 的范围仅为 ENSURE_FEATURE/ENSURE_RELEASE 的 CREATE_BRANCH/APPLIED。**S3-C2-B3 已完成并分组推送**：MR 创建需完整 HTTP 201、同仓项目身份、分支、IID/URL、冻结源 SHA 和 opened 证明；正常执行与中断恢复共用判定，原 ENSURE_MR 检查点可只在数据库事务内补齐。后继 TRY_MERGE 仍消费原 IID/SHA 并复核当前状态；创建不产生合并提交证据。
 
-最终定向 403/403、API 48/48、普通后端 738 项（733 PASS/5 既有 SKIP）及静态扫描通过，七份 backend hash 快照一致。真实强杀/重启中，补检查点阶段 HTTP=0，整个场景 MR POST=1、MERGE PUT=1。后端 `d87dfa8`、验收文档 `544983b` 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5。详见[验收记录第 16 节](tasks/records/2026-11-21-sa-013-orchestration-consistency.md)。当前按[执行路线图](docs/execution-roadmap.md)接续 C2-B4「合并 MR 完整证明与末尾原任务结果恢复」，独立正反例、已有职责和官方 producer 核对已完成，新增 RED 尚待执行。缺少完整证明的旧摘要、合并 MR 与未知写恢复尚未交付，真实 UI 黄金旅程仍按 S5 独立验收。
+最终定向 403/403、API 48/48、普通后端 738 项（733 PASS/5 既有 SKIP）及静态扫描通过，七份 backend hash 快照一致。真实强杀/重启中，补检查点阶段 HTTP=0，整个场景 MR POST=1、MERGE PUT=1。后端 `d87dfa8`、验收文档 `544983b` 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5。详见[验收记录第 16 节](tasks/records/2026-11-21-sa-013-orchestration-consistency.md)。
+
+**S3-C2-B4 已完成本地验收**：完整 HTTP 200/merged 证明与原 IID/source SHA 绑定，允许合法的显式 null 合并 SHA；末尾任务没有 PENDING 后继时也能被发现，并在原结果事务中补历史 MERGED，保持原检查点身份及操作证据。最终定向533/533、API48/48、普通789项（784 PASS/5既有SKIP）和静态扫描通过。真实进程强杀/重启后恢复阶段HTTP=0，全场景MR POST=1、MERGE PUT=1。后端 `23950f9` 已本地提交，待文档提交、阶段推送及本片固定SHA Full-Link；当前队首仍为B4，见[执行路线图](docs/execution-roadmap.md)与[验收记录第17节](tasks/records/2026-11-21-sa-013-orchestration-consistency.md)。INTENT/SEND/UNKNOWN 恢复和完整 UI 黄金旅程仍待各自验收。
 
 > **协作入口：[`AGENTS.md`](AGENTS.md)** — 唯一项目画像、工程规则与知识导航；生命周期、工作模式和发布事实分别记录。
 > 📋 **实现与验证事实：[`docs/project-ledger.md`](docs/project-ledger.md)** — 已交付基线、当前任务目标与验收边界。

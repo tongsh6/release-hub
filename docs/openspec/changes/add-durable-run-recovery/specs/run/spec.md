@@ -506,7 +506,7 @@ C2-B3 已 DONE：d87dfa8、544983b 已推送，固定完整 SHA `544983beff74604
 
 ### Requirement: 已确认合并 MR 结果的末尾原任务恢复
 
-C2-B4 为当前唯一实施队首，以下为实施前契约；只读定位已完成，源码尚未实施，新测试待 RED。系统 SHALL 复用原 Task、操作账本和结果事务，对完整到期的原 TRY_MERGE/MERGE_MR/APPLIED 补历史 MERGED 结果；即使整个 Run 没有 PENDING 后继也 SHALL 被默认 worker 发现。恢复 SHALL 零 HTTP，不授予 INTENT/SEND/UNKNOWN 或其他执行类型恢复权限。
+C2-B4 为当前唯一实施队首，实现与本地验收已完成；文档阶段推送和本片固定完整 SHA CI 待收口，事实见 tasks 与任务记录 17。系统 SHALL 复用原 Task、操作账本和结果事务，对完整到期的原 TRY_MERGE/MERGE_MR/APPLIED 补历史 MERGED 结果；即使整个 Run 没有 PENDING 后继也 SHALL 被默认 worker 发现。恢复 SHALL 零 HTTP，不授予 INTENT/SEND/UNKNOWN 或其他执行类型恢复权限。
 
 #### Scenario: 同一原响应的完整合并证明
 
@@ -540,7 +540,7 @@ C2-B4 为当前唯一实施队首，以下为实施前契约；只读定位已�
 
 - **GIVEN** 当前 WINDOW 协议活动 Run 无 PENDING，原 TRY_MERGE 为完整到期 RUNNING，存在 MERGE_MR/APPLIED 且无当前 Step
 - **WHEN** 原有有界扫描发现该 Run
-- **THEN** 候选查询不领取或更换 token，不复制 JSON 证明；原投影入口在 Run→Task→guard 锁内重核完整到期、实际顺序、仓内前序、唯一原 operation/同 attempt sequence 2、token/session/generation、项目、suffix/SHA、计划与检查点
+- **THEN** 候选查询不领取或更换 token，不复制 JSON 证明；原投影入口在 Run→Task→guard 锁内重核完整到期、实际顺序、仓内前序、唯一原 operation/同 attempt sequence 2、token/session/generation、项目、原 PUT/suffix/SHA、计划与检查点
 - **AND** 坏证据占满前页时 worker 游标仍向后推进并到尾回绕，后页合法末尾候选不会因此永久饥饿
 
 #### Scenario: 不完整资格或已提交 owner 结果拒绝投影

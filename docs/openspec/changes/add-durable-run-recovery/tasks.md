@@ -1,6 +1,6 @@
 # 实施切片与验收追踪
 
-完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已交付；C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754、C2-B1 固定 `5441df6` 的 Full-Link 44911634004 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已分组提交推送。C2-B2 三组 fe4c006、1386ccc、cc80036 已推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5，建分支成功证明与 APPLIED 投影恢复已交付。C2-B3 的 d87dfa8、544983b 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE，完整证据见记录 16.6。当前唯一队首为 C2-B4 合并 MR 完整证明与末尾原任务结果恢复，只读契约已核对，测试待 RED、源码未实施；INTENT/SEND/UNKNOWN 等仍后续独立验收，C2 整体未完成。
+完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已交付；C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754、C2-B1 固定 `5441df6` 的 Full-Link 44911634004 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已分组提交推送。C2-B2 三组 fe4c006、1386ccc、cc80036 已推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5，建分支成功证明与 APPLIED 投影恢复已交付。C2-B3 的 d87dfa8、544983b 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE，完整证据见记录 16.6。当前唯一队首为 C2-B4 合并 MR 完整证明与末尾原任务结果恢复，本地定向 533/API 48/普通 789 与静态门禁通过，后端 23950f9 已本地提交，文档阶段推送与本片固定 SHA CI 待收口（记录 17）；INTENT/SEND/UNKNOWN 等仍后续独立验收，C2 整体未完成。
 
 关联：[需求](../../../requirements/in-progress/SA-013-发布编排中断恢复.md)、[提案](proposal.md)、[Run delta](specs/run/spec.md)、[窗口 delta](specs/release-window/spec.md)。依赖顺序为 S0 → S1 → S2 → S3 → S4 → S5。
 
@@ -159,19 +159,22 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 - [x] 文档 544983beff74604852c050209e4c8caa93678ef2 已提交推送；固定该完整 SHA 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE。覆盖为后端 API 与隔离 GitLab，不扩完整 UI 或 Slice4/5 边界；证据见记录 16.6。
 - 回滚：停派发并保留事实；MERGE_MR、INTENT/SEND/UNKNOWN、版本/收尾恢复与完整 UI 旅程继续独立追踪，不兼容缺证明的旧摘要。
 
-#### C2-B4：合并 MR 完整证明与末尾原任务结果恢复（当前子片 / HEAD，实施前）
+#### C2-B4：合并 MR 完整证明与末尾原任务结果恢复（当前子片 / HEAD，本地验收完成）
 
-- 依赖与范围：B3 已完成固定 SHA 5/5；本片只处理原 TRY_MERGE 对应 MERGE_MR/APPLIED，完整契约见 design.md 的 C2-B4 与 Run delta。尚未实施或测试，先 RED。
+- 依赖与范围：B3 已完成固定 SHA 5/5；本片只处理原 TRY_MERGE 对应 MERGE_MR/APPLIED。完整契约见 design.md 与 Run delta，实际阶段证据见任务记录 17；本地通过不代替固定 SHA 远端验收。
 - [x] provider 与持久化两路独立只读核对已收敛；原 Task/Journal/guard、MrEvidence、worker 游标和 completeTask 有实际消费者，无需新实体、表、DTO、API 或框架。
 - [x] 官方 v17.11.3、grape-entity 1.0.1 的九文件 producer 基线已保存范围/hash；FF/FF+squash 的合法 merge_commit_sha=null 与缺字段明确区分。
-- [ ] 先独立运行正反例 RED：严格 200/merged、原 JSON 项目/IID/分支/URL/source SHA、merge_commit_sha 必须存在且 null/合法 SHA；非 200、缺失/错类型/矛盾与替代字段不能冒充成功。
-- [ ] 正常 merge、HTTP 规范事件与 Journal 共用 confirmedMergedMr；不加 nullable 分支参数/header，精确分支由既有 workflow/原 claim 各自绑定；target 矛盾即使 APPLIED 也不能业务成功。
-- [ ] 保留原 CREATED/MR_REUSED 检查点 identity 字节与 disposition，只复用正常 TRY 的 MR_RESULT 四字段 patch；覆盖合法 null 清旧值与 40/64 位等值大小写，不全量套用 ENSURE patch。
-- [ ] 窄扩完整到期 TRY+MERGE_MR/APPLIED 且无 Step 的候选；保留协议、有界游标与坏证据页继续推进，锁内才核对唯一 operation/attempt、token/session/generation、项目、suffix/SHA、计划与检查点。
-- [ ] 纯 DB 补历史 MERGED；原 token/lease/首次时间/顺序/op/events 保持，新 Step 与 lastMergeAt 取当前处理 Clock；远端后来重置或不可读仍不重新 GET/PUT。
-- [ ] PG 验证错证明/guard/checkpoint/owner UNKNOWN/current Step 拒绝，双恢复者、owner 两种结果先后、整体结果事务回滚；绑定与各仓库/迭代的终态聚合分别验证。
-- [ ] 默认 worker 对无 PENDING 末尾候选完成恢复；真实独立 JVM 在 MERGE_MR/APPLIED 后强杀，重启恢复阶段 HTTP=0、原 merge PUT 总数 1。
-- [ ] 完成本片相关回归、静态 TopN、独立复审、文档和固定 SHA Full-Link 后分组提交/推送；历史 B3 数字不作本片验收结论。
+- [x] 独立 RED 已保留：冻结快照 v2 的 adapter 105 项/20 FAIL、Workflow+App 77 PASS、HTTP 34 项/28 FAIL、进程 3 项/1 FAIL；独立 PG 44 项/12 FAIL，旧字段 DB 前置断言补强 5 项/5 FAIL。正确执行阶段均 0 ERROR/SKIP、各自源码稳定；最初编译失败 0 tests 不计业务 RED，不同测试树及重叠用例不混算，详见 17.1。
+- [x] 正常 merge、HTTP 规范事件与 Journal 共用 confirmedMergedMr；不加 nullable 分支参数/header，精确分支由既有 workflow/原 claim 各自绑定；target 矛盾即使 APPLIED 也不能业务成功。
+- [x] 保留原 CREATED/MR_REUSED 检查点 identity 字节与 disposition，只复用正常 TRY 的 MR_RESULT 四字段 patch；合法 null 真实清旧值，40/64 位等值大小写不全量套用 ENSURE patch。
+- [x] 窄扩完整到期 TRY+MERGE_MR/APPLIED 且无 Step 的候选；原 NO_TASK_EVIDENCE 接管不放宽，协议/有界 keyset 保持，锁内核唯一 operation/attempt、token/session/generation、项目、PUT/suffix/SHA、计划与检查点。
+- [x] 纯 DB 补历史 MERGED；原 token/lease/首次时间/顺序/op/events 保持，新 Step 与 lastMergeAt 取当前处理 Clock；受控 HTTP fixture 的后来 target 重置/MR 不可读不触发新 GET/PUT。
+- [x] PG 验证错误证明/guard/checkpoint/owner UNKNOWN/current Step 拒绝、双恢复者、owner 先后及完整结果事务回滚，绑定与仓库/迭代聚合分别验证。坏页验证为真实 SQL keyset，回滚为外层 TransactionTemplate；具体证据边界见 17.3。
+- [x] 五类独立 JVM 强杀重启通过；末尾 MERGE/APPLIED 时无 PENDING，默认 worker 纯 DB 恢复原 TRY/MERGED，投影 HTTP=0、MR POST=1、merge PUT=1，原 token/六条事件保持。
+- [x] 首轮 533 项/2 FAIL 保留；仅修两份测试的发现/授权及无序集合断言，生产未改，最终 11 suites、533/533、0 FAIL/ERROR/SKIP。独立源码复审无阻塞；详见 17.2–17.3。
+- [x] 同一 495 文件 backend 树 API 48/48、普通 789（784 PASS/5 既有 SKIP）、六份 fresh SpotBugs XML 0、typecheck PASS、lint 0 errors/8 既有 warnings；TopN 八项已逐项说明保留理由，报告 20261122-010845，详见 17.4。
+- [x] 后端 13 文件完整纵向切片已本地提交 23950f98f2c7000bc054e74e9a67feb5f892e2dc，与最终 533/48/789/静态验收树一致；此时尚未推送。
+- [ ] 完成文档门禁与提交、分阶段推送及本片固定完整 SHA Full-Link 后收口；B4 仍为唯一 HEAD，历史 B3 CI 不作本片验收结论。
 - 回滚与后续：停派发并保留事实，不撤销 merge；INTENT/SEND/UNKNOWN、cleanup/version 与完整 UI 仍独立排队。
 
 #### C2-B 后续：已有写意图、发送权与未知结果

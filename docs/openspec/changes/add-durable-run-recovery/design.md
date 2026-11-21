@@ -177,9 +177,9 @@ SHA 以合法十六进制摘要的值判断相等，事件和检查点保留响�
 
 非目标是 MERGE_MR、INTENT/SEND/UNKNOWN 的恢复或旧摘要迁移。MERGE_MR 是最后动作，没有 PENDING 后继时需要另行验证候选发现和最终汇总，不夹入本片。回滚先停派发，保留已提交任务、检查点、操作及保护；不撤销已创建 MR，不加兼容旧名或第二条执行路径。
 
-##### C2-B4：合并 MR 完整证明与末尾原任务结果恢复（当前子片 / HEAD，实施前契约）
+##### C2-B4：合并 MR 完整证明与末尾原任务结果恢复（当前子片 / HEAD，本地验收完成）
 
-B3 固定 SHA 验收后接续本片。用户价值是 MERGE_MR 的完整成功响应已经入账、原末尾 TRY_MERGE 尚未提交结果时，默认 worker 即使找不到 PENDING 后继也能补原 MERGED 结果。先前只读审查已定位候选 SQL 与投影动作范围；以下是独立目标契约，尚未运行本片 RED、实现或验收，不把源码推断写成已复现缺陷。
+B3 固定 SHA 验收后接续本片。用户价值是 MERGE_MR 的完整成功响应已经入账、原末尾 TRY_MERGE 尚未提交结果时，默认 worker 即使找不到 PENDING 后继也能补原 MERGED 结果。本片已按先独立 RED、再实现与回归完成本地验收；后端 23950f9 已本地提交，文档阶段推送和本片固定完整 SHA CI 待收口。实际失败历史、533/48/789、静态与进程证据见任务记录 17，以下保留独立契约及已有职责。
 
 正常 merge、HTTP 账本与 Journal 投影共用 `confirmedMergedMr(status, raw, projectId, iid, expectedSha)`：严格 HTTP 200、state 为文本 merged；原 JSON 的 project_id/source_project_id/target_project_id 均为正整数且等于原 numeric project，iid 为正整数且等于原请求 IID；source_branch/target_branch 为非空白文本，web_url 通过既有链接形状校验，sha 为合法 40/64 位摘要且与冻结 source SHA 按值一致。保留 JSON 原类型和 SHA 表示，不从请求意图补缺失响应。
 
@@ -193,12 +193,12 @@ B3 固定 SHA 验收后接续本片。用户价值是 MERGE_MR 的完整成功�
 | GitOperationJournalPort / persistence | 在原 MANDATORY 结果事务中返回既有 MrEvidence；复用原 operation/attempt、Run→Task→guard 与项目证明，不用 REQUIRES_NEW 的详情查询替代锁内授权 |
 | RunJpaPersistenceAdapter.findTaskCandidateRunIds | 仅增加完整到期 RUNNING、TRY_MERGE、MERGE_MR/APPLIED 且无当前 Step 的窄候选；原协议/活动 Run/有界 keyset 保持，不把 JSON 证明复制进 SQL |
 | RunTaskWorker / projectNextAppliedTask | 保留成功投递后推进与到尾回绕的游标；在原投影入口增加 TRY 分支，候选仅用于发现，锁内完整证明才授权 |
-| RunAppService / RunPort | 复用并收敛正常 TRY 的 MR_RESULT 四字段 patch；ENSURE_MR 的全量 identity patch 不适用于本片 |
+| RunAppService / RunPort | 原检查点读取收敛为 mrCheckpoint，正常 TRY 与投影共用 mrResultUpdates 四字段 null patch；ENSURE_MR 的全量 identity patch 不适用于本片 |
 | completeTask / Run / WindowIterationPort | 原子提交 Step、metadata、Item、lastMergeAt、guard、Task 与 Run 聚合，不新增结果事务、实体、表、DTO、API 或恢复框架 |
 
 原 ENSURE_MR 检查点只能来自 CREATED/MR_REUSED；ALREADY_MERGED 不会发 PUT，不能据此补造 MERGE_MR。投影保留原 identity 的字节和原 disposition，只补 `git.requestId`、`git.blockReason`、`git.mergeSha`、`git.mrDisposition`。恢复 requestId 为 null；按正常 TRY 的 null patch 清除旧 requestId/blockReason，合法 null mergeSha 清除旧 mergeSha。SHA 的等值大小写不能触发 identity 重写，也不能把 disposition 改造成新的合并状态。
 
-锁内继续核对完整到期 Run/Task 资格、正的实际顺序和仓内前序、唯一 MERGE_MR/APPLIED、同 attempt 的 sequence 2 规范响应、token/session/generation/guard、原 numeric project、原请求 suffix/SHA、计划与持久检查点。原 token、lease、首次时间、顺序、operation/events 不变；新 Step 与绑定 lastMergeAt 使用当前处理 Clock，不能冒称远端实际合并时间。只补已确认的历史 MERGED，即使之后 target 被重置或远端不可读也零 HTTP；最后无 PENDING 时必须由默认扫描发现并沿既有聚合结束。
+锁内继续核对完整到期 Run/Task 资格、正的实际顺序和仓内前序、唯一 MERGE_MR/APPLIED、同 attempt 的 sequence 2 规范响应、token/session/generation/guard、原 numeric project、原请求 PUT/suffix/SHA、计划与持久检查点。原 token、lease、首次时间、顺序、operation/events 不变；新 Step 与绑定 lastMergeAt 使用当前处理 Clock，不能冒称远端实际合并时间。只补已确认的历史 MERGED，即使之后 target 被重置或远端不可读也零 HTTP；最后无 PENDING 时必须由默认扫描发现并沿既有聚合结束。
 
 | 独立正反例 | 本片验收要求 |
 |---|---|
@@ -211,7 +211,7 @@ B3 固定 SHA 验收后接续本片。用户价值是 MERGE_MR 的完整成功�
 | 坏证据占满前页、合法末尾 APPLIED 在后页且全 Run 无 PENDING | 有界发现不领取，游标继续推进，坏候选不能饿死合法候选 |
 | 最后 MERGE_MR/APPLIED 后、业务结果前独立 JVM exit=137 | 默认 worker 重启发现无 PENDING 原 Run，恢复阶段 HTTP=0、原 merge PUT 总数 1；原身份/历史保持并正确汇总 |
 
-本片不恢复 INTENT/SEND/UNKNOWN，不扩 cleanup/version 或完整 UI，不迁移缺证明旧摘要。回滚先停派发，保留任务、操作、保护及已提交结果，不撤销已发生的 merge。先完成独立 RED，再实现、回归和固定 SHA 验收；B3 历史 CI 不替代本片验证。
+本片不恢复 INTENT/SEND/UNKNOWN，不扩 cleanup/version 或完整 UI，不迁移缺证明旧摘要。回滚先停派发，保留任务、操作、保护及已提交结果，不撤销已发生的 merge。独立 RED、实现、最终本地回归与静态验收已完成，分组推送和固定 SHA CI 待收口；B3 历史 CI 不替代本片验证。
 
 ### 分阶段依赖与交付
 

@@ -1,6 +1,6 @@
 # 2026-11-21 SA-013：分支收敛与唯一编排语义
 
-状态：S3-A/B1、S3-B2、S3-C1 已验收并分阶段推送；C1 固定 e5094ba 的 Full-Link 44899945002 为 5/5。当前 C2-A 已完成本地实现、真实反例、数据库/HTTP/进程/前端及静态验收，分组交付和本次固定 SHA Full-Link 待收口，详见第 13 节。历史证据按阶段保留，不以旧 CI 代替本次运行。
+状态：已交付阶段及其固定 SHA 证据按各节保留；当前 C2-B4 已完成实现、本地验收与后端本地提交，交付收口见第 17 节。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，文档阶段推送与本片固定 SHA CI 待完成，不以旧 CI 代替本次运行。
 
 ## 1. 目标与范围
 
@@ -653,18 +653,82 @@ API 清单另经只读核对：实际三类为 RunPagedApiTest、RunPlanApiIT、
 
 本次 CI 绑定 B3 自身完整 SHA，backend 与 403/48/738/静态验收树保持一致；B3 标记 DONE。Full-Link 的后端 API 与隔离 GitLab 切片覆盖不等于完整 UI 黄金旅程，不扩大 Slice4/5 已有较弱边界，也不为 MERGE_MR 或 INTENT/SEND/UNKNOWN 提供恢复验收。365/371 中间轮、718 项失败和补充 RED 均保留，重叠结果不累计。
 
-## 17. C2-B4 实施前：合并 MR 完整证明与末尾原任务结果恢复
+## 17. C2-B4：合并 MR 完整证明与末尾原任务结果恢复
 
-B3 固定 SHA CI 通过后，唯一 HEAD 切换 C2-B4。只读正反例、官方 producer 与持久化/调度职责审查已完成；本节及原 design/tasks/Run delta 保存实施前契约，生产代码尚未实施，新测试待先 RED。没有新 proposal、实体、表、DTO、API 或框架。
+B3 固定 SHA CI 通过后，唯一 HEAD 切换 C2-B4。实施前先完成正反例、官方 producer 与持久化/调度职责审查，再运行独立 RED；当前已完成实现、最终定向、本地门禁及后端本地提交，详见 17.1–17.4。文档阶段推送与本片固定完整 SHA 的 Full-Link 尚待收口，B4 保持 HEAD，C2 整体未完成。
 
-源码定位：findTaskCandidateRunIds 当前只纳入 PENDING 或无 operation/Step 的到期 RUNNING；末尾 TRY_MERGE 已有 APPLIED 且无 PENDING 时不入候选。projectNextAppliedTask 当前只接受 ENSURE，completeTask 已拥有 Step、metadata、Item、lastMergeAt、guard、Task 与 Run 的原子结果职责。该判断来自源码和已存在消费者，不称为本片已运行测试复现的缺陷。
+实施前源码定位：findTaskCandidateRunIds 当时只纳入 PENDING 或无 operation/Step 的到期 RUNNING，末尾 TRY_MERGE 已有 APPLIED 且无 PENDING 时不入候选；projectNextAppliedTask 当时只接受 ENSURE。completeTask 已拥有 Step、metadata、Item、lastMergeAt、guard、Task 与 Run 的原子结果职责，随后用真实 RED 验证上述缺口。
 
-独立强反例先于实现：合法 FF/FF+squash 的 merge_commit_sha=null 不能被非空假设拒绝；原 source SHA 大写 A 与响应等值小写 a 不得触发全量 identity patch 的 stale；坏 APPLIED 证据占满候选前页时，后页合法末尾任务仍须被默认 worker 发现。与当前 target 重置/远端不可读分离，恢复只补原历史 MERGED，不重新 GET/PUT。
+独立强反例先于实现：合法 FF/FF+squash 的 merge_commit_sha=null 不能被非空假设拒绝；原 source SHA 大写 A 与响应等值小写 a 不得触发全量 identity patch 的 stale；坏 APPLIED 证据位于前页时，后页合法末尾候选仍须可发现。恢复只补原历史 MERGED，与后来 target 重置或远端不可读分离，不重新 GET/PUT。
 
-官方基线 `.ai/reports/validation/c2-b4/baseline/gitlab-17-11-merge-producer.json` 已保存九文件 URL、范围和 SHA256：GitLab v17.11.3 的合并策略、服务、API/服务用例、实体、API 入口、Gemfile.lock，以及 grape-entity 1.0.1 exposure 和默认 nil 暴露用例。由此确定 merge_commit_sha 必须存在、可显式 JSON null 或合法文本 SHA；缺失/错类型/别字段补造均拒绝。严格 200/merged、原项目/IID/source SHA、真实非空分支与有效 URL 共用 provider 证明，精确分支仍由 workflow/原 claim 绑定，不加 nullable 参数或 header。
+官方基线 `.ai/reports/validation/c2-b4/baseline/gitlab-17-11-merge-producer.json` 保存九文件 URL、范围和 SHA256：GitLab v17.11.3 的合并策略、服务、API/服务用例、实体、API 入口、Gemfile.lock，以及 grape-entity 1.0.1 exposure 和默认 nil 暴露用例。merge_commit_sha 必须存在，可显式 JSON null 或合法文本 SHA；缺失、错类型或别字段补造均拒绝。严格 200/merged、原项目/IID/source SHA、真实非空分支与有效 URL 共用 provider 证明，精确分支仍由 workflow/原 claim 绑定，不加 nullable 参数或 header。
 
-职责复用以原 RunPort/Journal/guard 与既有 MrEvidence 为限。原检查点仅 CREATED/MR_REUSED；ALREADY 不会 PUT。投影保留原 identity 字节与 disposition，只复用正常 TRY 的 MR_RESULT 四字段 null patch。原 token/lease/首次时间/顺序/op/events 不变，新 Step 和 lastMergeAt 为当前处理 Clock；完整到期资格、attempt/guard/checkpoint、仓内前序及最终仓库汇总必须在原结果事务内核验。
+原检查点仅 CREATED/MR_REUSED；ALREADY_MERGED 不会 PUT。投影保留原 identity 字节与 disposition，只复用正常 TRY 的 MR_RESULT 四字段 null patch。原 token/lease/首次时间/顺序/op/events 不变，新 Step 和 lastMergeAt 为当前处理 Clock；完整到期资格、原 PUT/suffix/SHA、attempt/guard/checkpoint、仓内前序及仓库汇总在原结果事务内核验。完整独立契约保留在原 design、tasks 与 Run delta，无新 proposal、实体、表、DTO、API 或恢复框架。
 
-实施前验收矩阵已写入 design 与 Run delta：正常 merge/合法 null/40与64位等值表示；缺字段与 null、wrong target、错 attempt/guard/checkpoint、owner UNKNOWN、当前 Step；双 worker 与 owner 先后；完整事务回滚；跨仓/迭代绑定和终态；坏证据页与无 PENDING 末尾扫描；最后 MERGE_MR/APPLIED 后真实进程强杀重启，恢复 HTTP=0、原 PUT 总数=1。相关 RED、GREEN、静态与本片固定 SHA CI 全部待执行。
+### 17.1 独立 RED 与各轮源码边界
 
-本片不扩 INTENT/SEND/UNKNOWN、cleanup/version 或完整 UI；回滚停派发并保留已发生事实，不撤销 merge。待当前契约文档门禁与交付完成后进入本片 RED，不借用 B3 CI 作为新行为验收。
+最初 `initial-red-frozen-jdk21` 因新增测试调用参数缺失而在编译阶段退出，实际 0 tests、complete=false；原 result/log 保留，不能计作业务 RED。仅修正测试后，`initial-red-frozen-v2-jdk21` 在 HEAD `77f206c5b1610e4b5d8c814b39b72a5f191970da` 的 backend 基底与当时五份冻结测试组成的隔离快照执行。PG 则在其测试冻结后的当前树独立运行，随后又补强旧字段前置断言；所有这些轮次的生产文件仍为实施前基线。
+
+| 独立阶段 | 实际 tests / FAIL | 原始结果 |
+|---|---|---|
+| 冻结快照 v2：MR adapter | 105 / 20 | initial-red-frozen-v2-jdk21/adapter/result.json |
+| 冻结快照 v2：Workflow + RunOrchestration | 77 / 0 | initial-red-frozen-v2-jdk21/workflow-app/result.json |
+| 冻结快照 v2：真实 HTTP | 34 / 28 | initial-red-frozen-v2-jdk21/http/result.json |
+| 冻结快照 v2：独立进程 | 3 / 1 | initial-red-frozen-v2-jdk21/process/result.json |
+| 独立 PG | 44 / 12 | initial-red-pg-jdk21/pg/result.json |
+| 旧字段 DB 前置断言补强 PG | 5 / 5 | stale-fields-red-pg-jdk21/pg/result.json |
+
+以上路径均位于 `.ai/reports/validation/c2-b4/`。正确执行的各阶段全部 0 ERROR/0 SKIP，suite 清单与实际 testcase 数一致，各自源码 hash 前后稳定；不同轮次含不同测试修改，不能称为同一测试树。后补 5 例属于原 44 例的选定用例，结果不累计。
+
+HTTP 28 个失败并非同一种错误，其中 13 例实际错误 DONE/APPLIED 并释放 guard，其余包含规范证明字段/JSON 类型与可空结果等断言失败。进程轮的 MERGE/APPLIED 在重启后仍保留原 TRY 为 RUNNING，其他两个既有 APPLIED 恢复场景通过。PG 12 个失败均指向发现或投影正例未实现；拒绝组没有被误写成实现前已具备恢复能力。后补 5 例先通过 JDBC 确认真实旧 mergeSha、blockReason、requestId 三行存在，再在未实现的发现/投影处失败，不能把“始终缺字段”当作 null 清除验证。
+
+### 17.2 已实现职责与首轮回归失败
+
+正常 merge、HTTP 事件和 Journal 已共用 confirmedMergedMr；事件白名单保留三个 numeric project、IID/URL、source/target、source SHA、merged、整数 httpStatus 及显式可空 merge_commit_sha。原 RunPort 提取 mrCheckpoint 和 mrResultUpdates，正常 TRY 与原投影入口共同消费；恢复只写四个 MR_RESULT 键，不全量重写 ENSURE 身份。
+
+候选 SQL 仅增加完整到期 RUNNING、TRY_MERGE、MERGE_MR/APPLIED 且无当前 Step 的分支，未放宽原 NO_TASK_EVIDENCE 接管路径。原 worker 游标不变；Run→Task→remote/guard 锁内核原 operation、attempt sequence 2、token/session/generation、项目、PUT/suffix/SHA 和计划/检查点，再沿原 completeTask 提交，不产生新 HTTP、operation 或事件。独立只读源码复审未发现阻塞性偏差。
+
+`first-green-jdk21/result.json` 实际为 11 suites、533 tests / 2 FAIL / 0 ERROR / 0 SKIP，sourceStable=true；目录名不代表该轮通过。两个失败及最小修正如下：
+
+| 失败位置 | 根因及修正 |
+|---|---|
+| GitWriteSafetyIT.committedIntentWinsTheLockAndEveryOperationStatePreventsTakeover | 旧断言要求任何 operation 状态都不能进入候选，混淆发现与授权。本片允许末尾 APPLIED 被发现；仅有 INTENT 事件的账本仍不能投影或重新领取。修正后分别断言候选、锁内拒绝、原 token/guard/operation/events 与零新增 HTTP。 |
+| RunTaskPersistenceIT.mrMergeRecoveryKeepsRepositoryOrderWhileAnotherRepositoryProgresses | 加载后的 items 没有集合顺序承诺，原断言把 [3,1] 误判为执行越序。fixture 的 attachAt 已固定先后，计划据此生成 plannedOrder，Task 再生成 taskOrder；修正为按 iterationKey 绑定真实 executedOrder，断言 firstIteration>0 且先于 secondIteration，未排序结果掩盖问题。同组另一处结果断言也改按原 failed/later Item ID 精确归属。 |
+
+首轮与最终轮的 495 文件映射只在 GitWriteSafetyIT、RunTaskPersistenceIT 两个测试文件上不同，生产实现完全一致；首轮失败 XML/log 和原快照保留，没有把测试错误改写为生产缺陷或删除失败记录。
+
+### 17.3 最终定向与五类真实进程中断
+
+`.ai/reports/validation/c2-b4/final-green-jdk21/result.json` 为 11 suites、533/533，exitCode=0、0 FAIL/ERROR/SKIP、sourceStable=true；同目录 XML 的实际节点和 suite 属性已独立核对。分布为 Workflow 48、RunOrchestration 29、真实 HTTP 112、PG 137、独立进程 5、branch adapter 55、MR adapter 105、Decorator 6、interceptor 26、repository scope 3、worker 7；这些是本轮组合范围，不全部等同新增场景。
+
+PG 覆盖终态候选、CREATED/MR_REUSED、40/64 位等值大小写、合法 null 清旧值、错误证明和领取资格、原 owner 正常/UNKNOWN 胜出、双恢复者、仓内迭代与跨仓汇总。事务验证为外层 TransactionTemplate.setRollbackOnly() 触发原结果事务整体回滚，含绑定与 guard；没有声称单独注入 ack 故障。双恢复者通过同步起跑和最终一条 Step 验证结果竞争，没有声称取得确定的 PostgreSQL 锁等待轨迹。坏页验证为真实 SQL keyset 分页与拒绝投影，结合原 worker 游标用例；它不等于整个坏页场景另做了一次进程强杀。
+
+最终进程原文位于 `final-green-jdk21/xml/releasehub-bootstrap/TEST-io.releasehub.bootstrap.api.RunTaskProcessKillIT.xml`：
+
+| 中断点 | killed / resumed PID | 最终核实结果 |
+|---|---|---|
+| PENDING 后继 | 89290 / 89299 | exit=137；原前缀保持，MR POST=1、MERGE PUT=1，四任务完成 |
+| 已领取但无写意图 | 89309 / 89319 | exit=137；原前缀保持，MR POST=1、MERGE PUT=1，四任务完成 |
+| CREATE_BRANCH/APPLIED、结果前 | 89327 / 89334 | exit=137；投影 HTTP=0、branch POST=1，原 token/三条事件保持 |
+| CREATE_MR/APPLIED、结果前 | 89348 / 89352 | exit=137；投影 HTTP=0、MR POST=1，原 token/三条事件保持 |
+| 末尾 MERGE_MR/APPLIED、结果前 | 89472 / 89518 | exit=137；noPendingAtKill=true，投影 HTTP=0，branch POST=0、MR POST=1、MERGE PUT=1，原 token/六条事件保持 |
+
+最后一行的原 Run 为 `fb7e11f7-9256-408b-b530-e0cd657a2f3a`、原 Task 为 `44d8b658-fbf6-44a1-aee5-192c3668bbb3`；强杀时 2 条 operation、6 条 event、无 PENDING，默认 worker 重启发现原末尾候选并补原 TRY/MERGED，沿原事务结束 Run。零 HTTP 限于恢复投影阶段；MR 404、target 重置由受控 HTTP fixture 模拟，不能称为真实 GitLab 删除或重置演练。
+
+### 17.4 同一树本地门禁、TopN 与后端提交
+
+| 验收范围 | 实际结果 | 原始证据 |
+|---|---|---|
+| API | 3 suites、48 PASS，0 FAIL/ERROR/SKIP | final-gates/api/result.json 与 XML |
+| 普通后端 | 58 suites、789 tests = 784 PASS + 5 既有 SKIP，0 FAIL/ERROR | final-gates/ordinary/result.json 与 XML |
+| 静态检查 | 六份 fresh SpotBugs XML 的 BugInstance/total_bugs 均 0；typecheck PASS；lint 0 errors/8 既有 fixture warnings | final-gates/static-result.json、static-scan.log、静态报告 20261122-010845 |
+
+上述验证结果路径均以 `.ai/reports/validation/c2-b4/` 为根。API 实际三类为 RunPagedApiTest、RunPlanApiIT、WindowRunApiIT，选择器与清单一致；五项既有 SKIP 仍为 GroupAppServiceTest 1、GroupDeleteTest 2、GroupGetByCodeTest 2。定向、API、普通测试存在重叠，不相加为独立测试总数。
+
+定向前后、API 前后、普通前后及静态后七份快照均为相同的 495 个 backend 文件映射，当前源码逐文件重算一致；结果节点、suite 清单与 hash 独立核对保存在 `local-evidence-audit.json`。frontend 相对 `77f206c5b1610e4b5d8c814b39b72a5f191970da` 零 diff；本轮使用实际 typecheck/lint，不把旧前端 214 项借作本次测试。
+
+静态 TopN 已在 `.ai/reports/static-scan/20261122-010845/summary.md` 逐项说明八项 warning 的实际消费者、保留理由和覆盖边界，未关闭规则或称告警已修复。lint raw 与 B3 字节相同，SHA256 为 `b5496961a4422b7ea5154e6aead19f4c751cd8e76575656cf0b4b92a6fea0faa`；人工处置只更新 ignored summary，未改源码、raw、result.json 或 hash 快照。
+
+后端完整纵向切片已本地提交为 `23950f98f2c7000bc054e74e9a67feb5f892e2dc`，父提交 `77f206c5b1610e4b5d8c814b39b72a5f191970da`，标题 `feat(run): recover confirmed merge results on terminal tasks`，共 13 个 backend 文件。提交树逐文件 hash 与最终 533/48/789/静态验收树一致；此时尚未推送。
+
+B4 继续保持唯一 HEAD。待完成文档提交、分阶段推送与本片固定完整 SHA 的 Full-Link 后再收口，不借用 B3 CI；Full-Link 的后端 API/隔离 GitLab 覆盖也不扩写为完整 UI 或更强的 Slice4/5 验收。本片不扩 INTENT/SEND/UNKNOWN、cleanup/version；回滚停派发并保留已发生事实，不撤销 merge。
