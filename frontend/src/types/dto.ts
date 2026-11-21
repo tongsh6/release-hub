@@ -19,7 +19,15 @@ export type ReleaseWindowStatus =
   | 'PUBLISHED'
   | 'CLOSED';
 
-export type RunStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+export type RunStatus = 'PLANNED' | 'RUNNING' | 'DONE' | 'PARTIAL_FAILED' | 'FAILED' | 'NEEDS_REVIEW';
+export type RunType = 'WINDOW_ORCHESTRATION' | 'WINDOW_CLEANUP' | 'ATTACH_ITERATION' | 'VERSION_UPDATE';
+export type RunItemResult =
+  | 'CREATED' | 'ALREADY_EXISTS' | 'MR_REUSED'
+  | 'MERGED' | 'ALREADY_MERGED' | 'MERGE_BLOCKED' | 'UNKNOWN' | 'FAILED'
+  | 'SKIPPED_DUE_TO_BLOCK' | 'SKIPPED' | 'SUCCESS'
+  | 'VERSION_UPDATE_SUCCESS' | 'VERSION_UPDATE_FAILED'
+  | 'BRANCH_EXISTS' | 'BRANCH_CREATED' | 'TAG_CREATED'
+  | 'CI_TRIGGERED' | 'CI_NOT_CONFIGURED' | 'ITERATION_CLOSED';
 
 export interface BranchRuleScopeDTO {
   level: 'GLOBAL' | 'PROJECT' | 'SUB_PROJECT';

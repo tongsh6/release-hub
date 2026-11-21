@@ -6,7 +6,8 @@
       <el-descriptions-item :label="t('evidence.source')">{{ evidence.source || '-' }}</el-descriptions-item>
       <el-descriptions-item :label="t('evidence.target')">{{ evidence.target || '-' }}</el-descriptions-item>
       <el-descriptions-item :label="t('evidence.mrUrl')" :span="2">
-        <a :href="evidence.mrUrl" target="_blank">{{ evidence.mrUrl || '-' }}</a>
+        <a v-if="mrUrl" :href="mrUrl" target="_blank" rel="noopener noreferrer">{{ evidence.mrUrl }}</a>
+        <span v-else>{{ evidence.mrUrl || '-' }}</span>
       </el-descriptions-item>
       <el-descriptions-item :label="t('evidence.blockReason')" :span="2">{{ evidence.blockReason || '-' }}</el-descriptions-item>
     </el-descriptions>
@@ -19,7 +20,10 @@
 <script setup lang="ts">
 const props = defineProps<{ evidence: Record<string, any> }>()
 import { useI18n } from 'vue-i18n'
+import { computed } from 'vue'
 const { t } = useI18n()
+const mrUrl = computed(() => typeof props.evidence.mrUrl === 'string' && /^https?:\/\//i.test(props.evidence.mrUrl)
+  ? props.evidence.mrUrl : undefined)
 function copy() {
   navigator.clipboard?.writeText(JSON.stringify(props.evidence || {}, null, 2))
 }

@@ -23,7 +23,7 @@ import { runPlanApi, type RunPlanPreview, type RunPlanSummary } from '@/api/runP
 import RunPlanSnapshotView from '@/components/run/RunPlanSnapshotView.vue'
 import { handleError } from '@/utils/error'
 
-const props = defineProps<{ modelValue: boolean; windowId: string; repoIds: string[]; iterationKeys: string[]; canCreate: boolean }>()
+const props = defineProps<{ modelValue: boolean; windowId: string; repoIds: string[]; iterationKeys: string[]; failFast: boolean; canCreate: boolean }>()
 const emit = defineEmits<{ (event: 'update:modelValue', value: boolean): void; (event: 'created'): void }>()
 const { t } = useI18n()
 const plans = ref<RunPlanSummary[]>([])
@@ -60,7 +60,7 @@ async function loadList() {
 async function createPreview() {
   if (saving.value || !props.canCreate) return
   const windowId = props.windowId
-  const body = { repoIds: [...new Set(props.repoIds)].sort(), iterationKeys: [...new Set(props.iterationKeys)].sort(), failFast: true }
+  const body = { repoIds: [...new Set(props.repoIds)].sort(), iterationKeys: [...new Set(props.iterationKeys)].sort(), failFast: props.failFast }
   const selection = JSON.stringify({ windowId, ...body })
   saving.value = true
   try {

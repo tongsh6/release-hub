@@ -45,6 +45,7 @@ import { useListPage } from '@/composables/crud/useListPage'
 import DataTable from '@/components/crud/DataTable.vue'
 import { pageRuns, type VersionRunSummaryDTO } from '@/api/modules/versionOps'
 import dayjs from 'dayjs'
+import { runStatusTagType } from '@/utils/runPresentation'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -62,24 +63,8 @@ const formatTime = (iso?: string) => {
   return dayjs(iso).format('YYYY-MM-DD HH:mm:ss')
 }
 
-const statusType = (s: string) => {
-  switch (s) {
-    case 'SUCCEEDED': return 'success'
-    case 'FAILED': return 'danger'
-    case 'RUNNING': return 'warning'
-    default: return 'info'
-  }
-}
-
-const statusLabel = (s: string) => {
-  switch (s) {
-    case 'SUCCEEDED': return t('versionOps.succeeded')
-    case 'FAILED': return t('versionOps.failed')
-    case 'RUNNING': return t('versionOps.running')
-    default: return s
-  }
-}
-
+const statusType = runStatusTagType
+const statusLabel = (status: string) => status
 const handleViewDetail = (row: VersionRunSummaryDTO) => {
   router.push(`/version-ops/runs/${row.runId}`)
 }

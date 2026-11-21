@@ -1,4 +1,5 @@
 import { get, post } from './http'
+import type { RunStatus } from '@/types/dto'
 
 export interface RunPlanItem {
   itemId: string
@@ -23,7 +24,7 @@ export interface RunPlanPreview {
   createdAt: string
   planHash: string
   executionVersion: number
-  status: 'PLANNED'
+  status: RunStatus
   evidenceLevel: 'LOCAL_ONLY'
   executionPermitted: false
   snapshot: {

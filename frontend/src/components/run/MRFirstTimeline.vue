@@ -19,6 +19,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { RunStep } from '@/api/runApi'
+import { isFailedResult, isSuccessfulResult, isSkippedResult, needsResultReview } from '@/utils/runPresentation'
 
 const props = defineProps<{
   steps: RunStep[]
@@ -51,9 +52,9 @@ const findStep = (key: string): RunStep | undefined => {
 const getStepStatus = (key: string) => {
   const step = findStep(key)
   if (!step) return 'wait'
-  if (step.result === 'SUCCESS') return 'success'
-  if (step.result === 'FAILED') return 'error'
-  if (step.result === 'SKIPPED') return 'finish' // or wait
+  if (isSuccessfulResult(step.result)) return 'success'
+  if (isFailedResult(step.result)) return 'error'
+  if (isSkippedResult(step.result) || needsResultReview(step.result)) return 'wait'
   return 'process'
 }
 
@@ -62,7 +63,7 @@ const activeStep = computed(() => {
   let active = 0
   for (const step of stepKeys) {
     const s = findStep(step.key)
-    if (s && s.result === 'SUCCESS') {
+    if (s && isSuccessfulResult(s.result)) {
       active++
     } else {
       break
@@ -75,24 +76,19 @@ const processStatus = computed(() => {
   const currentKey = stepKeys[activeStep.value]?.key
   if (!currentKey) return 'success'
   const step = findStep(currentKey)
-  if (step?.result === 'FAILED') return 'error'
+  if (isFailedResult(step?.result)) return 'error'
+  if (needsResultReview(step?.result) || isSkippedResult(step?.result)) return 'wait'
   return 'process'
 })
 
-const currentMessage = computed(() => {
-  if (!props.steps) return ''
-  const failedStep = props.steps.find(s => s.result === 'FAILED')
-  if (failedStep) return failedStep.message
-  return ''
-})
-
-const messageType = computed(() => {
-  return currentMessage.value ? 'error' : 'info'
-})
+const attentionStep = computed(() => props.steps.find(step => needsResultReview(step.result))
+  ?? props.steps.find(step => isFailedResult(step.result)))
+const currentMessage = computed(() => attentionStep.value?.message ?? '')
+const messageType = computed(() => needsResultReview(attentionStep.value?.result) ? 'warning' : 'error')
 
 const getStepDesc = (step: any) => {
   const s = findStep(step.key)
-  if (s?.message && s.result === 'FAILED') return s.message
+  if (s?.message && (isFailedResult(s.result) || needsResultReview(s.result))) return s.message
   return t(`timeline.desc.${step.key}`)
 }
 

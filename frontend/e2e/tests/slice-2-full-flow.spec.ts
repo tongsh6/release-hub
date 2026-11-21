@@ -1,8 +1,8 @@
 /**
- * Slice 2 E2E: 完整发布用户旅程 UI 验收
+ * Slice 2: 真实集成入口与页面回归场景
  *
  * 覆盖: 登录 → 存量验证 → 新建窗口 → 迭代 → 运行记录 → 数据持久化。
- * 定位: 证明用户能从页面完成操作和复核证据，API/GitLab 状态由 acceptance 脚本补充证明。
+ * SA-013 通过真实 Orchestrate 和 Run 响应验证集成；其余显式 route mock 仅验证 UI 呈现，不作为 GitLab 端到端验收。
  */
 import { test, expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
@@ -253,7 +253,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       'run.filters.status',
       'run.task.status.COMPLETED',
       'run.task.status.FAILED',
-      'orchestration.executeFinish',
+      'orchestration.executeIntegration',
       'conflict.rescan',
       'conflict.resolveVersion',
       'conflict.acceptRepoVersion',
@@ -324,7 +324,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
       .evaluate((el: HTMLElement) => el.click())
   }
 
-  test('SA-013 frontend path submits UI-created repo and iteration scope to orchestration', async ({ page }) => {
+  test('SA-013 real integration submits the UI-created scope and reviews the persisted Run', async ({ page }) => {
     await ensureLoggedIn(page)
 
     await page.goto('/groups')
@@ -414,35 +414,37 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await expect(releasePlanPanel).toContainText(repoName)
     await expect(releasePlanPanel).toContainText('1')
 
-    await page.getByRole('button', { name: L['releaseWindow.publish'] }).click(FORCE)
-    await confirmMessageBox(page)
-    await expect(page.locator('.release-window-detail-page .el-descriptions').first())
-      .toContainText(L['releaseWindow.statusText.PUBLISHED'], { timeout: 10000 })
-
-    let orchestrateBody: any
-    await page.route('**/api/v1/release-windows/*/orchestrate', async (route) => {
-      orchestrateBody = route.request().postDataJSON()
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ code: 'OK', message: 'OK', data: 'run-ui-journey' })
-      })
-    })
-
-    const finishPanel = page.locator('.orchestration-panel .action-panel').filter({ hasText: L['orchestration.executeFinish'] })
-    const finishButton = finishPanel.getByRole('button', { name: L['orchestration.executeFinish'] })
-    await expect(finishButton).toBeVisible({ timeout: 10000 })
-    await expect(finishButton).toBeEnabled({ timeout: 10000 })
-    await finishButton.click()
+    const integrationButton = page.locator('.orchestration-panel').getByRole('button', { name: L['orchestration.executeIntegration'] })
+    await expect(integrationButton).toBeVisible({ timeout: 10000 })
+    await expect(integrationButton).toBeEnabled({ timeout: 10000 })
+    const orchestrationResponse = page.waitForResponse(response =>
+      /\/api\/v1\/release-windows\/[^/]+\/orchestrate$/.test(response.url()) && response.request().method() === 'POST')
+    const runEvidenceResponse = page.waitForResponse(response =>
+      /\/api\/v1\/runs\/[^/]+\/export\.json$/.test(response.url()) && response.request().method() === 'GET')
+    await integrationButton.click()
     await confirmMessageBox(page)
 
-    expect(orchestrateBody).toMatchObject({
-      iterationKeys: [iterationKey],
-      failFast: false,
-      operator: 'frontend'
-    })
+    const response = await orchestrationResponse
+    expect(response.ok()).toBeTruthy()
+    const orchestrateBody = response.request().postDataJSON()
+    expect(orchestrateBody).toMatchObject({ iterationKeys: [iterationKey], failFast: true })
+    expect(orchestrateBody).not.toHaveProperty('operator')
     expect(orchestrateBody.repoIds).toHaveLength(1)
     createdRepoId = orchestrateBody.repoIds[0]
+
+    const runId = (await response.json()).data
+    expect(typeof runId).toBe('string')
+    const evidenceResponse = await runEvidenceResponse
+    expect(evidenceResponse.ok()).toBeTruthy()
+    expect(evidenceResponse.url()).toContain(`/runs/${runId}/export.json`)
+    const evidence = await evidenceResponse.json()
+    expect(evidence.runType).toBe('WINDOW_ORCHESTRATION')
+    expect(evidence.status).toBe('DONE')
+    expect(evidence.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ repo: createdRepoId, iterationKey, finalResult: expect.stringMatching(/^(MERGED|ALREADY_MERGED)$/) })
+    ]))
+    await expect(page.locator('.orchestration-panel .run-review-summary')).toContainText(runId)
+
   })
 
   test('SA-012 frontend path surfaces missing feature branch in release plan', async ({ page }) => {
@@ -1214,7 +1216,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     expect(resolveCalled).toBe(false)
   })
 
-  test('SA-015: Tester can review a partial failure run with mixed item results', async ({ page }) => {
+  test('SA-015 UI regression with mocked partial failure evidence', async ({ page }) => {
     await ensureLoggedIn(page)
     expect(windowKey).toContain('RW-')
 
@@ -1226,20 +1228,25 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     const partialRunDetail = {
       runId: partialRunId,
       runType: 'WINDOW_ORCHESTRATION',
+      executionVersion: 1,
+      status: 'PARTIAL_FAILED',
+      operator: 'qa',
       startedAt: startAt,
       finishedAt: endAt,
       items: [
         {
+          id: `${partialRunId}-item-ok`,
+          metadata: {},
           windowKey,
           repo: successfulRepoId,
           iterationKey,
           plannedOrder: 1,
           executedOrder: 1,
-          finalResult: 'SUCCESS',
+          finalResult: 'MERGED',
           steps: [
             {
               actionType: 'TRY_MERGE',
-              result: 'SUCCESS',
+              result: 'MERGED',
               startAt,
               endAt: startAt + 1000,
               message: 'Merged successfully'
@@ -1247,6 +1254,8 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
           ]
         },
         {
+          id: `${partialRunId}-item-failed`,
+          metadata: { 'git.blockReason': 'CONFLICT' },
           windowKey,
           repo: failedRepoId,
           iterationKey,
@@ -1276,7 +1285,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
           data: [{
             id: partialRunId,
             runType: 'WINDOW_ORCHESTRATION',
-            status: 'FAILED',
+            status: 'PARTIAL_FAILED',
             startedAt: new Date(startAt).toISOString(),
             finishedAt: new Date(endAt).toISOString(),
             operator: 'qa'
@@ -1335,11 +1344,11 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await page.locator('button').filter({ hasText: L['common.search'] }).click(FORCE)
     const partialRunRow = page.locator('.el-table__body tr').filter({ hasText: partialRunId }).last()
     await expect(partialRunRow).toBeVisible({ timeout: 10000 })
-    await expect(partialRunRow).toContainText('FAILED')
+    await expect(partialRunRow).toContainText('PARTIAL_FAILED')
 
     await page.goto(`/runs/${partialRunId}`)
     await expect(page.locator('.page-title')).toContainText(partialRunId, { timeout: 10000 })
-    await expect(page.locator('.el-card').first()).toContainText('FAILED')
+    await expect(page.locator('.el-card').first()).toContainText('PARTIAL_FAILED')
     const taskTable = page.locator('.el-table').filter({ hasText: 'MERGE_TO_RELEASE' }).first()
     await expect(taskTable).toContainText(L['run.task.status.COMPLETED'])
     await expect(taskTable).toContainText(L['run.task.status.FAILED'])
@@ -1350,7 +1359,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     const itemTable = page.locator('.el-table').filter({ hasText: 'MERGE_BLOCKED' }).last()
     await expect(itemTable).toContainText(successfulRepoId)
     await expect(itemTable).toContainText(failedRepoId)
-    await expect(itemTable).toContainText('SUCCESS')
+    await expect(itemTable).toContainText('MERGED')
     await expect(itemTable).toContainText('MERGE_BLOCKED')
   })
 

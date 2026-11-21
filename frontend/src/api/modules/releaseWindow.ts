@@ -80,7 +80,6 @@ export interface OrchestrateRequest {
   repoIds: string[]
   iterationKeys: string[]
   failFast: boolean
-  operator: string
 }
 
 export interface PlanItemView {
@@ -159,29 +158,34 @@ export function deleteWindow(id: string): Promise<boolean> {
   return apiDel<boolean>(`${BASE}/release-windows/${id}`)
 }
 
-export function attach(id: string, iterationKey: string): Promise<string[]> {
-  return apiPost<string[]>(`${BASE}/release-windows/${id}/attach`, { iterationKeys: [iterationKey] })
+export interface WindowIterationView {
+  iterationKey: string
+  attachAt: string
+  releaseBranch: string | null
+  branchCreated: boolean
+  lastMergeAt: string | null
+}
+
+export function attach(id: string, iterationKey: string): Promise<WindowIterationView[]> {
+  return apiPost<WindowIterationView[]>(`${BASE}/release-windows/${id}/attach`, { iterationKeys: [iterationKey] })
 }
 
 export function detach(id: string, iterationKey: string): Promise<boolean> {
   return apiPost<boolean>(`${BASE}/release-windows/${id}/detach`, { iterationKey })
 }
 
-export function listIterations(id: string): Promise<any[]> {
-  return apiGet<any[]>(`${BASE}/release-windows/${id}/iterations`)
+export function listIterations(id: string): Promise<WindowIterationView[]> {
+  return apiGet<WindowIterationView[]>(`${BASE}/release-windows/${id}/iterations`)
 }
 
-export function orchestrate(id: string, req: OrchestrateRequest): Promise<any> {
-  return apiPost<any>(`${BASE}/release-windows/${id}/orchestrate`, req)
+export function orchestrate(id: string, req: OrchestrateRequest): Promise<string> {
+  return apiPost<string>(`${BASE}/release-windows/${id}/orchestrate`, req)
 }
 
 export function getPlan(id: string): Promise<PlanItemView[]> {
   return apiGet<PlanItemView[]>(`${BASE}/release-windows/${id}/plan`)
 }
 
-export function getDryPlan(id: string): Promise<any> {
-  return apiGet<any>(`${BASE}/release-windows/${id}/dry-plan`)
-}
 
 export function executeVersionUpdate(id: string, req: VersionUpdateRequest): Promise<VersionUpdateResponse> {
   return apiPost<VersionUpdateResponse>(`${BASE}/release-windows/${id}/execute/version-update`, req)
@@ -193,32 +197,6 @@ export function executeBatchVersionUpdate(id: string, req: BatchVersionUpdateReq
 
 export function validateVersion(id: string, req: VersionValidationRequest): Promise<VersionValidationResponse> {
   return apiPost<VersionValidationResponse>(`${BASE}/release-windows/${id}/validate`, req)
-}
-
-// --- 代码合并相关 ---
-
-export interface CodeMergeResult {
-  repoId: string
-  repoName: string
-  sourceBranch: string
-  targetBranch: string
-  status: 'SUCCESS' | 'CONFLICT' | 'FAILED'
-  message?: string
-  mergedAt?: string
-}
-
-/**
- * 合并指定迭代的代码到 release 分支
- */
-export function mergeIteration(windowId: string, iterationKey: string): Promise<CodeMergeResult[]> {
-  return apiPost<CodeMergeResult[]>(`${BASE}/release-windows/${windowId}/iterations/${iterationKey}/merge`, {})
-}
-
-/**
- * 批量合并所有迭代的代码到 release 分支
- */
-export function mergeAll(windowId: string): Promise<CodeMergeResult[]> {
-  return apiPost<CodeMergeResult[]>(`${BASE}/release-windows/${windowId}/merge`, {})
 }
 
 // --- 分支状态相关 ---
@@ -233,7 +211,6 @@ export interface ReleaseBranchInfo {
   branchName: string
   exists: boolean
   latestCommit?: string
-  mergeStatus: 'PENDING' | 'MERGED' | 'CONFLICT'
 }
 
 export interface RepoBranchStatus {
@@ -286,7 +263,7 @@ export function getConflicts(windowId: string): Promise<ConflictReportView> {
   return apiGet<ConflictReportView>(`${BASE}/release-windows/${windowId}/conflicts`)
 }
 
-// Alias for compatibility if needed, or prefer using explicit names above
+// Window operations
 export const releaseWindowApi = {
   list,
   get: getById,
@@ -302,12 +279,9 @@ export const releaseWindowApi = {
   listIterations,
   orchestrate,
   getPlan,
-  getDryPlan,
   executeVersionUpdate,
   executeBatchVersionUpdate,
   validateVersion,
-  mergeIteration,
-  mergeAll,
   getBranchStatus,
   checkConflicts,
   getConflicts

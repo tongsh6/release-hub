@@ -42,6 +42,7 @@ vi.mock('@/api/modules/releaseWindow', () => ({
   releaseWindowApi: {
     get: vi.fn(),
     getParallelScope: vi.fn(),
+    getPlan: vi.fn(),
     listIterations: vi.fn(),
     freeze: vi.fn(),
     unfreeze: vi.fn(),
@@ -136,7 +137,7 @@ const stubs = {
     template: '<span><slot /></span>'
   },
   AttachIterationsDialog: true,
-  CodeMergeDialog: true,
+  ElAlert: { props: ['title'], template: '<p role="alert">{{ title }}</p>' },
   VersionUpdateDialog: true,
   OrchestrationPanel: true,
   BranchStatusPanel: true,
@@ -234,7 +235,8 @@ describe('ReleaseWindowDetail', () => {
         }
       ]
     })
-    vi.mocked(releaseWindowApi.listIterations).mockResolvedValue([{ iterationKey: 'ITER-1' }])
+    vi.mocked(releaseWindowApi.listIterations).mockResolvedValue([{ iterationKey: 'ITER-1', attachAt: '', releaseBranch: null, branchCreated: false, lastMergeAt: null }])
+    vi.mocked(releaseWindowApi.getPlan).mockReset().mockResolvedValue([{ windowKey: 'RW-1', repoId: 'repo-1', iterationKey: 'ITER-1', plannedOrder: 1 }])
     vi.mocked(iterationApi.get).mockResolvedValue({
       iterationKey: 'ITER-1',
       name: 'Iteration 1',
@@ -400,7 +402,6 @@ describe('ReleaseWindowDetail', () => {
 
     const buttonTexts = wrapper.findAll('button').map(button => button.text())
     expect(buttonTexts.some(text => text.includes('releaseWindow.attachIterations'))).toBe(false)
-    expect(buttonTexts.some(text => text.includes('releaseWindow.codeMerge.button'))).toBe(false)
     expect(buttonTexts.some(text => text.includes('common.remove'))).toBe(false)
     expect(buttonTexts.some(text => text.includes('releaseWindow.unfreeze'))).toBe(true)
   })
@@ -432,4 +433,27 @@ describe('ReleaseWindowDetail', () => {
     expect(releaseWindowApi.detach).toHaveBeenCalledWith('window-1', 'ITER-1')
     expect(releaseWindowApi.listIterations).toHaveBeenCalledTimes(2)
   })
+
+  it('keeps authoritative scope when repository presentation fails and counts shared repos once', async () => {
+    vi.mocked(releaseWindowApi.getPlan).mockResolvedValue([
+      { windowKey: 'RW-1', repoId: 'repo-1', iterationKey: 'ITER-1', plannedOrder: 1 },
+      { windowKey: 'RW-1', repoId: 'repo-1', iterationKey: 'ITER-2', plannedOrder: 2 },
+      { windowKey: 'RW-1', repoId: 'repo-2', iterationKey: 'ITER-2', plannedOrder: 1 }
+    ])
+    vi.mocked(repositoryApi.get).mockRejectedValue(new Error('detail unavailable'))
+    const wrapper = mountReleaseWindowDetail()
+    await flushPromises()
+    const panel = wrapper.findComponent({ name: 'OrchestrationPanel' })
+    expect(panel.props('planItems').map((item: { repoId: string }) => item.repoId)).toContain('repo-2')
+    expect(panel.props('scopeReady')).toBe(true)
+    expect((wrapper.vm as any).totalRepoCount).toBe(2)
+  })
+
+  it('blocks integration when the authoritative scope request fails', async () => {
+    vi.mocked(releaseWindowApi.getPlan).mockRejectedValue(new Error('scope unavailable'))
+    const wrapper = mountReleaseWindowDetail()
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'OrchestrationPanel' }).props('scopeReady')).toBe(false)
+  })
+
 })

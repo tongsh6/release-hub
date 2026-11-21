@@ -21,6 +21,7 @@
                 <div class="item-header">
                   <span class="repo-name">{{ item.repo }}</span>
                   <el-tag size="small">{{ item.iterationKey }}</el-tag>
+                  <el-tag size="small" :type="resultTagType(item.result)">{{ item.result }}</el-tag>
                 </div>
                 <div class="item-desc">
                   {{ item.message }}
@@ -45,6 +46,7 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { runApi } from '@/api/runApi'
+import { isFailedResult, needsResultReview, blockReasonKey, resultTagType } from '@/utils/runPresentation'
 import dayjs from 'dayjs'
 
 const { t } = useI18n()
@@ -52,10 +54,12 @@ const router = useRouter()
 const loading = ref(false)
 
 interface BlockedItem {
-  id: string // composite key
+  id: string
+  result: string | null
+  reasonKey: string
   runId: string
   repo: string
-  iterationKey: string
+  iterationKey: string | null
   message: string
   updatedAt: string
 }
@@ -65,11 +69,9 @@ interface BlockGroup {
   items: BlockedItem[]
 }
 
-const groups = ref<[BlockGroup, BlockGroup, BlockGroup]>([
-  { reasonKey: 'conflict', items: [] },
-  { reasonKey: 'pipelineFailed', items: [] },
-  { reasonKey: 'approvalRequired', items: [] }
-])
+const groups = ref<BlockGroup[]>([
+  'conflict', 'pipelinePending', 'pipelineFailed', 'approvalRequired', 'protectedBranch', 'permissionDenied', 'unknown'
+].map(reasonKey => ({ reasonKey, items: [] })))
 
 const fetchData = async () => {
   loading.value = true
@@ -80,8 +82,7 @@ const fetchData = async () => {
     
     // 2. Fetch details for failed runs (since list only gives summary)
     // Optimization: In real world, backend should provide this aggregation.
-    // For now, we fetch details for runs that are FAILED or PARTIAL_SUCCESS
-    const targetRuns = runs.filter(r => r.status === 'FAILED' || r.status === 'PARTIAL_SUCCESS')
+    const targetRuns = runs.filter(r => ['FAILED', 'PARTIAL_FAILED', 'NEEDS_REVIEW'].includes(r.status))
     
     const allBlockedItems: BlockedItem[] = []
     
@@ -90,13 +91,15 @@ const fetchData = async () => {
     
     details.forEach(run => {
       run.items.forEach(item => {
-        if (item.finalResult === 'FAILED') {
+        if (isFailedResult(item.finalResult) || needsResultReview(item.finalResult)) {
           // Check last step for reason
           const lastStep = item.steps[item.steps.length - 1]
           const msg = lastStep?.message || 'Unknown error'
           
           allBlockedItems.push({
-            id: `${run.id}-${item.repoId}-${item.iterationKey}`,
+            id: item.id,
+            result: item.finalResult,
+            reasonKey: blockReasonKey(item.metadata['git.blockReason']),
             runId: run.id,
             repo: item.repoId,
             iterationKey: item.iterationKey,
@@ -107,10 +110,9 @@ const fetchData = async () => {
       })
     })
 
-    // Distribute to groups
-    groups.value[0].items = allBlockedItems.filter(i => i.message.toLowerCase().includes('conflict'))
-    groups.value[1].items = allBlockedItems.filter(i => !i.message.toLowerCase().includes('conflict') && !i.message.toLowerCase().includes('approval'))
-    groups.value[2].items = allBlockedItems.filter(i => i.message.toLowerCase().includes('approval'))
+    for (const group of groups.value) {
+      group.items = allBlockedItems.filter(item => item.reasonKey === group.reasonKey)
+    }
 
   } catch (e) {
     console.error(e)

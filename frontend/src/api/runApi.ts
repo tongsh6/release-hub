@@ -1,38 +1,39 @@
 import { http, apiPost, apiGet } from '@/api/http'
 import type { PageResult, PageQuery, Id } from '@/types/crud'
+import type { RunStatus, RunType, RunItemResult } from '@/types/dto'
 import type { ApiPageResponse } from '@/api/repositoryApi'
 
 export interface Run {
   id: string
-  runType: string
-  status: string
+  runType: RunType
+  status: RunStatus
   startedAt: string
   finishedAt: string
   operator: string
 }
 
 export interface RunDetail extends Run {
+  executionVersion: number
   items: RunItem[]
 }
 
 export interface RunItem {
+  id: string
   windowKey: string
-  repo?: string
   repoId: string
-  iterationKey: string
+  iterationKey: string | null
   plannedOrder: number
   executedOrder: number
-  finalResult: string
+  finalResult: RunItemResult | null
+  metadata: Record<string, string>
   steps: RunStep[]
 }
 
 export interface RunStep {
   actionType: string
-  result: string
+  result: RunItemResult
   startedAt?: string
   finishedAt?: string
-  startAt?: string | number
-  endAt?: string | number
   message: string
 }
 
@@ -74,12 +75,12 @@ export const runApi = {
   },
 
   async getRunById(id: Id): Promise<RunDetail> {
-    const res = await http.get<any>(`/v1/runs/${id}/export.json`)
-    return normalizeRunDetail(res.data, String(id))
+    const res = await http.get<RunExport>(`/v1/runs/${id}/export.json`)
+    return normalizeRunDetail(res.data)
   },
 
-  async retry(id: Id, items: string[], operator: string): Promise<string> {
-    const res = await http.post<string>(`/v1/runs/${id}/retry`, { items, operator })
+  async retry(id: Id, items: string[]): Promise<string> {
+    const res = await http.post<string>(`/v1/runs/${id}/retry`, { items })
     return res.data
   },
 
@@ -94,41 +95,45 @@ export const runApi = {
   }
 }
 
-function normalizeRunDetail(data: any, fallbackId: string): RunDetail {
-  const items = (data?.items || []).map((item: any) => ({
-    ...item,
-    repoId: item.repoId || item.repo || '',
-    repo: item.repo || item.repoId || '',
-    steps: (item.steps || []).map((step: any) => ({
-      ...step,
-      startedAt: normalizeTime(step.startedAt ?? step.startAt),
-      finishedAt: normalizeTime(step.finishedAt ?? step.endAt)
-    }))
-  }))
+interface RunExport extends Omit<RunDetail, 'id' | 'startedAt' | 'finishedAt' | 'items'> {
+  runId: string
+  startedAt: number
+  finishedAt: number | null
+  items: Array<Omit<RunItem, 'repoId' | 'steps'> & {
+    repo: string
+    steps: Array<Omit<RunStep, 'startedAt' | 'finishedAt'> & { startAt: number; endAt: number }>
+  }>
+}
 
+function normalizeRunDetail(data: RunExport): RunDetail {
   return {
-    id: data?.id || data?.runId || fallbackId,
-    runType: data?.runType || '',
-    status: data?.status || determineRunStatus(items, data?.finishedAt),
-    startedAt: normalizeTime(data?.startedAt),
-    finishedAt: normalizeTime(data?.finishedAt),
-    operator: data?.operator || '',
-    items
+    id: data.runId,
+    runType: data.runType,
+    executionVersion: data.executionVersion,
+    status: data.status,
+    startedAt: formatExportTime(data.startedAt),
+    finishedAt: formatExportTime(data.finishedAt),
+    operator: data.operator,
+    items: data.items.map(item => ({
+      id: item.id,
+      windowKey: item.windowKey,
+      repoId: item.repo,
+      iterationKey: item.iterationKey,
+      plannedOrder: item.plannedOrder,
+      executedOrder: item.executedOrder,
+      finalResult: item.finalResult,
+      metadata: item.metadata,
+      steps: item.steps.map(step => ({
+        actionType: step.actionType,
+        result: step.result,
+        startedAt: formatExportTime(step.startAt),
+        finishedAt: formatExportTime(step.endAt),
+        message: step.message
+      }))
+    }))
   }
 }
 
-function normalizeTime(value: unknown): string {
-  if (value === null || value === undefined || value === '') return ''
-  if (typeof value === 'number') return new Date(value).toISOString()
-  return String(value)
-}
-
-function determineRunStatus(items: RunItem[], finishedAt: unknown): string {
-  if (items.some(item => item.finalResult?.includes('FAILED') || item.finalResult === 'MERGE_BLOCKED')) {
-    return 'FAILED'
-  }
-  if (items.length > 0 && items.every(item => item.finalResult?.includes('SUCCESS'))) {
-    return 'SUCCESS'
-  }
-  return finishedAt ? 'COMPLETED' : 'RUNNING'
+function formatExportTime(value: number | null): string {
+  return value === null ? '' : new Date(value).toISOString()
 }

@@ -7,7 +7,14 @@
       </div>
     </template>
 
-    <div v-if="planRows.length === 0" class="empty-tip">
+    <el-alert
+      v-if="loadFailed"
+      type="error"
+      :closable="false"
+      show-icon
+      :title="t('releaseWindow.releasePlan.readFailed')"
+    />
+    <div v-else-if="planRows.length === 0" class="empty-tip">
       {{ t('releaseWindow.releasePlan.empty') }}
     </div>
 
@@ -25,14 +32,6 @@
           <span class="summary-label">{{ t('releaseWindow.releasePlan.releaseMissing') }}</span>
           <strong :class="{ 'summary-danger': branchSummary.releaseMissing > 0 }">{{ branchSummary.releaseMissing }}</strong>
         </div>
-        <div class="summary-item">
-          <span class="summary-label">{{ t('releaseWindow.releasePlan.mergedCount') }}</span>
-          <strong class="summary-success">{{ branchSummary.merged }}</strong>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">{{ t('releaseWindow.releasePlan.conflictCount') }}</span>
-          <strong :class="{ 'summary-danger': branchSummary.conflict > 0 }">{{ branchSummary.conflict }}</strong>
-        </div>
       </div>
       <el-alert
         v-if="hasBranchRisk"
@@ -42,8 +41,7 @@
         show-icon
         :title="t('releaseWindow.releasePlan.branchRisk', {
           featureMissing: branchSummary.featureMissing,
-          releaseMissing: branchSummary.releaseMissing,
-          conflict: branchSummary.conflict
+          releaseMissing: branchSummary.releaseMissing
         })"
       />
     </template>
@@ -90,13 +88,6 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column :label="t('releaseWindow.releasePlan.mergeStatus')" width="120" align="center">
-        <template #default="{ row }">
-          <el-tag :type="mergeStatusType(row.releaseBranch.mergeStatus)" size="small">
-            {{ mergeStatusLabel(row.releaseBranch.mergeStatus) }}
-          </el-tag>
-        </template>
-      </el-table-column>
     </el-table>
   </el-card>
 </template>
@@ -114,6 +105,7 @@ const props = defineProps<{
 
 const { t } = useI18n()
 const loading = ref(false)
+const loadFailed = ref(false)
 const branchStatus = ref<BranchStatusView | null>(null)
 const planItems = ref<PlanItemView[]>([])
 
@@ -143,22 +135,22 @@ const planRows = computed<ReleasePlanRow[]>(() => {
 const branchSummary = computed(() => {
   const rows = planRows.value
   return {
-    total: rows.length,
-    featureMissing: rows.filter(row => !row.featureBranch.exists).length,
-    releaseMissing: rows.filter(row => !row.releaseBranch.exists).length,
-    merged: rows.filter(row => row.releaseBranch.mergeStatus === 'MERGED').length,
-    conflict: rows.filter(row => row.releaseBranch.mergeStatus === 'CONFLICT').length
+    total: new Set(rows.map(row => row.repoId)).size,
+    featureMissing: new Set(rows.filter(row => !row.featureBranch.exists)
+      .map(row => JSON.stringify([row.repoId, row.featureBranch.branchName]))).size,
+    releaseMissing: new Set(rows.filter(row => !row.releaseBranch.exists)
+      .map(row => JSON.stringify([row.repoId, row.releaseBranch.branchName]))).size
   }
 })
 
 const hasBranchRisk = computed(() => (
   branchSummary.value.featureMissing > 0 ||
-  branchSummary.value.releaseMissing > 0 ||
-  branchSummary.value.conflict > 0
+  branchSummary.value.releaseMissing > 0
 ))
 
 const load = async () => {
   loading.value = true
+  loadFailed.value = false
   try {
     const [plan, status] = await Promise.all([
       releaseWindowApi.getPlan(props.windowId),
@@ -167,6 +159,9 @@ const load = async () => {
     planItems.value = plan
     branchStatus.value = status
   } catch (err) {
+    planItems.value = []
+    branchStatus.value = null
+    loadFailed.value = true
     handleError(err)
   } finally {
     loading.value = false
@@ -174,22 +169,6 @@ const load = async () => {
 }
 
 const refresh = () => load()
-
-const mergeStatusType = (status: string) => {
-  switch (status) {
-    case 'MERGED': return 'success'
-    case 'CONFLICT': return 'danger'
-    default: return 'info'
-  }
-}
-
-const mergeStatusLabel = (status: string) => {
-  switch (status) {
-    case 'MERGED': return t('releaseWindow.releasePlan.mergeStatusText.MERGED')
-    case 'CONFLICT': return t('releaseWindow.releasePlan.mergeStatusText.CONFLICT')
-    default: return t('releaseWindow.releasePlan.mergeStatusText.PENDING')
-  }
-}
 
 onMounted(() => load())
 </script>
@@ -253,10 +232,6 @@ onMounted(() => load())
 .summary-label {
   color: var(--el-text-color-secondary);
   font-size: 12px;
-}
-
-.summary-success {
-  color: var(--el-color-success);
 }
 
 .summary-danger {

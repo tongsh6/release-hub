@@ -1,3 +1,4 @@
+vi.mock('@/api/gitOperationApi', () => ({ gitOperationApi: { list: vi.fn().mockResolvedValue([]), listByRun: vi.fn().mockResolvedValue([]), get: vi.fn(), reconcile: vi.fn() } }))
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RepositoryDetail from '../RepositoryDetail.vue'

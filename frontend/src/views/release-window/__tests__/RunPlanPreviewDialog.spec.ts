@@ -18,7 +18,7 @@ const plan: RunPlanPreview = {
 
 function render() {
   return mount(RunPlanPreviewDialog, {
-    props: { modelValue: true, windowId: 'window-1', repoIds: ['repo-1'], iterationKeys: ['ITER-1'], canCreate: true },
+    props: { modelValue: true, windowId: 'window-1', repoIds: ['repo-1'], iterationKeys: ['ITER-1'], failFast: true, canCreate: true },
     global: { directives: { loading: {}, perm: {} }, stubs: {
       ElDialog: { template: '<section><slot /></section>' },
       ElAlert: { props: ['title'], template: '<p>{{ title }}</p>' },

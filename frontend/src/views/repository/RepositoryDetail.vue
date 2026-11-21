@@ -80,6 +80,7 @@
       </el-row>
       <BranchGovernancePanel :branches="nonCompliantBranches" />
     </el-card>
+    <GitOperationsPanel :repo-id="repoId" />
   </div>
 </template>
 
@@ -95,6 +96,7 @@ import { ElMessage } from 'element-plus'
 import { ApiError } from '@/api/http'
 import { handleError } from '@/utils/error'
 import BranchGovernancePanel from './BranchGovernancePanel.vue'
+import GitOperationsPanel from '@/components/run/GitOperationsPanel.vue'
 
 const route = useRoute()
 const router = useRouter()

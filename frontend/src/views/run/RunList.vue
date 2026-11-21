@@ -16,10 +16,11 @@
       <el-form-item :label="t('run.filters.status')">
         <el-select v-model="query.status" clearable style="width: 160px">
           <el-option label="FAILED" value="FAILED" />
-          <el-option label="SUCCESS" value="SUCCESS" />
+          <el-option label="DONE" value="DONE" />
+          <el-option label="PARTIAL_FAILED" value="PARTIAL_FAILED" />
           <el-option label="RUNNING" value="RUNNING" />
+          <el-option label="NEEDS_REVIEW" value="NEEDS_REVIEW" />
           <el-option :label="t('runPlan.status')" value="PLANNED" />
-          <el-option label="COMPLETED" value="COMPLETED" />
         </el-select>
       </el-form-item>
     </SearchForm>
@@ -34,7 +35,9 @@
       @page-size-change="onPageSizeChange"
     >
       <el-table-column prop="id" :label="t('run.columns.runId')" width="120" />
-      <el-table-column prop="runType" :label="t('run.columns.type')" width="220" />
+      <el-table-column prop="runType" :label="t('run.columns.type')" width="220">
+        <template #default="{ row }">{{ t(runTypeKey(row.runType)) }}</template>
+      </el-table-column>
       <el-table-column prop="status" :label="t('run.columns.status')" width="120" />
       <el-table-column prop="startedAt" :label="t('run.columns.start')" width="180" />
       <el-table-column prop="finishedAt" :label="t('run.columns.end')" width="180" />
@@ -70,20 +73,20 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useListPage } from '@/composables/crud/useListPage'
 import SearchForm from '@/components/crud/SearchForm.vue'
 import DataTable from '@/components/crud/DataTable.vue'
 import GroupTreeSelect from '@/components/common/GroupTreeSelect.vue'
 import RunDrawer from './RunDrawer.vue'
-import { runApi } from '@/api/runApi'
+import { runApi, type Run } from '@/api/runApi'
+import { isRetryableRun, runTypeKey } from '@/utils/runPresentation'
 import { hasPerm } from '@/utils/perm'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { useUserStore } from '@/stores/user'
-import { handleError } from '@/utils/error'
+import { ElMessage } from 'element-plus'
 
-const userStore = useUserStore()
 const { t } = useI18n()
+const router = useRouter()
 const drawerRef = ref<InstanceType<typeof RunDrawer>>()
 
 const { query, loading, list, total, search, reset, onPageChange, onPageSizeChange } = useListPage({
@@ -97,47 +100,20 @@ const { query, loading, list, total, search, reset, onPageChange, onPageSizeChan
   }
 })
 
-function canRetry(row: any) { return ['FAILED', 'MERGE_BLOCKED'].includes(row.status) }
+function canRetry(row: Run) { return isRetryableRun(row.status, row.runType) }
 
 function openDetail(row: any) {
   drawerRef.value?.open(row.id)
 }
 
-async function handleRetry(row: any) {
+async function handleRetry(row: Run) {
+  if (!canRetry(row)) return
   if (!hasPerm('run:write')) {
     ElMessage.warning(t('common.permissionDenied'))
     return
   }
-
-  try {
-    await ElMessageBox.confirm(t('run.retryConfirm'), t('common.warning'), {
-      type: 'warning'
-    })
-
-    const detail = await runApi.getRunById(row.id)
-    const failedItems = detail.items
-      .filter(item => item.finalResult?.includes('FAILED') || item.finalResult === 'MERGE_BLOCKED')
-      .map(item => `${item.windowKey}::${item.repoId}::${item.iterationKey}`)
-
-    if (failedItems.length === 0) {
-      ElMessage.info(t('run.noFailedItems'))
-      return
-    }
-
-    if (!userStore.profile?.username) {
-      ElMessage.warning(t('common.loginRequired'))
-      return
-    }
-    await runApi.retry(row.id, failedItems, userStore.profile.username)
-    ElMessage.success(t('run.retrySuccess'))
-    search()
-  } catch (e) {
-    if (e !== 'cancel') {
-      handleError(e)
-    }
-  }
+  await router.push({ name: 'RunDetail', params: { runId: row.id } })
 }
-
 function handleExport(row: any) {
   if (!hasPerm('run:write')) {
     ElMessage.warning(t('common.permissionDenied'))

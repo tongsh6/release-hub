@@ -20,8 +20,7 @@ describe('releaseWindowApi.orchestrate', () => {
     const request: OrchestrateRequest = {
       repoIds: ['repo-1'],
       iterationKeys: ['ITER-1'],
-      failFast: false,
-      operator: 'frontend'
+      failFast: true
     }
 
     await orchestrate('window-1', request)

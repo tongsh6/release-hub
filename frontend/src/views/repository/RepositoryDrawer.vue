@@ -73,6 +73,7 @@
         </el-row>
         <BranchGovernancePanel :branches="nonCompliantBranches" />
       </el-card>
+      <GitOperationsPanel v-if="visible && repoId" :repo-id="repoId" />
     </div>
   </el-drawer>
 </template>
@@ -84,6 +85,7 @@ import { repositoryApi, type Repository, type GateSummary, type BranchSummary, t
 import { groupApi } from '@/api/modules/group'
 import { resolveGroupPath } from '@/utils/groupPath'
 import BranchGovernancePanel from './BranchGovernancePanel.vue'
+import GitOperationsPanel from '@/components/run/GitOperationsPanel.vue'
 
 const { t } = useI18n()
 

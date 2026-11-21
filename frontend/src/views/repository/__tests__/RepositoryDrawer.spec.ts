@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RepositoryDrawer from '../RepositoryDrawer.vue'
 import { repositoryApi } from '@/api/repositoryApi'
 import { groupApi } from '@/api/modules/group'
+import { gitOperationApi } from '@/api/gitOperationApi'
+
+vi.mock('@/api/gitOperationApi', () => ({ gitOperationApi: { list: vi.fn().mockResolvedValue([]), listByRun: vi.fn(), get: vi.fn(), reconcile: vi.fn() } }))
+vi.mock('@/utils/error', () => ({ handleError: vi.fn() }))
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -99,6 +103,15 @@ const repo = {
 }
 
 describe('RepositoryDrawer', () => {
+  it('从常用详情抽屉读取仓库操作证据', async () => {
+    vi.mocked(gitOperationApi.list).mockClear()
+    const wrapper = mount(RepositoryDrawer, { global: { stubs } })
+    await wrapper.vm.open('repo-1')
+    await flushPromises()
+    expect(gitOperationApi.list).toHaveBeenCalledWith('repo-1', 0)
+    expect(wrapper.text()).toContain('gitOperation.readOnlyNotice')
+  })
+
   beforeEach(() => {
     vi.mocked(repositoryApi.get).mockReset()
     vi.mocked(repositoryApi.getGateSummary).mockReset()

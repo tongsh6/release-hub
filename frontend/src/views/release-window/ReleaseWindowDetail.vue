@@ -66,14 +66,6 @@
         >
           {{ t('releaseWindow.attachIterations') }}
         </el-button>
-        <el-button
-          v-if="iterations.length > 0 && canChangeIterations"
-          v-perm.disable="'release-window:write'"
-          type="success"
-          @click="openCodeMerge"
-        >
-          {{ t('releaseWindow.codeMerge.button') }}
-        </el-button>
       </div>
     </div>
 
@@ -155,6 +147,7 @@
       <template #header>
         <div class="card-header">
           <span class="title">{{ t('releaseWindow.associatedIterations') }} ({{ iterations.length }})</span>
+          <el-tag>{{ t('orchestration.repoCount') }}: {{ totalRepoCount }}</el-tag>
         </div>
       </template>
       
@@ -222,16 +215,17 @@
       </div>
     </el-card>
 
+    <el-alert v-if="detailsIncomplete" type="warning" :closable="false" :title="t('releaseWindow.detailsIncomplete')" />
+
     <!-- 编排控制台 -->
     <OrchestrationPanel
-      v-if="form.id && iterations.length > 0"
+      v-if="form.id"
       :window-id="form.id"
       :window-key="form.windowKey || ''"
       :window-status="form.status || 'DRAFT'"
-      :iteration-count="iterations.length"
-      :repo-count="totalRepoCount"
-      :repo-ids="orchestrationRepoIds"
-      :iteration-keys="orchestrationIterationKeys"
+      :frozen="Boolean(form.frozen)"
+      :plan-items="executionPlan"
+      :scope-ready="scopeReady"
       @open-version-update="openVersionUpdate"
       @refresh="handleRefresh"
     />
@@ -251,7 +245,6 @@
     />
 
     <AttachIterationsDialog ref="attachDialogRef" @success="handleAttachSuccess" />
-    <CodeMergeDialog ref="codeMergeDialogRef" />
     <VersionUpdateDialog ref="versionUpdateDialogRef" @success="handleRefresh" />
   </div>
 </template>
@@ -261,7 +254,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowDown, ArrowLeft, Delete, Download } from '@element-plus/icons-vue'
-import { releaseWindowApi, type ConflictItemView, type ParallelWindowView, type ReleaseWindow, type ReleaseWindowParallelScopeView } from '@/api/modules/releaseWindow'
+import { releaseWindowApi, type ConflictItemView, type PlanItemView, type ParallelWindowView, type ReleaseWindow, type ReleaseWindowParallelScopeView } from '@/api/modules/releaseWindow'
 import { iterationApi, type ConflictResolution } from '@/api/iterationApi'
 import { repositoryApi, type Repository } from '@/api/repositoryApi'
 import { handleError } from '@/utils/error'
@@ -269,7 +262,6 @@ import { hasPerm } from '@/utils/perm'
 import { formatDateTime, formatDate } from '@/utils/date'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AttachIterationsDialog from './AttachIterationsDialog.vue'
-import CodeMergeDialog from './CodeMergeDialog.vue'
 import OrchestrationPanel from './OrchestrationPanel.vue'
 import VersionUpdateDialog from './VersionUpdateDialog.vue'
 import BranchStatusPanel from './BranchStatusPanel.vue'
@@ -284,7 +276,6 @@ const iterationsLoading = ref(false)
 const form = ref<Partial<ReleaseWindow>>({})
 const parallelScope = ref<ReleaseWindowParallelScopeView | null>(null)
 const attachDialogRef = ref<InstanceType<typeof AttachIterationsDialog>>()
-const codeMergeDialogRef = ref<InstanceType<typeof CodeMergeDialog>>()
 const versionUpdateDialogRef = ref<InstanceType<typeof VersionUpdateDialog>>()
 const conflictPanelRef = ref()
 
@@ -299,9 +290,25 @@ interface IterationWithRepos {
 
 const iterations = ref<IterationWithRepos[]>([])
 const expandedIterations = ref<string[]>([])
+const executionPlan = ref<PlanItemView[]>([])
+const scopeReady = ref(false)
+const detailsIncomplete = ref(false)
+let scopeGeneration = 0
+
+const loadExecutionPlan = async (id: string) => {
+  const generation = ++scopeGeneration
+  scopeReady.value = false
+  try {
+    const plan = await releaseWindowApi.getPlan(id)
+    if (generation !== scopeGeneration || form.value.id !== id) return
+    executionPlan.value = plan
+    scopeReady.value = true
+  } catch (error) { if (generation === scopeGeneration) handleError(error) }
+}
 
 const load = async (id: string) => {
   loading.value = true
+  scopeReady.value = false
   try {
     const [windowDetail, scope] = await Promise.all([
       releaseWindowApi.get(id),
@@ -310,7 +317,7 @@ const load = async (id: string) => {
     form.value = windowDetail
     parallelScope.value = scope
     // 加载关联迭代
-    await loadIterations(id)
+    await Promise.all([loadIterations(id), loadExecutionPlan(id)])
   } catch (err) {
     handleError(err)
   } finally {
@@ -324,6 +331,7 @@ const loadParallelScope = async (id: string) => {
 
 const loadIterations = async (windowId: string) => {
   iterationsLoading.value = true
+  detailsIncomplete.value = false
   try {
     // 获取关联的迭代 key 列表
     const windowIterations = await releaseWindowApi.listIterations(windowId)
@@ -333,7 +341,7 @@ const loadIterations = async (windowId: string) => {
     
     for (const wi of windowIterations) {
       try {
-        const iterKey = wi.iterationKey || wi
+        const iterKey = wi.iterationKey
         const iter = await iterationApi.get(iterKey)
         
         // 获取迭代关联的仓库详情
@@ -343,9 +351,8 @@ const loadIterations = async (windowId: string) => {
             try {
               const repo = await repositoryApi.get(repoId)
               repos.push(repo)
-            } catch (e) {
-              // 忽略单个仓库获取失败
-              console.warn(`Failed to get repo ${repoId}:`, e)
+            } catch {
+              detailsIncomplete.value = true
             }
           }
         }
@@ -357,8 +364,8 @@ const loadIterations = async (windowId: string) => {
           expectedReleaseAt: iter.expectedReleaseAt,
           repos
         })
-      } catch (e) {
-        console.warn(`Failed to get iteration:`, e)
+      } catch {
+        detailsIncomplete.value = true
       }
     }
     
@@ -387,17 +394,7 @@ const canChangeIterations = computed(() => {
   return Boolean(form.value.id) && form.value.status === 'DRAFT' && !form.value.frozen
 })
 
-const totalRepoCount = computed(() => {
-  return iterations.value.reduce((sum, iter) => sum + (iter.repos?.length || 0), 0)
-})
-
-const orchestrationRepoIds = computed(() => {
-  return Array.from(new Set(iterations.value.flatMap(iter => (iter.repos || []).map(repo => repo.id))))
-})
-
-const orchestrationIterationKeys = computed(() => {
-  return Array.from(new Set(iterations.value.map(iter => iter.key)))
-})
+const totalRepoCount = computed(() => new Set(executionPlan.value.map(item => item.repoId)).size)
 
 const goBack = () => {
   router.back()
@@ -417,6 +414,7 @@ const handleAttachSuccess = () => {
   if (id) {
     void loadIterations(id)
     void loadParallelScope(id)
+    void loadExecutionPlan(id)
   }
 }
 
@@ -432,6 +430,7 @@ const handleDetachIteration = async (iterationKey: string) => {
     ElMessage.success(t('common.success'))
     await loadIterations(form.value.id)
     await loadParallelScope(form.value.id)
+    await loadExecutionPlan(form.value.id)
   } catch (error) {
     if (error !== 'cancel') handleError(error)
   }
@@ -444,14 +443,6 @@ const formatParallelPlanItems = (window: ParallelWindowView) => {
   return window.planItems
     .map(item => `${item.iterationKey} / ${item.repoId}`)
     .join(', ')
-}
-
-const openCodeMerge = () => {
-  if (!form.value?.id || iterations.value.length === 0) return
-  codeMergeDialogRef.value?.open(
-    form.value.id,
-    iterations.value.map(iter => ({ key: iter.key, name: iter.name }))
-  )
 }
 
 const openVersionUpdate = () => {

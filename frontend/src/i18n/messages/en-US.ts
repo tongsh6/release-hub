@@ -24,6 +24,64 @@ export default {
     settings: 'Settings',
     groups: 'Groups'
   },
+  gitOperation: {
+    title: 'Git operation evidence',
+    readOnlyNotice: 'Reconciliation only reads remote state and records evidence. It does not repeat operations or release write guards.',
+    blocked: 'Unresolved operations are blocking further repository writes.',
+    action: 'Operation',
+    state: 'State',
+    time: 'Recorded at',
+    operator: 'Operator',
+    reason: 'Guard reason',
+    sourceRun: 'Source Run ID (the record may be uncommitted after rollback)',
+    timeline: 'Attempts',
+    observations: 'Observations',
+    reconcile: 'Check remote evidence',
+    pagination: 'Operation pages',
+    previous: 'Previous',
+    next: 'Next',
+    latestObservations: 'Showing the latest 50 observations.',
+    actions: {
+      CREATE_BRANCH: 'Create Branch',
+      CREATE_REF: 'Create Ref',
+      CREATE_MR: 'Create Mr',
+      CREATE_PR: 'Create Pr',
+      MERGE_MR: 'Merge Mr',
+      UPDATE_MR: 'Update Mr',
+      MERGE_BRANCH: 'Merge Branch',
+      CREATE_TAG: 'Create Tag',
+      TRIGGER_PIPELINE: 'Trigger Pipeline',
+      DISPATCH_EVENT: 'Dispatch Event',
+      UPDATE_FILE: 'Update File',
+      DELETE_BRANCH: 'Delete Branch',
+    },
+    states: {
+      INTENT_RECORDED: 'Intent recorded',
+      SEND_STARTED: 'Request started',
+      APPLIED: 'Remote confirmed',
+      REJECTED: 'Remote rejected',
+      UNKNOWN: 'Unknown result',
+      NEEDS_REVIEW: 'Local result needs review',
+    },
+    events: {
+      INTENT_RECORDED: 'Intent recorded',
+      SEND_STARTED: 'Request started',
+      APPLIED: 'Remote confirmed',
+      REJECTED: 'Remote rejected',
+      UNKNOWN: 'Unknown result',
+      NEEDS_REVIEW: 'Needs review',
+      LOCAL_RESULT_UNCONFIRMED: 'Local result unconfirmed',
+    },
+    observed: {
+      FOUND: 'Evidence matches',
+      MISMATCH: 'Evidence differs',
+      NOT_FOUND: 'Not found (does not prove not executed)',
+      FORBIDDEN: 'Access denied',
+      UNAVAILABLE: 'Unavailable',
+      INCOMPLETE: 'Incomplete evidence',
+      UNSUPPORTED: 'Unsupported',
+    },
+  },
   common: {
     formEditUnsupported: 'This form does not support editing',
     formViewUnsupported: 'This form does not support viewing details',
@@ -107,7 +165,7 @@ export default {
     updatedAt: 'Updated At',
     publishedAt: 'Published At',
     publish: 'Publish',
-    close: 'Close',
+    close: 'Close and finalize',
     groupPath: 'Group Path',
     parallelScope: {
       title: 'Same-Group Parallel Windows',
@@ -124,7 +182,7 @@ export default {
     configureTime: 'Configure Time',
     confirmFreeze: 'Confirm to freeze this release window?',
     confirmPublish: 'Confirm to publish this release window?',
-    confirmClose: 'Confirm to close this release window?',
+    confirmClose: 'Close and finalize this window? This merges release into each repository default branch, creates tags and archives branches. Review the closeout run afterwards.',
     confirmDelete: 'Are you sure to delete release window "{key}"? This action cannot be undone',
     deleteBlocked: 'Only empty draft release windows can be deleted',
     placeholder: {
@@ -141,8 +199,9 @@ export default {
     associatedIterations: 'Associated Iterations',
     noIterations: 'No associated iterations',
     noRepos: 'No associated repositories',
-    confirmDetach: 'Confirm to detach this iteration?',
+    confirmDetach: 'Detach this iteration from future orchestration? Already merged content will remain.',
     details: 'ReleaseWindow Details',
+    detailsIncomplete: 'Some names or details are unavailable. Integration still uses the authoritative server plan.',
     editTitle: 'Edit ReleaseWindow',
     validation: {
       nameRequired: 'Please enter name',
@@ -189,25 +248,6 @@ export default {
       success: 'Version update started, Run ID: {runId}',
       failed: 'Version update failed, please check error message'
     },
-    codeMerge: {
-      button: 'Code Merge',
-      title: 'Code Merge',
-      info: 'Merge latest code from feature branches to release branch',
-      mergeAll: 'Merge All Iterations',
-      mergeSingle: 'Merge Single Iteration',
-      selectIteration: 'Select iteration',
-      execute: 'Execute Merge',
-      sourceBranch: 'Source Branch',
-      targetBranch: 'Target Branch',
-      status: {
-        SUCCESS: 'Success',
-        CONFLICT: 'Conflict',
-        FAILED: 'Failed'
-      },
-      allSuccess: 'All repositories merged successfully',
-      hasConflict: 'Some repositories have conflicts, please resolve in GitLab',
-      hasFailed: 'Some repositories failed to merge, please check error messages'
-    },
     report: {
       export: 'Export Report',
       csv: 'CSV',
@@ -221,20 +261,13 @@ export default {
       plannedOrder: 'Plan Order',
       featureBranch: 'Feature Branch',
       releaseBranch: 'Release Branch',
-      mergeStatus: 'Merge Status',
       exists: 'Exists',
       missing: 'Missing',
       totalRepos: 'Repositories',
       featureMissing: 'Feature Missing',
       releaseMissing: 'Release Missing',
-      mergedCount: 'Merged',
-      conflictCount: 'Conflicts',
-      branchRisk: '{featureMissing} feature branches missing, {releaseMissing} release branches missing, {conflict} conflicts',
-      mergeStatusText: {
-        MERGED: 'Merged',
-        CONFLICT: 'Conflict',
-        PENDING: 'Pending'
-      }
+      branchRisk: '{featureMissing} feature branches missing, {releaseMissing} release branches missing',
+      readFailed: 'Unable to read branch status. Refresh to try again.'
     }
   },
   branchRule: {
@@ -495,6 +528,12 @@ export default {
     }
   },
   run: {
+    types: {
+      WINDOW_ORCHESTRATION: 'Window integration (feature → release)',
+      WINDOW_CLEANUP: 'Window closeout (release → default branch)',
+      ATTACH_ITERATION: 'Iteration integration',
+      VERSION_UPDATE: 'Version update'
+    },
     filters: {
       windowKey: 'Window Key',
       repo: 'Repository',
@@ -504,22 +543,29 @@ export default {
     },
     columns: {
       runId: 'Run ID',
+      plannedOrder: 'Planned order',
+      executedOrder: 'Executed order',
       type: 'Type',
       status: 'Status',
       start: 'Start',
       end: 'End',
       operator: 'Operator'
     },
-    retryConfirm: 'Confirm to retry this run?',
+    retrySelectionConfirm: 'Retry the {count} selected items?',
+    selectRetryItems: 'Select the items to retry first',
     noFailedItems: 'No failed items',
     retrySuccess: 'Retry started',
-    retryFailedItems: 'Retry Failed Items',
+    retrySelectedItems: 'Retry Selected Items',
     actions: {
       detail: 'Detail',
       retry: 'Retry',
       export: 'Export'
     },
     detail: {
+      needsReview: 'The GitLab outcome is unresolved. Review the execution evidence before taking further action. Ordinary retry is unavailable.',
+      cleanupReview: 'Review the closeout evidence for default-branch merge, tags and archival. Ordinary retry is currently unavailable.',
+      retryFailFastHint: 'This run uses FAIL_FAST. To retry an item skipped by a blocker, also select the earlier failed or blocked items in the same repository.',
+      retryMissingPredecessors: 'Select these earlier failed or blocked items in the same repository: {items}',
       title: 'Run',
       triplesTitle: 'Triples (executedOrder)',
       exportJson: 'Export JSON',
@@ -567,6 +613,7 @@ export default {
     retrySelected: 'Retry Selected',
     reasons: {
       conflict: 'CONFLICT',
+      pipelinePending: 'PIPELINE_PENDING',
       pipelineFailed: 'PIPELINE_FAILED',
       approvalRequired: 'APPROVAL_REQUIRED',
       protectedBranch: 'PROTECTED_BRANCH',
@@ -872,33 +919,21 @@ export default {
     status: 'Plan preview',
   },
   orchestration: {
-    title: 'Release Orchestration',
-    status: {
-      preparing: 'Preparing',
-      finishing: 'Finishing',
-      completed: 'Completed',
-      unknown: 'Unknown'
-    },
-    steps: {
-      prepare: 'Prepare',
-      merge: 'Code Merge',
-      version: 'Version Update',
-      finish: 'Finish'
-    },
+    title: 'Window Integration',
     iterationCount: 'Iterations',
     repoCount: 'Repositories',
-    previewPlan: 'Preview Plan',
-    mergeDirection: 'Merge Direction',
-    mergeAll: 'Merge All',
-    versionAction: 'Version Action',
-    updatePomGradle: 'Update POM/Gradle Version',
-    finishActions: 'Finish Actions',
-    finishAction: {
-      mergeToMaster: 'Merge to Master',
-      createTag: 'Create Tag',
-      archiveBranch: 'Archive Branch'
-    },
-    executeFinish: 'Execute Finish',
+    mergeDirection: 'Integration Direction',
+    repositoryScope: 'Repository Scope',
+    allRepositories: 'All repositories in this window',
+    iterationScope: 'Select iterations (attachment order)',
+    blockPolicy: 'On Block',
+    failFast: 'Stop this repository on block (default)',
+    continueOnBlock: 'Skip blocked item and continue this repository',
+    executeIntegration: 'Run Integration',
+    confirmIntegrate: 'Integrate the selected feature branches into the release branch?',
+    closeoutNotice: 'This action integrates feature into release. Use Close and Finalize for the default-branch merge, tags and archive, then review the closeout run.',
+    scopeUnavailable: 'The complete release plan is unavailable. Refresh before executing.',
+    scopeChanged: 'The scope or state changed during confirmation. Review it again.',
     latestRun: 'Latest Run Review',
     runItems: 'Run Items',
     failedItems: 'Failed Items',
@@ -906,9 +941,5 @@ export default {
     failedStep: 'Failed Step',
     failureReason: 'Failure Reason',
     viewRunDetail: 'View Run Detail',
-    recentRuns: 'Recent Runs',
-    planPreview: 'Execution Plan Preview',
-    confirmMergeAll: 'Confirm to merge all iterations to release branch?',
-    confirmOrchestrate: 'Confirm to execute finish orchestration? Will merge to master and create tags.'
-  }
-}
+    recentRuns: 'Recent Runs'
+  }}

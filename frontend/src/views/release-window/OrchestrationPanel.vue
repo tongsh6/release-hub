@@ -2,247 +2,118 @@
   <el-card class="orchestration-panel">
     <template #header>
       <div class="panel-header">
-        <span class="title">{{ t('orchestration.title') }}</span>
-        <el-tag :type="statusTagType" size="small">{{ statusText }}</el-tag>
+        <strong>{{ t('orchestration.title') }}</strong>
+        <el-tag size="small">{{ windowStatus }}</el-tag>
       </div>
     </template>
+    <p class="direction">{{ t('orchestration.mergeDirection') }}: <strong>feature → release</strong></p>
+    <p class="notice">{{ t('orchestration.closeoutNotice') }}</p>
+    <el-alert v-if="!scopeReady" type="warning" :closable="false" :title="t('orchestration.scopeUnavailable')" />
 
-    <!-- 编排流程步骤 -->
-    <div class="orchestration-steps">
-      <el-steps :active="activeStep" finish-status="success" align-center>
-        <el-step :title="t('orchestration.steps.prepare')" :icon="Document" />
-        <el-step :title="t('orchestration.steps.merge')" :icon="Connection" />
-        <el-step :title="t('orchestration.steps.version')" :icon="Edit" />
-        <el-step :title="t('orchestration.steps.finish')" :icon="CircleCheck" />
-      </el-steps>
+    <div class="scope-controls">
+      <label>
+        {{ t('orchestration.repositoryScope') }}
+        <select v-model="selectedRepoId" data-field="repository" :disabled="!scopeReady || orchestrating">
+          <option value="">{{ t('orchestration.allRepositories') }}</option>
+          <option v-if="selectedRepoId && !availableRepoIds.includes(selectedRepoId)" :value="selectedRepoId" disabled>{{ selectedRepoId }}</option>
+          <option v-for="repoId in availableRepoIds" :key="repoId" :value="repoId">{{ repoId }}</option>
+        </select>
+      </label>
+      <label>
+        {{ t('orchestration.blockPolicy') }}
+        <select v-model="blockPolicy" data-field="block-policy" :disabled="orchestrating">
+          <option value="FAIL_FAST">{{ t('orchestration.failFast') }}</option>
+          <option value="CONTINUE_ON_BLOCK">{{ t('orchestration.continueOnBlock') }}</option>
+        </select>
+      </label>
+    </div>
+    <fieldset class="iteration-scope" :disabled="!scopeReady || orchestrating">
+      <legend>{{ t('orchestration.iterationScope') }}</legend>
+      <label v-for="iterationKey in availableIterationKeys" :key="iterationKey">
+        <input v-model="selectedIterationKeys" type="checkbox" :value="iterationKey" />
+        {{ iterationKey }}
+      </label>
+      <span v-if="!availableIterationKeys.length">{{ t('common.noData') }}</span>
+    </fieldset>
+    <p class="scope-summary">
+      {{ t('orchestration.repoCount') }}: {{ repoIds.length }} ·
+      {{ t('orchestration.iterationCount') }}: {{ iterationKeys.length }}
+    </p>
+    <div class="panel-actions">
+      <el-button size="small" @click="savedPlanVisible = true">{{ t('runPlan.title') }}</el-button>
+      <el-button
+        v-perm.disable="'release-window:write'"
+        data-action="integrate"
+        type="primary"
+        :disabled="!canExecute"
+        :loading="orchestrating"
+        @click="handleOrchestrate"
+      >
+        {{ t('orchestration.executeIntegration') }}
+      </el-button>
+      <el-button
+        v-if="windowStatus !== 'CLOSED'"
+        v-perm.disable="'release-window:write'"
+        size="small"
+        :disabled="frozen || !scopeReady"
+        @click="emit('open-version-update')"
+      >
+        {{ t('releaseWindow.versionUpdate.execute') }}
+      </el-button>
     </div>
 
-    <!-- 操作面板 -->
-    <div class="action-panels">
-      <!-- 准备阶段 -->
-      <div class="action-panel" :class="{ active: activeStep === 0, completed: activeStep > 0 }">
-        <div class="panel-title">
-          <el-icon><Document /></el-icon>
-          <span>{{ t('orchestration.steps.prepare') }}</span>
-        </div>
-        <div class="panel-content">
-          <div class="info-row">
-            <span class="label">{{ t('orchestration.iterationCount') }}:</span>
-            <span class="value">{{ iterationCount }}</span>
-          </div>
-          <div class="info-row">
-            <span class="label">{{ t('orchestration.repoCount') }}:</span>
-            <span class="value">{{ repoCount }}</span>
-          </div>
-          <div class="panel-actions">
-            <el-button
-              v-if="canPreview"
-              size="small"
-              @click="handlePreviewPlan"
-            >
-              {{ t('orchestration.previewPlan') }}
-            </el-button>
-            <el-button size="small" @click="savedPlanVisible = true">{{ t('runPlan.title') }}</el-button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 代码合并阶段 -->
-      <div class="action-panel" :class="{ active: activeStep === 1, completed: activeStep > 1 }">
-        <div class="panel-title">
-          <el-icon><Connection /></el-icon>
-          <span>{{ t('orchestration.steps.merge') }}</span>
-        </div>
-        <div class="panel-content">
-          <div class="info-row">
-            <span class="label">{{ t('orchestration.mergeDirection') }}:</span>
-            <span class="value">feature → release</span>
-          </div>
-          <div class="panel-actions">
-            <el-button
-              v-if="canMerge"
-              v-perm.disable="'release-window:write'"
-              type="primary"
-              size="small"
-              :loading="merging"
-              @click="handleMergeAll"
-            >
-              {{ t('orchestration.mergeAll') }}
-            </el-button>
-          </div>
-          <div v-if="mergeResults.length > 0" class="merge-results">
-            <div v-for="result in mergeResults" :key="result.repoId" class="merge-result-item">
-              <el-icon :class="getMergeStatusClass(result.status)">
-                <component :is="getMergeStatusIcon(result.status)" />
-              </el-icon>
-              <span class="repo-name">{{ result.repoName }}</span>
-              <el-tag :type="getMergeTagType(result.status)" size="small">
-                {{ t(`releaseWindow.codeMerge.status.${result.status}`) }}
-              </el-tag>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 版本更新阶段 -->
-      <div class="action-panel" :class="{ active: activeStep === 2, completed: activeStep > 2 }">
-        <div class="panel-title">
-          <el-icon><Edit /></el-icon>
-          <span>{{ t('orchestration.steps.version') }}</span>
-        </div>
-        <div class="panel-content">
-          <div class="info-row">
-            <span class="label">{{ t('orchestration.versionAction') }}:</span>
-            <span class="value">{{ t('orchestration.updatePomGradle') }}</span>
-          </div>
-          <div class="panel-actions">
-            <el-button
-              v-if="canUpdateVersion"
-              v-perm.disable="'release-window:write'"
-              type="primary"
-              size="small"
-              @click="handleVersionUpdate"
-            >
-              {{ t('releaseWindow.versionUpdate.execute') }}
-            </el-button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 收尾阶段 -->
-      <div class="action-panel" :class="{ active: activeStep === 3, completed: activeStep > 3 }">
-        <div class="panel-title">
-          <el-icon><CircleCheck /></el-icon>
-          <span>{{ t('orchestration.steps.finish') }}</span>
-        </div>
-        <div class="panel-content">
-          <div class="info-row">
-            <span class="label">{{ t('orchestration.finishActions') }}:</span>
-          </div>
-          <ul class="finish-action-list">
-            <li>{{ t('orchestration.finishAction.mergeToMaster') }}</li>
-            <li>{{ t('orchestration.finishAction.createTag') }}</li>
-            <li>{{ t('orchestration.finishAction.archiveBranch') }}</li>
-          </ul>
-          <div class="panel-actions">
-            <el-button
-              v-if="canOrchestrate"
-              v-perm.disable="'release-window:write'"
-              type="success"
-              size="small"
-              :loading="orchestrating"
-              @click="handleOrchestrate"
-            >
-              {{ t('orchestration.executeFinish') }}
-            </el-button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 最新 Run 复核摘要 -->
-    <div v-if="latestRunDetail" class="run-review-summary" :class="{ failed: latestRunItemSummary.failed > 0 }">
+    <div v-if="latestRunDetail" class="run-review-summary">
       <div class="section-title">{{ t('orchestration.latestRun') }}</div>
       <div class="run-review-grid">
-        <div class="review-field">
-          <span class="label">{{ t('run.columns.runId') }}:</span>
-          <span class="value">{{ latestRunDetail.id }}</span>
-        </div>
-        <div class="review-field">
-          <span class="label">{{ t('run.columns.status') }}:</span>
-          <el-tag :type="getRunStatusType(latestRunDetail.status)" size="small">{{ latestRunDetail.status }}</el-tag>
-        </div>
-        <div class="review-field">
-          <span class="label">{{ t('orchestration.runItems') }}:</span>
-          <span class="value">{{ latestRunItemSummary.total }}</span>
-        </div>
-        <div class="review-field">
-          <span class="label">{{ t('orchestration.failedItems') }}:</span>
-          <span class="value" :class="{ danger: latestRunItemSummary.failed > 0 }">{{ latestRunItemSummary.failed }}</span>
-        </div>
+        <span>{{ t('run.columns.runId') }}: {{ latestRunDetail.id }}</span>
+        <span>{{ t(runTypeKey(latestRunDetail.runType)) }}</span>
+        <el-tag :type="runStatusTagType(latestRunDetail.status)" size="small">{{ latestRunDetail.status }}</el-tag>
+        <span>{{ t('orchestration.runItems') }}: {{ latestRunDetail.items.length }}</span>
+        <span>{{ t('orchestration.failedItems') }}: {{ failedItems.length }}</span>
       </div>
+      <el-alert v-if="latestRunDetail.status === 'NEEDS_REVIEW'" type="warning" :closable="false" :title="t('run.detail.needsReview')" />
       <div v-if="firstFailedItem" class="failed-run-evidence">
-        <div class="review-field">
-          <span class="label">{{ t('orchestration.failureContext') }}:</span>
-          <span class="value">{{ firstFailedItem.windowKey }} / {{ firstFailedItem.repoId }} / {{ firstFailedItem.iterationKey }}</span>
-        </div>
-        <div v-if="firstFailedStep" class="review-field">
-          <span class="label">{{ t('orchestration.failedStep') }}:</span>
-          <span class="value">{{ firstFailedStep.actionType }} · {{ firstFailedStep.result }}</span>
-        </div>
-        <div v-if="firstFailedStep?.message" class="review-field failure-message">
-          <span class="label">{{ t('orchestration.failureReason') }}:</span>
-          <span class="value">{{ firstFailedStep.message }}</span>
-        </div>
+        <p>{{ t('orchestration.failureContext') }}: {{ firstFailedItem.windowKey }} / {{ firstFailedItem.repoId }} / {{ firstFailedItem.iterationKey }}</p>
+        <p v-if="firstFailedStep">{{ t('orchestration.failedStep') }}: {{ firstFailedStep.actionType }} · {{ firstFailedStep.result }}</p>
+        <p v-if="firstFailedStep?.message">{{ t('orchestration.failureReason') }}: {{ firstFailedStep.message }}</p>
       </div>
-      <div class="review-actions">
-        <el-button link type="primary" size="small" @click="viewRunDetail(latestRunDetail)">
-          {{ t('orchestration.viewRunDetail') }}
-        </el-button>
-      </div>
+      <el-button link type="primary" @click="viewRunDetail(latestRunDetail)">{{ t('orchestration.viewRunDetail') }}</el-button>
     </div>
-
-    <!-- 最近执行记录 -->
-    <div v-if="recentRuns.length > 0" class="recent-runs">
+    <div v-if="recentRuns.length" class="recent-runs">
       <div class="section-title">{{ t('orchestration.recentRuns') }}</div>
       <el-table :data="recentRuns" size="small" border>
-        <el-table-column prop="id" :label="t('run.columns.runId')" width="100" />
-        <el-table-column prop="runType" :label="t('run.columns.type')" width="200" />
-        <el-table-column prop="status" :label="t('run.columns.status')" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getRunStatusType(row.status)" size="small">{{ row.status }}</el-tag>
-          </template>
+        <el-table-column prop="id" :label="t('run.columns.runId')" min-width="170" />
+        <el-table-column prop="runType" :label="t('run.columns.type')" min-width="170">
+          <template #default="{ row }">{{ t(runTypeKey(row.runType)) }}</template>
         </el-table-column>
-        <el-table-column prop="startedAt" :label="t('run.columns.start')" width="160" />
+        <el-table-column :label="t('run.columns.status')" width="150">
+          <template #default="{ row }"><el-tag :type="runStatusTagType(row.status)" size="small">{{ row.status }}</el-tag></template>
+        </el-table-column>
+        <el-table-column prop="startedAt" :label="t('run.columns.start')" min-width="170" />
         <el-table-column :label="t('common.actions')" width="100">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="viewRunDetail(row)">
-              {{ t('common.detail') }}
-            </el-button>
-          </template>
+          <template #default="{ row }"><el-button link type="primary" @click="viewRunDetail(row)">{{ t('common.detail') }}</el-button></template>
         </el-table-column>
       </el-table>
     </div>
-
     <RunPlanPreviewDialog
       v-model="savedPlanVisible"
       :window-id="windowId"
       :repo-ids="repoIds"
       :iteration-keys="iterationKeys"
-      :can-create="windowStatus !== 'CLOSED' && iterationCount > 0"
+      :fail-fast="failFast"
+      :can-create="canExecute"
       @created="loadRecentRuns"
     />
-
-    <!-- 执行计划预览对话框 -->
-    <el-dialog v-model="planDialogVisible" :title="t('orchestration.planPreview')" width="600px">
-      <div v-loading="planLoading" class="plan-content">
-        <div v-if="planData" class="plan-items">
-          <div v-for="(item, index) in planData.items" :key="index" class="plan-item">
-            <div class="plan-item-header">
-              <span class="item-order">{{ index + 1 }}</span>
-              <span class="item-repo">{{ item.repo }}</span>
-              <span class="item-iteration">{{ item.iterationKey }}</span>
-            </div>
-            <div class="plan-item-steps">
-              <el-tag v-for="step in item.steps" :key="step" size="small" class="step-tag">
-                {{ step }}
-              </el-tag>
-            </div>
-          </div>
-        </div>
-        <el-empty v-else :description="t('common.noData')" />
-      </div>
-    </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Document, Connection, Edit, CircleCheck, SuccessFilled, WarningFilled, CircleCloseFilled } from '@element-plus/icons-vue'
-import { releaseWindowApi, type CodeMergeResult } from '@/api/modules/releaseWindow'
+import { releaseWindowApi, type PlanItemView } from '@/api/modules/releaseWindow'
 import { runApi, type Run, type RunDetail } from '@/api/runApi'
+import { isFailedResult, runStatusTagType, runTypeKey } from '@/utils/runPresentation'
 import { handleError } from '@/utils/error'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import RunPlanPreviewDialog from './RunPlanPreviewDialog.vue'
@@ -251,470 +122,103 @@ const props = defineProps<{
   windowId: string
   windowKey: string
   windowStatus: string
-  iterationCount: number
-  repoCount: number
-  repoIds: string[]
-  iterationKeys: string[]
+  frozen: boolean
+  planItems: PlanItemView[]
+  scopeReady: boolean
 }>()
-
-const emit = defineEmits<{
-  (e: 'open-version-update'): void
-  (e: 'refresh'): void
-}>()
-
+const emit = defineEmits<{ (e: 'open-version-update'): void; (e: 'refresh'): void }>()
 const { t } = useI18n()
 const router = useRouter()
-
-// 状态
-const merging = ref(false)
+const selectedRepoId = ref('')
+const selectedIterationKeys = ref<string[]>([])
+const blockPolicy = ref<'FAIL_FAST' | 'CONTINUE_ON_BLOCK'>('FAIL_FAST')
+const failFast = computed(() => blockPolicy.value === 'FAIL_FAST')
 const orchestrating = ref(false)
-const planLoading = ref(false)
-const planDialogVisible = ref(false)
 const savedPlanVisible = ref(false)
-const mergeResults = ref<CodeMergeResult[]>([])
 const recentRuns = ref<Run[]>([])
 const latestRunDetail = ref<RunDetail>()
-const planData = ref<any>(null)
 
-// 计算属性
-const activeStep = computed(() => {
-  if (props.windowStatus === 'CLOSED') return 4
-  if (props.windowStatus === 'PUBLISHED') return 3
-  if (mergeResults.value.length > 0) return 2
-  if (props.iterationCount > 0) return 1
-  return 0
-})
+const availableRepoIds = computed(() => [...new Set(props.planItems.map(item => item.repoId))].sort())
+const repositoryPlan = computed(() => props.planItems.filter(item => !selectedRepoId.value || item.repoId === selectedRepoId.value))
+const availableIterationKeys = computed(() => [...new Set(repositoryPlan.value.map(item => item.iterationKey))])
+const selectedPlan = computed(() => repositoryPlan.value.filter(item => selectedIterationKeys.value.includes(item.iterationKey)))
+const repoIds = computed(() => [...new Set(selectedPlan.value.map(item => item.repoId))].sort())
+const iterationKeys = computed(() => [...new Set(selectedPlan.value.map(item => item.iterationKey))])
+const canExecute = computed(() => props.scopeReady && !props.frozen && !orchestrating.value
+  && ['DRAFT', 'PUBLISHED'].includes(props.windowStatus) && selectedPlan.value.length > 0)
+const failedItems = computed(() => latestRunDetail.value?.items.filter(item => isFailedResult(item.finalResult)) ?? [])
+const firstFailedItem = computed(() => failedItems.value[0])
+const firstFailedStep = computed(() => firstFailedItem.value?.steps.find(step => isFailedResult(step.result)))
 
-const statusText = computed(() => {
-  if (props.windowStatus === 'CLOSED') return t('orchestration.status.completed')
-  if (props.windowStatus === 'PUBLISHED') return t('orchestration.status.finishing')
-  if (props.windowStatus === 'DRAFT') return t('orchestration.status.preparing')
-  return t('orchestration.status.unknown')
-})
-
-const statusTagType = computed(() => {
-  if (props.windowStatus === 'CLOSED') return 'success'
-  if (props.windowStatus === 'PUBLISHED') return 'warning'
-  return 'info'
-})
-
-const canPreview = computed(() => props.iterationCount > 0)
-const canMerge = computed(() => props.windowStatus === 'DRAFT' && props.iterationCount > 0)
-const canUpdateVersion = computed(() => props.windowStatus === 'DRAFT' || props.windowStatus === 'PUBLISHED')
-const canOrchestrate = computed(() => props.windowStatus === 'PUBLISHED')
-const latestRunItemSummary = computed(() => {
-  const items = latestRunDetail.value?.items || []
-  return {
-    total: items.length,
-    failed: items.filter(item => isFailedResult(item.finalResult)).length
-  }
-})
-const firstFailedItem = computed(() => {
-  return (latestRunDetail.value?.items || []).find(item =>
-    isFailedResult(item.finalResult) || item.steps.some(step => isFailedResult(step.result))
-  )
-})
-const firstFailedStep = computed(() => {
-  const item = firstFailedItem.value
-  if (!item) return undefined
-  return item.steps.find(step => isFailedResult(step.result)) || item.steps[item.steps.length - 1]
+let selectionContext: string | undefined
+watch([() => props.windowId, selectedRepoId, availableIterationKeys, () => props.scopeReady],
+  ([windowId, repoId, keys, ready]) => {
+    if (!ready) return
+    const context = JSON.stringify([windowId, repoId])
+    // Refreshes may remove choices, but may never silently broaden the user's scope.
+    selectedIterationKeys.value = selectionContext === context
+      ? selectedIterationKeys.value.filter(key => keys.includes(key))
+      : [...keys]
+    selectionContext = context
+  }, { immediate: true })
+watch(() => props.windowId, () => {
+  selectedRepoId.value = ''
+  blockPolicy.value = 'FAIL_FAST'
+  latestRunDetail.value = undefined
+  recentRuns.value = []
 })
 
-// 方法
-async function handlePreviewPlan() {
-  planDialogVisible.value = true
-  planLoading.value = true
-  try {
-    planData.value = await releaseWindowApi.getDryPlan(props.windowId)
-  } catch (e) {
-    handleError(e)
-  } finally {
-    planLoading.value = false
-  }
+function requestScope() {
+  return { repoIds: [...repoIds.value], iterationKeys: [...iterationKeys.value], failFast: failFast.value }
 }
-
-async function handleMergeAll() {
-  try {
-    await ElMessageBox.confirm(
-      t('orchestration.confirmMergeAll'),
-      t('common.confirm'),
-      { type: 'warning' }
-    )
-    
-    merging.value = true
-    const results = await releaseWindowApi.mergeAll(props.windowId)
-    mergeResults.value = results
-    
-    const hasConflict = results.some(r => r.status === 'CONFLICT')
-    const hasFailed = results.some(r => r.status === 'FAILED')
-    
-    if (hasConflict) {
-      ElMessage.warning(t('releaseWindow.codeMerge.hasConflict'))
-    } else if (hasFailed) {
-      ElMessage.error(t('releaseWindow.codeMerge.hasFailed'))
-    } else {
-      ElMessage.success(t('releaseWindow.codeMerge.allSuccess'))
-    }
-    
-    loadRecentRuns()
-  } catch (e) {
-    if (e !== 'cancel') handleError(e)
-  } finally {
-    merging.value = false
-  }
-}
-
-function handleVersionUpdate() {
-  emit('open-version-update')
-}
-
 async function handleOrchestrate() {
+  if (!canExecute.value) return
+  const windowId = props.windowId
+  const request = requestScope()
   try {
-    await ElMessageBox.confirm(
-      t('orchestration.confirmOrchestrate'),
-      t('common.confirm'),
-      { type: 'warning' }
-    )
-    
-    orchestrating.value = true
-    const runId = await releaseWindowApi.orchestrate(props.windowId, {
-      repoIds: props.repoIds,
-      iterationKeys: props.iterationKeys,
-      failFast: false,
-      operator: 'frontend'
-    })
-    ElMessage.success(t('common.success'))
-
-    if (runId) {
-      await loadRunDetail(String(runId))
+    await ElMessageBox.confirm(t('orchestration.confirmIntegrate'), t('common.confirm'), { type: 'warning' })
+    if (!canExecute.value || props.windowId !== windowId || JSON.stringify(request) !== JSON.stringify(requestScope())) {
+      ElMessage.warning(t('orchestration.scopeChanged'))
+      return
     }
+    orchestrating.value = true
+    const runId = await releaseWindowApi.orchestrate(windowId, request)
+    if (props.windowId !== windowId) return
+    if (runId) latestRunDetail.value = await runApi.getRunById(String(runId))
     await loadRecentRuns()
     emit('refresh')
-  } catch (e) {
-    if (e !== 'cancel') handleError(e)
-  } finally {
-    orchestrating.value = false
-  }
+  } catch (error) {
+    if (error !== 'cancel') handleError(error)
+  } finally { orchestrating.value = false }
 }
-
 async function loadRecentRuns() {
+  const windowKey = props.windowKey
   try {
-    const result = await runApi.list({ page: 1, pageSize: 5, windowKey: props.windowKey })
+    const result = await runApi.list({ page: 1, pageSize: 5, windowKey })
+    if (props.windowKey !== windowKey) return
     recentRuns.value = result.list
     if (result.list[0]?.id) {
-      await loadRunDetail(result.list[0].id)
+      const detail = await runApi.getRunById(result.list[0].id)
+      if (props.windowKey === windowKey) latestRunDetail.value = detail
     }
-  } catch (e) {
-    // 静默失败
-    console.warn('Failed to load recent runs:', e)
-  }
+  } catch (error) { handleError(error) }
 }
-
-async function loadRunDetail(runId: string) {
-  latestRunDetail.value = await runApi.getRunById(runId)
-}
-
-function viewRunDetail(run: Run | RunDetail) {
-  router.push(`/runs/${run.id}`)
-}
-
-function getMergeStatusClass(status: string) {
-  if (status === 'SUCCESS') return 'status-success'
-  if (status === 'CONFLICT') return 'status-warning'
-  return 'status-error'
-}
-
-function getMergeStatusIcon(status: string) {
-  if (status === 'SUCCESS') return SuccessFilled
-  if (status === 'CONFLICT') return WarningFilled
-  return CircleCloseFilled
-}
-
-function getMergeTagType(status: string) {
-  if (status === 'SUCCESS') return 'success'
-  if (status === 'CONFLICT') return 'warning'
-  return 'danger'
-}
-
-function getRunStatusType(status: string) {
-  if (status === 'SUCCESS' || status === 'COMPLETED') return 'success'
-  if (status === 'RUNNING') return 'primary'
-  if (status === 'FAILED') return 'danger'
-  return 'info'
-}
-
-function isFailedResult(result?: string) {
-  return Boolean(result && (result.includes('FAILED') || result === 'MERGE_BLOCKED'))
-}
-
-onMounted(() => {
-  loadRecentRuns()
-})
+function viewRunDetail(run: Run | RunDetail) { router.push(`/runs/${run.id}`) }
+watch(() => props.windowKey, loadRecentRuns, { immediate: true })
 </script>
 
 <style scoped>
-.orchestration-panel {
-  margin-top: 16px;
-}
-
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.panel-header .title {
-  font-weight: 600;
-  font-size: 16px;
-}
-
-.orchestration-steps {
-  padding: 20px 0;
-  border-bottom: 1px solid #ebeef5;
-  margin-bottom: 20px;
-}
-
-.action-panels {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
-
-.action-panel {
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 16px;
-  background-color: #fafafa;
-  transition: all 0.3s;
-}
-
-.action-panel.active {
-  border-color: #409eff;
-  background-color: #ecf5ff;
-}
-
-.action-panel.completed {
-  border-color: #67c23a;
-  background-color: #f0f9eb;
-}
-
-.panel-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 500;
-  margin-bottom: 12px;
-  color: #303133;
-}
-
-.panel-content {
-  font-size: 13px;
-}
-
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.info-row .label {
-  color: #909399;
-}
-
-.info-row .value {
-  color: #303133;
-  font-weight: 500;
-}
-
-.panel-actions {
-  margin-top: 12px;
-  text-align: center;
-}
-
-.finish-action-list {
-  margin: 8px 0;
-  padding-left: 20px;
-  font-size: 12px;
-  color: #606266;
-}
-
-.finish-action-list li {
-  margin-bottom: 4px;
-}
-
-.merge-results {
-  margin-top: 12px;
-  max-height: 150px;
-  overflow-y: auto;
-}
-
-.merge-result-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 0;
-  border-bottom: 1px dashed #ebeef5;
-}
-
-.merge-result-item:last-child {
-  border-bottom: none;
-}
-
-.merge-result-item .repo-name {
-  flex: 1;
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.status-success {
-  color: #67c23a;
-}
-
-.status-warning {
-  color: #e6a23c;
-}
-
-.status-error {
-  color: #f56c6c;
-}
-
-.run-review-summary {
-  margin-top: 20px;
-  padding: 16px;
-  border: 1px solid #dcdfe6;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.run-review-summary.failed {
-  border-color: #fab6b6;
-  background: #fef0f0;
-}
-
-.run-review-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px 16px;
-}
-
-.review-field {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  min-width: 0;
-  font-size: 13px;
-}
-
-.review-field .label {
-  flex: none;
-  color: #606266;
-}
-
-.review-field .value {
-  min-width: 0;
-  color: #303133;
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
-
-.review-field .danger {
-  color: #c45656;
-}
-
-.failed-run-evidence {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid #f3d19e;
-}
-
-.failure-message .value {
-  font-weight: 400;
-}
-
-.review-actions {
-  margin-top: 12px;
-}
-
-.recent-runs {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid #ebeef5;
-}
-
-.section-title {
-  font-weight: 500;
-  margin-bottom: 12px;
-  color: #303133;
-}
-
-.plan-content {
-  min-height: 200px;
-}
-
-.plan-items {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.plan-item {
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
-  padding: 12px;
-}
-
-.plan-item-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.item-order {
-  width: 24px;
-  height: 24px;
-  background-color: #409eff;
-  color: #fff;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-}
-
-.item-repo {
-  font-weight: 500;
-}
-
-.item-iteration {
-  color: #909399;
-  font-size: 12px;
-}
-
-.plan-item-steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.step-tag {
-  font-size: 11px;
-}
-
-/* 响应式 */
-@media (max-width: 1200px) {
-  .action-panels {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 768px) {
-  .action-panels {
-    grid-template-columns: 1fr;
-  }
-}
+.orchestration-panel { margin-top: 16px; }
+.panel-header, .panel-actions, .scope-controls, .run-review-grid { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.panel-header { justify-content: space-between; }
+.direction { margin: 0 0 8px; }
+.notice, .scope-summary { color: var(--el-text-color-secondary); }
+.scope-controls { margin: 20px 0 16px; }
+.scope-controls label { display: flex; flex-direction: column; gap: 8px; min-width: 240px; }
+.scope-controls select { padding: 8px 12px; border: 1px solid var(--el-border-color); border-radius: 4px; color: var(--el-text-color-primary); background: var(--el-bg-color); }
+.iteration-scope { display: flex; flex-wrap: wrap; gap: 16px; border: 1px solid var(--el-border-color); border-radius: 4px; padding: 16px; }
+.iteration-scope label { display: flex; align-items: center; gap: 8px; }
+.run-review-summary, .recent-runs { margin-top: 24px; border-top: 1px solid var(--el-border-color-lighter); padding-top: 16px; }
+.section-title { font-weight: 600; margin-bottom: 12px; }
+.failed-run-evidence { color: var(--el-color-danger); overflow-wrap: anywhere; }
 </style>

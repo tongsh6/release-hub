@@ -24,6 +24,64 @@ export default {
     settings: '配置',
     groups: '分组设置'
   },
+  gitOperation: {
+    title: 'Git 操作证据',
+    readOnlyNotice: '核对只读取远端状态并保存证据，不会重新执行操作或解除写入阻断。',
+    blocked: '仓库存在待确认操作，后续写入已阻断。',
+    action: '操作',
+    state: '状态',
+    time: '记录时间',
+    operator: '操作者',
+    reason: '阻断原因',
+    sourceRun: '来源 Run 标识（业务回滚时记录可能未提交）',
+    timeline: '尝试记录',
+    observations: '核对记录',
+    reconcile: '核对远端证据',
+    pagination: '操作记录分页',
+    previous: '上一页',
+    next: '下一页',
+    latestObservations: '仅展示最近 50 次核对。',
+    actions: {
+      CREATE_BRANCH: '创建分支',
+      CREATE_REF: '创建引用',
+      CREATE_MR: '创建合并请求',
+      CREATE_PR: '创建拉取请求',
+      MERGE_MR: '合并 MR',
+      UPDATE_MR: '更新 MR/PR',
+      MERGE_BRANCH: '合并分支',
+      CREATE_TAG: '创建标签',
+      TRIGGER_PIPELINE: '触发流水线',
+      DISPATCH_EVENT: '派发事件',
+      UPDATE_FILE: '更新文件',
+      DELETE_BRANCH: '删除分支',
+    },
+    states: {
+      INTENT_RECORDED: '已记录意图',
+      SEND_STARTED: '请求已开始',
+      APPLIED: '远端已确认',
+      REJECTED: '远端已拒绝',
+      UNKNOWN: '结果未知',
+      NEEDS_REVIEW: '本地结果待复核',
+    },
+    events: {
+      INTENT_RECORDED: '已记录意图',
+      SEND_STARTED: '请求已开始',
+      APPLIED: '远端已确认',
+      REJECTED: '远端已拒绝',
+      UNKNOWN: '结果未知',
+      NEEDS_REVIEW: '本地结果待复核',
+      LOCAL_RESULT_UNCONFIRMED: '业务事务结果待确认',
+    },
+    observed: {
+      FOUND: '证据匹配',
+      MISMATCH: '证据不匹配',
+      NOT_FOUND: '未找到目标（不代表未执行）',
+      FORBIDDEN: '无访问权限',
+      UNAVAILABLE: '远端不可达',
+      INCOMPLETE: '证据不完整',
+      UNSUPPORTED: '暂不支持核对',
+    },
+  },
   common: {
     formEditUnsupported: '当前表单不支持编辑',
     formViewUnsupported: '当前表单不支持查看详情',
@@ -107,7 +165,7 @@ export default {
     updatedAt: '更新时间',
     publishedAt: '发布时间',
     publish: '发布',
-    close: '关闭',
+    close: '关闭并收尾',
     groupPath: '组织路径',
     parallelScope: {
       title: '同组并行发布窗口',
@@ -124,7 +182,7 @@ export default {
     configureTime: '配置时间',
     confirmFreeze: '确认冻结此发布窗口？',
     confirmPublish: '确认发布此发布窗口？',
-    confirmClose: '确认关闭此发布窗口？',
+    confirmClose: '确认关闭并收尾？将把 release 合并到各仓库默认分支，创建标签并归档分支。请在执行后复核收尾运行结果。',
     confirmDelete: '确认删除发布窗口 "{key}"？此操作不可恢复',
     deleteBlocked: '仅空草稿发布窗口可以删除',
     placeholder: {
@@ -141,8 +199,9 @@ export default {
     associatedIterations: '关联的迭代',
     noIterations: '暂无关联迭代',
     noRepos: '暂无关联仓库',
-    confirmDetach: '确认移除此迭代关联？',
+    confirmDetach: '确认移除此迭代关联？只调整后续编排范围，不回滚已合并内容。',
     details: '发布窗口详情',
+    detailsIncomplete: '部分名称或详情暂时无法加载；集成范围仍以服务端发布计划为准。',
     editTitle: '编辑发布窗口',
     validation: {
       nameRequired: '请输入名称',
@@ -189,25 +248,6 @@ export default {
       success: '版本更新已启动，执行记录 ID: {runId}',
       failed: '版本更新失败，请查看错误信息'
     },
-    codeMerge: {
-      button: '代码合并',
-      title: '代码合并',
-      info: '将 feature 分支的最新代码合并到 release 分支',
-      mergeAll: '合并所有迭代',
-      mergeSingle: '合并单个迭代',
-      selectIteration: '请选择迭代',
-      execute: '执行合并',
-      sourceBranch: '源分支',
-      targetBranch: '目标分支',
-      status: {
-        SUCCESS: '成功',
-        CONFLICT: '冲突',
-        FAILED: '失败'
-      },
-      allSuccess: '所有仓库合并成功',
-      hasConflict: '部分仓库存在冲突，请在 GitLab 中手动解决',
-      hasFailed: '部分仓库合并失败，请检查错误信息'
-    },
     report: {
       export: '导出报告',
       csv: 'CSV',
@@ -221,20 +261,13 @@ export default {
       plannedOrder: '计划顺序',
       featureBranch: 'Feature 分支',
       releaseBranch: 'Release 分支',
-      mergeStatus: '合并状态',
       exists: '存在',
       missing: '不存在',
       totalRepos: '仓库数',
       featureMissing: 'Feature 缺失',
       releaseMissing: 'Release 缺失',
-      mergedCount: '已合并',
-      conflictCount: '冲突数',
-      branchRisk: '{featureMissing} 个 Feature 分支缺失，{releaseMissing} 个 Release 分支缺失，{conflict} 个冲突',
-      mergeStatusText: {
-        MERGED: '已合并',
-        CONFLICT: '冲突',
-        PENDING: '待合并'
-      }
+      branchRisk: '{featureMissing} 个 Feature 分支缺失，{releaseMissing} 个 Release 分支缺失',
+      readFailed: '分支状态读取失败，请刷新重试'
     }
   },
   branchRule: {
@@ -495,6 +528,12 @@ export default {
     }
   },
   run: {
+    types: {
+      WINDOW_ORCHESTRATION: '窗口集成（feature → release）',
+      WINDOW_CLEANUP: '窗口收尾（release → 默认分支）',
+      ATTACH_ITERATION: '迭代集成',
+      VERSION_UPDATE: '版本更新'
+    },
     filters: {
       windowKey: '发布窗口标识',
       repo: '仓库',
@@ -504,22 +543,29 @@ export default {
     },
     columns: {
       runId: '运行ID',
+      plannedOrder: '计划顺序',
+      executedOrder: '执行顺序',
       type: '类型',
       status: '状态',
       start: '开始时间',
       end: '结束时间',
       operator: '操作人'
     },
-    retryConfirm: '确认重试此运行？',
+    retrySelectionConfirm: '确认重试选中的 {count} 个执行项？',
+    selectRetryItems: '请先勾选需要重试的执行项',
     noFailedItems: '没有失败的执行项',
     retrySuccess: '重试已启动',
-    retryFailedItems: '重试失败项',
+    retrySelectedItems: '重试所选项',
     actions: {
       detail: '详情',
       retry: '重试',
       export: '导出'
     },
     detail: {
+      needsReview: 'GitLab 操作结果尚未确定，请核对执行证据。此运行不能直接重试。',
+      cleanupReview: '请核对收尾运行的主干合并、标签与归档证据；当前不提供普通重试。',
+      retryFailFastHint: '当前为阻塞即停止策略。重试因阻塞跳过的执行项时，请同时勾选该仓库更早的失败或阻塞项。',
+      retryMissingPredecessors: '请先勾选同仓库前序失败或阻塞项：{items}',
       title: '运行',
       triplesTitle: '三元组（executedOrder）',
       exportJson: '导出 JSON',
@@ -567,6 +613,7 @@ export default {
     retrySelected: '批量重试',
     reasons: {
       conflict: '冲突',
+      pipelinePending: '流水线待完成',
       pipelineFailed: '流水线失败',
       approvalRequired: '需要审批',
       protectedBranch: '受保护分支',
@@ -872,33 +919,21 @@ export default {
     status: '计划预览',
   },
   orchestration: {
-    title: '发布编排',
-    status: {
-      preparing: '准备中',
-      finishing: '收尾中',
-      completed: '已完成',
-      unknown: '未知'
-    },
-    steps: {
-      prepare: '准备',
-      merge: '代码合并',
-      version: '版本更新',
-      finish: '收尾'
-    },
+    title: '窗口集成',
     iterationCount: '迭代数',
     repoCount: '仓库数',
-    previewPlan: '预览计划',
-    mergeDirection: '合并方向',
-    mergeAll: '合并所有',
-    versionAction: '版本操作',
-    updatePomGradle: '更新 POM/Gradle 版本',
-    finishActions: '收尾操作',
-    finishAction: {
-      mergeToMaster: '合并到 Master',
-      createTag: '创建标签',
-      archiveBranch: '归档分支'
-    },
-    executeFinish: '执行收尾',
+    mergeDirection: '集成方向',
+    repositoryScope: '仓库范围',
+    allRepositories: '窗口内所有仓库',
+    iterationScope: '选择迭代（按挂载顺序执行）',
+    blockPolicy: '阻塞处理',
+    failFast: '阻塞后停止该仓库（默认）',
+    continueOnBlock: '跳过阻塞项，继续该仓库后续迭代',
+    executeIntegration: '执行集成',
+    confirmIntegrate: '确认将所选迭代的 feature 分支集成到 release 分支？',
+    closeoutNotice: '此处执行 feature → release 集成。发布后的主干合并、标签及归档，请使用窗口“关闭并收尾”，并复核收尾运行结果。',
+    scopeUnavailable: '发布计划尚未完整加载，暂不能执行。请刷新后重试。',
+    scopeChanged: '确认期间范围或状态发生变化，请重新核对。',
     latestRun: '最新 Run 复核',
     runItems: '执行项',
     failedItems: '失败项',
@@ -906,9 +941,5 @@ export default {
     failedStep: '失败步骤',
     failureReason: '失败原因',
     viewRunDetail: '查看 Run 详情',
-    recentRuns: '最近执行记录',
-    planPreview: '执行计划预览',
-    confirmMergeAll: '确认合并所有迭代的代码到 release 分支？',
-    confirmOrchestrate: '确认执行收尾编排？将合并到 master 并创建标签'
-  }
-}
+    recentRuns: '最近执行记录'
+  }}

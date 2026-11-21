@@ -55,6 +55,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getRunDetail, getRunLogs, type VersionRunDetailDTO } from '@/api/modules/versionOps'
 import dayjs from 'dayjs'
+import { runStatusTagType, resultTagType } from '@/utils/runPresentation'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -72,31 +73,9 @@ const formatTime = (iso?: string | null) => {
   return dayjs(iso).format('YYYY-MM-DD HH:mm:ss')
 }
 
-const statusType = (s: string) => {
-  switch (s) {
-    case 'SUCCEEDED': return 'success'
-    case 'FAILED': return 'danger'
-    case 'RUNNING': return 'warning'
-    default: return 'info'
-  }
-}
-
-const statusLabel = (s: string) => {
-  switch (s) {
-    case 'SUCCEEDED': return t('versionOps.succeeded')
-    case 'FAILED': return t('versionOps.failed')
-    case 'RUNNING': return t('versionOps.running')
-    default: return s
-  }
-}
-
-const itemResultType = (r: string | null) => {
-  if (!r) return 'info'
-  if (r.includes('SUCCESS') || r === 'MERGED') return 'success'
-  if (r.includes('FAILED') || r.includes('BLOCKED')) return 'danger'
-  return 'warning'
-}
-
+const statusType = runStatusTagType
+const statusLabel = (status: string) => status
+const itemResultType = resultTagType
 onMounted(async () => {
   loading.value = true
   try {

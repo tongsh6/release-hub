@@ -17,7 +17,7 @@
           </div>
         </template>
         <el-descriptions :column="1" border>
-          <el-descriptions-item :label="t('run.columns.type')">{{ detail?.runType }}</el-descriptions-item>
+          <el-descriptions-item :label="t('run.columns.type')">{{ detail ? t(runTypeKey(detail.runType)) : '' }}</el-descriptions-item>
           <el-descriptions-item :label="t('run.columns.status')">{{ detail?.status }}</el-descriptions-item>
           <el-descriptions-item :label="t('run.columns.start')">{{ detail?.startedAt }}</el-descriptions-item>
           <el-descriptions-item :label="t('run.columns.end')">{{ detail?.finishedAt }}</el-descriptions-item>
@@ -35,11 +35,14 @@
           <el-table-column prop="repoId" :label="t('run.filters.repo')" />
           <el-table-column prop="windowKey" :label="t('run.filters.windowKey')" />
           <el-table-column prop="iterationKey" :label="t('run.filters.iterationKey')" />
+          <el-table-column prop="plannedOrder" :label="t('run.columns.plannedOrder')" width="95" />
+          <el-table-column prop="executedOrder" :label="t('run.columns.executedOrder')" width="95" />
           <el-table-column prop="finalResult" :label="t('run.columns.status')" />
           <el-table-column type="expand">
           <template #default="{ row }">
             <div style="padding: 10px">
-              <MRFirstTimeline :steps="row.steps" />
+              <EvidenceChainPanel :evidence="runItemEvidence(row)" />
+              <MRFirstTimeline v-if="detail?.runType === 'WINDOW_ORCHESTRATION' || detail?.runType === 'ATTACH_ITERATION'" :steps="row.steps" />
               <el-divider />
               <h4>{{ t('run.steps') }}</h4>
               <el-timeline>
@@ -47,7 +50,7 @@
                     v-for="(step, index) in row.steps"
                     :key="index"
                     :timestamp="step.startedAt"
-                    :type="step.result === 'SUCCESS' ? 'success' : step.result === 'FAILED' ? 'danger' : 'primary'"
+                    :type="resultTagType(step.result)"
                   >
                     {{ step.actionType }}: {{ step.result }} ({{ step.message }})
                   </el-timeline-item>
@@ -66,6 +69,8 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { runApi, type RunDetail } from '@/api/runApi'
 import MRFirstTimeline from '@/components/run/MRFirstTimeline.vue'
+import EvidenceChainPanel from '@/components/common/EvidenceChainPanel.vue'
+import { resultTagType, runTypeKey, runItemEvidence } from '@/utils/runPresentation'
 
 const { t } = useI18n()
 
