@@ -23,6 +23,8 @@ public interface RunPort {
     void createTasks(Run run);
     /** 按稳定 Run ID 游标发现当前协议的 PENDING 或无写入/结果证据的到期 RUNNING 候选；不授予执行资格。 */
     List<String> findTaskCandidateRunIds(String afterId, int limit);
+    /** 在结果事务内仅补一个已确认建分支结果；不访问 Git、不更换原 token 或期限。 */
+    boolean projectNextAppliedBranchTask(String runId);
     /** 锁内领取一个可执行任务；仅无 operation/Step 的完整到期领取可更换 token，既有写入不重派。 */
     Optional<TaskClaim> claimNextTask(String runId);
     /** 短事务内定向保存事实、投影、绑定和 guard 确认；不保存传入的整个 Run。 */

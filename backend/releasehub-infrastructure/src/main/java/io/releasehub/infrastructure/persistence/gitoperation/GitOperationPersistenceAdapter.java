@@ -1,5 +1,8 @@
 package io.releasehub.infrastructure.persistence.gitoperation;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import io.releasehub.infrastructure.git.GitLabGitBranchAdapter;
+import io.releasehub.domain.run.ActionType;
 import io.releasehub.application.gitoperation.*;
 import io.releasehub.application.run.RunPort;
 import io.releasehub.domain.run.RunItemResult;
@@ -124,6 +127,64 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
     }
 
 
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<String> confirmedAppliedBranchProject(RunPort.TaskClaim claim) {
+        if (claim == null || claim.actionType() != ActionType.ENSURE_FEATURE
+                && claim.actionType() != ActionType.ENSURE_RELEASE) return Optional.empty();
+        var task = lockTask(claim.fence(), true);
+        var run = em.find(RunJpaEntity.class, task.getRunId());
+        var item = em.find(RunItemJpaEntity.class, task.getTargetId());
+        if (item == null || !task.getRunId().equals(claim.runId()) || !item.getId().equals(claim.itemId())
+                || !item.getRun().getId().equals(claim.runId()) || !item.getRepoId().equals(claim.repo().value())
+                || !task.getTaskType().equals(claim.actionType().name())
+                || !run.getOperator().equals(claim.operator())) return Optional.empty();
+        var metadata = item.getMetadata();
+        if (!"GITLAB".equals(metadata.get("plan.gitProvider"))
+                || claim.actionType() == ActionType.ENSURE_FEATURE
+                && !java.util.Set.of("AUTO", "NAMED").contains(metadata.getOrDefault("plan.featureBranchMode", ""))) {
+            return Optional.empty();
+        }
+        var operations = em.createQuery("select o from GitOperationEntity o where o.taskId=:task", GitOperationEntity.class)
+                .setParameter("task", task.getId()).getResultList();
+        if (operations.size() != 1) return Optional.empty();
+        var op = operations.getFirst();
+        lock(op.getRemoteKey());
+        em.refresh(op, LockModeType.PESSIMISTIC_WRITE);
+        if (!"APPLIED".equals(op.getState()) || !"CREATE_BRANCH".equals(op.getAction())
+                || !"GITLAB".equals(op.getProvider()) || !claim.runId().equals(op.getRunId())
+                || !claim.repo().value().equals(op.getRepoId()) || !claim.operator().equals(op.getOperator())
+                || !claim.fence().claimToken().equals(op.getClaimToken())
+                || !claim.fence().claimToken().equals(op.getSessionId())
+                || op.getProjectId() == null || !op.getProjectId().matches("[1-9][0-9]*")
+                || op.getBaseUrl() == null || op.getBaseUrl().isBlank()
+                || !GitOperationJournalPort.configuredBaseUrl(op.getBaseUrl()).equals(op.getBaseUrl())
+                || !GitOperationJournalPort.remoteKey(op.getProvider(), op.getBaseUrl(), op.getProjectId())
+                        .equals(op.getRemoteKey())
+                || !consistentProject(claim.runId(), claim.repo().value(), op.getProjectId(), op.getRemoteKey())) {
+            return Optional.empty();
+        }
+        var guard = matchingGuard(op);
+        if (guard.isEmpty() || guard.get().getReason() != null) return Optional.empty();
+        JsonNode target = objectJson(op.getTargetJson());
+        String branch = metadata.get(claim.actionType() == ActionType.ENSURE_FEATURE
+                ? "plan.featureBranch" : "plan.releaseBranch");
+        if (target == null || !matches(target, "branch", branch)
+                || !matches(target, "sourceRef", metadata.get("plan.defaultBranch"))
+                || !target.path("ref").isTextual() || !validSha(target.path("ref").asText())) return Optional.empty();
+        var responses = em.createQuery("select e.evidenceJson from GitOperationEventEntity e "
+                        + "where e.operationId=:operation and e.attemptId=:attempt and e.sequence=2 and e.type='APPLIED'",
+                        String.class)
+                .setParameter("operation", op.getId()).setParameter("attempt", op.getAttemptId()).getResultList();
+        if (responses.size() != 1) return Optional.empty();
+        JsonNode evidence = objectJson(responses.getFirst());
+        if (evidence == null || !evidence.path("httpStatus").isIntegralNumber()
+                || !evidence.path("httpStatus").canConvertToInt()) return Optional.empty();
+        String sha = GitLabGitBranchAdapter.createdBranchSha(evidence.path("httpStatus").intValue(), evidence, branch);
+        if (sha == null || !target.path("ref").asText().equalsIgnoreCase(sha)) return Optional.empty();
+        return Optional.of(op.getProjectId());
+    }
+
     @Override @Transactional(propagation=Propagation.MANDATORY)
     public void acknowledgeTask(RunPort.TaskFence fence, RunItemResult result) {
         if (result == null) throw invalid();
@@ -213,10 +274,17 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         jdbc.query("select pg_advisory_xact_lock(hashtextextended('git-mapping-admission', 2))",(RowCallbackHandler) r->{});
     }
     private RepoExecutionGuardEntity ownGuard(GitOperationEntity op) {
-        lock(op.getRemoteKey()); var g=em.find(RepoExecutionGuardEntity.class,op.getRemoteKey(),LockModeType.PESSIMISTIC_WRITE);
-        if (g==null || !op.getSessionId().equals(g.getSessionId()) || op.getGeneration()!=g.getGeneration()
-                || !op.getId().equals(g.getOperationId())) throw stale();
-        return g;
+        return matchingGuard(op).orElseThrow(this::stale);
+    }
+
+    private Optional<RepoExecutionGuardEntity> matchingGuard(GitOperationEntity op) {
+        lock(op.getRemoteKey());
+        var guard = em.find(RepoExecutionGuardEntity.class, op.getRemoteKey(), LockModeType.PESSIMISTIC_WRITE);
+        if (guard == null || !op.getSessionId().equals(guard.getSessionId())
+                || op.getGeneration() != guard.getGeneration() || !op.getId().equals(guard.getOperationId())) {
+            return Optional.empty();
+        }
+        return Optional.of(guard);
     }
     private GitOperationEntity operationForUpdate(String id, boolean requireRunning) {
         var op=em.find(GitOperationEntity.class,id);
@@ -255,16 +323,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
                 || item == null || !task.getRunId().equals(item.getRun().getId())
                 || !item.getRepoId().equals(command.repoId())) throw stale();
         var metadata = item.getMetadata();
-        long changedReadIdentity = em.createQuery("select count(i) from RunItemJpaEntity i join i.metadata m "
-                + "where i.run.id=:run and i.repoId=:repo and key(m)='git.projectId' and value(m)<>:project", Long.class)
-                .setParameter("run", command.runId()).setParameter("repo", command.repoId())
-                .setParameter("project", command.projectId()).getSingleResult();
-        if (changedReadIdentity > 0) throw stale();
-        long changedProject = em.createQuery(
-                "select count(o) from GitOperationEntity o where o.runId=:run and o.repoId=:repo and o.remoteKey<>:remote", Long.class)
-                .setParameter("run", command.runId()).setParameter("repo", command.repoId())
-                .setParameter("remote", command.remoteKey()).getSingleResult();
-        if (changedProject > 0) throw stale();
+        if (!consistentProject(command.runId(), command.repoId(), command.projectId(), command.remoteKey())) throw stale();
         com.fasterxml.jackson.databind.JsonNode target;
         try { target = JSON.readTree(command.targetJson()); }
         catch (java.io.IOException | IllegalArgumentException error) { throw invalid(); }
@@ -286,6 +345,28 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
             default -> false;
         };
         if (!matches) throw invalid();
+    }
+
+    private boolean consistentProject(String runId, String repoId, String projectId, String remoteKey) {
+        long changedReadIdentity = em.createQuery("select count(i) from RunItemJpaEntity i join i.metadata m "
+                        + "where i.run.id=:run and i.repoId=:repo and key(m)='git.projectId' and value(m)<>:project", Long.class)
+                .setParameter("run", runId).setParameter("repo", repoId).setParameter("project", projectId).getSingleResult();
+        if (changedReadIdentity != 0) return false;
+        long changedProject = em.createQuery(
+                        "select count(o) from GitOperationEntity o where o.runId=:run and o.repoId=:repo and o.remoteKey<>:remote",
+                        Long.class)
+                .setParameter("run", runId).setParameter("repo", repoId).setParameter("remote", remoteKey).getSingleResult();
+        return changedProject == 0;
+    }
+
+    private JsonNode objectJson(String value) {
+        if (value == null) return null;
+        try {
+            JsonNode parsed = JSON.readTree(value);
+            return parsed != null && parsed.isObject() ? parsed : null;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+            return null;
+        }
     }
 
     private boolean branchCommand(Command command, com.fasterxml.jackson.databind.JsonNode target, String branch, String base) {

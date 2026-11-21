@@ -55,7 +55,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
-/** 独立 JVM + PostgreSQL/HTTP：原 PENDING 继续及无写意图 RUNNING 接管；不重放未知写。 */
+/** 独立 JVM + PostgreSQL/HTTP：原任务继续、无写意图接管及已确认建分支结果投影；不重放未知写。 */
 class RunTaskProcessKillIT {
     private static final String PROJECT_ID = "101";
     private static final String ITERATION = "ITER-C2-RESTART";
@@ -168,6 +168,117 @@ class RunTaskProcessKillIT {
         }
     }
 
+    @org.junit.jupiter.api.Test
+    @Timeout(180)
+    void restartingAfterAppliedBranchProjectsWithoutAnotherHttpRequest() throws Exception {
+        GitLabHttpFixture server = new GitLabHttpFixture();
+        Process first = null;
+        Process restarted = null;
+        try (var db = new PostgreSQLContainer<>("postgres:18.1")
+                .withDatabaseName("applied_branch_restart").withUsername("process_test").withPassword("isolated-process-db")) {
+            db.start();
+            server.start();
+            routes(server);
+            String root = "/api/v4/projects/" + PROJECT_ID;
+            String featurePath = root + "/repository/branches/" + URLEncoder.encode(SOURCE, StandardCharsets.UTF_8);
+            server.reply("GET", featurePath, 404, "{}");
+            server.reply("GET", root + "/repository/branches/main", 200,
+                    "{\"name\":\"main\",\"commit\":{\"id\":\"" + SOURCE_SHA + "\"}}");
+            server.reply("GET", root + "/repository/commits/main", 200, "{\"id\":\"" + SOURCE_SHA + "\"}");
+            server.reply("POST", root + "/repository/branches", 201,
+                    "{\"name\":\"" + SOURCE + "\",\"commit\":{\"id\":\"" + SOURCE_SHA + "\"}}");
+            String windowId = UUID.randomUUID().toString();
+            String repoId = UUID.randomUUID().toString();
+            Path marker = temporary.resolve("applied-checkpoint.txt");
+            Path projected = marker.resolveSibling("projection-committed.txt");
+            Path release = marker.resolveSibling("projection-release.txt");
+            Path receipt = temporary.resolve("applied-receipt.txt");
+            Path firstLog = temporary.resolve("applied-first.log");
+            first = launch("first-applied-branch", db, server, windowId, repoId, marker, receipt, firstLog);
+            awaitCheckpoint(first, marker, firstLog);
+
+            JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                    db.getJdbcUrl(), db.getUsername(), db.getPassword()));
+            String runId = Files.readString(marker).trim();
+            var before = tasks(jdbc, runId);
+            var originalItemIds = jdbc.queryForList("select id from run_item where run_id=? order by id", String.class, runId);
+            var operations = jdbc.queryForList("select * from git_operation where run_id=? order by id", runId);
+            var events = jdbc.queryForList("select e.* from git_operation_event e join git_operation o on o.id=e.operation_id "
+                    + "where o.run_id=? order by e.event_sequence", runId);
+            assertThat(before).extracting(row -> row.get("status")).containsExactly("RUNNING", "PENDING", "PENDING", "PENDING");
+            assertThat(originalItemIds).hasSize(1);
+            assertThat(operations).hasSize(1);
+            assertThat(operations.getFirst()).containsEntry("state", "APPLIED").containsEntry("action", "CREATE_BRANCH");
+            assertThat(events).hasSize(3);
+            assertThat(events.getLast()).containsEntry("event_type", "APPLIED");
+            String remoteKey = operations.getFirst().get("remote_key").toString();
+            var guard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", remoteKey);
+            assertThat(guard.get("operation_id")).isEqualTo(operations.getFirst().get("id"));
+            assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class,
+                    before.getFirst().get("id"))).isZero();
+            server.verify("POST", root + "/repository/branches", 1);
+            assertThat(server.writeCount()).isEqualTo(1);
+
+            long killedPid = first.pid();
+            first.destroyForcibly();
+            assertThat(first.waitFor(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(first.exitValue()).isNotZero();
+            server.reply("GET", featurePath, 200,
+                    "{\"name\":\"" + SOURCE + "\",\"commit\":{\"id\":\"" + SOURCE_SHA + "\"}}");
+            int requestsBeforeRestart = server.requests.size();
+            Instant recoveryStarted = Instant.now();
+            Path restartedLog = temporary.resolve("applied-restarted.log");
+            restarted = launch("resume-applied-branch", db, server, windowId, repoId, marker, receipt, restartedLog);
+            awaitCheckpoint(restarted, projected, restartedLog);
+
+            // The proxy pauses after the projection transaction commits and before the next task can run.
+            assertThat(Files.readString(projected).trim()).isEqualTo(runId);
+            assertThat(server.requests).hasSize(requestsBeforeRestart);
+            var after = tasks(jdbc, runId);
+            assertThat(after.getFirst()).containsEntry("status", "COMPLETED");
+            for (String field : List.of("id", "task_type", "claim_token", "started_at", "claim_expires_at")) {
+                assertThat(after.getFirst().get(field)).as("preserve original task %s", field)
+                        .isEqualTo(before.getFirst().get(field));
+            }
+            assertThat(after.subList(1, 4)).isEqualTo(before.subList(1, 4));
+            assertThat(jdbc.queryForList("select id from run_item where run_id=? order by id", String.class, runId))
+                    .isEqualTo(originalItemIds);
+            assertThat(jdbc.queryForList("select * from git_operation where run_id=? order by id", runId)).isEqualTo(operations);
+            assertThat(jdbc.queryForList("select e.* from git_operation_event e join git_operation o on o.id=e.operation_id "
+                    + "where o.run_id=? order by e.event_sequence", runId)).isEqualTo(events);
+            var step = jdbc.queryForMap("select * from run_step where task_id=?", before.getFirst().get("id"));
+            assertThat(step).containsEntry("action_type", "ENSURE_FEATURE").containsEntry("result", "CREATED");
+            Instant stepStart = jdbc.queryForObject("select start_at from run_step where task_id=?",
+                    java.sql.Timestamp.class, before.getFirst().get("id")).toInstant();
+            assertThat(stepStart).isAfterOrEqualTo(recoveryStarted);
+            assertThat(metadata(jdbc, runId)).containsEntry("git.projectId", PROJECT_ID);
+            var releasedGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", remoteKey);
+            assertThat(releasedGuard).containsEntry("generation", guard.get("generation"))
+                    .containsEntry("session_id", null).containsEntry("operation_id", null).containsEntry("reason", null);
+
+            Files.writeString(release, "continue");
+            assertThat(restarted.waitFor(55, TimeUnit.SECONDS))
+                    .withFailMessage("Resume JVM did not finish after branch projection: %s", tail(restartedLog)).isTrue();
+            assertThat(restarted.exitValue()).withFailMessage("Resume JVM failed: %s", tail(restartedLog)).isZero();
+            assertThat(Files.readString(receipt).trim()).isEqualTo(runId);
+            assertThat(tasks(jdbc, runId)).extracting(row -> row.get("status"))
+                    .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED");
+            assertThat(jdbc.queryForObject("select execution_status from run where id=?", String.class, runId)).isEqualTo("DONE");
+            assertThat(jdbc.queryForObject("select count(*) from run", Integer.class)).isEqualTo(1);
+            server.verify("POST", root + "/repository/branches", 1);
+            server.verify("POST", root + "/merge_requests", 1);
+            server.verify("PUT", root + "/merge_requests/7/merge", 1);
+            assertThat(server.writeCount()).isEqualTo(3);
+            System.out.printf("PROCESS_APPLIED_BRANCH_RESUME run=%s killedPid=%d exit=%d resumedPid=%d "
+                    + "projectionHttp=0 branchPost=1 mrPost=1 mergePut=1 preservedToken=true preservedEvents=3%n",
+                    runId, killedPid, first.exitValue(), restarted.pid());
+        } finally {
+            stopOwnedProcess(first);
+            stopOwnedProcess(restarted);
+            server.stop();
+        }
+    }
+
     private Process launch(String mode, PostgreSQLContainer<?> db, GitLabHttpFixture server,
                            String windowId, String repoId, Path marker, Path receipt, Path log) throws Exception {
         String classpath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
@@ -183,8 +294,8 @@ class RunTaskProcessKillIT {
     private static void awaitCheckpoint(Process process, Path marker, Path log) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(55);
         while (!Files.exists(marker)) {
-            if (!process.isAlive()) fail("First JVM exited before the committed MR checkpoint: " + tail(log));
-            if (System.nanoTime() >= deadline) fail("MR checkpoint was not committed: " + tail(log));
+            if (!process.isAlive()) fail("JVM exited before the requested checkpoint: " + tail(log));
+            if (System.nanoTime() >= deadline) fail("Requested checkpoint was not committed: " + tail(log));
             Thread.sleep(100);
         }
     }
@@ -243,13 +354,23 @@ class RunTaskProcessKillIT {
         static BeanPostProcessor checkpointPause(Environment environment) {
             boolean pauseAfterMr = environment.getProperty("releasehub.fixture.pause-after-mr", Boolean.class, false);
             boolean pauseAfterClaim = environment.getProperty("releasehub.fixture.pause-after-claim", Boolean.class, false);
+            boolean pauseBeforeBranchCompletion = environment.getProperty("releasehub.fixture.pause-before-branch-completion", Boolean.class, false);
+            boolean pauseAfterBranchProjection = environment.getProperty("releasehub.fixture.pause-after-branch-projection", Boolean.class, false);
             Path marker = Path.of(environment.getRequiredProperty("releasehub.fixture.checkpoint-file"));
             return new BeanPostProcessor() {
                 @Override
                 public Object postProcessAfterInitialization(Object bean, String beanName) {
-                    if (!(pauseAfterMr || pauseAfterClaim) || !(bean instanceof RunPort original)) return bean;
+                    if (!(pauseAfterMr || pauseAfterClaim || pauseBeforeBranchCompletion || pauseAfterBranchProjection)
+                            || !(bean instanceof RunPort original)) return bean;
                     return Proxy.newProxyInstance(RunPort.class.getClassLoader(), new Class<?>[]{RunPort.class},
                             (proxy, method, arguments) -> {
+                                if (pauseBeforeBranchCompletion && method.getName().equals("completeTask")
+                                        && arguments[0] instanceof RunPort.TaskClaim task
+                                        && task.actionType() == ActionType.ENSURE_FEATURE) {
+                                    Files.writeString(marker, task.runId());
+                                    new CountDownLatch(1).await();
+                                    throw new IllegalStateException("Applied branch pause unexpectedly ended");
+                                }
                                 if (pauseAfterMr && method.getName().equals("claimNextTask")) {
                                     String runId = (String) arguments[0];
                                     boolean committed = original.findTasks(runId).stream().anyMatch(task ->
@@ -272,6 +393,11 @@ class RunTaskProcessKillIT {
                                     new CountDownLatch(1).await();
                                     throw new IllegalStateException("Claim pause unexpectedly ended");
                                 }
+                                if (pauseAfterBranchProjection && method.getName().equals("projectNextAppliedBranchTask")
+                                        && Boolean.TRUE.equals(result)) {
+                                    Files.writeString(marker.resolveSibling("projection-committed.txt"), (String) arguments[0]);
+                                    while (!Files.exists(marker.resolveSibling("projection-release.txt"))) Thread.sleep(25);
+                                }
                                 return result;
                             });
                 }
@@ -283,7 +409,9 @@ class RunTaskProcessKillIT {
         private Child() {}
         public static void main(String[] args) throws Exception {
             boolean claimedBeforeCrash = "first-claimed".equals(args[0]);
-            boolean first = "first".equals(args[0]) || claimedBeforeCrash;
+            boolean appliedBranchBeforeCrash = "first-applied-branch".equals(args[0]);
+            boolean branchProjectionResume = "resume-applied-branch".equals(args[0]);
+            boolean first = "first".equals(args[0]) || claimedBeforeCrash || appliedBranchBeforeCrash;
             Path marker = Path.of(args[1]);
             Path receipt = Path.of(args[2]);
             try (ConfigurableApplicationContext context = new SpringApplicationBuilder(
@@ -292,8 +420,10 @@ class RunTaskProcessKillIT {
                             "--releasehub.run.worker.enabled=true", "--releasehub.run.worker.parallelism=1",
                             "--releasehub.run.worker.queue-capacity=0", "--releasehub.run.worker.scan-delay-ms=25",
                             "--releasehub.run.worker.claim-lease-ms=2000",
-                            "--releasehub.fixture.pause-after-mr=" + (first && !claimedBeforeCrash),
+                            "--releasehub.fixture.pause-after-mr=" + (first && !claimedBeforeCrash && !appliedBranchBeforeCrash),
                             "--releasehub.fixture.pause-after-claim=" + claimedBeforeCrash,
+                            "--releasehub.fixture.pause-before-branch-completion=" + appliedBranchBeforeCrash,
+                            "--releasehub.fixture.pause-after-branch-projection=" + branchProjectionResume,
                             "--releasehub.fixture.checkpoint-file=" + marker,
                             "--spring.datasource.url=" + environment("RH_C2_DB_URL"),
                             "--spring.datasource.username=" + environment("RH_C2_DB_USER"),
@@ -318,7 +448,7 @@ class RunTaskProcessKillIT {
                     Thread.sleep(50);
                 }
                 assertThat(context.getBean(GitOperationJournalPort.class).list(repoId, 0, 10))
-                        .hasSize(2).allMatch(operation -> operation.state().equals("APPLIED") && !operation.blocked());
+                        .hasSize(branchProjectionResume ? 3 : 2).allMatch(operation -> operation.state().equals("APPLIED") && !operation.blocked());
                 var run = service.startOrchestrate(windowId, List.of(repoId), List.of(ITERATION), true, ACTOR, INTENT);
                 assertThat(run.getId().value()).isEqualTo(originalRunId);
                 Files.writeString(receipt, run.getId().value());

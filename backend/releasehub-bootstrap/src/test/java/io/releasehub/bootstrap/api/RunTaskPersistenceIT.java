@@ -1,6 +1,8 @@
 package io.releasehub.bootstrap.api;
 
 import io.releasehub.application.gitlab.GitLabPort;
+import io.releasehub.application.gitoperation.GitOperationJournalPort;
+import io.releasehub.application.gitoperation.GitWriteResult;
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.iteration.IterationRepoPort;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
@@ -8,6 +10,8 @@ import io.releasehub.application.port.out.GitLabFilePort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.run.RunPort;
+import io.releasehub.application.run.RunAppService;
+import io.releasehub.application.settings.SettingsPort;
 import io.releasehub.application.run.plan.RunPlanAppService;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
@@ -78,6 +82,10 @@ class RunTaskPersistenceIT {
     @Autowired WindowIterationPort bindings;
     @Autowired RunPlanAppService plans;
     @Autowired RunPort runs;
+    @Autowired RunAppService taskService;
+    @Autowired GitOperationJournalPort journal;
+    @Autowired SettingsPort settings;
+    @Autowired com.fasterxml.jackson.databind.ObjectMapper json;
     @org.springframework.boot.test.mock.mockito.SpyBean java.time.Clock clock;
     @MockBean GitLabPort gitLab;
     @MockBean GitLabFilePort gitFiles;
@@ -747,6 +755,353 @@ class RunTaskPersistenceIT {
         assertThat(windows.findById(ReleaseWindowId.of(windowId)).orElseThrow().getStatus())
                 .isEqualTo(ReleaseWindowStatus.CLOSED);
         verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = ActionType.class, names = {"ENSURE_FEATURE", "ENSURE_RELEASE"})
+    void appliedBranchIsProjectedBySingleStepWithoutGitAndWithoutRewritingHistory(ActionType action) {
+        Instant firstStart = Instant.parse("2024-01-01T00:00:00Z");
+        Instant httpAt = Instant.parse("2024-02-01T00:00:00Z");
+        Instant projectionAt = Instant.parse("2023-12-01T00:00:00Z");
+        org.mockito.Mockito.doReturn(firstStart).when(clock).instant();
+        var claim = claimBranchTask(action);
+        org.mockito.Mockito.doReturn(httpAt).when(clock).instant();
+        String operationId = recordAppliedBranch(claim);
+        expireClaim(claim);
+        Instant expiry = claimExpiry(claim);
+        var operationBefore = jdbc.queryForMap("select * from git_operation where id=?", operationId);
+        var eventsBefore = jdbc.queryForList(
+                "select * from git_operation_event where operation_id=? order by event_sequence", operationId);
+        var prefixBefore = jdbc.queryForList(
+                "select * from run_step where run_item_id=? and task_id<>? order by action_type",
+                claim.itemId(), claim.fence().taskId());
+        var itemBefore = runs.findById(claim.runId()).orElseThrow().getItems().getFirst();
+        org.mockito.Mockito.doReturn(projectionAt).when(clock).instant();
+
+        assertThat(taskService.executeNextTask(claim.runId())).isTrue();
+
+        var task = runs.findTasks(claim.runId()).stream()
+                .filter(value -> value.taskId().equals(claim.fence().taskId())).findFirst().orElseThrow();
+        assertThat(task.status()).isEqualTo("COMPLETED");
+        assertThat(task.startedAt()).isEqualTo(firstStart);
+        assertThat(claimExpiry(claim)).isEqualTo(expiry);
+        assertThat(jdbc.queryForObject("select claim_token from run_task where id=?", String.class,
+                claim.fence().taskId())).isEqualTo(claim.fence().claimToken());
+        var restored = runs.findById(claim.runId()).orElseThrow();
+        assertThat(restored.getExecutionStatus()).isEqualTo(RunExecutionStatus.RUNNING);
+        var item = restored.getItems().getFirst();
+        assertThat(item.getId()).isEqualTo(itemBefore.getId());
+        assertThat(item.getExecutedOrder()).isEqualTo(itemBefore.getExecutedOrder());
+        assertThat(item.getMetadata()).containsAllEntriesOf(itemBefore.getMetadata())
+                .containsEntry("git.projectId", projectionProjectId());
+        assertThat(item.getSteps().stream().filter(value -> value.actionType() == action))
+                .singleElement().satisfies(value -> {
+                    assertThat(value.result()).isEqualTo(RunItemResult.CREATED);
+                    assertThat(value.startAt()).isEqualTo(projectionAt);
+                    assertThat(value.endAt()).isEqualTo(projectionAt);
+                });
+        assertThat(jdbc.queryForList("select * from run_step where run_item_id=? and task_id<>? order by action_type",
+                claim.itemId(), claim.fence().taskId())).isEqualTo(prefixBefore);
+        assertThat(runs.findTasks(claim.runId()).stream()
+                .filter(value -> value.taskOrder() > task.taskOrder()).map(RunPort.TaskView::status))
+                .containsOnly("PENDING");
+        assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).isEqualTo(operationBefore);
+        assertThat(jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence",
+                operationId)).isEqualTo(eventsBefore);
+        var guard = projectionGuard(operationId);
+        assertThat(guard).containsEntry("session_id", null).containsEntry("operation_id", null)
+                .containsEntry("reason", null).containsEntry("generation", operationBefore.get("generation"));
+        if (action == ActionType.ENSURE_RELEASE) {
+            var binding = bindings.findByWindowIdAndIterationKey(ReleaseWindowId.of(windowId),
+                    IterationKey.of(firstIteration)).orElseThrow();
+            assertThat(binding.getReleaseBranch()).isEqualTo(claim.metadata().get("plan.releaseBranch"));
+            assertThat(binding.getBranchCreated()).isTrue();
+        }
+        assertThatThrownBy(() -> runs.completeTask(claim, step(claim, RunItemResult.CREATED),
+                Map.of("git.projectId", projectionProjectId()))).isInstanceOf(BusinessException.class);
+        assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class,
+                claim.fence().taskId())).isEqualTo(1);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void appliedBranchProjectionRollsBackTogetherWithItsGuard() {
+        var claim = claimBranchTask(ActionType.ENSURE_RELEASE);
+        String operationId = recordAppliedBranch(claim);
+        expireClaim(claim);
+        var before = branchProjectionFacts(claim, operationId);
+
+        Boolean projected = new TransactionTemplate(transactions).execute(tx -> {
+            boolean progressed = taskService.executeNextTask(claim.runId());
+            if (progressed) {
+                assertThat(projectionGuard(operationId)).containsEntry("session_id", null)
+                        .containsEntry("operation_id", null);
+                assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class,
+                        claim.fence().taskId())).isEqualTo(1);
+            }
+            tx.setRollbackOnly();
+            return progressed;
+        });
+
+        assertThat(projected).isTrue();
+        assertThat(branchProjectionFacts(claim, operationId)).isEqualTo(before);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "MISSING_PROOF", "LEGACY_SUMMARY", "STRING_STATUS", "WRONG_COMMIT_ALIAS", "WRONG_ATTEMPT", "WRONG_GUARD",
+            "WRONG_SOURCE_REF", "WRONG_FROZEN_SHA", "WRONG_BRANCH", "NON_BRANCH_ACTION",
+            "PERSISTED_PROJECT_MISMATCH", "NOT_EXPIRED", "MISSING_FIRST_START", "MISSING_ORDER", "CURRENT_STEP"
+    })
+    void appliedBranchProjectionRejectsUnprovenOrMismatchedFacts(String contradiction) {
+        var claim = claimBranchTask(ActionType.ENSURE_FEATURE);
+        String operationId = recordAppliedBranch(claim);
+        expireClaim(claim);
+        String branch = claim.metadata().get("plan.featureBranch");
+        String sha = "a".repeat(40);
+        int changed = switch (contradiction) {
+            case "MISSING_PROOF" -> jdbc.update(
+                    "delete from git_operation_event where operation_id=? and event_sequence=2", operationId);
+            case "LEGACY_SUMMARY" -> jdbc.update(
+                    "update git_operation_event set evidence_json=? where operation_id=? and event_sequence=2",
+                    json.valueToTree(Map.of("httpStatus", 201, "name", branch, "commitSha", sha)).toString(), operationId);
+            case "STRING_STATUS" -> jdbc.update(
+                    "update git_operation_event set evidence_json=? where operation_id=? and event_sequence=2",
+                    json.valueToTree(Map.of("httpStatus", "201", "name", branch, "commit", Map.of("id", sha))).toString(),
+                    operationId);
+            case "WRONG_COMMIT_ALIAS" -> jdbc.update(
+                    "update git_operation_event set evidence_json=? where operation_id=? and event_sequence=2",
+                    json.valueToTree(Map.of("httpStatus", 201, "name", branch,
+                            "commit", Map.of("id", "b".repeat(40), "sha", sha), "object", Map.of("id", sha))).toString(),
+                    operationId);
+            case "WRONG_ATTEMPT" -> jdbc.update(
+                    "update git_operation_event set attempt_id=? where operation_id=? and event_sequence=2",
+                    UUID.randomUUID().toString(), operationId);
+            case "WRONG_GUARD" -> jdbc.update(
+                    "update repo_execution_guard set generation=generation+1 where operation_id=?", operationId);
+            case "WRONG_SOURCE_REF" -> jdbc.update("update git_operation set target_json=? where id=?",
+                    branchTarget(branch, "different-base", sha), operationId);
+            case "WRONG_FROZEN_SHA" -> jdbc.update("update git_operation set target_json=? where id=?",
+                    branchTarget(branch, claim.metadata().get("plan.defaultBranch"), "b".repeat(40)), operationId);
+            case "WRONG_BRANCH" -> {
+                String different = branch + "-different";
+                assertThat(jdbc.update(
+                        "update git_operation_event set evidence_json=? where operation_id=? and event_sequence=2",
+                        branchProof(different, sha), operationId)).isEqualTo(1);
+                yield jdbc.update("update git_operation set target_json=? where id=?",
+                        branchTarget(different, claim.metadata().get("plan.defaultBranch"), sha), operationId);
+            }
+            case "NON_BRANCH_ACTION" -> jdbc.update(
+                    "update git_operation set action='CREATE_MR' where id=?", operationId);
+            case "PERSISTED_PROJECT_MISMATCH" -> jdbc.update(
+                    "insert into run_item_metadata(run_item_id,metadata_key,metadata_value) values (?,'git.projectId',?)",
+                    claim.itemId(), projectionProjectId() + "1");
+            case "NOT_EXPIRED" -> jdbc.update(
+                    "update run_task set claim_expires_at=clock_timestamp()+interval '1 hour' where id=?",
+                    claim.fence().taskId());
+            case "MISSING_FIRST_START" -> jdbc.update(
+                    "update run_task set started_at=null where id=?", claim.fence().taskId());
+            case "MISSING_ORDER" -> jdbc.update(
+                    "update run_item set executed_order=0 where id=?", claim.itemId());
+            case "CURRENT_STEP" -> jdbc.update(
+                    "insert into run_step(run_item_id,action_type,result,start_at,end_at,message,task_id) values (?,?,?,?,?,?,?)",
+                    claim.itemId(), claim.actionType().name(), RunItemResult.CREATED.name(),
+                    java.sql.Timestamp.from(claim.startedAt()), java.sql.Timestamp.from(claim.startedAt()),
+                    "isolated pre-existing projection", claim.fence().taskId());
+            default -> throw new AssertionError(contradiction);
+        };
+        assertThat(changed).isEqualTo(1);
+        var before = branchProjectionFacts(claim, operationId);
+
+        assertThat(taskService.executeNextTask(claim.runId())).isFalse();
+
+        assertThat(branchProjectionFacts(claim, operationId)).isEqualTo(before);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void unknownOwnerResultCannotBeReplacedByAppliedBranchProjection() {
+        var claim = claimBranchTask(ActionType.ENSURE_FEATURE);
+        String operationId = recordAppliedBranch(claim);
+        expireClaim(claim);
+        runs.completeTask(claim, step(claim, RunItemResult.UNKNOWN),
+                Map.of("git.projectId", projectionProjectId(), "git.blockReason", "UNKNOWN"));
+        var before = branchProjectionFacts(claim, operationId);
+        assertThat(jdbc.queryForObject("select state from git_operation where id=?", String.class, operationId))
+                .isEqualTo("NEEDS_REVIEW");
+
+        assertThat(taskService.executeNextTask(claim.runId())).isFalse();
+
+        assertThat(branchProjectionFacts(claim, operationId)).isEqualTo(before);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void twoProjectionWorkersCommitExactlyOneBranchResult() throws Exception {
+        var claim = claimBranchTask(ActionType.ENSURE_FEATURE);
+        String operationId = recordAppliedBranch(claim);
+        expireClaim(claim);
+        Instant expiry = claimExpiry(claim);
+        var operationBefore = jdbc.queryForMap("select * from git_operation where id=?", operationId);
+        var eventsBefore = jdbc.queryForList(
+                "select * from git_operation_event where operation_id=? order by event_sequence", operationId);
+        var start = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var first = pool.submit(() -> {
+                assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+                return runs.projectNextAppliedBranchTask(claim.runId());
+            });
+            var second = pool.submit(() -> {
+                assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+                return runs.projectNextAppliedBranchTask(claim.runId());
+            });
+            start.countDown();
+            assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(true, false);
+        }
+        assertThat(runs.findTasks(claim.runId()).stream().map(RunPort.TaskView::status))
+                .containsExactly("COMPLETED", "PENDING", "PENDING", "PENDING");
+        assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class,
+                claim.fence().taskId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select claim_token from run_task where id=?", String.class,
+                claim.fence().taskId())).isEqualTo(claim.fence().claimToken());
+        assertThat(claimExpiry(claim)).isEqualTo(expiry);
+        assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).isEqualTo(operationBefore);
+        assertThat(jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence",
+                operationId)).isEqualTo(eventsBefore);
+        var after = branchProjectionFacts(claim, operationId);
+        assertThat(runs.projectNextAppliedBranchTask(claim.runId())).isFalse();
+        assertThat(branchProjectionFacts(claim, operationId)).isEqualTo(after);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void successfulOwnerWinsBeforeBranchProjectionAndKeepsItsResult() {
+        var claim = claimBranchTask(ActionType.ENSURE_FEATURE);
+        String operationId = recordAppliedBranch(claim);
+        expireClaim(claim);
+        var ownerStep = new RunStep(claim.actionType(), RunItemResult.CREATED,
+                claim.startedAt(), Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS), "original owner result");
+        runs.completeTask(claim, ownerStep, Map.of("git.projectId", projectionProjectId()));
+        var before = branchProjectionFacts(claim, operationId);
+
+        assertThat(runs.projectNextAppliedBranchTask(claim.runId())).isFalse();
+
+        assertThat(branchProjectionFacts(claim, operationId)).isEqualTo(before);
+        assertThat(runs.findById(claim.runId()).orElseThrow().getItems().getFirst().getSteps())
+                .containsExactly(ownerStep);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void appliedBranchProofRequiresTheExistingResultTransactionAndDoesNotChangeFacts() {
+        var claim = claimBranchTask(ActionType.ENSURE_FEATURE);
+        String operationId = recordAppliedBranch(claim);
+        expireClaim(claim);
+        var before = branchProjectionFacts(claim, operationId);
+
+        assertThatThrownBy(() -> journal.confirmedAppliedBranchProject(claim))
+                .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
+        var project = new TransactionTemplate(transactions).execute(tx -> journal.confirmedAppliedBranchProject(claim));
+
+        assertThat(project).contains(projectionProjectId());
+        assertThat(branchProjectionFacts(claim, operationId)).isEqualTo(before);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void anotherItemPersistedProjectCannotBeIgnoredByBranchProjection() {
+        var run = admit(List.of(firstRepo), List.of(firstIteration, secondIteration), true);
+        var claim = runs.claimNextTask(run.getId().value()).orElseThrow();
+        String operationId = recordAppliedBranch(claim);
+        expireClaim(claim);
+        String otherItem = run.getItems().stream().map(item -> item.getId().value())
+                .filter(id -> !id.equals(claim.itemId())).findFirst().orElseThrow();
+        assertThat(jdbc.update(
+                "insert into run_item_metadata(run_item_id,metadata_key,metadata_value) values (?,'git.projectId',?)",
+                otherItem, projectionProjectId() + "1")).isEqualTo(1);
+        var before = branchProjectionFacts(claim, operationId);
+        var otherBefore = jdbc.queryForList(
+                "select * from run_item_metadata where run_item_id=? order by metadata_key", otherItem);
+
+        assertThat(taskService.executeNextTask(claim.runId())).isFalse();
+
+        assertThat(branchProjectionFacts(claim, operationId)).isEqualTo(before);
+        assertThat(jdbc.queryForList("select * from run_item_metadata where run_item_id=? order by metadata_key",
+                otherItem)).isEqualTo(otherBefore);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    private RunPort.TaskClaim claimBranchTask(ActionType action) {
+        var run = admit(List.of(firstRepo), List.of(firstIteration), true);
+        var claim = runs.claimNextTask(run.getId().value()).orElseThrow();
+        if (action == ActionType.ENSURE_RELEASE) {
+            runs.completeTask(claim, step(claim, RunItemResult.ALREADY_EXISTS),
+                    Map.of("git.projectId", projectionProjectId()));
+            claim = runs.claimNextTask(run.getId().value()).orElseThrow();
+            // The frozen plan survives before the release binding's result projection is committed.
+            assertThat(jdbc.update(
+                    "update window_iteration set release_branch=null,branch_created=false where window_id=? and iteration_key=?",
+                    windowId, firstIteration)).isEqualTo(1);
+        }
+        assertThat(claim.actionType()).isEqualTo(action);
+        return claim;
+    }
+
+    private String recordAppliedBranch(RunPort.TaskClaim claim) {
+        String baseUrl = "https://gitlab.invalid";
+        settings.saveGitLab(new SettingsPort.SettingsGitLab(baseUrl, "isolated-projection-token"));
+        var repo = repositories.findById(claim.repo()).orElseThrow();
+        String branch = claim.metadata().get(claim.actionType() == ActionType.ENSURE_FEATURE
+                ? "plan.featureBranch" : "plan.releaseBranch");
+        String sha = "a".repeat(40);
+        String target = branchTarget(branch, claim.metadata().get("plan.defaultBranch"), sha);
+        String operationId = journal.begin(new GitOperationJournalPort.Command(UUID.randomUUID().toString(),
+                claim.repo().value(), GitOperationJournalPort.mappingHash("GITLAB", repo.getCloneUrl()),
+                GitOperationJournalPort.remoteKey("GITLAB", baseUrl, projectionProjectId()), "GITLAB", baseUrl,
+                projectionProjectId(), "CREATE_BRANCH", target, GitOperationJournalPort.mappingHash("CREATE_BRANCH", target),
+                claim.runId(), claim.operator(), claim.fence().claimToken(), claim.fence()));
+        journal.sending(operationId);
+        // Case-insensitive SHA identity follows strict SHA validation; branch and sourceRef remain exact.
+        journal.finish(operationId, GitWriteResult.Outcome.APPLIED,
+                branchProof(branch, sha.toUpperCase(java.util.Locale.ROOT)), null);
+        return operationId;
+    }
+
+    private String projectionProjectId() {
+        // Independent numeric remote identity avoids sharing a retained guard with another isolated fixture.
+        return Long.toString(Long.parseLong(windowId.replace("-", "").substring(0, 13), 16) + 1000);
+    }
+
+    private String branchTarget(String branch, String sourceRef, String sha) {
+        return json.valueToTree(Map.of("branch", branch, "sourceRef", sourceRef, "ref", sha)).toString();
+    }
+
+    private String branchProof(String branch, String sha) {
+        return json.valueToTree(Map.of("httpStatus", 201, "name", branch, "commit", Map.of("id", sha))).toString();
+    }
+
+    private Map<String, Object> projectionGuard(String operationId) {
+        return jdbc.queryForMap("select * from repo_execution_guard where remote_key="
+                + "(select remote_key from git_operation where id=?)", operationId);
+    }
+
+    private Map<String, Object> branchProjectionFacts(RunPort.TaskClaim claim, String operationId) {
+        return Map.of(
+                "run", jdbc.queryForMap("select * from run where id=?", claim.runId()),
+                "tasks", jdbc.queryForList("select * from run_task where run_id=? order by task_order", claim.runId()),
+                "item", jdbc.queryForMap("select * from run_item where id=?", claim.itemId()),
+                "steps", jdbc.queryForList("select * from run_step where run_item_id=? order by action_type", claim.itemId()),
+                "metadata", jdbc.queryForList(
+                        "select * from run_item_metadata where run_item_id=? order by metadata_key", claim.itemId()),
+                "operation", jdbc.queryForMap("select * from git_operation where id=?", operationId),
+                "events", jdbc.queryForList(
+                        "select * from git_operation_event where operation_id=? order by event_sequence", operationId),
+                "guard", projectionGuard(operationId),
+                "binding", jdbc.queryForMap("select * from window_iteration where window_id=? and iteration_key=?",
+                        windowId, firstIteration));
     }
 
     private RunPort.TaskClaim claimLastTask() {

@@ -122,6 +122,32 @@ class RunOrchestrationTest {
     }
 
     @Test
+    void anAppliedBranchProjectionIsTheOnlyTaskCompletedByAnInvocation() {
+        when(runs.projectNextAppliedBranchTask(run.getId().value())).thenReturn(true);
+
+        assertThat(service.executeNextTask(run.getId().value())).isTrue();
+
+        verify(runs).projectNextAppliedBranchTask(run.getId().value());
+        verify(runs, never()).claimNextTask(any());
+        verify(runs, never()).completeTask(any(), any(), any());
+        verifyNoInteractions(repositories, adapters, git);
+        assertThat(pending).hasSize(4);
+    }
+
+    @Test
+    void projectionFailureCannotFallThroughToAClaimOrGitExecution() {
+        var failure = new IllegalStateException("projection transaction failed");
+        when(runs.projectNextAppliedBranchTask(run.getId().value())).thenThrow(failure);
+
+        assertThatThrownBy(() -> service.executeNextTask(run.getId().value())).isSameAs(failure);
+
+        verify(runs, never()).claimNextTask(any());
+        verify(runs, never()).completeTask(any(), any(), any());
+        verifyNoInteractions(repositories, adapters, git);
+        assertThat(pending).hasSize(4);
+    }
+
+    @Test
     void oneInvocationCommitsOneTaskAndLeavesTheRestUnclaimed() {
         assertThat(service.executeNextTask(run.getId().value())).isTrue();
         assertThat(committed).extracting(RunStep::actionType).containsExactly(ActionType.ENSURE_FEATURE);

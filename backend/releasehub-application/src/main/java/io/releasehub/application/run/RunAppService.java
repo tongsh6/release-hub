@@ -71,8 +71,10 @@ public class RunAppService {
         return loadRun(admission.runId());
     }
 
-    /** 每次只领取并执行一个持久任务；仓库队列资格和进度始终来自存储。 */
+    /** 每次只完成一个任务：先补已确认结果，否则沿原领取执行路径推进。 */
     public boolean executeNextTask(String runId) {
+        // 当前四动作协议的分支任务仍有 PENDING 后继，由既有扫描可靠发现。
+        if (runPort.projectNextAppliedBranchTask(runId)) return true;
         var next = runPort.claimNextTask(runId);
         if (next.isEmpty()) return false;
         var claim = next.get();

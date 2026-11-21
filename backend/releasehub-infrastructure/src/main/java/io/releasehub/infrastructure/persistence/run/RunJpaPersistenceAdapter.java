@@ -243,6 +243,39 @@ public class RunJpaPersistenceAdapter implements RunPort {
 
     @Override
     @Transactional
+    public boolean projectNextAppliedBranchTask(String runId) {
+        freshPersistenceContext();
+        RunJpaEntity run = lockedRun(runId);
+        requireTaskRun(run);
+        if (!Set.of("RUNNING", "NEEDS_REVIEW").contains(run.getExecutionStatus())) return false;
+        var ordered = tasks.findByRunIdOrderByTaskOrderAsc(runId);
+        Map<String, RunItemJpaEntity> items = taskItems(run, ordered);
+        for (var candidate : ordered) {
+            if (!"RUNNING".equals(candidate.getStatus())
+                    || !Set.of("ENSURE_FEATURE", "ENSURE_RELEASE").contains(candidate.getTaskType())) continue;
+            RunItemJpaEntity item = items.get(candidate.getTargetId());
+            if (item.getExecutedOrder() <= 0 || !eligible(candidate, item, ordered, items)) continue;
+            RunTaskJpaEntity task = tasks.findForUpdate(candidate.getId()).orElseThrow(this::stale);
+            if (!expiredRunningClaim(task, databaseNow())) continue;
+            Number steps = (Number) entityManager.createNativeQuery(
+                    "SELECT count(*) FROM {h-schema}run_step WHERE task_id=?1")
+                    .setParameter(1, task.getId()).getSingleResult();
+            if (steps.longValue() != 0) continue;
+            var claim = new TaskClaim(new TaskFence(task.getId(), task.getClaimToken()), runId, item.getId(),
+                    RepoId.of(item.getRepoId()), ActionType.valueOf(task.getTaskType()), now(), run.getOperator(),
+                    taskMetadata(run, item));
+            var project = journal.confirmedAppliedBranchProject(claim);
+            if (project.isEmpty()) continue;
+            // 外层代理已建立结果事务；自调用沿同一物理事务提交，clear 后不再使用原实体。
+            completeTask(claim, new RunStep(claim.actionType(), RunItemResult.CREATED, claim.startedAt(), now(),
+                    "根据已确认的分支创建结果恢复记录"), Map.of("git.projectId", project.get()));
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    @Transactional
     public Optional<TaskClaim> claimNextTask(String runId) {
         freshPersistenceContext();
         RunJpaEntity run = lockedRun(runId);
@@ -295,9 +328,13 @@ public class RunJpaPersistenceAdapter implements RunPort {
         return Optional.empty();
     }
 
+    private boolean expiredRunningClaim(RunTaskJpaEntity task, Instant databaseTime) {
+        return "RUNNING".equals(task.getStatus()) && task.getClaimToken() != null && task.getStartedAt() != null
+                && task.getClaimExpiresAt() != null && !task.getClaimExpiresAt().isAfter(databaseTime);
+    }
+
     private boolean recoverableWithoutEvidence(RunTaskJpaEntity task, Instant databaseTime) {
-        if (!"RUNNING".equals(task.getStatus()) || task.getClaimToken() == null || task.getStartedAt() == null
-                || task.getClaimExpiresAt() == null || task.getClaimExpiresAt().isAfter(databaseTime)) return false;
+        if (!expiredRunningClaim(task, databaseTime)) return false;
         Number matches = (Number) entityManager.createNativeQuery(
                 "SELECT count(*) FROM {h-schema}run_task t WHERE t.id=?1 AND " + NO_TASK_EVIDENCE)
                 .setParameter(1, task.getId()).getSingleResult();

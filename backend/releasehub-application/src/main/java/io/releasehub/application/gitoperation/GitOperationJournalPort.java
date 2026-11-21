@@ -27,6 +27,8 @@ public interface GitOperationJournalPort {
     void sending(String operationId);
     void finish(String operationId, GitWriteResult.Outcome outcome, String evidenceJson, String reason);
     void completeSession(String sessionId, boolean businessCommitted);
+    /** 必须加入原任务结果事务，核对 CREATE_BRANCH 响应证明与 guard，返回原 numeric project；零远端调用。 */
+    Optional<String> confirmedAppliedBranchProject(RunPort.TaskClaim claim);
     /** 仅在活动领取者的结果事务中确认；没有远端操作的任务不创建仓库保护。 */
     void acknowledgeTask(RunPort.TaskFence fence, RunItemResult result);
     List<Operation> list(String repoId, int page, int size);
