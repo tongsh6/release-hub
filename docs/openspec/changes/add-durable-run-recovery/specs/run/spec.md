@@ -464,7 +464,7 @@ C2-B2 已完成本地门禁与固定 cc80036 的 Full-Link 44917254215 5/5 验�
 
 ### Requirement: 已确认创建 MR 结果的受控检查点恢复
 
-C2-B3 为当前实施队首，实现与本地最终定向 403/403、API 48/48、普通 738 项及静态 TopN/源码复审已通过，后端 d87dfa8 已本地提交；文档提交、推送与固定 SHA CI 尚待完成。本地验证及提交证据见本轮记录 16.4–16.5，中间与失败历史保留于 16.2–16.3。系统 SHALL 复用原 Task、操作账本和结果事务，仅对完整到期的原 ENSURE_MR/CREATE_MR/APPLIED 补历史 CREATED 检查点，随后由原 TRY_MERGE 复核并使用同一项目/IID/source SHA；纯 DB 投影不得重新 GET 或 POST。
+C2-B3 已 DONE：d87dfa8、544983b 已推送，固定完整 SHA `544983beff74604852c050209e4c8caa93678ef2` 的 Full-Link 44924378741 为 5/5。本地与远端证据见记录 16.4–16.6，中间与失败历史保留于 16.2–16.3；以下仍仅限定本片 CREATE_MR 的已验收范围。系统 SHALL 复用原 Task、操作账本和结果事务，仅对完整到期的原 ENSURE_MR/CREATE_MR/APPLIED 补历史 CREATED 检查点，随后由原 TRY_MERGE 复核并使用同一项目/IID/source SHA；纯 DB 投影不得重新 GET 或 POST。
 
 #### Scenario: 规范创建证明与原检查点
 
@@ -503,6 +503,80 @@ C2-B3 为当前实施队首，实现与本地最终定向 403/403、API 48/48、
 - **THEN** 既有 PENDING 后继使扫描发现原 Run；投影阶段 HTTP=0，原 MR POST 总数=1，原 Task 身份、claim token、期限及首次时间不变，operation/events 不变，后继沿原检查点推进
 - **AND** 双恢复者和原 owner 竞争最多提交一个 Step，迟到结果不能覆盖；结果或 ack 故障整体回滚
 - **AND** 本片不授予 MERGE_MR、INTENT/SEND/UNKNOWN 或其他执行类型的恢复权限
+
+### Requirement: 已确认合并 MR 结果的末尾原任务恢复
+
+C2-B4 为当前唯一实施队首，以下为实施前契约；只读定位已完成，源码尚未实施，新测试待 RED。系统 SHALL 复用原 Task、操作账本和结果事务，对完整到期的原 TRY_MERGE/MERGE_MR/APPLIED 补历史 MERGED 结果；即使整个 Run 没有 PENDING 后继也 SHALL 被默认 worker 发现。恢复 SHALL 零 HTTP，不授予 INTENT/SEND/UNKNOWN 或其他执行类型恢复权限。
+
+#### Scenario: 同一原响应的完整合并证明
+
+- **GIVEN** 原请求已冻结 numeric project、MR IID 和合法 source SHA
+- **WHEN** 响应为 HTTP 200、文本 state=merged，原 JSON 三个项目 ID 为正整数且等于原项目，iid 为正整数且等于请求，分支为非空白文本、web_url 合法、40/64 位 source SHA 与冻结摘要等值
+- **THEN** 正常 merge、HTTP 账本与 Journal 共用 confirmedMergedMr(status, raw, projectId, iid, expectedSha)，保留原 JSON 类型与 SHA 表示，不用意图补响应
+- **AND** 不增加 nullable 分支参数或内部 header；精确分支仍由既有 workflow 检查点与 Journal 原 claim 各自绑定
+
+#### Scenario: 合并提交的显式 null 与缺字段不同
+
+- **GIVEN** 完整 merged 响应的 merge_commit_sha 字段存在
+- **WHEN** 该字段为 JSON null，或为合法文本 SHA
+- **THEN** FF/FF+squash 的 null 与普通合并的合法 SHA 均可成为完整证明
+- **AND** 字段缺失、错误类型、空白、字符串 null 均不成立；squash_commit_sha、source SHA 或其他字段不得补造 merge_commit_sha
+
+#### Scenario: provider 证明不替代原业务绑定
+
+- **GIVEN** 非 200 或不完整/错类型响应，或者原项目/IID/source SHA 与请求矛盾
+- **WHEN** 正常 merge 或恢复核对规范证明
+- **THEN** 不确认完整成功，不清保护，不从请求填空
+- **AND** 若 provider 响应完整但 target 与原检查点矛盾，即使 HTTP 事件已 APPLIED，业务也不得成功；正常结果保留 UNKNOWN/NEEDS_REVIEW 与 guard，投影拒绝
+
+#### Scenario: 原检查点身份与可空结果分别更新
+
+- **GIVEN** 原 ENSURE_MR 检查点 disposition 为 CREATED 或 MR_REUSED，原 MERGE_MR 请求绑定该 IID/source SHA；ALREADY_MERGED 没有 PUT 证明
+- **WHEN** 正常 TRY 或恢复提交 MERGED，响应 source SHA 与原值为同一个合法 40/64 位摘要的不同大小写表示
+- **THEN** 保留原 identity 字节及原 disposition，只使用正常 TRY 的 MR_RESULT 四字段 patch，不套用 ENSURE_MR 全量 identity patch
+- **AND** 恢复的 requestId 为 null；null 按原 patch 规则清旧 requestId/blockReason，合法 null mergeSha 清旧 mergeSha，不制造新请求 ID 或新 disposition
+
+#### Scenario: 末尾候选发现与锁内授权分离
+
+- **GIVEN** 当前 WINDOW 协议活动 Run 无 PENDING，原 TRY_MERGE 为完整到期 RUNNING，存在 MERGE_MR/APPLIED 且无当前 Step
+- **WHEN** 原有有界扫描发现该 Run
+- **THEN** 候选查询不领取或更换 token，不复制 JSON 证明；原投影入口在 Run→Task→guard 锁内重核完整到期、实际顺序、仓内前序、唯一原 operation/同 attempt sequence 2、token/session/generation、项目、suffix/SHA、计划与检查点
+- **AND** 坏证据占满前页时 worker 游标仍向后推进并到尾回绕，后页合法末尾候选不会因此永久饥饿
+
+#### Scenario: 不完整资格或已提交 owner 结果拒绝投影
+
+- **GIVEN** 原领取未完整到期、缺必要领取事实、当前 Step 已存在，或 attempt/guard/checkpoint/计划不一致，或 owner 已提交 UNKNOWN
+- **WHEN** 恢复尝试核对该 Task
+- **THEN** 不补结果、不换 token、不续租、不改 operation/events、不解除保护、不重新发送
+- **AND** 不把 INTENT/SEND/UNKNOWN、旧摘要或 ALREADY_MERGED 检查点当作本片成功证明
+
+#### Scenario: 历史 MERGED 与当前远端状态分离
+
+- **GIVEN** 原 MERGE_MR 完整 APPLIED 证明已持久化，而后 target 被重置或远端读取不可用
+- **WHEN** 默认 worker 补原任务结果
+- **THEN** 零 HTTP 确认原历史 MERGED，保留原 token/lease/首次时间/执行顺序及 operation/events
+- **AND** 新 Step 与绑定 lastMergeAt 使用当前处理 Clock，不将补记时间冒称远端实际合并时刻
+
+#### Scenario: 竞争与完整结果事务
+
+- **GIVEN** 双恢复者竞争，或原 owner 正常/UNKNOWN 结果与恢复先后提交
+- **WHEN** 原 completeTask 结果事务竞争同一任务
+- **THEN** 最多一个 Step；已提交正常或 UNKNOWN owner 结果保持，恢复先提交后迟到 owner 不覆盖
+- **AND** 事务回滚时 Task/Step/metadata/Item/Run/绑定/guard 全部回滚，不留下部分完成
+
+#### Scenario: 仓内前序与跨仓终态
+
+- **GIVEN** 同仓前序未满足，或其他仓库/迭代仍在途、失败或 UNKNOWN
+- **WHEN** 原任务投影及结果汇总执行
+- **THEN** 同仓不越序，跨仓仍可推进；绑定和各仓库结果分别确认，沿原 Run 聚合，不因单个 MERGED 硬写 DONE
+- **AND** 在途任务或 NEEDS_REVIEW 仍保持未结束；只有原聚合满足结束条件时才写 finishedAt
+
+#### Scenario: 最后合并写入后的独立进程中断
+
+- **GIVEN** 最后 MERGE_MR/APPLIED 已提交而原 TRY 业务结果未提交，全 Run 没有 PENDING 后继
+- **WHEN** 独立 JVM exit=137 并由默认 worker 重启
+- **THEN** 原 Run 被扫描发现并完成受控投影，恢复阶段 HTTP=0，原 merge PUT 总数=1，身份/历史保持且最终汇总正确
+- **AND** 回滚先停派发并保留事实，不撤销已发生的 merge；cleanup/version、完整 UI 及其他恢复仍需独立验收
 
 ## MODIFIED Requirements
 

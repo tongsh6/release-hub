@@ -514,7 +514,7 @@ B1 收口后直接进入这一已授权子片，先固定契约与独立正反�
 
 ## 16. C2-B3 接续：创建 MR 完整证明与原检查点恢复
 
-B2 固定 SHA 验收后，唯一 HEAD 推进 C2-B3；先独立完成正反例、源码职责及官方响应 producer 核对，再执行实现前初轮 RED（16.1）。365/365 中间 GREEN 经交叉复审暴露 SHA 等值表示消费者缺口，新增 6 例独立 RED 后取得 371/371（16.2）；普通门禁 718 项失败历史保留于 16.3。仅修两份旧夹具后，最终定向 403/403、API 48/48、普通 738 项及静态检查已通过，源码复审无阻塞（16.4）；TopN 处置完成，后端 d87dfa8 已本地提交（16.5），文档提交、推送与本片固定 SHA CI 尚待完成。目标与验收继续归属原 design/tasks/run spec，不建立新提案或第二套队列。
+B2 固定 SHA 验收后，唯一 HEAD 推进 C2-B3；先独立完成正反例、源码职责及官方响应 producer 核对，再执行实现前初轮 RED（16.1）。365/365 中间 GREEN 经交叉复审暴露 SHA 等值表示消费者缺口，新增 6 例独立 RED 后取得 371/371（16.2）；普通门禁 718 项失败历史保留于 16.3。仅修两份旧夹具后，最终定向 403/403、API 48/48、普通 738 项及静态检查已通过，源码复审无阻塞（16.4）；TopN 处置完成，后端 d87dfa8 与文档 544983b 已推送，固定完整 SHA `544983beff74604852c050209e4c8caa93678ef2` 的 Full-Link 44924378741 为 5/5，B3 已 DONE（16.5–16.6）。当前唯一 HEAD 转为 C2-B4，实施前契约见 17。目标与验收继续归属原 design/tasks/run spec，不建立新提案或第二套队列。
 
 定位依据：`GitLabMergeRequestAdapter.create/write/evidence/complete` 与 `GitMergeWorkflow.ensureMergeRequest` 分别承担 provider 响应与业务身份确认；初轮 RED 基线中的 CREATE_MR HTTP 账本仅凭 2xx+iid 即 APPLIED，事件缺项目、分支和 URL。原 operation.target.sha 已在 begin 前冻结；原 MrEvidence、ENSURE_MR 检查点和 TRY 消费者足以承责。独立强反例包括非 201 完整正文、同名 fork、仅 iid 的旧摘要；实现前初轮已通过真实 HTTP→Task 复现错误成功及保护释放，并保留尚未通过的恢复正例，具体证据与范围见 16.1。
 
@@ -538,7 +538,7 @@ B2 固定 SHA 验收后，唯一 HEAD 推进 C2-B3；先独立完成正反例、
 
 附加历史检查点消费者 RED 已单独执行，证据为 `.ai/reports/validation/c2-b3/additional-red-http-jdk21/result.json`：`historical-consumer` 阶段 2 tests / 2 FAIL / 0 ERROR / 0 SKIP，阶段与整轮 sourceStable=true，实际退出码 1。`mrCreationProjectsHistoricalCheckpointBeforeCheckingChangedRemoteState` 的两个参数场景均为 expected true、实际 false；它们覆盖历史冻结 SHA=A 与当前 MR 关闭/source 改为 B 的分离要求，此时仍未取得贯穿 GREEN。该附加运行单独留痕，不与初轮 HTTP 28 项混称同一轮结果。
 
-初轮及附加 RED 只证明实现前缺陷，该轮结束时尚无 GREEN 或本片交付结论；后续实现、中间 GREEN、SHA 消费者再 RED 与本轮 371 项定向证据见 16.2。B2 的 CI 与分支恢复正例不代替 B3 验收，当前 HEAD 保持 C2-B3。
+初轮及附加 RED 只证明实现前缺陷，该轮结束时尚无 GREEN 或本片交付结论；后续实现、中间 GREEN、SHA 消费者再 RED 与本轮 371 项定向证据见 16.2。B2 的 CI 与分支恢复正例不代替 B3 验收，该轮当时 HEAD 保持 C2-B3。
 
 ### 16.2 原职责实现、SHA 消费者再 RED 与阶段定向 GREEN
 
@@ -586,7 +586,7 @@ SHA 修正后 `.ai/reports/validation/c2-b3/final-green-jdk21/result.json` 为�
 
 本轮 MR Run 为 `244e55f6-bbc4-4f60-ad3e-b21c9fec5494`。这里的 HTTP=0 仅指纯 DB 投影阶段，后继 TRY 仍按原规则访问原 IID；这些受控 HTTP fixture 和真实 JVM 中断证据不等于真实 GitLab 或完整 UI 黄金旅程。
 
-实现及本轮 371 项定向通过仍有范围边界；后续门禁失败及最终本地复验见 16.3–16.4，HEAD 保持 C2-B3。MERGE_MR 末尾候选发现、INTENT/SEND/UNKNOWN、其他执行类型恢复与完整 UI 仍需独立验收，C2 整体未完成。
+实现及本轮 371 项定向通过仍有范围边界；后续门禁失败及最终本地复验见 16.3–16.4，当时 HEAD 保持 C2-B3。MERGE_MR 末尾候选发现、INTENT/SEND/UNKNOWN、其他执行类型恢复与完整 UI 仍需独立验收，C2 整体未完成。
 
 ### 16.3 普通门禁失败：旧响应夹具（历史轮）
 
@@ -620,7 +620,7 @@ SHA 修正后 `.ai/reports/validation/c2-b3/final-green-jdk21/result.json` 为�
 
 最新 MR Run 为 `40bf6c0a-0914-4783-85a9-8978b3b9ccc4`；零 HTTP 仅指纯 DB 投影阶段，后继 TRY 仍复核原 IID/source SHA。此前 365/371 的进程证据保留为相应源码轮次的历史，不混用 Run/PID。
 
-静态报告为 `.ai/reports/static-scan/20261122-001110/summary.md`，原始 lint 明确为 0 errors/8 warnings。backend 完整 fenced source review 已逐页核对 8 页且无阻塞；TopN 逐项处置及本地代码提交事实见 16.5，不能把扫描命令退出码当作全部问题已处置。当前本地行为与回归验收通过，固定 SHA Full-Link 尚待验证，B3 保持 HEAD。
+静态报告为 `.ai/reports/static-scan/20261122-001110/summary.md`，原始 lint 明确为 0 errors/8 warnings。backend 完整 fenced source review 已逐页核对 8 页且无阻塞；TopN 逐项处置及本地代码提交事实见 16.5，不能把扫描命令退出码当作全部问题已处置。本地验证轮结束时固定 SHA Full-Link 尚待验证，B3 当时保持 HEAD；随后远端交付见 16.6。
 
 本片范围仍仅为 CREATE_MR 完整证明及原 ENSURE_MR 检查点恢复。MERGE_MR 末尾候选发现、INTENT/SEND/UNKNOWN、其他类型恢复和完整 UI 仍待独立验收，C2 整体未完成。
 
@@ -643,4 +643,28 @@ API 清单另经只读核对：实际三类为 RunPagedApiTest、RunPlanApiIT、
 
 文档同步消除两处旧歧义：C2-A 历史段把 C2-B2 明确为当时队首；Run spec 区分“已有 APPLIED 后业务证据不足”与“CREATE_MR 原始响应证明不完整即 UNKNOWN”。结果事务的 NEEDS_REVIEW/guard 约束保持，不改变实现或扩大恢复范围。
 
-本地验收与后端提交均不代替远端交付验收。下一步为最终文档门禁与提交、分阶段推送，再对完整固定 SHA 执行 Full-Link；结果返回后据实收口，当前不标 DONE，不借用 B2 CI 或完整 UI 结论。
+本地验收与后端提交均不代替远端交付验收。此时仍需文档提交、推送和固定 SHA Full-Link；随后完成的交付事实见 16.6，未倒写本地验收时的状态。
+
+### 16.6 B3 分阶段推送与固定 SHA 远端验收
+
+后端 `d87dfa87751713b2a8a146bdb8062ef06c9571ce` 与文档 `544983beff74604852c050209e4c8caa93678ef2` 已推至 feature。`.ai/reports/validation/c2-b3/phase-push.json` 核实远端 feature 从 f6ca0682 前进到完整 SHA `544983beff74604852c050209e4c8caa93678ef2`；main/develop 仍同指 `d4534ccc34fedb9bbf394ced89b4726f43ec197c`，推送后工作区干净。该工作区描述属于推送时检查，不覆盖随后 B4 契约文档编辑。
+
+固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 已 completed/success，job `136907137667` 亦 success，watchExitCode=0。日志汇总为 Passed: 5 / Failed: 0，时间 `2026-11-21T16:34:33.2489840Z`，即北京时间 `2026-11-22 00:34:33`；run 更新完成时间 `2026-11-21T16:34:57Z`。原始结果与逐行日志留于 `.ai/reports/validation/c2-b3/full-link/result.json`、同目录 `136907137667.log`。
+
+本次 CI 绑定 B3 自身完整 SHA，backend 与 403/48/738/静态验收树保持一致；B3 标记 DONE。Full-Link 的后端 API 与隔离 GitLab 切片覆盖不等于完整 UI 黄金旅程，不扩大 Slice4/5 已有较弱边界，也不为 MERGE_MR 或 INTENT/SEND/UNKNOWN 提供恢复验收。365/371 中间轮、718 项失败和补充 RED 均保留，重叠结果不累计。
+
+## 17. C2-B4 实施前：合并 MR 完整证明与末尾原任务结果恢复
+
+B3 固定 SHA CI 通过后，唯一 HEAD 切换 C2-B4。只读正反例、官方 producer 与持久化/调度职责审查已完成；本节及原 design/tasks/Run delta 保存实施前契约，生产代码尚未实施，新测试待先 RED。没有新 proposal、实体、表、DTO、API 或框架。
+
+源码定位：findTaskCandidateRunIds 当前只纳入 PENDING 或无 operation/Step 的到期 RUNNING；末尾 TRY_MERGE 已有 APPLIED 且无 PENDING 时不入候选。projectNextAppliedTask 当前只接受 ENSURE，completeTask 已拥有 Step、metadata、Item、lastMergeAt、guard、Task 与 Run 的原子结果职责。该判断来自源码和已存在消费者，不称为本片已运行测试复现的缺陷。
+
+独立强反例先于实现：合法 FF/FF+squash 的 merge_commit_sha=null 不能被非空假设拒绝；原 source SHA 大写 A 与响应等值小写 a 不得触发全量 identity patch 的 stale；坏 APPLIED 证据占满候选前页时，后页合法末尾任务仍须被默认 worker 发现。与当前 target 重置/远端不可读分离，恢复只补原历史 MERGED，不重新 GET/PUT。
+
+官方基线 `.ai/reports/validation/c2-b4/baseline/gitlab-17-11-merge-producer.json` 已保存九文件 URL、范围和 SHA256：GitLab v17.11.3 的合并策略、服务、API/服务用例、实体、API 入口、Gemfile.lock，以及 grape-entity 1.0.1 exposure 和默认 nil 暴露用例。由此确定 merge_commit_sha 必须存在、可显式 JSON null 或合法文本 SHA；缺失/错类型/别字段补造均拒绝。严格 200/merged、原项目/IID/source SHA、真实非空分支与有效 URL 共用 provider 证明，精确分支仍由 workflow/原 claim 绑定，不加 nullable 参数或 header。
+
+职责复用以原 RunPort/Journal/guard 与既有 MrEvidence 为限。原检查点仅 CREATED/MR_REUSED；ALREADY 不会 PUT。投影保留原 identity 字节与 disposition，只复用正常 TRY 的 MR_RESULT 四字段 null patch。原 token/lease/首次时间/顺序/op/events 不变，新 Step 和 lastMergeAt 为当前处理 Clock；完整到期资格、attempt/guard/checkpoint、仓内前序及最终仓库汇总必须在原结果事务内核验。
+
+实施前验收矩阵已写入 design 与 Run delta：正常 merge/合法 null/40与64位等值表示；缺字段与 null、wrong target、错 attempt/guard/checkpoint、owner UNKNOWN、当前 Step；双 worker 与 owner 先后；完整事务回滚；跨仓/迭代绑定和终态；坏证据页与无 PENDING 末尾扫描；最后 MERGE_MR/APPLIED 后真实进程强杀重启，恢复 HTTP=0、原 PUT 总数=1。相关 RED、GREEN、静态与本片固定 SHA CI 全部待执行。
+
+本片不扩 INTENT/SEND/UNKNOWN、cleanup/version 或完整 UI；回滚停派发并保留已发生事实，不撤销 merge。待当前契约文档门禁与交付完成后进入本片 RED，不借用 B3 CI 作为新行为验收。

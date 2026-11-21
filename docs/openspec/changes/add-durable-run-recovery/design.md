@@ -1,6 +1,6 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。C2-B2 已分组推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5；规范化建分支成功证明与 APPLIED 结果投影恢复已交付。当前唯一 HEAD 为 C2-B3 创建 MR 完整证明与原检查点恢复，实现与本地最终定向 403/403、API 48/48、普通 738 项及静态检查通过，源码复审与 TopN 处置完成；后端 d87dfa8 已本地提交，文档提交、推送与本片固定 SHA CI 尚待完成，未标 DONE。当前事实见 tasks.md 和本轮记录 16.4–16.5，中间 GREEN 与普通失败历史保留于 16.2–16.3。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。C2-B2 已分组推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5；规范化建分支成功证明与 APPLIED 结果投影恢复已交付。C2-B3 后端 d87dfa8、文档 544983b 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE；本地最终 403/48/738、静态与历史轮次证据见记录 16.2–16.6。当前唯一 HEAD 为 C2-B4 合并 MR 完整证明与末尾原任务结果恢复，只读契约核对已完成，测试待 RED、源码尚未实施。
 
 
 ## 0. 当前研发蓝图与授权（2026-11-21）
@@ -140,7 +140,7 @@ APPLIED 不是业务完整证明。[GitLab 创建分支契约](https://docs.gitl
 
 回滚先停派发，保留已提交投影、任务、证明及 guard；不重新发送、不清空证据或撤销已发生的分支。MR 的 APPLIED/FOUND 尚不足以构造完整检查点，不在本片取得投影或解除保护的授权。
 
-##### C2-B3：创建 MR 完整证明与原检查点恢复（当前子片 / HEAD）
+##### C2-B3：创建 MR 完整证明与原检查点恢复（已交付 / DONE）
 
 依赖 B2 的固定 SHA 验收，回连本设计的唯一任务执行、MR 检查点和结果原子提交。用户价值是 CREATE_MR 的完整成功响应已经持久化、原 ENSURE_MR 的业务结果未提交时，重启可补原检查点，再由原 TRY_MERGE 消费相同项目/IID/source SHA。此时只补历史创建事实，不宣称 MR 当前仍可合并。
 
@@ -176,6 +176,42 @@ SHA 以合法十六进制摘要的值判断相等，事件和检查点保留响�
 | 双恢复者、旧 owner 两个胜出顺序、结果事务故障 | 一个 Step；原事实不改；整体回滚；迟到结果不覆盖 |
 
 非目标是 MERGE_MR、INTENT/SEND/UNKNOWN 的恢复或旧摘要迁移。MERGE_MR 是最后动作，没有 PENDING 后继时需要另行验证候选发现和最终汇总，不夹入本片。回滚先停派发，保留已提交任务、检查点、操作及保护；不撤销已创建 MR，不加兼容旧名或第二条执行路径。
+
+##### C2-B4：合并 MR 完整证明与末尾原任务结果恢复（当前子片 / HEAD，实施前契约）
+
+B3 固定 SHA 验收后接续本片。用户价值是 MERGE_MR 的完整成功响应已经入账、原末尾 TRY_MERGE 尚未提交结果时，默认 worker 即使找不到 PENDING 后继也能补原 MERGED 结果。先前只读审查已定位候选 SQL 与投影动作范围；以下是独立目标契约，尚未运行本片 RED、实现或验收，不把源码推断写成已复现缺陷。
+
+正常 merge、HTTP 账本与 Journal 投影共用 `confirmedMergedMr(status, raw, projectId, iid, expectedSha)`：严格 HTTP 200、state 为文本 merged；原 JSON 的 project_id/source_project_id/target_project_id 均为正整数且等于原 numeric project，iid 为正整数且等于原请求 IID；source_branch/target_branch 为非空白文本，web_url 通过既有链接形状校验，sha 为合法 40/64 位摘要且与冻结 source SHA 按值一致。保留 JSON 原类型和 SHA 表示，不从请求意图补缺失响应。
+
+`merge_commit_sha` 必须存在，可为 JSON null 或合法文本 SHA；缺失、空白、字符串 null、错误类型或用 squash_commit_sha/其他字段补造均不成立。GitLab v17.11.3 的 FF 与 FF+squash 服务用例明确允许 merge_commit_sha=nil；响应实体无条件 expose，锁定 grape-entity 1.0.1 默认暴露 nil，从而形成 JSON null。九个官方文件、依赖源码/用例、范围与 hash 留于 `.ai/reports/validation/c2-b4/baseline/gitlab-17-11-merge-producer.json`。此边界防止把合法快进合并误判为未知，也不把缺字段当作合法 null。
+
+不增加 nullable 分支参数或内部 header。provider 证明要求返回真实非空分支；精确 source/target 分别由既有 GitMergeWorkflow.matchesCheckpoint 和 Journal 的原 claim/计划绑定。完整 provider 响应即使已记 APPLIED，target 与原检查点矛盾也不能成为业务成功，结果事务仍保留 NEEDS_REVIEW/guard。
+
+| 已有职责 | 本片最小变化与实际消费者 |
+|---|---|
+| GitLabMergeRequestAdapter / GitWriteHttpInterceptor | 正常 merge 与规范 MERGE_MR 事件共用同一原响应证明；字段白名单保留 merge_commit_sha 的显式 null，不复制完整响应或填空 |
+| GitOperationJournalPort / persistence | 在原 MANDATORY 结果事务中返回既有 MrEvidence；复用原 operation/attempt、Run→Task→guard 与项目证明，不用 REQUIRES_NEW 的详情查询替代锁内授权 |
+| RunJpaPersistenceAdapter.findTaskCandidateRunIds | 仅增加完整到期 RUNNING、TRY_MERGE、MERGE_MR/APPLIED 且无当前 Step 的窄候选；原协议/活动 Run/有界 keyset 保持，不把 JSON 证明复制进 SQL |
+| RunTaskWorker / projectNextAppliedTask | 保留成功投递后推进与到尾回绕的游标；在原投影入口增加 TRY 分支，候选仅用于发现，锁内完整证明才授权 |
+| RunAppService / RunPort | 复用并收敛正常 TRY 的 MR_RESULT 四字段 patch；ENSURE_MR 的全量 identity patch 不适用于本片 |
+| completeTask / Run / WindowIterationPort | 原子提交 Step、metadata、Item、lastMergeAt、guard、Task 与 Run 聚合，不新增结果事务、实体、表、DTO、API 或恢复框架 |
+
+原 ENSURE_MR 检查点只能来自 CREATED/MR_REUSED；ALREADY_MERGED 不会发 PUT，不能据此补造 MERGE_MR。投影保留原 identity 的字节和原 disposition，只补 `git.requestId`、`git.blockReason`、`git.mergeSha`、`git.mrDisposition`。恢复 requestId 为 null；按正常 TRY 的 null patch 清除旧 requestId/blockReason，合法 null mergeSha 清除旧 mergeSha。SHA 的等值大小写不能触发 identity 重写，也不能把 disposition 改造成新的合并状态。
+
+锁内继续核对完整到期 Run/Task 资格、正的实际顺序和仓内前序、唯一 MERGE_MR/APPLIED、同 attempt 的 sequence 2 规范响应、token/session/generation/guard、原 numeric project、原请求 suffix/SHA、计划与持久检查点。原 token、lease、首次时间、顺序、operation/events 不变；新 Step 与绑定 lastMergeAt 使用当前处理 Clock，不能冒称远端实际合并时间。只补已确认的历史 MERGED，即使之后 target 被重置或远端不可读也零 HTTP；最后无 PENDING 时必须由默认扫描发现并沿既有聚合结束。
+
+| 独立正反例 | 本片验收要求 |
+|---|---|
+| 普通 merge、FF/FF+squash 显式 null；40/64 位等值大小写；两种原创建/复用 disposition | 正常与投影均接受完整证明；原身份/表示/disposition 保持，nullable mergeSha 正确清旧值 |
+| 非 200 完整响应、缺字段/错类型/项目或 IID/SHA 不符；merge_commit_sha 缺失与 null | 不误确认完整成功，不以其他字段或请求默认值补证据；合法 JSON null 独立正例必须通过 |
+| provider 完整响应的 target 与原检查点不同 | APPLIED 不代替业务身份确认；正常路径保持 UNKNOWN/NEEDS_REVIEW 与保护，投影拒绝 |
+| 错 attempt/guard/checkpoint、owner UNKNOWN 已提交、当前 Step 已存在或领取不完整/未到期 | 不补结果、不转 token、不续租、不重发、不改历史 |
+| 双恢复者；owner 正常/UNKNOWN 先提交或恢复先提交；结果事务回滚 | 最多一个 Step；迟到结果不覆盖；Task/Step/metadata/Item/Run/绑定/guard 整体回滚 |
+| 同仓前序、不同仓库与不同迭代、其他仓 UNKNOWN/失败/在途 | 同仓不越序、跨仓可进展，lastMergeAt 与仓库级终态分别核对，不因一个 MERGED 硬写 DONE |
+| 坏证据占满前页、合法末尾 APPLIED 在后页且全 Run 无 PENDING | 有界发现不领取，游标继续推进，坏候选不能饿死合法候选 |
+| 最后 MERGE_MR/APPLIED 后、业务结果前独立 JVM exit=137 | 默认 worker 重启发现无 PENDING 原 Run，恢复阶段 HTTP=0、原 merge PUT 总数 1；原身份/历史保持并正确汇总 |
+
+本片不恢复 INTENT/SEND/UNKNOWN，不扩 cleanup/version 或完整 UI，不迁移缺证明旧摘要。回滚先停派发，保留任务、操作、保护及已提交结果，不撤销已发生的 merge。先完成独立 RED，再实现、回归和固定 SHA 验收；B3 历史 CI 不替代本片验证。
 
 ### 分阶段依赖与交付
 

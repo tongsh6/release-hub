@@ -1,6 +1,6 @@
 # 实施切片与验收追踪
 
-完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已交付；C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754、C2-B1 固定 `5441df6` 的 Full-Link 44911634004 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已分组提交推送。C2-B2 三组 fe4c006、1386ccc、cc80036 已推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5，建分支成功证明与 APPLIED 投影恢复已交付。当前唯一队首为 C2-B3 创建 MR 完整证明与原检查点恢复，实现与本地最终定向 403/403、API 48/48、普通 738 项及静态 TopN/源码复审已通过，后端 d87dfa8 已本地提交；文档提交、推送与固定 SHA CI 待完成；MERGE_MR、INTENT/SEND/UNKNOWN 等恢复仍未交付，C2 整体尚未完成。
+完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已交付；C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754、C2-B1 固定 `5441df6` 的 Full-Link 44911634004 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已分组提交推送。C2-B2 三组 fe4c006、1386ccc、cc80036 已推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5，建分支成功证明与 APPLIED 投影恢复已交付。C2-B3 的 d87dfa8、544983b 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE，完整证据见记录 16.6。当前唯一队首为 C2-B4 合并 MR 完整证明与末尾原任务结果恢复，只读契约已核对，测试待 RED、源码未实施；INTENT/SEND/UNKNOWN 等仍后续独立验收，C2 整体未完成。
 
 关联：[需求](../../../requirements/in-progress/SA-013-发布编排中断恢复.md)、[提案](proposal.md)、[Run delta](specs/run/spec.md)、[窗口 delta](specs/release-window/spec.md)。依赖顺序为 S0 → S1 → S2 → S3 → S4 → S5。
 
@@ -141,7 +141,7 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 - [x] 分组提交 fe4c006、1386ccc、cc80036 并推送；固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5，B2 已 DONE。未借用 B1 CI 或旧 UI 214 的结论。
 - 回滚与不做项：停派发并保留事实；不新增实体/API/UI/通用恢复平台，不发第二次请求、不迁移或补造旧摘要；MR FOUND、INTENT/SEND/UNKNOWN 和 cleanup/version 不在本片获得恢复授权。
 
-#### C2-B3：创建 MR 完整证明与原检查点恢复（当前子片 / HEAD）
+#### C2-B3：创建 MR 完整证明与原检查点恢复（已交付 / DONE）
 
 - 依赖与范围：B2 已完成固定 SHA 验收；仅 CREATE_MR/APPLIED 对应原 ENSURE_MR，纯 DB 恢复历史检查点，再由原 TRY 消费。详细正反例及 provider 契约见 design.md 的 C2-B3。
 - [x] 独立正反例、已有职责与实际消费者核对：原 operation.target.sha 已冻结；原 MrEvidence、Task/Journal/guard、completeTask 与 PENDING 后继足以承责，无需新实体或扫描分支。
@@ -155,11 +155,26 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 - [x] 旧夹具失败已按真实契约修正并重跑：最终 11 suites、403/403 定向，API 48/48，普通 738（733 PASS/5 既有 SKIP），均 0 FAIL/ERROR；API/普通 suite 清单匹配，403/API/普通/静态后的 495 个 backend 文件 hash 一致。718 项失败与缺席 20 项历史保留于 16.3，最终结果见 16.4。
 - [x] 四类真实 exit=137 后默认 worker 继续；最新 MR 原 Run 投影 HTTP=0、MR POST 总数 1，原 token/三条事件保持。六份新鲜 SpotBugs XML 均 0、typecheck PASS、lint 0 errors/8 既有 fixture warnings；静态报告 20261122-001110，backend 完整源码复审无阻塞。
 - [x] 静态报告 20261122-001110 的八项既有 fixture warning 已逐项记录保留理由与覆盖边界，仍为 0 errors/8 warnings；本次 raw 与 B2 字节一致，未关闭规则或宣称告警已修复。
-- [x] 后端 16 文件完整纵向切片已本地提交为 d87dfa87751713b2a8a146bdb8062ef06c9571ce，提交树与 403/48/738/静态验收相同；源码完整复审无阻塞。详见记录 16.5。
-- [ ] 完成最终文档复核与提交、分阶段推送及本片固定 SHA Full-Link 后交付；本片仍为 HEAD，未验收不标 DONE。
+- [x] 后端 16 文件完整纵向切片已提交并推送为 d87dfa87751713b2a8a146bdb8062ef06c9571ce，提交树与 403/48/738/静态验收相同；源码完整复审无阻塞。详见记录 16.5。
+- [x] 文档 544983beff74604852c050209e4c8caa93678ef2 已提交推送；固定该完整 SHA 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE。覆盖为后端 API 与隔离 GitLab，不扩完整 UI 或 Slice4/5 边界；证据见记录 16.6。
 - 回滚：停派发并保留事实；MERGE_MR、INTENT/SEND/UNKNOWN、版本/收尾恢复与完整 UI 旅程继续独立追踪，不兼容缺证明的旧摘要。
 
-#### C2-B 后续：合并 MR、已有写意图与外部证据
+#### C2-B4：合并 MR 完整证明与末尾原任务结果恢复（当前子片 / HEAD，实施前）
+
+- 依赖与范围：B3 已完成固定 SHA 5/5；本片只处理原 TRY_MERGE 对应 MERGE_MR/APPLIED，完整契约见 design.md 的 C2-B4 与 Run delta。尚未实施或测试，先 RED。
+- [x] provider 与持久化两路独立只读核对已收敛；原 Task/Journal/guard、MrEvidence、worker 游标和 completeTask 有实际消费者，无需新实体、表、DTO、API 或框架。
+- [x] 官方 v17.11.3、grape-entity 1.0.1 的九文件 producer 基线已保存范围/hash；FF/FF+squash 的合法 merge_commit_sha=null 与缺字段明确区分。
+- [ ] 先独立运行正反例 RED：严格 200/merged、原 JSON 项目/IID/分支/URL/source SHA、merge_commit_sha 必须存在且 null/合法 SHA；非 200、缺失/错类型/矛盾与替代字段不能冒充成功。
+- [ ] 正常 merge、HTTP 规范事件与 Journal 共用 confirmedMergedMr；不加 nullable 分支参数/header，精确分支由既有 workflow/原 claim 各自绑定；target 矛盾即使 APPLIED 也不能业务成功。
+- [ ] 保留原 CREATED/MR_REUSED 检查点 identity 字节与 disposition，只复用正常 TRY 的 MR_RESULT 四字段 patch；覆盖合法 null 清旧值与 40/64 位等值大小写，不全量套用 ENSURE patch。
+- [ ] 窄扩完整到期 TRY+MERGE_MR/APPLIED 且无 Step 的候选；保留协议、有界游标与坏证据页继续推进，锁内才核对唯一 operation/attempt、token/session/generation、项目、suffix/SHA、计划与检查点。
+- [ ] 纯 DB 补历史 MERGED；原 token/lease/首次时间/顺序/op/events 保持，新 Step 与 lastMergeAt 取当前处理 Clock；远端后来重置或不可读仍不重新 GET/PUT。
+- [ ] PG 验证错证明/guard/checkpoint/owner UNKNOWN/current Step 拒绝，双恢复者、owner 两种结果先后、整体结果事务回滚；绑定与各仓库/迭代的终态聚合分别验证。
+- [ ] 默认 worker 对无 PENDING 末尾候选完成恢复；真实独立 JVM 在 MERGE_MR/APPLIED 后强杀，重启恢复阶段 HTTP=0、原 merge PUT 总数 1。
+- [ ] 完成本片相关回归、静态 TopN、独立复审、文档和固定 SHA Full-Link 后分组提交/推送；历史 B3 数字不作本片验收结论。
+- 回滚与后续：停派发并保留事实，不撤销 merge；INTENT/SEND/UNKNOWN、cleanup/version 与完整 UI 仍独立排队。
+
+#### C2-B 后续：已有写意图、发送权与未知结果
 
 - [ ] 租约与代次具有实际接管消费者；历史 HTTP 事实归属和当前发送/投影权分开，不能旋转 token 后丢失旧操作观察或迟到响应。
 - [ ] UNKNOWN/NEEDS_REVIEW 的精确只读核对、受证据约束的 resume；无 force 绕过或任意 FOUND 自动释放 guard。
