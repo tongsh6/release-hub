@@ -349,10 +349,10 @@ class Slice3_Release_Orchestration_E2ETest extends AbstractGitLabE2ETest {
         MvcResult response = mockMvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
                         .header("Authorization", "Bearer " + token).header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isOk()).andReturn();
+                .andExpect(status().isAccepted()).andReturn();
         String runId = objectMapper.readTree(response.getResponse().getContentAsString()).path("data").asText();
         assertThat(runId).isNotBlank();
-        Run run = runPort.findById(runId).orElseThrow();
+        Run run = E2ETestFixtures.awaitWindowRun(runPort, runId);
         assertThat(run.getExecutionStatus().name())
                 .withFailMessage("真实编排必须 DONE，实际为 %s；步骤证据：%s",
                         run.getExecutionStatus(), run.getItems().stream().flatMap(item -> item.getSteps().stream()).toList())
@@ -381,7 +381,7 @@ class Slice3_Release_Orchestration_E2ETest extends AbstractGitLabE2ETest {
         mockMvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
                         .header("Authorization", "Bearer " + token).header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data").value(runId));
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.data").value(runId));
         Run replayed = runPort.findById(runId).orElseThrow();
         assertThat(replayed.getVersion()).isEqualTo(originalVersion);
         for (RunItem item : replayed.getItems()) {

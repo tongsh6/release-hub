@@ -3,6 +3,12 @@ package io.releasehub.bootstrap.e2e;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.releasehub.application.gitlab.GitLabPort;
+import io.releasehub.application.run.RunPort;
+import io.releasehub.domain.run.ActionType;
+import io.releasehub.domain.run.Run;
+import io.releasehub.domain.run.RunExecutionStatus;
+import io.releasehub.domain.run.RunId;
+import io.releasehub.domain.run.RunType;
 import io.releasehub.application.settings.SettingsPort;
 import io.releasehub.interfaces.api.settings.SettingsController;
 import org.junit.jupiter.api.BeforeEach;
@@ -158,6 +164,25 @@ class GitLabE2EFixtureTest {
         verify(settings).saveGitLab(new SettingsPort.SettingsGitLab(BASE_URL, "fixture-only-token"));
         verify(settings).getGitLab();
         server.verify();
+    }
+
+    @Test
+    void completedWindowReceiptUsesThePersistedRunIdValue() throws InterruptedException {
+        String runId = "c2a00000-0000-4000-8000-000000000001";
+        Run run = mock(Run.class);
+        when(run.getId()).thenReturn(RunId.of(runId));
+        when(run.getRunType()).thenReturn(RunType.WINDOW_ORCHESTRATION);
+        when(run.getExecutionVersion()).thenReturn(Run.ORCHESTRATION_PROTOCOL_VERSION);
+        when(run.getExecutionStatus()).thenReturn(RunExecutionStatus.DONE);
+        RunPort runs = mock(RunPort.class);
+        when(runs.findById(runId)).thenReturn(Optional.of(run));
+        when(runs.findTasks(runId)).thenReturn(List.of(new RunPort.TaskView(
+                "task", runId, "item", ActionType.TRY_MERGE, 4, "COMPLETED", null, null, null)));
+
+        assertThat(E2ETestFixtures.awaitWindowRun(runs, runId)).isSameAs(run);
+        verify(runs).findById(runId);
+        verify(runs).findTasks(runId);
+        org.mockito.Mockito.verifyNoMoreInteractions(runs);
     }
 
     private Map<String, String> environment() {

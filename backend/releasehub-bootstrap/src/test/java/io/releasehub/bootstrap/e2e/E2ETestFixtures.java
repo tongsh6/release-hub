@@ -2,6 +2,10 @@ package io.releasehub.bootstrap.e2e;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.releasehub.application.run.RunPort;
+import io.releasehub.domain.run.Run;
+import io.releasehub.domain.run.RunExecutionStatus;
+import io.releasehub.domain.run.RunType;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -15,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -224,6 +229,33 @@ public final class E2ETestFixtures {
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString())
                 .get("data").get("id").asText();
+    }
+
+    /**
+     * 只读等待同一窗口回执的持久任务收口。NEEDS_REVIEW 不代表其他仓库已经停止。
+     * 超时只让验收失败，不领取任务、修改状态或触发重试。
+     */
+    static Run awaitWindowRun(RunPort runs, String runId) throws InterruptedException {
+        assertThat(runId).isNotBlank();
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(120);
+        while (true) {
+            Run run = runs.findById(runId).orElseThrow();
+            assertThat(run.getId().value()).isEqualTo(runId);
+            assertThat(run.getRunType()).isEqualTo(RunType.WINDOW_ORCHESTRATION);
+            assertThat(run.getExecutionVersion()).isEqualTo(Run.ORCHESTRATION_PROTOCOL_VERSION);
+            List<RunPort.TaskView> tasks = runs.findTasks(runId);
+            assertThat(tasks).as("受理回执必须含本次 Run 的持久任务").isNotEmpty();
+            assertThat(tasks).allSatisfy(task -> assertThat(task.runId()).isEqualTo(runId));
+            boolean active = tasks.stream().anyMatch(task ->
+                    "PENDING".equals(task.status()) || "RUNNING".equals(task.status()));
+            if (!active && run.getExecutionStatus() != RunExecutionStatus.RUNNING) return run;
+            if (System.nanoTime() >= deadline) {
+                throw new AssertionError("等待原 Run 超时，未重试或修改状态：" + runId + "/"
+                        + run.getExecutionStatus() + "/"
+                        + tasks.stream().map(task -> task.taskId() + ":" + task.status()).toList());
+            }
+            Thread.sleep(250);
+        }
     }
 
     /**

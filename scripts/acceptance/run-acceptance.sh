@@ -222,30 +222,50 @@ ensure_services() {
     start_backend
 }
 
-# 等待异步任务完成并校验结果
-# Usage: wait_for_run <run_id> <timeout_sec>
+# 只读观察原 Run；NEEDS_REVIEW 仍可能有其他仓库的 PENDING/RUNNING。
+# 超时/读取失败不修改执行状态，也不重发 POST。
 wait_for_run() {
-    local run_id=$1
-    local timeout=${2:-30}
-    local start_time=$(date +%s)
-    local status="RUNNING"
-    
-    while [ "$status" = "RUNNING" ]; do
-        local now=$(date +%s)
-        if [ $((now - start_time)) -gt $timeout ]; then
+    local run_id=$1 timeout=${2:-30}
+    local start_time now resp state run_type protocol status tasks active
+    start_time=$(date +%s)
+    while true; do
+        now=$(date +%s)
+        if [ $((now - start_time)) -ge "$timeout" ]; then
             echo "TIMEOUT"
             return 1
         fi
-        
-        local resp=$(curl -s "$BACKEND/api/v1/runs/$run_id" -H "$AUTH")
-        status=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data', {}).get('status', 'FAILED'))")
-        
-        if [ "$status" = "RUNNING" ]; then
-            sleep 1
+        resp=$(curl -sS --max-time 10 -w '\n%{http_code}' "$BACKEND/api/v1/runs/$run_id" -H "$AUTH") || return 1
+        state=$(printf '%s' "$resp" | python3 -c '
+import sys,json
+body,_,http=sys.stdin.read().rpartition("\n")
+if http != "200": sys.exit("读取原 Run 失败：HTTP "+http)
+d=json.loads(body)
+r=d.get("data") or {}
+if d.get("success") is not True or r.get("id") != sys.argv[1]: sys.exit("原 Run 回执身份不匹配")
+if r.get("status") not in ("PLANNED","RUNNING","DONE","PARTIAL_FAILED","FAILED","NEEDS_REVIEW"): sys.exit("原 Run 状态缺失")
+print(r.get("runType"),r.get("executionVersion"),r["status"])
+' "$run_id") || return 1
+        read -r run_type protocol status <<< "$state"
+        active=False
+        if [ "$run_type" = "WINDOW_ORCHESTRATION" ] && [ "$protocol" = "3" ]; then
+            tasks=$(curl -sS --max-time 10 -w '\n%{http_code}' "$BACKEND/api/v1/runs/$run_id/tasks" -H "$AUTH") || return 1
+            active=$(printf '%s' "$tasks" | python3 -c '
+import sys,json
+body,_,http=sys.stdin.read().rpartition("\n")
+if http != "200": sys.exit("读取原 Run 任务失败：HTTP "+http)
+d=json.loads(body); rows=d.get("data")
+states={"PENDING","RUNNING","COMPLETED","FAILED","UNKNOWN","SKIPPED","INHERITED"}
+if d.get("success") is not True or not isinstance(rows,list) or not rows: sys.exit("持久任务缺失")
+if any(t.get("runId") != sys.argv[1] or t.get("status") not in states for t in rows): sys.exit("任务身份或状态不匹配")
+print(any(t["status"] in ("PENDING","RUNNING") for t in rows))
+' "$run_id") || return 1
         fi
+        if [ "$active" = "False" ] && [ "$status" != "RUNNING" ]; then
+            echo "$status"
+            return 0
+        fi
+        sleep 1
     done
-    
-    echo "$status"
 }
 
 is_run_success() {
@@ -261,9 +281,12 @@ orchestrate_selected() {
     # 同一场景重发保留原 key；需要新的执行意图时由调用者显式传第 4 参数。
     local request_key=${4:-"acceptance-selected-$TS-$window_id-$iteration_key"}
     local response
-    response=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$window_id/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
+    response=$(curl -sS -w '\n%{http_code}' -X POST "$BACKEND/api/v1/release-windows/$window_id/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
         -H "Idempotency-Key: $request_key" \
         -d "{\"repoIds\":$repo_ids,\"iterationKeys\":[\"$iteration_key\"],\"failFast\":true}")
+    local http_status=${response##*$'\n'}
+    response=${response%$'\n'*}
+    [ "$http_status" = "202" ] || { echo "编排未受理：HTTP $http_status" >&2; return 1; }
     echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data','') if d.get('success') else '')"
 }
 
@@ -1085,11 +1108,13 @@ for c in json.load(sys.stdin).get("data",{}).get("conflicts",[]):
 
             # 5.2.9 Orchestrate → 应有 items > 0
             sleep 2
-            CLEAN_ORCH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$CLEAN_WINDOW_ID/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
+            CLEAN_ORCH=$(curl -sS -w '\n%{http_code}' -X POST "$BACKEND/api/v1/release-windows/$CLEAN_WINDOW_ID/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
                 -H "Idempotency-Key: acceptance-clean-$CLEAN_TS-$CLEAN_WINDOW_ID" \
                 -d "{\"repoIds\":[\"$R1\"],\"iterationKeys\":[\"$CLEAN_ITER_KEY\"],\"failFast\":false}")
+            CLEAN_ORCH_HTTP=${CLEAN_ORCH##*$'\n'}
+            CLEAN_ORCH=${CLEAN_ORCH%$'\n'*}
             CLEAN_ORCH_OK=$(echo "$CLEAN_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))")
-            if [ "$CLEAN_ORCH_OK" = "True" ]; then
+            if [ "$CLEAN_ORCH_HTTP" = "202" ] && [ "$CLEAN_ORCH_OK" = "True" ]; then
                 CLEAN_RUN_ID=$(echo "$CLEAN_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'])")
                 info "干净窗口编排已启动 (run=$CLEAN_RUN_ID)，等待结果..."
                 CLEAN_FINAL_STATUS=$(wait_for_run "$CLEAN_RUN_ID" 60)
@@ -2006,11 +2031,13 @@ else:
                 || no "Orchestrate 部分失败 Run 证据异常: $PARTIAL_RUN_SUMMARY"
 
             if [ "$PARTIAL_EVIDENCE_RUN_ID" != "MISSING_RUN" ] && [ -n "$PARTIAL_RETRY_KEY" ]; then
-                PARTIAL_RETRY_RESP=$(curl -s -X POST "$BACKEND/api/v1/runs/$PARTIAL_EVIDENCE_RUN_ID/retry" -H "$AUTH" -H "Content-Type: application/json" \
+                PARTIAL_RETRY_RESP=$(curl -sS -w '\n%{http_code}' -X POST "$BACKEND/api/v1/runs/$PARTIAL_EVIDENCE_RUN_ID/retry" -H "$AUTH" -H "Content-Type: application/json" \
                     -H "Idempotency-Key: acceptance-retry-$PARTIAL_TS-$PARTIAL_EVIDENCE_RUN_ID" \
                     -d "{\"items\":[\"$PARTIAL_RETRY_KEY\"]}")
+                PARTIAL_RETRY_HTTP=${PARTIAL_RETRY_RESP##*$'\n'}
+                PARTIAL_RETRY_RESP=${PARTIAL_RETRY_RESP%$'\n'*}
                 PARTIAL_RETRY_RUN_ID=$(echo "$PARTIAL_RETRY_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',''))" 2>/dev/null)
-                if [ -n "$PARTIAL_RETRY_RUN_ID" ]; then
+                if [ "$PARTIAL_RETRY_HTTP" = "202" ] && [ -n "$PARTIAL_RETRY_RUN_ID" ]; then
                     ok "Run retry 已创建新 Run: $PARTIAL_RETRY_RUN_ID"
                     PARTIAL_RETRY_FINAL=$(wait_for_run "$PARTIAL_RETRY_RUN_ID" 60)
                     PARTIAL_RETRY_DETAIL=$(curl -s "$BACKEND/api/v1/runs/$PARTIAL_RETRY_RUN_ID" -H "$AUTH")
@@ -2069,12 +2096,14 @@ fi
 
 # 手动编排
 sleep 2
-ORCH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
+ORCH=$(curl -sS -w '\n%{http_code}' -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
     -H "Idempotency-Key: acceptance-final-$TS-$WINDOW_ID" \
     -d "{\"repoIds\":[\"$R1\",\"$R2\",\"$R3\"],\"iterationKeys\":[\"$ITER_KEY\"],\"failFast\":false}")
+ORCH_HTTP=${ORCH##*$'\n'}
+ORCH=${ORCH%$'\n'*}
 ORCH_SUCCESS=$(echo "$ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin)['success'])" 2>/dev/null)
 
-if [ "$ORCH_SUCCESS" = "True" ]; then
+if [ "$ORCH_HTTP" = "202" ] && [ "$ORCH_SUCCESS" = "True" ]; then
     ORCH_RUN_ID=$(echo "$ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'])" 2>/dev/null)
     info "Orchestrate 已启动 (run=$ORCH_RUN_ID)，正在等待执行结果..."
     

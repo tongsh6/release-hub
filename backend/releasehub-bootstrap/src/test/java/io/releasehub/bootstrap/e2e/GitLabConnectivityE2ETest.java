@@ -88,8 +88,9 @@ class GitLabConnectivityE2ETest extends AbstractGitLabE2ETest {
                         .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("repoIds", List.of(repoId),
                                 "iterationKeys", List.of(iterKey), "failFast", true))))
-                .andExpect(status().isOk()).andReturn();
+                .andExpect(status().isAccepted()).andReturn();
         String runId = objectMapper.readTree(orchestration.getResponse().getContentAsString()).path("data").asText();
+        E2ETestFixtures.awaitWindowRun(runPort, runId);
         mockMvc.perform(get("/api/v1/runs/{id}", runId).header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("DONE"));
 

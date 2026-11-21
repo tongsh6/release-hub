@@ -325,6 +325,7 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
   }
 
   test('SA-013 real integration submits the UI-created scope and reviews the persisted Run', async ({ page }) => {
+    test.setTimeout(180000) // UI setup plus the bounded observation of the accepted Run.
     await ensureLoggedIn(page)
 
     await page.goto('/groups')
@@ -419,25 +420,40 @@ test.describe.serial('Slice-2: UI-created release orchestration journey', () => 
     await expect(integrationButton).toBeEnabled({ timeout: 10000 })
     const orchestrationResponse = page.waitForResponse(response =>
       /\/api\/v1\/release-windows\/[^/]+\/orchestrate$/.test(response.url()) && response.request().method() === 'POST')
-    const runEvidenceResponse = page.waitForResponse(response =>
-      /\/api\/v1\/runs\/[^/]+\/export\.json$/.test(response.url()) && response.request().method() === 'GET')
+    const receiptRunId = orchestrationResponse.then(async response => (await response.json()).data as string)
+    // Observe only the accepted Run. A review status can coexist with other active repositories.
+    const runEvidenceResponse = page.waitForResponse(async response => {
+      if (response.request().method() !== 'GET' || !/\/api\/v1\/runs\/[^/]+\/export\.json$/.test(response.url())) return false
+      if (!response.url().endsWith(`/runs/${await receiptRunId}/export.json`) || !response.ok()) return false
+      return (await response.json()).status !== 'RUNNING'
+    }, { timeout: 120000 })
+    const tasksEvidenceResponse = page.waitForResponse(async response => {
+      if (response.request().method() !== 'GET' || !/\/api\/v1\/runs\/[^/]+\/tasks$/.test(response.url())) return false
+      const id = await receiptRunId
+      if (!response.url().endsWith(`/runs/${id}/tasks`) || !response.ok()) return false
+      const tasks: Array<{ runId: string; status: string }> = (await response.json()).data
+      return Array.isArray(tasks) && tasks.length > 0 && tasks.every(task =>
+        task.runId === id && task.status !== 'PENDING' && task.status !== 'RUNNING')
+    }, { timeout: 120000 })
     await integrationButton.click()
     await confirmMessageBox(page)
 
     const response = await orchestrationResponse
-    expect(response.ok()).toBeTruthy()
+    expect(response.status()).toBe(202)
     const orchestrateBody = response.request().postDataJSON()
     expect(orchestrateBody).toMatchObject({ iterationKeys: [iterationKey], failFast: true })
     expect(orchestrateBody).not.toHaveProperty('operator')
     expect(orchestrateBody.repoIds).toHaveLength(1)
     createdRepoId = orchestrateBody.repoIds[0]
 
-    const runId = (await response.json()).data
+    const runId = await receiptRunId
     expect(typeof runId).toBe('string')
-    const evidenceResponse = await runEvidenceResponse
+    const [evidenceResponse, tasksResponse] = await Promise.all([runEvidenceResponse, tasksEvidenceResponse])
+    expect((await tasksResponse.json()).data).not.toHaveLength(0)
     expect(evidenceResponse.ok()).toBeTruthy()
     expect(evidenceResponse.url()).toContain(`/runs/${runId}/export.json`)
     const evidence = await evidenceResponse.json()
+    expect(evidence.runId).toBe(runId)
     expect(evidence.runType).toBe('WINDOW_ORCHESTRATION')
     expect(evidence.status).toBe('DONE')
     expect(evidence.items).toEqual(expect.arrayContaining([

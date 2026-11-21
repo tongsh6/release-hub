@@ -29,19 +29,57 @@ json_get() {
 }
 
 api() {
-    local method=$1
-    local path=$2
-    local body=${3:-}
-    local request_key=${4:-}
+    local method=$1 path=$2 body=${3:-} request_key=${4:-}
     local headers=(-H "$AUTH")
+    local response http_status
     if [ -n "$request_key" ]; then
         headers+=(-H "Idempotency-Key: $request_key")
     fi
     if [ -n "$body" ]; then
-        curl -s -X "$method" "$BACKEND$path" "${headers[@]}" -H "Content-Type: application/json" -d "$body"
+        response=$(curl -sS --max-time 30 -w '\n%{http_code}' -X "$method" "$BACKEND$path" "${headers[@]}" -H "Content-Type: application/json" -d "$body") || return 1
     else
-        curl -s -X "$method" "$BACKEND$path" "${headers[@]}"
+        response=$(curl -sS --max-time 10 -w '\n%{http_code}' -X "$method" "$BACKEND$path" "${headers[@]}") || return 1
     fi
+    http_status=${response##*$'\n'}
+    response=${response%$'\n'*}
+    if [ -n "$request_key" ] && [ "$http_status" != "202" ]; then
+        echo "编排未受理：HTTP $http_status" >&2
+        return 1
+    fi
+    printf '%s\n' "$response"
+}
+
+# 只读观察当前回执；NEEDS_REVIEW 且仍有其他仓库任务时不能提前收口。
+wait_window_run() {
+    local run_id=$1 response status tasks active deadline
+    deadline=$((SECONDS + 60))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        response=$(api GET "/api/v1/runs/$run_id") || return 1
+        status=$(printf '%s' "$response" | python3 -c '
+import json,sys
+d=json.load(sys.stdin); r=d.get("data") or {}
+if d.get("success") is not True or r.get("id") != sys.argv[1]: sys.exit("原 Run 身份不匹配")
+if r.get("executionVersion") != 3 or r.get("runType") != "WINDOW_ORCHESTRATION": sys.exit("原 Run 协议不匹配")
+if r.get("status") not in ("RUNNING","DONE","PARTIAL_FAILED","FAILED","NEEDS_REVIEW"): sys.exit("原 Run 状态缺失")
+print(r["status"])
+' "$run_id") || return 1
+        tasks=$(api GET "/api/v1/runs/$run_id/tasks") || return 1
+        active=$(printf '%s' "$tasks" | python3 -c '
+import json,sys
+d=json.load(sys.stdin); rows=d.get("data")
+states={"PENDING","RUNNING","COMPLETED","FAILED","UNKNOWN","SKIPPED","INHERITED"}
+if d.get("success") is not True or not isinstance(rows,list) or not rows: sys.exit("持久任务缺失")
+if any(t.get("runId") != sys.argv[1] or t.get("status") not in states for t in rows): sys.exit("任务身份或状态不匹配")
+print(any(t["status"] in ("PENDING","RUNNING") for t in rows))
+' "$run_id") || return 1
+        if [ "$active" = "False" ] && [ "$status" != "RUNNING" ]; then
+            printf '%s\n' "$response"
+            return 0
+        fi
+        sleep 1
+    done
+    echo "等待原 Run 超时，未重试或修改状态：$run_id" >&2
+    return 1
 }
 
 cleanup_branch_rules() {
@@ -202,7 +240,7 @@ assert_named_denied() {
 # is removed before the separate release-denied case, so the negative assertion stays meaningful.
 orchestrate_named_feature() {
     local label=$1 group_code=$2 repo_id=$3 clone_url=$4 iteration_key=$5 branch=$6
-    local window_resp window_id window_key scope_level scope_project scope_sub rule_resp attach_resp response run_id status state
+    local window_resp window_id window_key scope_level scope_project scope_sub rule_resp attach_resp response run_id run_detail status state
     window_resp=$(api POST "/api/v1/release-windows" "{\"name\":\"$label NAMED 编排 $TS\",\"groupCode\":\"$group_code\"}")
     window_id=$(echo "$window_resp" | json_get "((d.get('data') or {}).get('id') or '')")
     window_key=$(echo "$window_resp" | json_get "((d.get('data') or {}).get('windowKey') or '')")
@@ -223,7 +261,8 @@ orchestrate_named_feature() {
         "{\"repoIds\":[\"$repo_id\"],\"iterationKeys\":[\"$iteration_key\"],\"failFast\":true}" "sa006-feature-$TS-$window_id")
     run_id=$(echo "$response" | json_get "d.get('data','') if d.get('success') else ''")
     [ -n "$run_id" ] || { no "$label 显式编排未返回 Run"; return 1; }
-    status=$(api GET "/api/v1/runs/$run_id" | json_get "((d.get('data') or {}).get('status') or '')")
+    run_detail=$(wait_window_run "$run_id") || { no "$label 原编排观察未完成"; return 1; }
+    status=$(echo "$run_detail" | json_get "((d.get('data') or {}).get('status') or '')")
     [ "$status" = "DONE" ] || { no "$label 命名编排未完成: $run_id/$status"; return 1; }
     state=$(gitlab_branch_state "$clone_url" "$branch")
     [ "$state" = "FOUND" ] || { no "$label 编排后 feature 证据异常: $state"; return 1; }
@@ -247,13 +286,8 @@ assert_release_denied() {
     release_resp=$(api POST "/api/v1/release-windows/$window_id/orchestrate" "{\"repoIds\":[\"$repo_id\"],\"iterationKeys\":[\"$iteration_key\"],\"failFast\":true}" "sa006-release-$TS-$window_id")
     if [ "$(echo "$release_resp" | json_get "d.get('success', False)")" = "True" ]; then
         run_id=$(echo "$release_resp" | json_get "d.get('data','')")
-        run_status="RUNNING"
-        for attempt in $(seq 1 60); do
-            run_detail=$(api GET "/api/v1/runs/$run_id")
-            run_status=$(echo "$run_detail" | json_get "((d.get('data') or {}).get('status') or '')")
-            [ "$run_status" != "RUNNING" ] && break
-            sleep 1
-        done
+        run_detail=$(wait_window_run "$run_id") || { no "$label 原编排观察未完成"; return 1; }
+        run_status=$(echo "$run_detail" | json_get "((d.get('data') or {}).get('status') or '')")
         denied=$(echo "$run_detail" | json_get "any(s.get('actionType') == 'ENSURE_RELEASE' and s.get('result') == 'FAILED' for i in (d.get('data') or {}).get('items',[]) for s in i.get('steps',[]))")
         [ "$run_status" = "FAILED" ] && [ "$denied" = "True" ] \
             && ok "$label 不合规 release 在 Run 中明确失败" \

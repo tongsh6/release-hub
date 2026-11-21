@@ -215,15 +215,17 @@ test_code_merge_api() {
     fi
 
     local request_key="us-auto-$TEST_TIMESTAMP-$TEST_WINDOW_ID"
-    local response success
-    response=$(curl -s -X POST "$BASE_URL/release-windows/$TEST_WINDOW_ID/orchestrate" \
+    local response success http_status
+    response=$(curl -sS -w '\n%{http_code}' -X POST "$BASE_URL/release-windows/$TEST_WINDOW_ID/orchestrate" \
         -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
         -H "Idempotency-Key: $request_key" \
         -d "{\"repoIds\":[\"$TEST_REPO_ID\"],\"iterationKeys\":[\"$TEST_ITER_KEY\"],\"failFast\":true}")
+    http_status=${response##*$'\n'}
+    response=${response%$'\n'*}
     success=$(json_get "$response" ".success")
     TEST_RUN_ID=$(json_get "$response" ".data")
-    if [ "$success" = "True" ] && [ -n "$TEST_RUN_ID" ] && [ "$TEST_RUN_ID" != "null" ]; then
-        log_success "  ✓ 编排受理返回 Run ID: $TEST_RUN_ID"
+    if [ "$http_status" = "202" ] && [ "$success" = "True" ] && [ -n "$TEST_RUN_ID" ] && [ "$TEST_RUN_ID" != "null" ]; then
+        log_success "  ✓ 编排以 HTTP 202 受理并返回 Run ID: $TEST_RUN_ID"
         response=$(api_get "/runs/$TEST_RUN_ID")
         local protocol=$(json_get "$response" ".data.executionVersion")
         local run_type=$(json_get "$response" ".data.runType")
@@ -235,7 +237,7 @@ test_code_merge_api() {
         fi
     else
         TEST_RUN_ID=""
-        log_fail "  ✗ 编排受理失败: $(json_get "$response" ".code")"
+        log_fail "  ✗ 编排受理失败: HTTP $http_status, $(json_get "$response" ".code")"
     fi
 }
 # ============================================================
