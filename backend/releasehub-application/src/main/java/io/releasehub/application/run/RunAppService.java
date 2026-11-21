@@ -73,7 +73,7 @@ public class RunAppService {
 
     /** 每次只完成一个任务：先补已确认结果，否则沿原领取执行路径推进。 */
     public boolean executeNextTask(String runId) {
-        // 当前四动作协议的分支与 ENSURE_MR 任务均有 PENDING 后继，由既有扫描可靠发现。
+        // 同一投影入口也处理无 PENDING 后继的末尾 TRY；扫描只发现，结果事务核对原证明。
         if (runPort.projectNextAppliedTask(runId)) return true;
         var next = runPort.claimNextTask(runId);
         if (next.isEmpty()) return false;
@@ -180,11 +180,7 @@ public class RunAppService {
                                             GitBranchPort git, String source, String target) {
         GitBranchPort.MrEvidence checkpoint;
         try {
-            var facts = claim.metadata();
-            checkpoint = new GitBranchPort.MrEvidence(facts.get("git.projectId"), facts.get("git.sourceBranch"),
-                    facts.get("git.targetBranch"), facts.get("git.mrIid"), facts.get("git.mrUrl"),
-                    facts.get("git.sourceSha"), facts.get("git.mergeSha"),
-                    GitBranchPort.MrDisposition.valueOf(facts.getOrDefault("git.mrDisposition", "")), null);
+            checkpoint = RunPort.mrCheckpoint(claim.metadata());
         } catch (IllegalArgumentException error) {
             return taskResult(claim, RunItemResult.UNKNOWN, "持久 MR 检查点缺少身份或提交证据", Map.of("git.blockReason", "UNKNOWN"));
         }
@@ -202,16 +198,7 @@ public class RunAppService {
                     || !java.util.Objects.equals(checkpoint.iid(), result.mrEvidence().iid()))) {
                 result = GitBranchPort.MergeResult.unknown("合并结果与持久 MR 检查点不一致").withEvidence(checkpoint);
             }
-            // TRY 拥有合并结果，不能用部分响应覆盖 ENSURE_MR 已封存的身份。
-            Map<String, String> updates = new java.util.LinkedHashMap<>();
-            updates.put("git.requestId", result.remoteRequestId());
-            var evidence = result.mrEvidence();
-            updates.put("git.blockReason", evidence == null || evidence.blockReason() == null
-                    ? (result.status() == MergeStatus.UNKNOWN ? "UNKNOWN" : null) : evidence.blockReason().name());
-            if (result.status() == MergeStatus.SUCCESS) {
-                updates.put("git.mergeSha", evidence.mergeSha());
-                updates.put("git.mrDisposition", evidence.disposition().name());
-            }
+            Map<String, String> updates = RunPort.mrResultUpdates(result);
             return taskResult(claim, mergeOutcome(result),
                     result.detail() == null ? source + " → " + target : result.detail(), updates);
         } catch (RuntimeException error) {

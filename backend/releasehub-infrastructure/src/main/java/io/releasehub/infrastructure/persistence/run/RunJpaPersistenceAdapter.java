@@ -1,6 +1,7 @@
 package io.releasehub.infrastructure.persistence.run;
 
 import io.releasehub.application.run.RunPort;
+import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.gitoperation.GitOperationJournalPort;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
@@ -228,8 +229,14 @@ public class RunJpaPersistenceAdapter implements RunPort {
                       AND (t.status='PENDING' OR (
                         t.status='RUNNING' AND t.claim_token IS NOT NULL AND t.started_at IS NOT NULL
                         AND t.claim_expires_at IS NOT NULL AND t.claim_expires_at<=clock_timestamp()
-                        AND
+                        AND ((
                 """ + NO_TASK_EVIDENCE + """
+                        ) OR (
+                          t.task_type='TRY_MERGE'
+                          AND NOT EXISTS (SELECT 1 FROM {h-schema}run_step s WHERE s.task_id=t.id)
+                          AND EXISTS (SELECT 1 FROM {h-schema}git_operation o WHERE o.task_id=t.id
+                            AND o.action='MERGE_MR' AND o.state='APPLIED')
+                        ))
                         )))
                 ORDER BY r.id
                 """)
@@ -252,7 +259,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
         Map<String, RunItemJpaEntity> items = taskItems(run, ordered);
         for (var candidate : ordered) {
             if (!"RUNNING".equals(candidate.getStatus())
-                    || !Set.of("ENSURE_FEATURE", "ENSURE_RELEASE", "ENSURE_MR").contains(candidate.getTaskType())) continue;
+                    || !Set.of("ENSURE_FEATURE", "ENSURE_RELEASE", "ENSURE_MR", "TRY_MERGE").contains(candidate.getTaskType())) continue;
             RunItemJpaEntity item = items.get(candidate.getTargetId());
             if (item.getExecutedOrder() <= 0 || !eligible(candidate, item, ordered, items)) continue;
             RunTaskJpaEntity task = tasks.findForUpdate(candidate.getId()).orElseThrow(this::stale);
@@ -266,11 +273,18 @@ public class RunJpaPersistenceAdapter implements RunPort {
                     taskMetadata(run, item));
             Map<String, String> updates;
             String message;
+            RunItemResult result = RunItemResult.CREATED;
             if (claim.actionType() == ActionType.ENSURE_MR) {
                 var evidence = journal.confirmedAppliedCreatedMr(claim);
                 if (evidence.isEmpty()) continue;
                 updates = RunPort.mrEvidenceUpdates(evidence.get(), null);
                 message = "根据已确认的 MR 创建结果恢复检查点";
+            } else if (claim.actionType() == ActionType.TRY_MERGE) {
+                var evidence = journal.confirmedAppliedMergedMr(claim);
+                if (evidence.isEmpty()) continue;
+                updates = RunPort.mrResultUpdates(GitBranchPort.MergeResult.success().withEvidence(evidence.get()));
+                result = RunItemResult.MERGED;
+                message = "根据已确认的 MR 合并结果恢复记录";
             } else {
                 var project = journal.confirmedAppliedBranchProject(claim);
                 if (project.isEmpty()) continue;
@@ -278,7 +292,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 message = "根据已确认的分支创建结果恢复记录";
             }
             // 外层代理已建立结果事务；自调用沿同一物理事务提交，clear 后不再使用原实体。
-            completeTask(claim, new RunStep(claim.actionType(), RunItemResult.CREATED,
+            completeTask(claim, new RunStep(claim.actionType(), result,
                     claim.startedAt(), now(), message), updates);
             return true;
         }

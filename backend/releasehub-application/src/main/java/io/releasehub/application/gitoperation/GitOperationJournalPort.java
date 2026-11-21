@@ -33,6 +33,8 @@ public interface GitOperationJournalPort {
     Optional<String> confirmedAppliedBranchProject(RunPort.TaskClaim claim);
     /** 必须加入原任务结果事务，核对完整 CREATE_MR 原响应，返回历史 CREATED 检查点；零远端调用。 */
     Optional<MrEvidence> confirmedAppliedCreatedMr(RunPort.TaskClaim claim);
+    /** 必须加入原任务结果事务，核对完整 MERGE_MR 原响应与原检查点，返回历史合并结果；零远端调用。 */
+    Optional<MrEvidence> confirmedAppliedMergedMr(RunPort.TaskClaim claim);
     /** 仅在活动领取者的结果事务中确认；没有远端操作的任务不创建仓库保护。 */
     void acknowledgeTask(RunPort.TaskFence fence, RunItemResult result);
     List<Operation> list(String repoId, int page, int size);

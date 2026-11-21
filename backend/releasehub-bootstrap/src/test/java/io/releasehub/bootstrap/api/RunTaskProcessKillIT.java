@@ -25,6 +25,7 @@ import io.releasehub.domain.run.ActionType;
 import io.releasehub.domain.run.RunExecutionStatus;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.config.BeanPostProcessor;
@@ -55,7 +56,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
-/** 独立 JVM + PostgreSQL/HTTP：原任务继续、无写意图接管及已确认创建结果投影；不重放未知写。 */
+/** 独立 JVM + PostgreSQL/HTTP：原任务继续、无写意图接管及已确认结果投影；不重放未知写。 */
 class RunTaskProcessKillIT {
     private static final String PROJECT_ID = "101";
     private static final String ITERATION = "ITER-C2-RESTART";
@@ -168,16 +169,17 @@ class RunTaskProcessKillIT {
         }
     }
 
-    @ParameterizedTest(name = "branchCreation={0}")
-    @ValueSource(booleans = {true, false})
+    @ParameterizedTest(name = "appliedAction={0}")
+    @EnumSource(value = ActionType.class, names = {"ENSURE_FEATURE", "ENSURE_MR", "TRY_MERGE"})
     @Timeout(180)
-    void restartingAfterAppliedWriteProjectsWithoutAnotherHttpRequest(boolean branchCreation) throws Exception {
+    void restartingAfterAppliedWriteProjectsWithoutAnotherHttpRequest(ActionType appliedAction) throws Exception {
+        boolean branchCreation = appliedAction == ActionType.ENSURE_FEATURE;
+        boolean mergeAction = appliedAction == ActionType.TRY_MERGE;
         GitLabHttpFixture server = new GitLabHttpFixture();
         Process first = null;
         Process restarted = null;
-        int taskIndex = branchCreation ? 0 : 2;
-        String action = branchCreation ? "ENSURE_FEATURE" : "ENSURE_MR";
-        String caseName = branchCreation ? "branch" : "mr";
+        int taskIndex = branchCreation ? 0 : mergeAction ? 3 : 2;
+        String caseName = branchCreation ? "branch" : mergeAction ? "merge" : "mr";
         try (var db = new PostgreSQLContainer<>("postgres:18.1")
                 .withDatabaseName("applied_write_restart").withUsername("process_test").withPassword("isolated-process-db")) {
             db.start();
@@ -213,29 +215,40 @@ class RunTaskProcessKillIT {
                     + "where t.run_id=? order by t.task_order", runId);
             var operations = jdbc.queryForList("select * from git_operation where run_id=? order by id", runId);
             var events = jdbc.queryForList("select e.* from git_operation_event e join git_operation o on o.id=e.operation_id "
-                    + "where o.run_id=? order by e.event_sequence", runId);
+                    + "where o.run_id=? order by o.id,e.event_sequence", runId);
             assertThat(before).extracting(row -> row.get("status")).containsExactlyElementsOf(branchCreation
                     ? List.of("RUNNING", "PENDING", "PENDING", "PENDING")
+                    : mergeAction ? List.of("COMPLETED", "COMPLETED", "COMPLETED", "RUNNING")
                     : List.of("COMPLETED", "COMPLETED", "RUNNING", "PENDING"));
             assertThat(originalSteps).hasSize(taskIndex);
             assertThat(originalItemIds).hasSize(1);
-            assertThat(operations).hasSize(1);
-            assertThat(operations.getFirst()).containsEntry("state", "APPLIED")
-                    .containsEntry("action", branchCreation ? "CREATE_BRANCH" : "CREATE_MR")
+            assertThat(operations).hasSize(mergeAction ? 2 : 1);
+            var appliedOperation = operations.stream()
+                    .filter(row -> originalTask.get("id").equals(row.get("task_id"))).findFirst().orElseThrow();
+            assertThat(appliedOperation).containsEntry("state", "APPLIED")
+                    .containsEntry("action", branchCreation ? "CREATE_BRANCH" : mergeAction ? "MERGE_MR" : "CREATE_MR")
                     .containsEntry("task_id", originalTask.get("id"))
                     .containsEntry("claim_token", originalTask.get("claim_token"));
-            assertThat(events).hasSize(3);
+            assertThat(events).hasSize(mergeAction ? 6 : 3);
             assertThat(events.getLast()).containsEntry("event_type", "APPLIED");
-            String remoteKey = operations.getFirst().get("remote_key").toString();
+            String remoteKey = appliedOperation.get("remote_key").toString();
             var guard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", remoteKey);
-            assertThat(guard.get("operation_id")).isEqualTo(operations.getFirst().get("id"));
+            assertThat(guard.get("operation_id")).isEqualTo(appliedOperation.get("id"));
             assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class,
                     originalTask.get("id"))).isZero();
-            if (!branchCreation) {
-                assertThat(metadata(jdbc, runId)).doesNotContainKeys("git.mrIid", "git.mrUrl", "git.sourceSha");
+            var originalMetadata = metadata(jdbc, runId);
+            if (appliedAction == ActionType.ENSURE_MR) {
+                assertThat(originalMetadata).doesNotContainKeys("git.mrIid", "git.mrUrl", "git.sourceSha");
+            }
+            if (mergeAction) {
+                assertThat(originalMetadata).containsEntry("git.mrIid", "7").containsEntry("git.sourceSha", SOURCE_SHA)
+                        .containsEntry("git.mrDisposition", "CREATED").doesNotContainKey("git.mergeSha");
+                assertThat(jdbc.queryForObject("select last_merge_at from window_iteration where window_id=? and iteration_key=?",
+                        java.sql.Timestamp.class, windowId, ITERATION)).isNull();
+                server.verify("PUT", root + "/merge_requests/7/merge", 1);
             }
             server.verify("POST", root + (branchCreation ? "/repository/branches" : "/merge_requests"), 1);
-            assertThat(server.writeCount()).isEqualTo(1);
+            assertThat(server.writeCount()).isEqualTo(mergeAction ? 2 : 1);
 
             long killedPid = first.pid();
             first.destroyForcibly();
@@ -245,10 +258,21 @@ class RunTaskProcessKillIT {
                 server.reply("GET", featurePath, 200,
                         "{\"name\":\"" + SOURCE + "\",\"commit\":{\"id\":\"" + SOURCE_SHA + "\"}}");
             }
+            if (mergeAction) {
+                // Historical success must remain recoverable after the remote MR disappears or the target resets.
+                server.reply("GET", root + "/merge_requests/7", 404, "{}");
+                server.reply("GET", root + "/repository/branches/" + URLEncoder.encode(TARGET, StandardCharsets.UTF_8),
+                        200, "{\"name\":\"" + TARGET + "\",\"commit\":{\"id\":\"" + "d".repeat(40) + "\"}}");
+            }
             int requestsBeforeRestart = server.requests.size();
             Instant recoveryStarted = Instant.now();
             Path restartedLog = temporary.resolve("applied-restarted.log");
             restarted = launch("resume-applied-" + caseName, db, server, windowId, repoId, marker, receipt, restartedLog);
+            System.out.printf("PROCESS_APPLIED_%s_CHECKPOINT run=%s task=%s killedPid=%d exit=%d resumedPid=%d "
+                    + "operations=%d events=%d noPendingAtKill=%s%n",
+                    branchCreation ? "BRANCH" : mergeAction ? "MERGE" : "MR", runId, originalTask.get("id"),
+                    killedPid, first.exitValue(), restarted.pid(), operations.size(), events.size(),
+                    before.stream().noneMatch(row -> "PENDING".equals(row.get("status"))));
             awaitCheckpoint(restarted, projected, restartedLog);
 
             // The proxy pauses after the projection transaction commits and before the next task can run.
@@ -270,19 +294,34 @@ class RunTaskProcessKillIT {
             assertThat(projectedSteps.subList(0, taskIndex)).isEqualTo(originalSteps);
             assertThat(jdbc.queryForList("select * from git_operation where run_id=? order by id", runId)).isEqualTo(operations);
             assertThat(jdbc.queryForList("select e.* from git_operation_event e join git_operation o on o.id=e.operation_id "
-                    + "where o.run_id=? order by e.event_sequence", runId)).isEqualTo(events);
+                    + "where o.run_id=? order by o.id,e.event_sequence", runId)).isEqualTo(events);
             var step = jdbc.queryForMap("select * from run_step where task_id=?", originalTask.get("id"));
-            assertThat(step).containsEntry("action_type", action).containsEntry("result", "CREATED");
+            assertThat(step).containsEntry("action_type", appliedAction.name())
+                    .containsEntry("result", mergeAction ? "MERGED" : "CREATED");
             Instant stepStart = jdbc.queryForObject("select start_at from run_step where task_id=?",
                     java.sql.Timestamp.class, originalTask.get("id")).toInstant();
             assertThat(stepStart).isAfterOrEqualTo(recoveryStarted);
             assertThat(metadata(jdbc, runId)).containsEntry("git.projectId", PROJECT_ID);
-            if (!branchCreation) {
+            if (appliedAction == ActionType.ENSURE_MR) {
                 assertThat(metadata(jdbc, runId)).containsEntry("git.sourceBranch", SOURCE)
                         .containsEntry("git.targetBranch", TARGET).containsEntry("git.sourceSha", SOURCE_SHA)
                         .containsEntry("git.mrIid", "7").containsEntry("git.mrDisposition", "CREATED")
                         .containsEntry("git.mrUrl", server.baseUrl() + "/acme/restart/-/merge_requests/7")
                         .doesNotContainKeys("git.mergeSha", "git.blockReason", "git.requestId");
+            }
+            if (mergeAction) {
+                var expectedMetadata = new java.util.LinkedHashMap<>(originalMetadata);
+                expectedMetadata.put("git.mergeSha", "c".repeat(40));
+                expectedMetadata.remove("git.blockReason");
+                expectedMetadata.remove("git.requestId");
+                assertThat(metadata(jdbc, runId)).isEqualTo(expectedMetadata);
+                assertThat(jdbc.queryForObject("select final_result from run_item where run_id=?", String.class, runId))
+                        .isEqualTo("MERGED");
+                assertThat(jdbc.queryForObject("select execution_status from run where id=?", String.class, runId)).isEqualTo("DONE");
+                assertThat(jdbc.queryForObject("select finished_at from run where id=?", java.sql.Timestamp.class, runId))
+                        .isNotNull();
+                assertThat(jdbc.queryForObject("select last_merge_at from window_iteration where window_id=? and iteration_key=?",
+                        java.sql.Timestamp.class, windowId, ITERATION).toInstant()).isAfterOrEqualTo(recoveryStarted);
             }
             var releasedGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", remoteKey);
             assertThat(releasedGuard).containsEntry("generation", guard.get("generation"))
@@ -303,8 +342,9 @@ class RunTaskProcessKillIT {
             assertThat(server.body("PUT", root + "/merge_requests/7/merge").path("sha").asText()).isEqualTo(SOURCE_SHA);
             assertThat(server.writeCount()).isEqualTo(branchCreation ? 3 : 2);
             System.out.printf("PROCESS_APPLIED_%s_RESUME run=%s killedPid=%d exit=%d resumedPid=%d "
-                    + "projectionHttp=0 branchPost=%d mrPost=1 mergePut=1 preservedToken=true preservedEvents=3%n",
-                    branchCreation ? "BRANCH" : "MR", runId, killedPid, first.exitValue(), restarted.pid(), branchCreation ? 1 : 0);
+                    + "projectionHttp=0 branchPost=%d mrPost=1 mergePut=1 preservedToken=true preservedEvents=%d noPendingAtKill=%s%n",
+                    branchCreation ? "BRANCH" : mergeAction ? "MERGE" : "MR", runId, killedPid, first.exitValue(), restarted.pid(),
+                    branchCreation ? 1 : 0, events.size(), mergeAction);
         } finally {
             stopOwnedProcess(first);
             stopOwnedProcess(restarted);
@@ -446,7 +486,10 @@ class RunTaskProcessKillIT {
             boolean appliedMrBeforeCrash = "first-applied-mr".equals(args[0]);
             boolean branchProjectionResume = "resume-applied-branch".equals(args[0]);
             boolean mrProjectionResume = "resume-applied-mr".equals(args[0]);
-            boolean first = "first".equals(args[0]) || claimedBeforeCrash || appliedBranchBeforeCrash || appliedMrBeforeCrash;
+            boolean appliedMergeBeforeCrash = "first-applied-merge".equals(args[0]);
+            boolean mergeProjectionResume = "resume-applied-merge".equals(args[0]);
+            boolean first = "first".equals(args[0]) || claimedBeforeCrash || appliedBranchBeforeCrash
+                    || appliedMrBeforeCrash || appliedMergeBeforeCrash;
             Path marker = Path.of(args[1]);
             Path receipt = Path.of(args[2]);
             try (ConfigurableApplicationContext context = new SpringApplicationBuilder(
@@ -455,10 +498,10 @@ class RunTaskProcessKillIT {
                             "--releasehub.run.worker.enabled=true", "--releasehub.run.worker.parallelism=1",
                             "--releasehub.run.worker.queue-capacity=0", "--releasehub.run.worker.scan-delay-ms=25",
                             "--releasehub.run.worker.claim-lease-ms=2000",
-                            "--releasehub.fixture.pause-after-mr=" + (first && !claimedBeforeCrash && !appliedBranchBeforeCrash && !appliedMrBeforeCrash),
+                            "--releasehub.fixture.pause-after-mr=" + (first && !claimedBeforeCrash && !appliedBranchBeforeCrash && !appliedMrBeforeCrash && !appliedMergeBeforeCrash),
                             "--releasehub.fixture.pause-after-claim=" + claimedBeforeCrash,
-                            "--releasehub.fixture.pause-before-completion=" + (appliedBranchBeforeCrash ? "ENSURE_FEATURE" : appliedMrBeforeCrash ? "ENSURE_MR" : ""),
-                            "--releasehub.fixture.pause-after-projection=" + (branchProjectionResume || mrProjectionResume),
+                            "--releasehub.fixture.pause-before-completion=" + (appliedBranchBeforeCrash ? "ENSURE_FEATURE" : appliedMrBeforeCrash ? "ENSURE_MR" : appliedMergeBeforeCrash ? "TRY_MERGE" : ""),
+                            "--releasehub.fixture.pause-after-projection=" + (branchProjectionResume || mrProjectionResume || mergeProjectionResume),
                             "--releasehub.fixture.checkpoint-file=" + marker,
                             "--spring.datasource.url=" + environment("RH_C2_DB_URL"),
                             "--spring.datasource.username=" + environment("RH_C2_DB_USER"),
@@ -481,6 +524,10 @@ class RunTaskProcessKillIT {
                     if (System.nanoTime() >= deadline) throw new IllegalStateException(
                             "Scheduled worker did not finish original task: " + runs.findTasks(originalRunId));
                     Thread.sleep(50);
+                }
+                if (mergeProjectionResume) {
+                    // The terminal result is already DONE while the worker is held at the projection boundary.
+                    while (!Files.exists(marker.resolveSibling("projection-release.txt"))) Thread.sleep(25);
                 }
                 assertThat(context.getBean(GitOperationJournalPort.class).list(repoId, 0, 10))
                         .hasSize(branchProjectionResume ? 3 : 2).allMatch(operation -> operation.state().equals("APPLIED") && !operation.blocked());

@@ -90,17 +90,18 @@ public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
     @Override public GitWriteResult<MergeRequest> create(String source, String target, String expectedSourceSha, String title) {
         if (!validSha(expectedSourceSha)) return GitWriteResult.rejected("SOURCE_REVISION_REQUIRED");
         return write(writeEndpoint, HttpMethod.POST, Map.of("source_branch", source, "target_branch", target,
-                "title", title, "remove_source_branch", false), false, expectedSourceSha);
+                "title", title, "remove_source_branch", false), false, expectedSourceSha, null);
     }
 
     @Override public GitWriteResult<MergeRequest> merge(String id, String sourceSha, String message) {
         if (!validSha(sourceSha)) return GitWriteResult.rejected("SOURCE_REVISION_REQUIRED");
         return write(writeEndpoint + "/" + encode(id) + "/merge", HttpMethod.PUT,
                 Map.of("merge_commit_message", message == null ? "" : message, "sha", sourceSha,
-                        "should_remove_source_branch", false), true, sourceSha);
+                        "should_remove_source_branch", false), true, sourceSha, id);
     }
 
-    private GitWriteResult<MergeRequest> write(String uri, HttpMethod method, Map<String, ?> body, boolean merging, String sourceSha) {
+    private GitWriteResult<MergeRequest> write(String uri, HttpMethod method, Map<String, ?> body,
+            boolean merging, String sourceSha, String expectedIid) {
         try {
             var writeHeaders = headers();
             writeHeaders.set(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID, projectId);
@@ -113,12 +114,10 @@ public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
                 return confirmed.map(GitWriteResult::applied).orElseGet(() ->
                         new GitWriteResult<>(GitWriteResult.Outcome.UNKNOWN, createdEvidence(response.getBody()), "INCOMPLETE_RESPONSE"));
             }
-            var mr = evidence(response.getBody());
-            if (!response.getStatusCode().is2xxSuccessful() || !complete(mr)
-                    || mr.state() != State.MERGED || !validSha(mr.sourceSha())) {
-                return new GitWriteResult<>(GitWriteResult.Outcome.UNKNOWN, mr, "INCOMPLETE_RESPONSE");
-            }
-            return GitWriteResult.applied(mr);
+            var confirmed = confirmedMergedMr(response.getStatusCode().value(), ERROR_JSON.valueToTree(response.getBody()),
+                    projectId, expectedIid, sourceSha);
+            return confirmed.map(GitWriteResult::applied).orElseGet(() ->
+                    new GitWriteResult<>(GitWriteResult.Outcome.UNKNOWN, evidence(response.getBody()), "INCOMPLETE_RESPONSE"));
         } catch (HttpClientErrorException e) {
             int code = e.getStatusCode().value();
             if (code == 408) return GitWriteResult.unknown("HTTP_408");
@@ -144,6 +143,31 @@ public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
                 || !body.path("sha").isTextual() || !validSha(body.path("sha").textValue())
                 || !expectedSourceSha.equalsIgnoreCase(body.path("sha").textValue())) return java.util.Optional.empty();
         var mr = createdEvidence(ERROR_JSON.convertValue(body,
+                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}));
+        return complete(mr) ? java.util.Optional.of(mr) : java.util.Optional.empty();
+    }
+
+    /** MERGE 只证明原 IID/source SHA 的远端成功；分支与业务检查点由现有消费者绑定。 */
+    public static java.util.Optional<MergeRequest> confirmedMergedMr(int status, JsonNode body, String projectId,
+            String iid, String expectedSourceSha) {
+        if (status != 200 || body == null || !body.isObject() || !validSha(expectedSourceSha)) {
+            return java.util.Optional.empty();
+        }
+        for (String field : List.of("project_id", "source_project_id", "target_project_id")) {
+            JsonNode id = body.path(field);
+            if (!positiveInteger(id) || !id.asText().equals(projectId)) return java.util.Optional.empty();
+        }
+        if (!positiveInteger(body.path("iid")) || !body.path("iid").asText().equals(iid)
+                || !body.path("web_url").isTextual()
+                || !body.path("source_branch").isTextual() || !body.path("target_branch").isTextual()
+                || !body.path("state").isTextual() || !"merged".equals(body.path("state").textValue())
+                || !body.path("sha").isTextual() || !validSha(body.path("sha").textValue())
+                || !expectedSourceSha.equalsIgnoreCase(body.path("sha").textValue())) return java.util.Optional.empty();
+        JsonNode mergeSha = body.get("merge_commit_sha");
+        if (mergeSha == null || (!mergeSha.isNull() && (!mergeSha.isTextual() || !validSha(mergeSha.textValue())))) {
+            return java.util.Optional.empty();
+        }
+        var mr = evidence(ERROR_JSON.convertValue(body,
                 new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}));
         return complete(mr) ? java.util.Optional.of(mr) : java.util.Optional.empty();
     }

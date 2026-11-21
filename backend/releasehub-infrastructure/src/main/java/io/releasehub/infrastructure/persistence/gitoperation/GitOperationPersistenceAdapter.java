@@ -174,6 +174,41 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
                         mr.sourceSha(), null, MrDisposition.CREATED, null));
     }
 
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<MrEvidence> confirmedAppliedMergedMr(RunPort.TaskClaim claim) {
+        if (claim == null || claim.actionType() != ActionType.TRY_MERGE) return Optional.empty();
+        var operation = confirmedAppliedTaskOperation(claim, "MERGE_MR");
+        if (operation.isEmpty()) return Optional.empty();
+        var op = operation.get();
+        var metadata = em.find(RunItemJpaEntity.class, claim.itemId()).getMetadata();
+        MrEvidence checkpoint;
+        try {
+            checkpoint = RunPort.mrCheckpoint(metadata);
+        } catch (IllegalArgumentException error) {
+            return Optional.empty();
+        }
+        if (!GitMergeWorkflow.isValidCheckpoint(checkpoint)
+                || !java.util.Set.of(MrDisposition.CREATED, MrDisposition.MR_REUSED).contains(checkpoint.disposition())
+                || !op.getProjectId().equals(checkpoint.projectId())
+                || !Objects.equals(metadata.get("plan.featureBranch"), checkpoint.sourceBranch())
+                || !Objects.equals(metadata.get("plan.releaseBranch"), checkpoint.targetBranch())) return Optional.empty();
+        JsonNode target = objectJson(op.getTargetJson());
+        if (target == null || !matches(target, "method", "PUT")
+                || !matches(target, "suffix", "/merge_requests/" + checkpoint.iid() + "/merge")
+                || !target.path("sha").isTextual() || !validSha(target.path("sha").textValue())
+                || !checkpoint.sourceSha().equalsIgnoreCase(target.path("sha").textValue())) return Optional.empty();
+        JsonNode evidence = confirmedAppliedResponse(op);
+        if (evidence == null) return Optional.empty();
+        return GitLabMergeRequestAdapter.confirmedMergedMr(evidence.path("httpStatus").intValue(), evidence,
+                        op.getProjectId(), checkpoint.iid(), checkpoint.sourceSha())
+                .filter(mr -> checkpoint.sourceBranch().equals(mr.sourceBranch())
+                        && checkpoint.targetBranch().equals(mr.targetBranch()))
+                .map(mr -> new MrEvidence(checkpoint.projectId(), checkpoint.sourceBranch(), checkpoint.targetBranch(),
+                        checkpoint.iid(), checkpoint.url(), checkpoint.sourceSha(), mr.mergeSha(),
+                        checkpoint.disposition(), null));
+    }
+
     private Optional<GitOperationEntity> confirmedAppliedTaskOperation(RunPort.TaskClaim claim, String action) {
         var task = lockTask(claim.fence(), true);
         var run = em.find(RunJpaEntity.class, task.getRunId());

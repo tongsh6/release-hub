@@ -571,6 +571,239 @@ class GitWriteSafetyIT {
         assertNoNamespaceWrites();
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {201, 202, 204})
+    void mrMergeRequiresSuccessfulStatus(int status) {
+        var run = prepareMrMergeRun(false);
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", status, mrMergeResponse(run).toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        assertUnconfirmedMrMerge(run, false);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"project_id", "source_project_id", "target_project_id", "iid"})
+    void mrMergeRejectsAContradictingProjectOrIid(String field) {
+        var run = prepareMrMergeRun(false);
+        var response = mrMergeResponse(run).put("id", 7).put(field, "iid".equals(field) ? 8 : project + 1);
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 200, response.toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        assertUnconfirmedMrMerge(run, false);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"iid", "source_project_id", "target_branch", "web_url", "sha", "state"})
+    void mrMergeRequiresCanonicalIdentityFields(String field) {
+        var run = prepareMrMergeRun(false);
+        var response = mrMergeResponse(run).put("id", 7);
+        response.remove(field);
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 200, response.toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        assertUnconfirmedMrMerge(run, false);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"project_id", "source_project_id", "target_project_id", "iid", "sha", "floating-source-project"})
+    void mrMergeRequiresOriginalIdentityAndShaTypes(String field) {
+        if ("sha".equals(field)) sha = "1".repeat(40);
+        var run = prepareMrMergeRun(false);
+        var response = mrMergeResponse(run);
+        if ("sha".equals(field)) response.put(field, new java.math.BigInteger(sha));
+        else if ("floating-source-project".equals(field)) response.put("source_project_id", (double) project);
+        else response.put(field, response.path(field).asText());
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 200, response.toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        assertUnconfirmedMrMerge(run, false);
+    }
+
+    @Test void mrMergeRejectsAnotherSourceRevision() {
+        var run = prepareMrMergeRun(false);
+        var response = mrMergeResponse(run).put("sha", "c".repeat(40));
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 200, response.toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        assertUnconfirmedMrMerge(run, false);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"missing", "number", "boolean", "object", "empty", "string-null"})
+    void mrMergeRequiresPresentNullableMergeCommitSha(String invalid) {
+        var run = prepareMrMergeRun(false);
+        var response = mrMergeResponse(run).put("squash_commit_sha", "c".repeat(40));
+        response.putObject("commit").put("id", "d".repeat(40));
+        response.putObject("object").put("sha", "e".repeat(40));
+        switch (invalid) {
+            case "missing" -> response.remove("merge_commit_sha");
+            case "number" -> response.put("merge_commit_sha", new java.math.BigInteger("1".repeat(40)));
+            case "boolean" -> response.put("merge_commit_sha", true);
+            case "object" -> response.putObject("merge_commit_sha").put("id", "b".repeat(40));
+            case "empty" -> response.put("merge_commit_sha", "");
+            case "string-null" -> response.put("merge_commit_sha", "null");
+            default -> throw new AssertionError(invalid);
+        }
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 200, response.toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        assertUnconfirmedMrMerge(run, false);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"opened", "closed"})
+    void mrMergeRejectsAnUnmergedRemoteState(String state) {
+        var run = prepareMrMergeRun(false);
+        var response = mrMergeResponse(run).put("state", state).put("merge_when_pipeline_succeeds", true);
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 200, response.toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        assertUnconfirmedMrMerge(run, false);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"source_branch", "target_branch"})
+    void mrMergeBindsTheProviderResultToTheOriginalCheckpoint(String field) {
+        var run = prepareMrMergeRun(false);
+        var response = mrMergeResponse(run);
+        response.put(field, response.path(field).asText() + "-other");
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 200, response.toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        // The provider confirms a remote merge; the original business checkpoint still rejects its branches.
+        assertUnconfirmedMrMerge(run, true);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"false,false", "false,true", "true,false", "true,true"})
+    void mrMergePersistsTypedCanonicalProofAndNullableResult(boolean reused, boolean noMergeCommit) throws Exception {
+        var run = prepareMrMergeRun(reused);
+        String runId = run.getId().value();
+        String observedSha = sha.toUpperCase(java.util.Locale.ROOT);
+        String mergeSha = "b".repeat(40);
+        var response = mrMergeResponse(run).put("sha", observedSha).put("detailed_merge_status", "not_approved")
+                .put("id", 7001).put("description", "private-merge-response").put("squash_commit_sha", "c".repeat(40));
+        response.putObject("head_pipeline").put("status", "failed");
+        response.putObject("commit").put("id", "d".repeat(40));
+        response.putObject("object").put("sha", "e".repeat(40));
+        if (noMergeCommit) response.putNull("merge_commit_sha");
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 200, response.toString());
+
+        assertThat(taskService.executeNextTask(runId)).isTrue();
+
+        var completed = taskRuns.findById(runId).orElseThrow();
+        var item = completed.getItems().getFirst();
+        assertThat(taskRuns.findTasks(runId).stream().map(RunPort.TaskView::status))
+                .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED");
+        assertThat(completed.getExecutionStatus().name()).isEqualTo("DONE");
+        assertThat(item.getSteps()).hasSize(4);
+        assertThat(item.getSteps().get(3).result()).isEqualTo(RunItemResult.MERGED);
+        assertThat(item.getMetadata()).containsAllEntriesOf(run.getItems().getFirst().getMetadata())
+                .containsEntry("git.mrDisposition", reused ? "MR_REUSED" : "CREATED")
+                .containsEntry("git.sourceSha", sha).doesNotContainKeys("git.blockReason", "git.requestId");
+        if (noMergeCommit) assertThat(item.getMetadata()).doesNotContainKey("git.mergeSha");
+        else assertThat(item.getMetadata()).containsEntry("git.mergeSha", mergeSha);
+        var operations = journal.listByRun(runId, 0, 20);
+        assertThat(operations).hasSize(reused ? 1 : 2)
+                .allMatch(operation -> operation.state().equals("APPLIED") && !operation.blocked());
+        var operation = operations.stream().filter(op -> op.action().equals("MERGE_MR")).findFirst().orElseThrow();
+        var events = journal.find(operation.id()).orElseThrow().events();
+        assertThat(events).hasSize(3);
+        String attempt = jdbc.queryForObject("select attempt_id from git_operation where id=?", String.class, operation.id());
+        assertThat(events.stream().map(GitOperationJournalPort.Event::attemptId)).containsOnly(attempt);
+        var applied = events.stream().filter(event -> event.type().equals("APPLIED")).toList();
+        assertThat(applied).hasSize(1);
+        assertThat(applied.getFirst().sequence()).isEqualTo(2);
+        var proof = new com.fasterxml.jackson.databind.ObjectMapper().readTree(applied.getFirst().evidenceJson());
+        var fields = new java.util.HashSet<String>();
+        proof.fieldNames().forEachRemaining(fields::add);
+        org.assertj.core.api.SoftAssertions.assertSoftly(soft -> {
+            soft.assertThat(fields).containsExactlyInAnyOrder("httpStatus", "project_id", "source_project_id",
+                    "target_project_id", "iid", "source_branch", "target_branch", "sha", "state", "web_url", "merge_commit_sha");
+            soft.assertThat(proof.path("httpStatus").isIntegralNumber()).isTrue();
+            soft.assertThat(proof.path("httpStatus").asInt()).isEqualTo(200);
+            for (String field : List.of("project_id", "source_project_id", "target_project_id", "iid")) {
+                soft.assertThat(proof.path(field).isIntegralNumber()).as(field + " must remain a JSON integer").isTrue();
+                soft.assertThat(proof.path(field).asText()).isEqualTo(response.path(field).asText());
+            }
+            for (String field : List.of("source_branch", "target_branch", "sha", "state", "web_url")) {
+                soft.assertThat(proof.path(field).isTextual()).as(field + " must remain JSON text").isTrue();
+                soft.assertThat(proof.path(field).asText()).isEqualTo(response.path(field).asText());
+            }
+            soft.assertThat(proof.has("merge_commit_sha")).as("explicit null is different from a missing field").isTrue();
+            if (noMergeCommit) soft.assertThat(proof.path("merge_commit_sha").isNull()).isTrue();
+            else {
+                soft.assertThat(proof.path("merge_commit_sha").isTextual()).isTrue();
+                soft.assertThat(proof.path("merge_commit_sha").asText()).isEqualTo(mergeSha);
+            }
+        });
+        assertThat(applied.getFirst().evidenceJson()).doesNotContain("private-merge-response", "fixture-token");
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", reused ? 0 : 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7", 0);
+        assertThat(SERVER.body("PUT", canonicalEndpoint + "/merge_requests/7/merge").path("sha").asText()).isEqualTo(sha);
+        assertThat(SERVER.writeCount()).isEqualTo(reused ? 1 : 2);
+        assertNoNamespaceWrites();
+    }
+
+    private io.releasehub.domain.run.Run prepareMrMergeRun(boolean reused) {
+        var run = prepareMrCreationRun();
+        String opened = mrCreationResponse(run, "mergeable").toString();
+        if (reused) SERVER.reply("GET", canonicalEndpoint + "/merge_requests", 200, "[" + opened + "]");
+        else SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, opened);
+        SERVER.reply("GET", canonicalEndpoint + "/merge_requests/7", 200, opened);
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+        assertThat(taskRuns.findTasks(run.getId().value()).stream().map(RunPort.TaskView::status))
+                .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "PENDING");
+        return taskRuns.findById(run.getId().value()).orElseThrow();
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode mrMergeResponse(io.releasehub.domain.run.Run run) {
+        return mrCreationResponse(run, "mergeable").put("state", "merged").put("merge_commit_sha", "b".repeat(40));
+    }
+
+    private void assertUnconfirmedMrMerge(io.releasehub.domain.run.Run before, boolean providerConfirmed) {
+        String runId = before.getId().value();
+        var tasks = taskRuns.findTasks(runId);
+        var run = taskRuns.findById(runId).orElseThrow();
+        var item = run.getItems().getFirst();
+        var operations = journal.listByRun(runId, 0, 20);
+        assertThat(tasks).hasSize(4);
+        assertThat(item.getSteps()).hasSize(4);
+        assertThat(operations).hasSize(2);
+        var operation = operations.stream().filter(op -> op.action().equals("MERGE_MR")).findFirst().orElseThrow();
+        org.assertj.core.api.SoftAssertions.assertSoftly(soft -> {
+            soft.assertThat(tasks.stream().map(RunPort.TaskView::status))
+                    .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "UNKNOWN");
+            soft.assertThat(item.getSteps().get(3).result()).isEqualTo(RunItemResult.UNKNOWN);
+            soft.assertThat(run.getExecutionStatus().name()).isEqualTo("NEEDS_REVIEW");
+            soft.assertThat(item.getMetadata()).containsAllEntriesOf(before.getItems().getFirst().getMetadata());
+            soft.assertThat(operation.state()).isEqualTo(providerConfirmed ? "NEEDS_REVIEW" : "UNKNOWN");
+            soft.assertThat(operation.blocked()).as("an unconfirmed business result keeps the repository guard").isTrue();
+        });
+        var events = journal.find(operation.id()).orElseThrow().events();
+        if (providerConfirmed) {
+            assertThat(events).anyMatch(event -> event.type().equals("APPLIED"))
+                    .anyMatch(event -> event.type().equals("LOCAL_RESULT_UNCONFIRMED"));
+        } else {
+            assertThat(events).noneMatch(event -> event.type().equals("APPLIED"))
+                    .anyMatch(event -> event.type().equals("UNKNOWN"));
+        }
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7", 0);
+        assertThat(SERVER.writeCount()).isEqualTo(2);
+        assertNoNamespaceWrites();
+    }
+
     private io.releasehub.domain.run.Run prepareMrCreationRun() {
         var run = admittedBranchRun();
         var plan = run.getItems().getFirst().getMetadata();
@@ -803,7 +1036,18 @@ class GitWriteSafetyIT {
 
         var result=merge();
         assertThat(result.status()).isEqualTo(io.releasehub.domain.run.MergeStatus.UNKNOWN);
-        assertReviewRequired(2);
+        var operations=journal.list(repo.getId().value(),0,20);
+        assertThat(operations).hasSize(2).allMatch(GitOperationJournalPort.Operation::blocked);
+        var creation=operations.stream().filter(operation->operation.action().equals("CREATE_MR")).findFirst().orElseThrow();
+        assertThat(creation.state()).isEqualTo("NEEDS_REVIEW");
+        assertThat(journal.find(creation.id()).orElseThrow().events())
+                .anyMatch(event->event.type().equals("APPLIED"))
+                .anyMatch(event->event.type().equals("LOCAL_RESULT_UNCONFIRMED"));
+        var mergeOperation=operations.stream().filter(operation->operation.action().equals("MERGE_MR")).findFirst().orElseThrow();
+        assertThat(mergeOperation.state()).isEqualTo("UNKNOWN");
+        assertThat(journal.find(mergeOperation.id()).orElseThrow().events())
+                .noneMatch(event->event.type().equals("APPLIED"))
+                .anyMatch(event->event.type().equals("UNKNOWN"));
         assertNextWriteBlocked(2);
         SERVER.verify("POST",canonicalEndpoint+"/merge_requests",1);
         SERVER.verify("PUT",canonicalEndpoint+"/merge_requests/7/merge",1);
@@ -1464,19 +1708,27 @@ class GitWriteSafetyIT {
         }
 
         var guard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", remoteKey);
+        var events = jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence", operationId);
+        int requestsBefore = SERVER.requests.size();
         for (String operationToken : List.of(claim.fence().claimToken(), UUID.randomUUID().toString())) {
             for (String state : List.of("INTENT_RECORDED", "SEND_STARTED", "APPLIED", "REJECTED", "UNKNOWN", "NEEDS_REVIEW")) {
-                // 将实际 begin 留下的 operation 投影为各历史事实；资格不能按状态或当前 token 忽略它。
+                // APPLIED 可被发现；只有 INTENT 事件的账本不授予投影或重派权，旧 token 也不能绕过。
                 jdbc.update("update git_operation set state=?,claim_token=? where id=?", state, operationToken, operationId);
                 var operation = jdbc.queryForMap("select * from git_operation where id=?", operationId);
-                assertThat(taskRuns.findTaskCandidateRunIds(null, 1000)).doesNotContain(claim.runId());
+                var candidates = taskRuns.findTaskCandidateRunIds(null, 1000);
+                if ("APPLIED".equals(state)) assertThat(candidates).contains(claim.runId());
+                else assertThat(candidates).doesNotContain(claim.runId());
+                assertThat(taskRuns.projectNextAppliedTask(claim.runId())).isFalse();
                 assertThat(taskRuns.claimNextTask(claim.runId())).isEmpty();
                 assertThat(jdbc.queryForObject("select claim_token from run_task where id=?", String.class,
                         claim.fence().taskId())).isEqualTo(claim.fence().claimToken());
                 assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).isEqualTo(operation);
+                assertThat(jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence", operationId))
+                        .isEqualTo(events);
                 assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", remoteKey)).isEqualTo(guard);
             }
         }
+        assertThat(SERVER.requests).hasSize(requestsBefore);
         assertThat(SERVER.writeCount()).isZero();
         assertTaskStatus(claim, "RUNNING");
     }
@@ -1600,16 +1852,6 @@ class GitWriteSafetyIT {
         SERVER.reply("GET",canonicalEndpoint+"/merge_requests",200,"[]");
         SERVER.reply("GET",canonicalEndpoint+"/repository/commits/"+sha+"/refs",200,"[]");
         SERVER.reply("GET",canonicalEndpoint+"/merge_requests/7",200,mergeRequest("opened"));
-    }
-    private void assertReviewRequired(int count) {
-        var operations=journal.list(repo.getId().value(),0,20);
-        assertThat(operations).hasSize(count)
-                .allMatch(operation->operation.state().equals("NEEDS_REVIEW")&&operation.blocked());
-        for(var operation:operations) {
-            assertThat(journal.find(operation.id()).orElseThrow().events())
-                    .anyMatch(event->event.type().equals("APPLIED"))
-                    .anyMatch(event->event.type().equals("LOCAL_RESULT_UNCONFIRMED"));
-        }
     }
     private void assertNextWriteBlocked(int previousWrites) {
         assertThat(SERVER.writeCount()).isEqualTo(previousWrites);

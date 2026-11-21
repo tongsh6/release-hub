@@ -338,6 +338,145 @@ class GitLabMergeRequestAdapterTest {
         server.verify();
     }
 
+    @ParameterizedTest @ValueSource(ints = {201, 202, 204})
+    void mrMergeRequiresSuccessfulStatus(int status) throws Exception {
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, mergeResponse(status, mergedMr(), SHA).outcome());
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"[]", "null", "true", "\"value\""})
+    void mrMergeRequiresAnObjectResponse(String response) throws Exception {
+        var body = new com.fasterxml.jackson.databind.ObjectMapper().readTree(response);
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, mergeResponse(200, body, SHA).outcome());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"project_id", "source_project_id", "target_project_id", "iid",
+            "source_branch", "target_branch", "sha", "state", "web_url", "merge_commit_sha"})
+    void mrMergeRequiresCanonicalResponseFields(String field) throws Exception {
+        var body = mergedMr().put("id", 17).put("squash_commit_sha", "c".repeat(40));
+        body.remove(field);
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, mergeResponse(200, body, SHA).outcome());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"project_id", "source_project_id", "target_project_id", "iid",
+            "source_branch", "target_branch", "sha", "state", "web_url", "merge_commit_sha"})
+    void mrMergeRequiresOriginalJsonFieldTypes(String field) throws Exception {
+        var body = mergedMr();
+        String frozen = SHA;
+        if (java.util.Set.of("project_id", "source_project_id", "target_project_id", "iid").contains(field)) {
+            body.put(field, body.path(field).asText());
+        } else if (java.util.Set.of("sha", "merge_commit_sha").contains(field)) {
+            String numericSha = "1".repeat(40);
+            body.put(field, new java.math.BigInteger(numericSha));
+            if ("sha".equals(field)) frozen = numericSha;
+        } else {
+            body.put(field, true);
+        }
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, mergeResponse(200, body, frozen).outcome());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"project_id", "source_project_id", "target_project_id", "iid"})
+    void mrMergeRejectsAContradictingProjectOrIid(String field) throws Exception {
+        var body = mergedMr().put("id", 17).put(field, "iid".equals(field) ? 18 : 8);
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, mergeResponse(200, body, SHA).outcome());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"project_id", "source_project_id", "target_project_id", "iid"})
+    void mrMergeRequiresIntegralIdentityNumbers(String field) throws Exception {
+        var body = mergedMr();
+        body.put(field, body.path(field).asDouble());
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, mergeResponse(200, body, SHA).outcome());
+    }
+
+    @Test void mrMergeRejectsAnotherSourceRevision() throws Exception {
+        var body = mergedMr().put("sha", "b".repeat(40));
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, mergeResponse(200, body, SHA).outcome());
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"", "null", "not-a-sha"})
+    void mrMergeRejectsInvalidMergeCommitSha(String mergeSha) throws Exception {
+        var body = mergedMr().put("merge_commit_sha", mergeSha);
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, mergeResponse(200, body, SHA).outcome());
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"opened", "closed"})
+    void mrMergeRejectsAnUnmergedRemoteState(String state) throws Exception {
+        var body = mergedMr().put("state", state).put("merge_when_pipeline_succeeds", true);
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, mergeResponse(200, body, SHA).outcome());
+    }
+
+    @ParameterizedTest @CsvSource({"40,false", "64,false", "40,true", "64,true"})
+    void mrMergeAcceptsTheCanonicalResultIncludingExplicitNull(int length, boolean noMergeCommit) throws Exception {
+        String frozen = "aBcD".repeat(length / 4);
+        String observed = frozen.toUpperCase(java.util.Locale.ROOT);
+        String mergeSha = "bCdE".repeat(length / 4);
+        var body = mergedMr().put("sha", observed).put("detailed_merge_status", "not_approved")
+                .put("squash_commit_sha", "c".repeat(length));
+        body.putObject("head_pipeline").put("status", "failed");
+        body.putObject("user").put("can_merge", false);
+        body.putObject("commit").put("id", "d".repeat(length));
+        body.putObject("object").put("sha", "e".repeat(length));
+        if (noMergeCommit) body.putNull("merge_commit_sha");
+        else body.put("merge_commit_sha", mergeSha);
+
+        var result = mergeResponse(200, body, frozen);
+
+        assertEquals(GitWriteResult.Outcome.APPLIED, result.outcome());
+        assertEquals(GitMergeRequestPort.State.MERGED, result.evidence().state());
+        assertEquals(observed, result.evidence().sourceSha());
+        assertEquals(noMergeCommit ? null : mergeSha, result.evidence().mergeSha());
+    }
+
+    @Test void mrMergeKeepsLargeIntegerProjectAndIidIdentities() throws Exception {
+        long largeProject = 4_294_967_297L;
+        long largeIid = 4_294_967_299L;
+        var largeAdapter = new GitLabMergeRequestAdapter(http,
+                new GitRemoteIdentityResolver.Identity("repo", "mapping", "remote", "GITLAB", "https://gitlab.test",
+                        Long.toString(largeProject), GitRemoteIdentityResolver.parse(java.net.URI.create(WRITE_ENDPOINT))), "token");
+        var body = mergedMr().put("project_id", largeProject).put("source_project_id", largeProject)
+                .put("target_project_id", largeProject).put("iid", largeIid)
+                .put("web_url", "https://gitlab.test/acme/repo/-/merge_requests/" + largeIid);
+        server.expect(requestTo(WRITE_ENDPOINT + "/" + largeIid + "/merge")).andExpect(method(HttpMethod.PUT))
+                .andRespond(withSuccess(body.toString(), MediaType.APPLICATION_JSON));
+
+        var result = largeAdapter.merge(Long.toString(largeIid), SHA, "merge");
+
+        assertEquals(GitWriteResult.Outcome.APPLIED, result.outcome());
+        assertEquals(Long.toString(largeProject), result.evidence().projectId());
+        assertEquals(Long.toString(largeIid), result.evidence().id());
+        server.verify();
+    }
+
+    @Test void mrMergeLeavesExactBranchBindingToTheCheckpointConsumer() throws Exception {
+        var body = mergedMr().put("source_branch", "feature/OTHER").put("target_branch", "release/OTHER");
+
+        var result = mergeResponse(200, body, SHA);
+
+        assertEquals(GitWriteResult.Outcome.APPLIED, result.outcome());
+        assertEquals("feature/OTHER", result.evidence().sourceBranch());
+        assertEquals("release/OTHER", result.evidence().targetBranch());
+    }
+
+    private static com.fasterxml.jackson.databind.node.ObjectNode mergedMr() throws Exception {
+        return createdMr("mergeable").put("state", "merged").put("merge_commit_sha", "b".repeat(40));
+    }
+
+    private GitWriteResult<GitMergeRequestPort.MergeRequest> mergeResponse(
+            int status, com.fasterxml.jackson.databind.JsonNode response, String frozenSha) {
+        server.expect(requestTo(WRITE_ENDPOINT + "/17/merge")).andExpect(method(HttpMethod.PUT))
+                .andExpect(request -> assertEquals(frozenSha, new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree(((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString())
+                        .path("sha").asText()))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.valueOf(status))
+                        .contentType(MediaType.APPLICATION_JSON).body(response.toString()));
+        var result = adapter.merge("17", frozenSha, "merge");
+        server.verify();
+        return result;
+    }
+
     private static com.fasterxml.jackson.databind.node.ObjectNode createdMr(String readiness) throws Exception {
         return (com.fasterxml.jackson.databind.node.ObjectNode) new com.fasterxml.jackson.databind.ObjectMapper()
                 .readTree(mr(17, readiness, "running"));

@@ -343,6 +343,24 @@ class GitMergeWorkflowTest {
         verify(port, never()).create(anyString(), anyString(), anyString(), anyString());
     }
 
+    @ParameterizedTest
+    @EnumSource(value = MrDisposition.class, names = {"CREATED", "MR_REUSED"})
+    void tryMergeAcceptsConfirmedFastForwardWithoutInventingAMergeCommit(MrDisposition disposition) {
+        var confirmed = new MergeRequest("17", ready.url(), "7", "source", "target",
+                SHA.toUpperCase(java.util.Locale.ROOT), null, State.MERGED, Readiness.UNKNOWN, null, null);
+        when(port.merge("17", SHA, "title")).thenReturn(GitWriteResult.applied(confirmed));
+
+        var result = workflow().tryMergeRequest(checkpoint(disposition, MERGE_SHA), "title");
+
+        assertEquals(MergeStatus.SUCCESS, result.status());
+        assertEquals(disposition, result.mrEvidence().disposition());
+        assertNull(result.mrEvidence().mergeSha());
+        assertEquals(confirmed.sourceSha(), result.mrEvidence().sourceSha());
+        verify(port).merge("17", SHA, "title");
+        verify(port, never()).contains("target", MERGE_SHA);
+        verify(port, never()).create(anyString(), anyString(), anyString(), anyString());
+    }
+
     @Test void tryMustRejectAProjectChangeEvenWhenMrIdAndBranchesMatch() {
         var foreign = new MergeRequest("17", ready.url(), "8", "source", "target", SHA, null,
                 State.OPENED, Readiness.MERGEABLE, null, null);

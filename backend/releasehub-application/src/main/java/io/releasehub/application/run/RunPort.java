@@ -23,9 +23,9 @@ public interface RunPort {
 
     /** 加入受理事务，按冻结 Item 范围建立固定四动作；预览不调用。 */
     void createTasks(Run run);
-    /** 按稳定 Run ID 游标发现当前协议的 PENDING 或无写入/结果证据的到期 RUNNING 候选；不授予执行资格。 */
+    /** 有界发现当前协议的 PENDING、无证据到期领取及末尾已确认合并候选；锁内另核执行资格。 */
     List<String> findTaskCandidateRunIds(String afterId, int limit);
-    /** 在结果事务内仅补一个已确认的分支或 MR 创建结果；不访问 Git、不更换原 token 或期限。 */
+    /** 在结果事务内仅补一个已确认的分支创建、MR 创建或合并结果；不访问 Git、不换 token 或期限。 */
     boolean projectNextAppliedTask(String runId);
     /** 锁内领取一个可执行任务；仅无 operation/Step 的完整到期领取可更换 token，既有写入不重派。 */
     Optional<TaskClaim> claimNextTask(String runId);
@@ -49,6 +49,29 @@ public interface RunPort {
             metadata.put("git.mrDisposition", evidence.disposition() == null ? null : evidence.disposition().name());
         }
         return metadata;
+    }
+
+    /** 读取原 ENSURE_MR 身份；具体消费者仍须验证形状、计划及动作资格。 */
+    static GitBranchPort.MrEvidence mrCheckpoint(Map<String, String> metadata) {
+        return new GitBranchPort.MrEvidence(metadata.get("git.projectId"), metadata.get("git.sourceBranch"),
+                metadata.get("git.targetBranch"), metadata.get("git.mrIid"), metadata.get("git.mrUrl"),
+                metadata.get("git.sourceSha"), metadata.get("git.mergeSha"),
+                GitBranchPort.MrDisposition.valueOf(metadata.getOrDefault("git.mrDisposition", "")), null);
+    }
+
+    /** 正常 TRY 与历史合并结果投影共用，只更新结果；null 值删除旧字段，不改检查点身份。 */
+    static Map<String, String> mrResultUpdates(GitBranchPort.MergeResult result) {
+        Map<String, String> updates = new java.util.LinkedHashMap<>();
+        updates.put("git.requestId", result.remoteRequestId());
+        var evidence = result.mrEvidence();
+        updates.put("git.blockReason", evidence == null || evidence.blockReason() == null
+                ? (result.status() == io.releasehub.domain.run.MergeStatus.UNKNOWN ? "UNKNOWN" : null)
+                : evidence.blockReason().name());
+        if (result.status() == io.releasehub.domain.run.MergeStatus.SUCCESS) {
+            updates.put("git.mergeSha", evidence.mergeSha());
+            updates.put("git.mrDisposition", evidence.disposition().name());
+        }
+        return updates;
     }
 
     record TaskFence(String taskId, String claimToken) {}

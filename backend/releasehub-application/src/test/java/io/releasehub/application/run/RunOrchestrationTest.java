@@ -270,6 +270,34 @@ class RunOrchestrationTest {
         verify(git, never()).mergeBranch(any(), any(), any(), any(), any());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = GitBranchPort.MrDisposition.class, names = {"CREATED", "MR_REUSED"})
+    void tryMergeClearsStaleResultsWithoutChangingCheckpointIdentity(GitBranchPort.MrDisposition disposition) {
+        pending.clear();
+        pending.add(ActionType.TRY_MERGE);
+        var original = new GitBranchPort.MrEvidence("17", SOURCE, TARGET, "7",
+                "https://gitlab.example/group/repository/-/merge_requests/7",
+                SHA, "c".repeat(40), disposition, null);
+        checkpoint(original);
+        facts.put("git.requestId", "old-request");
+        facts.put("git.blockReason", "PIPELINE_PENDING");
+        var expectedFacts = new LinkedHashMap<>(facts);
+        expectedFacts.remove("git.mergeSha");
+        expectedFacts.remove("git.requestId");
+        expectedFacts.remove("git.blockReason");
+        when(git.tryMergeRequest(any(), any(), any(), any())).thenReturn(GitBranchPort.MergeResult.success()
+                .withEvidence(new GitBranchPort.MrEvidence("17", SOURCE, TARGET, "7",
+                        original.url(), SHA.toUpperCase(Locale.ROOT), null, disposition, null)));
+
+        execute();
+
+        assertThat(committed).singleElement().extracting(RunStep::result).isEqualTo(RunItemResult.MERGED);
+        assertThat(facts).isEqualTo(expectedFacts);
+        verify(git).tryMergeRequest(eq(URL), eq("token"), eq(original), anyString());
+        verify(git, never()).ensureMergeRequest(any(), any(), any(), any(), any());
+        verify(git, never()).mergeBranch(any(), any(), any(), any(), any());
+    }
+
     @Test
     void anIncompletePersistedMrCheckpointCannotAuthorizeMerge() {
         pending.clear();

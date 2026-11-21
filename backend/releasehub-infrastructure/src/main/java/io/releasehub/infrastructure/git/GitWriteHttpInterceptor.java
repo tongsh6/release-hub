@@ -131,7 +131,7 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
         int status=response.getStatusCode().value();var evidence=json.createObjectNode();evidence.put("httpStatus",status);
         JsonNode parsed=null;
         try{if(bytes.length>0)parsed=json.readTree(bytes);}catch(IOException ignored){/* 保留不完整结果，不保存原始响应。 */}
-        if(parsed!=null&&!action.equals("CREATE_BRANCH")&&!action.equals("CREATE_MR")) {
+        if(parsed!=null&&!action.equals("CREATE_BRANCH")&&!action.equals("CREATE_MR")&&!action.equals("MERGE_MR")) {
             for(String key:List.of("id","iid","number","sha","merge_commit_sha","state","name","ref")) {
                 if(parsed.hasNonNull(key)&&parsed.get(key).isValueNode())evidence.put(key,parsed.get(key).asText());
             }
@@ -159,6 +159,16 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
                 evidence.set(key,parsed.get(key));
             }
         }
+        if(outcome==GitWriteResult.Outcome.APPLIED&&action.equals("MERGE_MR")) {
+            String iid=suffix.substring("/merge_requests/".length(),suffix.length()-"/merge".length());
+            var merged=GitLabMergeRequestAdapter.confirmedMergedMr(status,parsed,identity.projectId(),
+                    iid,target.path("sha").textValue());
+            if(merged.isEmpty())outcome=GitWriteResult.Outcome.UNKNOWN;
+            else for(String key:List.of("project_id","source_project_id","target_project_id","iid",
+                    "source_branch","target_branch","sha","state","web_url","merge_commit_sha")) {
+                evidence.set(key,parsed.get(key));
+            }
+        }
         if(action.equals("CREATE_BRANCH")) {
             String branchSha=GitLabGitBranchAdapter.createdBranchSha(status,parsed,target.path("branch").textValue());
             if(branchSha!=null) {
@@ -177,9 +187,8 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
                 outcome=GitWriteResult.Outcome.UNKNOWN;
             }
         }
-        if(outcome==GitWriteResult.Outcome.APPLIED&&(action.equals("MERGE_MR")||action.equals("UPDATE_MR"))) {
-            String expectedState=action.equals("MERGE_MR")?"merged":"closed";
-            if(!expectedState.equals(evidence.path("state").asText()))outcome=GitWriteResult.Outcome.UNKNOWN;
+        if(outcome==GitWriteResult.Outcome.APPLIED&&action.equals("UPDATE_MR")) {
+            if(!"closed".equals(evidence.path("state").asText()))outcome=GitWriteResult.Outcome.UNKNOWN;
         }
         if(outcome==GitWriteResult.Outcome.APPLIED&&action.equals("UPDATE_FILE")) {
             try {
