@@ -5,7 +5,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-
 import java.util.List;
 
 public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
@@ -18,131 +17,37 @@ public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
     List<RunJpaEntity> findByWindowKey(@Param("windowKey") String windowKey);
 
     @Query(value = """
-            select distinct r from RunJpaEntity r
-            left join r.items i
+            select distinct r from RunJpaEntity r left join r.items i
             where (:runType is null or r.runType = :runType)
               and (:operator is null or r.operator = :operator)
               and (:windowKey is null or i.windowKey = :windowKey)
               and (:repoId is null or i.repoId = :repoId)
               and (:iterationKey is null or i.iterationKey = :iterationKey)
+              and (:status is null or r.executionStatus = :status)
               and (:groupCode is null or exists (
                 select 1 from ReleaseWindowJpaEntity w
-                where w.windowKey = i.windowKey
-                  and w.groupCode = :groupCode
+                where w.windowKey = i.windowKey and w.groupCode = :groupCode
               ))
-              and (
-                :status is null or r.executionStatus = :status or
-                (
-                  (r.executionStatus is null and :status = 'FAILED' and exists (
-                     select 1 from RunItemJpaEntity item
-                     where item.run.id = r.id
-                       and (item.finalResult like '%FAILED%' or item.finalResult = 'MERGE_BLOCKED')
-                   )
-                  ) or
-                  (r.executionStatus is null and :status = 'SUCCESS' and exists (
-                     select 1 from RunItemJpaEntity item where item.run.id = r.id
-                   ) and not exists (
-                     select 1 from RunItemJpaEntity item
-                     where item.run.id = r.id
-                       and (item.finalResult is null or item.finalResult not like '%SUCCESS%')
-                   )
-                   and not exists (
-                     select 1 from RunItemJpaEntity item
-                     where item.run.id = r.id
-                       and (item.finalResult like '%FAILED%' or item.finalResult = 'MERGE_BLOCKED')
-                   )
-                  ) or
-                  (r.executionStatus is null and :status = 'COMPLETED' and r.finishedAt is not null and
-                   not exists (
-                     select 1 from RunItemJpaEntity item
-                     where item.run.id = r.id
-                       and (item.finalResult like '%FAILED%' or item.finalResult = 'MERGE_BLOCKED')
-                   )
-                   and not (
-                     exists (select 1 from RunItemJpaEntity item where item.run.id = r.id)
-                     and not exists (
-                       select 1 from RunItemJpaEntity item
-                       where item.run.id = r.id
-                         and (item.finalResult is null or item.finalResult not like '%SUCCESS%')
-                     )
-                   )
-                  ) or
-                  (r.executionStatus is null and :status = 'RUNNING' and r.finishedAt is null and
-                   not exists (
-                     select 1 from RunItemJpaEntity item
-                     where item.run.id = r.id
-                       and (item.finalResult like '%FAILED%' or item.finalResult = 'MERGE_BLOCKED')
-                   )
-                  )
-                )
-              )
             """,
             countQuery = """
-                    select count(distinct r.id) from RunJpaEntity r
-                    left join r.items i
-                    where (:runType is null or r.runType = :runType)
-                      and (:operator is null or r.operator = :operator)
-                      and (:windowKey is null or i.windowKey = :windowKey)
-                      and (:repoId is null or i.repoId = :repoId)
-                      and (:iterationKey is null or i.iterationKey = :iterationKey)
-                      and (:groupCode is null or exists (
-                        select 1 from ReleaseWindowJpaEntity w
-                        where w.windowKey = i.windowKey
-                          and w.groupCode = :groupCode
-                      ))
-                      and (
-                        :status is null or r.executionStatus = :status or
-                        (
-                          (r.executionStatus is null and :status = 'FAILED' and exists (
-                             select 1 from RunItemJpaEntity item
-                             where item.run.id = r.id
-                               and (item.finalResult like '%FAILED%' or item.finalResult = 'MERGE_BLOCKED')
-                           )
-                          ) or
-                          (r.executionStatus is null and :status = 'SUCCESS' and exists (
-                             select 1 from RunItemJpaEntity item where item.run.id = r.id
-                           ) and not exists (
-                             select 1 from RunItemJpaEntity item
-                             where item.run.id = r.id
-                               and (item.finalResult is null or item.finalResult not like '%SUCCESS%')
-                           )
-                           and not exists (
-                             select 1 from RunItemJpaEntity item
-                             where item.run.id = r.id
-                               and (item.finalResult like '%FAILED%' or item.finalResult = 'MERGE_BLOCKED')
-                           )
-                          ) or
-                          (r.executionStatus is null and :status = 'COMPLETED' and r.finishedAt is not null and
-                           not exists (
-                             select 1 from RunItemJpaEntity item
-                             where item.run.id = r.id
-                               and (item.finalResult like '%FAILED%' or item.finalResult = 'MERGE_BLOCKED')
-                           )
-                           and not (
-                             exists (select 1 from RunItemJpaEntity item where item.run.id = r.id)
-                             and not exists (
-                               select 1 from RunItemJpaEntity item
-                               where item.run.id = r.id
-                                 and (item.finalResult is null or item.finalResult not like '%SUCCESS%')
-                             )
-                           )
-                          ) or
-                          (r.executionStatus is null and :status = 'RUNNING' and r.finishedAt is null and
-                           not exists (
-                             select 1 from RunItemJpaEntity item
-                             where item.run.id = r.id
-                               and (item.finalResult like '%FAILED%' or item.finalResult = 'MERGE_BLOCKED')
-                           )
-                          )
-                        )
-                      )
-                    """)
+            select count(distinct r.id) from RunJpaEntity r left join r.items i
+            where (:runType is null or r.runType = :runType)
+              and (:operator is null or r.operator = :operator)
+              and (:windowKey is null or i.windowKey = :windowKey)
+              and (:repoId is null or i.repoId = :repoId)
+              and (:iterationKey is null or i.iterationKey = :iterationKey)
+              and (:status is null or r.executionStatus = :status)
+              and (:groupCode is null or exists (
+                select 1 from ReleaseWindowJpaEntity w
+                where w.windowKey = i.windowKey and w.groupCode = :groupCode
+              ))
+            """)
     Page<RunJpaEntity> findPagedByFilters(@Param("runType") String runType,
-                                          @Param("operator") String operator,
-                                          @Param("windowKey") String windowKey,
-                                          @Param("repoId") String repoId,
-                                          @Param("iterationKey") String iterationKey,
-                                          @Param("status") String status,
-                                          @Param("groupCode") String groupCode,
-                                          Pageable pageable);
+                                         @Param("operator") String operator,
+                                         @Param("windowKey") String windowKey,
+                                         @Param("repoId") String repoId,
+                                         @Param("iterationKey") String iterationKey,
+                                         @Param("status") String status,
+                                         @Param("groupCode") String groupCode,
+                                         Pageable pageable);
 }

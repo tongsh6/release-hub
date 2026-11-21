@@ -1,29 +1,27 @@
 package io.releasehub.application.releasewindow;
 
 import io.releasehub.application.group.GroupPort;
-import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.run.RunAppService;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.PlanItemView;
+import io.releasehub.application.window.PlanAppService;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.common.exception.ValidationException;
 import io.releasehub.common.paging.PageResult;
-import io.releasehub.domain.iteration.Iteration;
-import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.Run;
+import io.releasehub.domain.run.RunPlanSnapshot;
 import io.releasehub.domain.window.WindowIteration;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,10 +31,9 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -50,10 +47,9 @@ public class ReleaseWindowAppService {
     private final WindowIterationPort windowIterationPort;
     private final RunAppService runAppService;
     private final GroupPort groupPort;
-    private final IterationPort iterationPort;
     private final CodeRepositoryPort codeRepositoryPort;
     private final GitBranchAdapterFactory gitBranchAdapterFactory;
-    private final ApplicationEventPublisher eventPublisher;
+    private final PlanAppService planAppService;
     private final Clock clock = Clock.systemUTC();
 
     @Transactional
@@ -151,48 +147,12 @@ public class ReleaseWindowAppService {
     }
 
     private ReleaseWindowParallelScopeView.ParallelWindowView toParallelWindowView(ReleaseWindow window) {
-        List<WindowIteration> bindings = windowIterationPort.listByWindow(window.getId());
-        bindings.sort(Comparator.comparing(WindowIteration::getAttachAt));
-        Map<IterationKey, Integer> order = computePlannedOrder(bindings);
-
-        Set<String> repoIds = new LinkedHashSet<>();
-        List<PlanItemView> planItems = new ArrayList<>();
-        for (WindowIteration wi : bindings) {
-            Iteration iteration = iterationPort.findByKey(wi.getIterationKey()).orElse(null);
-            if (iteration == null) {
-                continue;
-            }
-            for (RepoId repoId : iteration.getRepos()) {
-                repoIds.add(repoId.value());
-                planItems.add(new PlanItemView(
-                        window.getWindowKey(),
-                        repoId.value(),
-                        wi.getIterationKey().value(),
-                        order.getOrDefault(wi.getIterationKey(), 0),
-                        null
-                ));
-            }
-        }
-
+        List<PlanItemView> planItems = planAppService.getPlanByWindow(window.getId().value());
+        int iterationCount = windowIterationPort.listByWindow(window.getId()).size();
+        int repoCount = (int) planItems.stream().map(PlanItemView::getRepoId).distinct().count();
         return new ReleaseWindowParallelScopeView.ParallelWindowView(
-                window.getId().value(),
-                window.getWindowKey(),
-                window.getName(),
-                window.getStatus().name(),
-                window.getPlannedReleaseAt(),
-                bindings.size(),
-                repoIds.size(),
-                planItems
-        );
-    }
-
-    private Map<IterationKey, Integer> computePlannedOrder(List<WindowIteration> bindings) {
-        List<IterationKey> orderedKeys = bindings.stream()
-                .sorted(Comparator.comparing(WindowIteration::getAttachAt))
-                .map(WindowIteration::getIterationKey)
-                .distinct()
-                .toList();
-        return orderedKeys.stream().collect(Collectors.toMap(key -> key, key -> orderedKeys.indexOf(key) + 1));
+                window.getId().value(), window.getWindowKey(), window.getName(), window.getStatus().name(),
+                window.getPlannedReleaseAt(), iterationCount, repoCount, planItems);
     }
 
     private ReleaseWindowView enrichParallelContext(ReleaseWindowView view) {
@@ -268,9 +228,6 @@ public class ReleaseWindowAppService {
         releaseWindowPort.save(rw);
         log.info("Published release window {}", id);
 
-        // 事务提交后由 WindowLifecycleListener 触发自动编排
-        eventPublisher.publishEvent(new WindowPublishedEvent(id));
-
         return ReleaseWindowView.from(rw);
     }
 
@@ -316,64 +273,28 @@ public class ReleaseWindowAppService {
      * 获取发布窗口内各仓库的分支状态
      */
     public BranchStatusView getBranchStatus(String id) {
-        ReleaseWindow rw = findById(id);
-        List<WindowIteration> windowIterations = windowIterationPort.listByWindow(ReleaseWindowId.of(id));
-        List<BranchStatusView.RepoBranchStatus> repoStatuses = new ArrayList<>();
-
-        for (WindowIteration wi : windowIterations) {
-            String iterationKey = wi.getIterationKey().value();
-            Iteration iteration = iterationPort.findByKey(wi.getIterationKey()).orElse(null);
-            if (iteration == null) {
-                continue;
-            }
-
-            String releaseBranchName = windowIterationPort.getReleaseBranch(id, iterationKey);
-            if (releaseBranchName == null) {
-                releaseBranchName = "release/" + rw.getWindowKey();
-            }
-            String featureBranchName = "feature/" + iterationKey;
-
-            for (RepoId repoId : iteration.getRepos()) {
-                CodeRepository repo = codeRepositoryPort.findById(repoId).orElse(null);
-                if (repo == null) {
-                    continue;
-                }
-
-                GitBranchPort adapter = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-                String repoUrl = repo.getCloneUrl();
-                String token = repo.getGitAccessToken();
-
-                // 查询 feature 分支状态
-                GitBranchPort.BranchStatus featureStatus;
-                try {
-                    featureStatus = adapter.getBranchStatus(repoUrl, token, featureBranchName);
-                } catch (Exception e) {
-                    log.warn("Failed to get feature branch status for repo {}: {}", repo.getName(), e.getMessage());
-                    featureStatus = GitBranchPort.BranchStatus.missing();
-                }
-
-                // 查询 release 分支状态
-                GitBranchPort.BranchStatus releaseStatus;
-                try {
-                    releaseStatus = adapter.getBranchStatus(repoUrl, token, releaseBranchName);
-                } catch (Exception e) {
-                    log.warn("Failed to get release branch status for repo {}: {}", repo.getName(), e.getMessage());
-                    releaseStatus = GitBranchPort.BranchStatus.missing();
-                }
-
-                String mergeStatus = releaseStatus.exists() ? "MERGED" : "PENDING";
-
-                BranchStatusView.FeatureBranchInfo featureInfo = new BranchStatusView.FeatureBranchInfo(
-                        featureBranchName, featureStatus.exists(), featureStatus.latestCommit());
-                BranchStatusView.ReleaseBranchInfo releaseInfo = new BranchStatusView.ReleaseBranchInfo(
-                        releaseBranchName, releaseStatus.exists(), releaseStatus.latestCommit(), mergeStatus);
-
-                repoStatuses.add(new BranchStatusView.RepoBranchStatus(
-                        repoId.value(), repo.getName(), repo.getCloneUrl(),
-                        iterationKey, featureInfo, releaseInfo));
-            }
+        RunPlanSnapshot snapshot = planAppService.getSnapshotByWindow(id);
+        Map<String, CodeRepository> repositories = new HashMap<>();
+        for (RunPlanSnapshot.Item item : snapshot.items()) {
+            repositories.computeIfAbsent(item.repoId(), repoId -> codeRepositoryPort.findById(RepoId.of(repoId))
+                    .orElseThrow(() -> NotFoundException.repository(repoId)));
         }
 
-        return new BranchStatusView(id, rw.getWindowKey(), repoStatuses);
+        List<BranchStatusView.RepoBranchStatus> repoStatuses = new ArrayList<>();
+        Map<List<String>, GitBranchPort.BranchStatus> refs = new HashMap<>();
+        for (RunPlanSnapshot.Item item : snapshot.items()) {
+            CodeRepository repo = repositories.get(item.repoId());
+            GitBranchPort adapter = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
+            // 同一仓库的共享 release 只读取一次；远端失败直接传播，不能伪装成 ref 不存在。
+            GitBranchPort.BranchStatus feature = refs.computeIfAbsent(List.of(item.repoId(), item.featureBranch()),
+                    ignored -> adapter.getBranchStatus(repo.getCloneUrl(), repo.getGitAccessToken(), item.featureBranch()));
+            GitBranchPort.BranchStatus release = refs.computeIfAbsent(List.of(item.repoId(), item.releaseBranch()),
+                    ignored -> adapter.getBranchStatus(repo.getCloneUrl(), repo.getGitAccessToken(), item.releaseBranch()));
+            repoStatuses.add(new BranchStatusView.RepoBranchStatus(
+                    item.repoId(), item.repoName(), repo.getCloneUrl(), item.iterationKey(),
+                    new BranchStatusView.FeatureBranchInfo(item.featureBranch(), feature.exists(), feature.latestCommit()),
+                    new BranchStatusView.ReleaseBranchInfo(item.releaseBranch(), release.exists(), release.latestCommit())));
+        }
+        return new BranchStatusView(id, snapshot.windowKey(), repoStatuses);
     }
 }

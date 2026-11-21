@@ -2,6 +2,7 @@ package io.releasehub.interfaces.api.run;
 
 import io.releasehub.application.run.RunAppService;
 import io.releasehub.common.response.ApiResponse;
+import io.releasehub.interfaces.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
@@ -27,13 +28,12 @@ public class RunRetryController {
     @PostMapping("/{id}/retry")
     @Operation(summary = "Retry run with selected items")
     public ApiResponse<String> retry(@PathVariable("id") String runId, @RequestBody RetryRequest request) {
-        var run = runAppService.retry(runId, request.getItems(), request.getOperator());
+        var run = runAppService.retry(runId, request.getItems(), SecurityUtils.getCurrentUsername());
         return ApiResponse.success(run.getId().value());
     }
 
     @Data
     public static class RetryRequest {
         private List<String> items;
-        private String operator;
     }
 }

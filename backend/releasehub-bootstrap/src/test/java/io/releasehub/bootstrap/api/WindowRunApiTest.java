@@ -2,11 +2,14 @@ package io.releasehub.bootstrap.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.releasehub.infrastructure.gitlab.InMemoryGitLabFileAdapter;
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
+import io.releasehub.application.port.out.GitBranchPort;
+import io.releasehub.domain.repo.GitProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -22,13 +25,16 @@ import java.util.zip.ZipInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:window-run-api;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class WindowRunApiTest {
@@ -39,8 +45,8 @@ class WindowRunApiTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @Autowired
-    private InMemoryGitLabFileAdapter gitFiles;
+    @MockBean
+    private GitBranchAdapterFactory gitFactory;
 
     private String loginAndGetToken() throws Exception {
         String body = "{\"username\":\"admin\",\"password\":\"admin\"}";
@@ -55,7 +61,13 @@ class WindowRunApiTest {
     }
 
     @Test
-    void shouldAttachPlanDryPlanOrchestrateAndRetry() throws Exception {
+    void shouldAttachPlanOrchestrateAndRetry() throws Exception {
+        // HTTP + JPA contract test with explicit Git port outcomes; this is not a real GitLab acceptance run.
+        GitBranchPort git = mock(GitBranchPort.class);
+        when(gitFactory.getAdapter(GitProvider.GITLAB)).thenReturn(git);
+        when(git.getBranchStatus(anyString(), anyString(), anyString()))
+                .thenReturn(GitBranchPort.BranchStatus.present("a".repeat(40)));
+        when(git.createBranch(anyString(), anyString(), anyString(), anyString())).thenReturn(true);
         String token = loginAndGetToken();
         String groupCode = createGroupAndGetCode(token);
 
@@ -89,8 +101,11 @@ class WindowRunApiTest {
             .andReturn();
         String it2Key = objectMapper.readTree(it2Result.getResponse().getContentAsString())
                 .get("data").get("key").asText();
-        makeFeatureBranchVersionUnresolved(repo1.cloneUrl(), it1Key);
-        makeFeatureBranchVersionUnresolved(repo1.cloneUrl(), it2Key);
+        clearInvocations(git);
+        String releaseBranch = "release/" + windowKey;
+        when(git.mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + it1Key), eq(releaseBranch), anyString()))
+                .thenReturn(GitBranchPort.MergeResult.conflict("Fixture conflict").withEvidence(
+                        evidence("feature/" + it1Key, releaseBranch, "11")));
 
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/attach")
                 .header("Authorization", "Bearer " + token)
@@ -99,6 +114,7 @@ class WindowRunApiTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data[0].iterationKey").value(it1Key))
             .andExpect(jsonPath("$.data[1].iterationKey").value(it2Key));
+        verifyNoInteractions(git);
 
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/freeze")
                 .header("Authorization", "Bearer " + token))
@@ -110,16 +126,24 @@ class WindowRunApiTest {
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data").isArray());
 
-        mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/dry-plan")
-                .header("Authorization", "Bearer " + token))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data").isArray());
+        String orchestrationRequest = objectMapper.writeValueAsString(Map.of(
+                "repoIds", java.util.List.of(repo1.id()), "iterationKeys", java.util.List.of(), "failFast", true));
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/orchestrate")
+                        .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                        .content(orchestrationRequest))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(git);
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/unfreeze")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/windows/dry-plan").header("Authorization", "Bearer " + token)
+                        .param("windowKey", windowKey))
+                .andExpect(status().isNotFound());
 
         MvcResult orch = mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/orchestrate")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"repoIds\":[\"" + repo1.id() + "\"],\"iterationKeys\":[],\"failFast\":true,\"operator\":\"tester\"}"))
+                .content(orchestrationRequest))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data").exists())
             .andReturn();
@@ -137,6 +161,13 @@ class WindowRunApiTest {
             .andReturn();
         JsonNode exportJson = objectMapper.readTree(exported.getResponse().getContentAsString());
         assertThat(exportJson.get("runId").asText()).isEqualTo(runId);
+        assertThat(exportJson.path("operator").asText()).isEqualTo("admin");
+        assertThat(exportJson.path("status").asText()).isEqualTo("FAILED");
+        assertThat(exportJson.path("items")).hasSize(2);
+        assertThat(exportJson.path("items").get(0).path("finalResult").asText()).isEqualTo("MERGE_BLOCKED");
+        assertThat(exportJson.path("items").get(1).path("finalResult").asText()).isEqualTo("SKIPPED_DUE_TO_BLOCK");
+        assertThat(exportJson.path("items").get(0).path("metadata").path("git.blockReason").asText()).isEqualTo("CONFLICT");
+        verify(git, never()).mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + it2Key), anyString(), anyString());
 
         MvcResult windowReport = mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/report.json")
                 .header("Authorization", "Bearer " + token))
@@ -187,21 +218,41 @@ class WindowRunApiTest {
         assertThat(new String(entries.get("report.csv"), StandardCharsets.UTF_8)).contains(windowId, windowKey, runId);
         assertThat(new String(entries.get("report.md"), StandardCharsets.UTF_8)).contains("# Release Window Report: " + windowKey);
 
-        String itemId = windowKey + "::" + repo1.id() + "::" + it1Key;
-        MvcResult retry = mockMvc.perform(post("/api/v1/runs/" + runId + "/retry")
-                .header("Authorization", "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"items\":[\"" + itemId + "\"],\"operator\":\"tester2\"}"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").exists())
-            .andReturn();
-        String retryRunId = objectMapper.readTree(retry.getResponse().getContentAsString()).get("data").asText();
-        assertThat(retryRunId).isNotBlank();
+        String firstItemId = exportJson.path("items").get(0).path("id").asText();
+        String skippedItemId = exportJson.path("items").get(1).path("id").asText();
+        assertThat(firstItemId).isNotBlank();
+        assertThat(skippedItemId).isNotBlank();
+        String legacyTriple = windowKey + "::" + repo1.id() + "::" + it1Key;
+        for (String invalidSelection : java.util.List.of(legacyTriple, skippedItemId)) {
+            mockMvc.perform(post("/api/v1/runs/" + runId + "/retry")
+                            .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of("items", java.util.List.of(invalidSelection)))))
+                    .andExpect(status().isBadRequest());
+        }
 
-        mockMvc.perform(get("/api/v1/runs/" + retryRunId + "/export.json")
-                .header("Authorization", "Bearer " + token))
-            .andExpect(status().isOk());
-    }
+        when(git.mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + it1Key), eq(releaseBranch), anyString()))
+                .thenReturn(GitBranchPort.MergeResult.success().withEvidence(evidence("feature/" + it1Key, releaseBranch, "11")));
+        when(git.mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + it2Key), eq(releaseBranch), anyString()))
+                .thenReturn(GitBranchPort.MergeResult.success().withEvidence(evidence("feature/" + it2Key, releaseBranch, "12")));
+        MvcResult retry = mockMvc.perform(post("/api/v1/runs/" + runId + "/retry")
+                        .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("items", java.util.List.of(firstItemId, skippedItemId)))))
+                .andExpect(status().isOk()).andReturn();
+        String retryRunId = objectMapper.readTree(retry.getResponse().getContentAsString()).path("data").asText();
+        assertThat(retryRunId).isNotBlank().isNotEqualTo(runId);
+        MvcResult retried = mockMvc.perform(get("/api/v1/runs/" + retryRunId + "/export.json")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode retryJson = objectMapper.readTree(retried.getResponse().getContentAsString());
+        assertThat(retryJson.path("status").asText()).isEqualTo("DONE");
+        assertThat(retryJson.path("operator").asText()).isEqualTo("admin");
+        assertThat(retryJson.path("items")).hasSize(2);
+        assertThat(retryJson.path("items").get(0).path("metadata").path("retry.sourceItemId").asText()).isEqualTo(firstItemId);
+        assertThat(retryJson.path("items").get(1).path("metadata").path("retry.sourceItemId").asText()).isEqualTo(skippedItemId);
+        assertThat(retryJson.path("items").get(0).path("executedOrder").asInt()).isEqualTo(1);
+        assertThat(retryJson.path("items").get(1).path("executedOrder").asInt()).isEqualTo(2);
+        verify(git, times(2)).mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + it1Key), eq(releaseBranch), anyString());
+        verify(git).mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + it2Key), eq(releaseBranch), anyString());    }
 
     private Map<String, byte[]> readZipEntries(byte[] zipBytes) throws IOException {
         Map<String, byte[]> entries = new LinkedHashMap<>();
@@ -228,8 +279,9 @@ class WindowRunApiTest {
         return code;
     }
 
-    private void makeFeatureBranchVersionUnresolved(String cloneUrl, String iterationKey) {
-        gitFiles.setFile(cloneUrl, "feature/" + iterationKey, "pom.xml", "<project></project>");
+    private GitBranchPort.MrEvidence evidence(String source, String target, String iid) {
+        return new GitBranchPort.MrEvidence("101", source, target, iid, "https://gitlab.invalid/project/-/merge_requests/" + iid,
+                "a".repeat(40), "b".repeat(40), GitBranchPort.MrDisposition.MR_REUSED, null);
     }
 
     private CreatedRepo createRepo(String token, String groupCode, String suffix) throws Exception {

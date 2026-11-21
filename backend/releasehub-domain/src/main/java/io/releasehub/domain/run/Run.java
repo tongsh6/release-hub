@@ -18,8 +18,8 @@ public class Run extends BaseEntity<RunId> {
     private String operator;
     private Instant startedAt;
     private Instant finishedAt;
-    private int executionVersion = 1;
-    private RunExecutionStatus executionStatus;
+    private int executionVersion = 2;
+    private RunExecutionStatus executionStatus = RunExecutionStatus.RUNNING;
     private List<RunItem> items = new ArrayList<>();
 
     private Run(RunId id, RunType runType, String operator, Instant startedAt, Instant finishedAt, List<RunItem> items, Instant createdAt, Instant updatedAt, long version) {
@@ -31,6 +31,7 @@ public class Run extends BaseEntity<RunId> {
         if (items != null) {
             this.items = new ArrayList<>(items);
         }
+        this.executionStatus = finishedAt == null ? RunExecutionStatus.RUNNING : aggregateStatus();
     }
 
     public static Run rehydrate(RunId id, RunType runType, String operator, Instant startedAt, Instant finishedAt, List<RunItem> items, Instant createdAt, Instant updatedAt, long version) {
@@ -54,7 +55,7 @@ public class Run extends BaseEntity<RunId> {
                                 int executionVersion, RunExecutionStatus executionStatus) {
         Run run = rehydrate(id, type, operator, startedAt, finishedAt, items, createdAt, updatedAt, version);
         run.executionVersion = executionVersion;
-        run.executionStatus = executionStatus;
+        if (executionStatus != null) run.executionStatus = executionStatus;
         return run;
     }
 
@@ -62,8 +63,33 @@ public class Run extends BaseEntity<RunId> {
         if (executionStatus == RunExecutionStatus.PLANNED) {
             throw new IllegalStateException("计划预览不可执行或结束");
         }
+        this.executionStatus = aggregateStatus();
         this.finishedAt = now;
         touch(now);
+    }
+
+    private RunExecutionStatus aggregateStatus() {
+        if (items.isEmpty()) return RunExecutionStatus.FAILED;
+        if (items.stream().anyMatch(item -> item.getFinalResult() == RunItemResult.UNKNOWN
+                || item.getSteps().stream().anyMatch(step -> step.result() == RunItemResult.UNKNOWN))) {
+            return RunExecutionStatus.NEEDS_REVIEW;
+        }
+        var repositories = items.stream().collect(java.util.stream.Collectors.groupingBy(RunItem::getRepo));
+        long completed = repositories.values().stream().filter(group -> group.stream().allMatch(this::isComplete)).count();
+        if (completed == repositories.size()) return RunExecutionStatus.DONE;
+        return completed == 0 ? RunExecutionStatus.FAILED : RunExecutionStatus.PARTIAL_FAILED;
+    }
+
+    private boolean isComplete(RunItem item) {
+        if (item.getSteps().stream().anyMatch(step -> step.result() == null || step.result().isFailure())) return false;
+        RunItemResult result = item.getFinalResult();
+        if (result == null) return false;
+        return switch (runType) {
+            case WINDOW_ORCHESTRATION, ATTACH_ITERATION ->
+                    result == RunItemResult.MERGED || result == RunItemResult.ALREADY_MERGED;
+            case VERSION_UPDATE -> result == RunItemResult.VERSION_UPDATE_SUCCESS;
+            case WINDOW_CLEANUP -> result == RunItemResult.SUCCESS || result == RunItemResult.CI_NOT_CONFIGURED;
+        };
     }
 
     public List<RunItem> getItems() {

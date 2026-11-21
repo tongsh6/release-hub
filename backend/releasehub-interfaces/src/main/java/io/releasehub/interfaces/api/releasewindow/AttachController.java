@@ -1,13 +1,14 @@
 package io.releasehub.interfaces.api.releasewindow;
 
 import io.releasehub.application.window.AttachAppService;
-import io.releasehub.application.window.AttachResult;
 import io.releasehub.common.paging.PageMeta;
 import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
+import io.releasehub.domain.window.WindowIteration;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -21,9 +22,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/**
- * @author tongshuanglong
- */
 @RestController
 @RequestMapping("/api/v1/release-windows")
 @RequiredArgsConstructor
@@ -32,76 +30,46 @@ public class AttachController {
     private final AttachAppService attachAppService;
 
     @PostMapping("/{id}/attach")
-    @Operation(summary = "Attach iterations to window")
-    public ApiResponse<List<AttachResultView>> attach(@PathVariable("id") String windowId, @Valid @RequestBody AttachRequest request) {
-        var results = attachAppService.attach(windowId, request.getIterationKeys());
-        return ApiResponse.success(results.stream().map(AttachResultView::from).toList());
+    @Operation(summary = "关联迭代")
+    public ApiResponse<List<WindowIterationView>> attach(@PathVariable("id") String windowId,
+                                                         @Valid @RequestBody AttachRequest request) {
+        var bindings = attachAppService.attach(windowId, request.getIterationKeys());
+        return ApiResponse.success(bindings.stream().map(WindowIterationView::from).toList());
     }
 
     @PostMapping("/{id}/detach")
-    @Operation(summary = "Detach iteration from window")
-    public ApiResponse<Boolean> detach(@PathVariable("id") String windowId, @RequestBody DetachRequest request) {
+    @Operation(summary = "解除迭代关联")
+    public ApiResponse<Boolean> detach(@PathVariable("id") String windowId,
+                                        @Valid @RequestBody DetachRequest request) {
         attachAppService.detach(windowId, request.getIterationKey());
         return ApiResponse.success(true);
     }
 
     @GetMapping("/{id}/iterations")
-    @Operation(summary = "List window iterations")
+    @Operation(summary = "查询窗口迭代")
     public ApiResponse<List<WindowIterationView>> list(@PathVariable("id") String windowId) {
-        var list = attachAppService.list(windowId);
-        return ApiResponse.success(list.stream().map(x -> new WindowIterationView(
-                x.getIterationKey().value(),
-                x.getAttachAt(),
-                x.getReleaseBranch(),
-                x.getBranchCreated(),
-                x.getLastMergeAt()
-        )).toList());
+        return ApiResponse.success(attachAppService.list(windowId).stream().map(WindowIterationView::from).toList());
     }
 
     @GetMapping("/{id}/iterations/paged")
-    @Operation(summary = "List window iterations (paged)")
+    @Operation(summary = "分页查询窗口迭代")
     public ApiPageResponse<List<WindowIterationView>> listPaged(@PathVariable("id") String windowId,
-                                                                @RequestParam(name = "page", defaultValue = "1") int page,
-                                                                @RequestParam(name = "size", defaultValue = "20") int size) {
+                                                               @RequestParam(name = "page", defaultValue = "1") int page,
+                                                               @RequestParam(name = "size", defaultValue = "20") int size) {
         var result = attachAppService.listPaged(windowId, page, size);
-        List<WindowIterationView> views = result.items().stream()
-                .map(x -> new WindowIterationView(
-                        x.getIterationKey().value(),
-                        x.getAttachAt(),
-                        x.getReleaseBranch(),
-                        x.getBranchCreated(),
-                        x.getLastMergeAt()
-                ))
-                .toList();
+        List<WindowIterationView> views = result.items().stream().map(WindowIterationView::from).toList();
         return ApiPageResponse.success(views, new PageMeta(page, size, result.total()));
-    }
-
-    @PostMapping("/{id}/iterations/{iterationKey}/create-release-branch")
-    @Operation(summary = "Create release branch for iteration")
-    public ApiResponse<Boolean> createReleaseBranch(
-            @PathVariable("id") String windowId,
-            @PathVariable("iterationKey") String iterationKey) {
-        attachAppService.createReleaseBranchForIteration(windowId, iterationKey);
-        return ApiResponse.success(true);
-    }
-
-    @PostMapping("/{id}/iterations/{iterationKey}/merge-feature")
-    @Operation(summary = "Merge feature branches to release branch")
-    public ApiResponse<Boolean> mergeFeatureToRelease(
-            @PathVariable("id") String windowId,
-            @PathVariable("iterationKey") String iterationKey) {
-        attachAppService.mergeFeatureToRelease(windowId, iterationKey);
-        return ApiResponse.success(true);
     }
 
     @Data
     public static class AttachRequest {
         @NotEmpty(message = "迭代列表不能为空")
-        private List<String> iterationKeys;
+        private List<@NotBlank String> iterationKeys;
     }
 
     @Data
     public static class DetachRequest {
+        @NotBlank
         private String iterationKey;
     }
 
@@ -112,29 +80,10 @@ public class AttachController {
         private final String releaseBranch;
         private final Boolean branchCreated;
         private final java.time.Instant lastMergeAt;
-    }
 
-    @Data
-    public static class AttachResultView {
-        private final String iterationKey;
-        private final boolean hasErrors;
-        private final List<AttachErrorView> errors;
-
-        public static AttachResultView from(AttachResult result) {
-            List<AttachErrorView> errors = result.getErrors().stream()
-                    .map(e -> new AttachErrorView(e.repoId(), e.repoName(), e.message()))
-                    .toList();
-            return new AttachResultView(
-                    result.getWindowIteration().getIterationKey().value(),
-                    result.hasErrors(),
-                    errors);
+        public static WindowIterationView from(WindowIteration binding) {
+            return new WindowIterationView(binding.getIterationKey().value(), binding.getAttachAt(),
+                    binding.getReleaseBranch(), binding.getBranchCreated(), binding.getLastMergeAt());
         }
-    }
-
-    @Data
-    public static class AttachErrorView {
-        private final String repoId;
-        private final String repoName;
-        private final String message;
     }
 }

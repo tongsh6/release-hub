@@ -11,6 +11,7 @@ import java.util.List;
 public class RunJsonView {
     private String runId;
     private String runType;
+    private String operator;
     private int executionVersion;
     private String status;
     private long startedAt;
@@ -19,13 +20,20 @@ public class RunJsonView {
 
     @Data
     public static class Item {
+        private String id;
         private String windowKey;
         private String repo;
         private String iterationKey;
         private int plannedOrder;
         private int executedOrder;
         private String finalResult;
+        private java.util.Map<String, String> metadata = java.util.Map.of();
         private List<Step> steps;
+
+        public java.util.Map<String, String> getMetadata() { return java.util.Map.copyOf(metadata); }
+        public void setMetadata(java.util.Map<String, String> metadata) {
+            this.metadata = metadata == null ? java.util.Map.of() : java.util.Map.copyOf(metadata);
+        }
     }
 
     @Data
@@ -41,8 +49,9 @@ public class RunJsonView {
         RunJsonView v = new RunJsonView();
         v.setRunId(run.getId().value());
         v.setRunType(run.getRunType().name());
+        v.setOperator(run.getOperator());
         v.setExecutionVersion(run.getExecutionVersion());
-        v.setStatus(run.getExecutionStatus() == null ? null : run.getExecutionStatus().name());
+        v.setStatus(run.getExecutionStatus().name());
         v.setStartedAt(run.getStartedAt().toEpochMilli());
         v.setFinishedAt(run.getFinishedAt() == null ? null : run.getFinishedAt().toEpochMilli());
         v.setItems(run.getItems().stream().map(RunJsonView::mapItem).toList());
@@ -51,6 +60,8 @@ public class RunJsonView {
 
     private static Item mapItem(RunItem item) {
         Item i = new Item();
+        i.setId(item.getId().value());
+        i.setMetadata(item.getMetadata());
         i.setWindowKey(item.getWindowKey());
         i.setRepo(item.getRepo().value());
         i.setIterationKey(item.getIterationKey() == null ? null : item.getIterationKey().value());

@@ -39,7 +39,7 @@ public class RunJpaEntity {
     private long version;
     @Column(name = "execution_version")
     private Integer executionVersion;
-    @Column(name = "execution_status")
+    @Column(name = "execution_status", nullable = false)
     private String executionStatus;
 
     @OneToMany(mappedBy = "run", cascade = CascadeType.ALL, orphanRemoval = true)

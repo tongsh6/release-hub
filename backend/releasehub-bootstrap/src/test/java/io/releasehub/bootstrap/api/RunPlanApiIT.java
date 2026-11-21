@@ -12,6 +12,7 @@ import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.application.run.RunPort;
 import io.releasehub.application.run.plan.RunPlanPort;
+import io.releasehub.application.run.plan.RunPlanAppService;
 import io.releasehub.application.run.plan.SavedRunPlan;
 import io.releasehub.bootstrap.ReleaseHubApplication;
 import io.releasehub.domain.run.Run;
@@ -63,6 +64,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -100,6 +102,8 @@ class RunPlanApiIT {
     @Autowired IterationRepoPort versions;
     @Autowired CodeRepositoryPort repos;
     @Autowired WindowIterationPort bindings;
+    @Autowired RunPlanAppService planService;
+    @Autowired RunPlanPort persistedPlans;
     @MockBean GitLabPort gitLab;
     @MockBean GitLabFilePort gitFiles;
     @MockBean GitBranchAdapterFactory gitBranches;
@@ -154,7 +158,7 @@ class RunPlanApiIT {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].runId").value(id));
         mvc.perform(post("/api/v1/runs/{id}/retry", id).header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"items\":[],\"operator\":\"mallory\"}"))
-                .andExpect(status().isConflict());
+                .andExpect(status().isBadRequest());
         verifyNoInteractions(gitLab, gitFiles, gitBranches);
     }
 
@@ -255,6 +259,30 @@ class RunPlanApiIT {
         verifyNoInteractions(gitLab, gitFiles, gitBranches);
     }
 
+
+    @Test
+    void admissionPersistsOneRunningSnapshotAndRollsBackWhenSnapshotPersistenceFails() {
+        Run admitted = planService.admit(windowId, List.of(repoId), List.of(iterationKey), true, "admission-success");
+        assertThat(admitted.getExecutionStatus().name()).isEqualTo("RUNNING");
+        SavedRunPlan persisted = persistedPlans.findByRunId(admitted.getId().value()).orElseThrow();
+        assertThat(persisted.snapshot().items().stream().map(RunPlanSnapshot.Item::itemId).toList())
+                .containsExactlyElementsOf(admitted.getItems().stream().map(item -> item.getId().value()).toList());
+        assertThat(jdbc.queryForObject("select count(*) from run_item where run_id = ?", Integer.class,
+                admitted.getId().value())).isEqualTo(1);
+
+        Integer before = jdbc.queryForObject("select count(*) from run", Integer.class);
+        jdbc.execute("alter table run_plan add constraint reject_fixture_admission check(operator <> 'admission-rollback')");
+        try {
+            assertThatThrownBy(() -> planService.admit(windowId, List.of(repoId), List.of(iterationKey), true, "admission-rollback"))
+                    .isInstanceOf(RuntimeException.class);
+            assertThat(jdbc.queryForObject("select count(*) from run", Integer.class)).isEqualTo(before);
+            assertThat(jdbc.queryForObject("select count(*) from run_plan where operator = 'admission-rollback'", Integer.class)).isZero();
+        } finally {
+            jdbc.execute("alter table run_plan drop constraint reject_fixture_admission");
+        }
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
     @Test
     void localProfileCreatesAndUsesPreviewTableInItsConfiguredSchema() {
         try (var local = new SpringApplicationBuilder(ReleaseHubApplication.class)
@@ -270,7 +298,7 @@ class RunPlanApiIT {
             run.addItem(item);
             var snapshot = new RunPlanSnapshot("LOCAL", "G001", "DRAFT", false, true, List.of(
                     new RunPlanSnapshot.Item(item.getId().value(), 1, "repo", "repo", "iteration", "GITLAB", "main",
-                            "feature/local", "release/local", "1.0.0", "1.1.0-SNAPSHOT", "1.1.0", List.of("TRY_MERGE"))));
+                            "feature/local", "AUTO", "release/local", "1.0.0", "1.1.0-SNAPSHOT", "1.1.0", List.of("TRY_MERGE"))));
             var saved = new SavedRunPlan(run.getId().value(), windowId, "schema-test", requestKey, "a".repeat(64), "b".repeat(64), now, snapshot);
             var localPlans = local.getBean(RunPlanPort.class);
             new TransactionTemplate(local.getBean(PlatformTransactionManager.class)).executeWithoutResult(tx -> {

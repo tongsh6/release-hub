@@ -3,442 +3,285 @@ package io.releasehub.bootstrap.api;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.releasehub.application.run.RunPort;
+import io.releasehub.application.run.plan.RunPlanPort;
+import io.releasehub.application.run.plan.SavedRunPlan;
 import io.releasehub.domain.iteration.IterationKey;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.run.ActionType;
 import io.releasehub.domain.run.Run;
+import io.releasehub.domain.run.RunExecutionStatus;
 import io.releasehub.domain.run.RunItem;
 import io.releasehub.domain.run.RunItemResult;
+import io.releasehub.domain.run.RunPlanSnapshot;
+import io.releasehub.domain.run.RunStep;
 import io.releasehub.domain.run.RunType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+        "spring.jpa.open-in-view=false",
+        "spring.datasource.url=jdbc:h2:mem:run-paged-api;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1"
+})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class RunPagedApiTest {
-
-    @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
-    private RunPort runPort;
-
-    @Autowired
-    private io.releasehub.application.releasewindow.ReleaseWindowPort releaseWindowPort;
+    @Autowired private MockMvc mockMvc;
+    @Autowired private ObjectMapper objectMapper;
+    @Autowired private RunPort runPort;
+    @Autowired private RunPlanPort runPlanPort;
+    @Autowired private JdbcTemplate jdbc;
+    @Autowired private PlatformTransactionManager transactions;
+    @Autowired private io.releasehub.application.releasewindow.ReleaseWindowPort releaseWindowPort;
 
     private String token;
+    private String operator;
 
     @BeforeEach
     void setUp() throws Exception {
-        token = loginAndGetToken();
+        operator = "run-api-" + UUID.randomUUID();
+        var response = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"admin\",\"password\":\"admin\"}"))
+                .andExpect(status().isOk()).andReturn();
+        token = objectMapper.readTree(response.getResponse().getContentAsString()).path("data").path("token").asText();
+        assertThat(token).isNotBlank();
     }
 
-    private String loginAndGetToken() throws Exception {
-        String body = "{\"username\":\"admin\",\"password\":\"admin\"}";
-        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.token").exists())
-            .andReturn();
-        JsonNode node = objectMapper.readTree(result.getResponse().getContentAsString());
-        return node.get("data").get("token").asText();
-    }
-
-    @Test
-    void should_filter_runs_by_status_failed() throws Exception {
-        // Given - 创建不同状态的 Run
-        createRunWithStatus("FAILED", "operator1");
-        createRunWithStatus("SUCCESS", "operator1");
-        createRunWithStatus("RUNNING", "operator1");
-
-        // When - 筛选 FAILED 状态的 Run
-        MvcResult result = mockMvc.perform(get("/api/v1/runs/paged")
-                .header("Authorization", "Bearer " + token)
-                .param("status", "FAILED")
-                .param("page", "1")
-                .param("size", "20"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data").isArray())
-            .andReturn();
-
-        // Then - 验证只返回 FAILED 状态的 Run
-        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
-        JsonNode data = response.get("data");
-        assertThat(data.isArray()).isTrue();
-        
-        // 验证所有返回的 Run 都是 FAILED 状态
-        for (JsonNode run : data) {
-            assertThat(run.get("status").asText()).isEqualTo("FAILED");
+    @ParameterizedTest
+    @EnumSource(RunExecutionStatus.class)
+    void filtersEachPersistedExecutionStatusWithNonEmptyResults(RunExecutionStatus expectedStatus) throws Exception {
+        List<Run> fixtures = new ArrayList<>();
+        for (RunExecutionStatus state : RunExecutionStatus.values()) {
+            fixtures.add(createRun(state, operator, "WK-STATUS", Instant.now()));
         }
-        
-        // 验证总数
-        JsonNode pageNode = response.get("page");
-        long total = pageNode.has("totalElements") ? pageNode.get("totalElements").asLong() : pageNode.get("total").asLong();
-        assertThat(total).isGreaterThanOrEqualTo(1);
+        Run expected = fixtures.stream().filter(run -> run.getExecutionStatus() == expectedStatus).findFirst().orElseThrow();
+
+        JsonNode response = page(expectedStatus.name(), null, null, 1, 20);
+        assertThat(response.path("data")).hasSize(1);
+        assertThat(response.path("page").path("total").asLong()).isEqualTo(1);
+        JsonNode actual = response.path("data").get(0);
+        assertThat(actual.path("id").asText()).isEqualTo(expected.getId().value());
+        assertThat(actual.path("status").asText()).isEqualTo(expectedStatus.name());
+        assertThat(actual.path("operator").asText()).isEqualTo(operator);
+        assertThat(actual.path("items")).hasSize(expected.getItems().size());
     }
 
     @Test
-    void should_filter_runs_by_status_success() throws Exception {
-        // Given - 创建不同状态的 Run
-        createRunWithStatus("FAILED", "operator1");
-        createRunWithStatus("SUCCESS", "operator1");
-        createRunWithStatus("RUNNING", "operator1");
+    void filtersStatusAndOperatorWithoutReturningOtherOperators() throws Exception {
+        Run expected = createRun(RunExecutionStatus.FAILED, operator, "WK-OPERATOR", Instant.now());
+        createRun(RunExecutionStatus.FAILED, operator + "-other", "WK-OPERATOR", Instant.now());
+        createRun(RunExecutionStatus.DONE, operator, "WK-OPERATOR", Instant.now());
 
-        // When - 筛选 SUCCESS 状态的 Run
-        MvcResult result = mockMvc.perform(get("/api/v1/runs/paged")
-                .header("Authorization", "Bearer " + token)
-                .param("status", "SUCCESS")
-                .param("page", "1")
-                .param("size", "20"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data").isArray())
-            .andReturn();
-
-        // Then - 验证只返回 SUCCESS 状态的 Run
-        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
-        JsonNode data = response.get("data");
-        
-        // 验证所有返回的 Run 都是 SUCCESS 状态
-        for (JsonNode run : data) {
-            assertThat(run.get("status").asText()).isEqualTo("SUCCESS");
-        }
+        JsonNode data = page("FAILED", null, null, 1, 20).path("data");
+        assertThat(data).hasSize(1);
+        assertThat(data.get(0).path("id").asText()).isEqualTo(expected.getId().value());
     }
 
     @Test
-    void should_filter_runs_by_status_running() throws Exception {
-        // Given - 创建 RUNNING 状态的 Run，使用唯一标识符避免测试间干扰
-        String uniqueOperator = "op-running-" + System.nanoTime();
-        Run runningRun = createRunWithStatus("RUNNING", uniqueOperator);
-        String runId = runningRun.getId().value();
+    void filtersStatusAndWindowKeyWithoutReturningOtherWindows() throws Exception {
+        String windowKey = "WK-" + UUID.randomUUID();
+        Run expected = createRun(RunExecutionStatus.FAILED, operator, windowKey, Instant.now());
+        createRun(RunExecutionStatus.FAILED, operator, windowKey + "-other", Instant.now());
+        createRun(RunExecutionStatus.DONE, operator, windowKey, Instant.now());
 
-        // When - 先验证 Run 已创建且状态正确
-        MvcResult getResult = mockMvc.perform(get("/api/v1/runs/" + runId)
-                .header("Authorization", "Bearer " + token))
-            .andExpect(status().isOk())
-            .andReturn();
-        JsonNode runNode = objectMapper.readTree(getResult.getResponse().getContentAsString());
-        String actualStatus = runNode.get("data").get("status").asText();
-        // 验证创建的 Run 状态确实是 RUNNING
-        assertThat(actualStatus).as("Created run should be RUNNING").isEqualTo("RUNNING");
-
-        // 然后筛选 RUNNING 状态且 operator 为唯一标识符的 Run
-        MvcResult result = mockMvc.perform(get("/api/v1/runs/paged")
-                .header("Authorization", "Bearer " + token)
-                .param("status", "RUNNING")
-                .param("operator", uniqueOperator)
-                .param("page", "1")
-                .param("size", "20"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data").isArray())
-            .andReturn();
-
-        // Then - 验证只返回 RUNNING 状态的 Run
-        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
-        JsonNode data = response.get("data");
-        
-        // 验证所有返回的 Run 都是 RUNNING 状态
-        assertThat(data.size()).as("Should find at least one RUNNING run").isGreaterThan(0);
-        for (JsonNode run : data) {
-            assertThat(run.get("status").asText()).isEqualTo("RUNNING");
-            assertThat(run.get("operator").asText()).isEqualTo(uniqueOperator);
-        }
+        JsonNode data = page("FAILED", windowKey, null, 1, 20).path("data");
+        assertThat(data).hasSize(1);
+        assertThat(data.get(0).path("id").asText()).isEqualTo(expected.getId().value());
+        assertThat(data.get(0).path("items").get(0).path("windowKey").asText()).isEqualTo(windowKey);
     }
 
     @Test
-    void should_filter_runs_by_status_completed() throws Exception {
-        // Given - 创建不同状态的 Run
-        createRunWithStatus("FAILED", "operator1");
-        createRunWithStatus("COMPLETED", "operator1");
-        createRunWithStatus("RUNNING", "operator1");
-
-        // When - 筛选 COMPLETED 状态的 Run
-        MvcResult result = mockMvc.perform(get("/api/v1/runs/paged")
-                .header("Authorization", "Bearer " + token)
-                .param("status", "COMPLETED")
-                .param("page", "1")
-                .param("size", "20"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data").isArray())
-            .andReturn();
-
-        // Then - 验证只返回 COMPLETED 状态的 Run
-        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
-        JsonNode data = response.get("data");
-        
-        // 验证所有返回的 Run 都是 COMPLETED 状态
-        for (JsonNode run : data) {
-            assertThat(run.get("status").asText()).isEqualTo("COMPLETED");
-        }
-    }
-
-    @Test
-    void should_filter_runs_by_status_and_operator() throws Exception {
-        // Given - 创建不同 operator 的 Run
-        createRunWithStatus("FAILED", "operator1");
-        createRunWithStatus("FAILED", "operator2");
-        createRunWithStatus("SUCCESS", "operator1");
-
-        // When - 筛选 FAILED 状态且 operator 为 operator1 的 Run
-        MvcResult result = mockMvc.perform(get("/api/v1/runs/paged")
-                .header("Authorization", "Bearer " + token)
-                .param("status", "FAILED")
-                .param("operator", "operator1")
-                .param("page", "1")
-                .param("size", "20"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data").isArray())
-            .andReturn();
-
-        // Then - 验证只返回符合条件的 Run
-        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
-        JsonNode data = response.get("data");
-        
-        for (JsonNode run : data) {
-            assertThat(run.get("status").asText()).isEqualTo("FAILED");
-            assertThat(run.get("operator").asText()).isEqualTo("operator1");
-        }
-    }
-
-    @Test
-    void should_filter_runs_by_status_and_windowKey() throws Exception {
-        // Given - 创建不同 windowKey 的 Run，使用唯一的 operator 和 windowKey 来隔离测试数据
-        String uniqueOperator = "op-window-" + System.nanoTime();
-        String uniqueWindowKey = "WK-WIN-" + System.nanoTime();
-        Run failedRun = createRunWithStatusAndWindowKey("FAILED", uniqueOperator, uniqueWindowKey);
-        String failedRunId = failedRun.getId().value();
-        createRunWithStatusAndWindowKey("FAILED", uniqueOperator, uniqueWindowKey + "-2");
-        createRunWithStatusAndWindowKey("SUCCESS", uniqueOperator, uniqueWindowKey);
-
-        // When - 先验证 FAILED Run 已创建且状态正确
-        MvcResult getResult = mockMvc.perform(get("/api/v1/runs/" + failedRunId)
-                .header("Authorization", "Bearer " + token))
-            .andExpect(status().isOk())
-            .andReturn();
-        JsonNode runNode = objectMapper.readTree(getResult.getResponse().getContentAsString());
-        String actualStatus = runNode.get("data").get("status").asText();
-        // 验证创建的 Run 状态确实是 FAILED
-        assertThat(actualStatus).as("Created run should be FAILED").isEqualTo("FAILED");
-
-        // 然后筛选 FAILED 状态且 windowKey 为唯一 windowKey 的 Run
-        MvcResult result = mockMvc.perform(get("/api/v1/runs/paged")
-                .header("Authorization", "Bearer " + token)
-                .param("status", "FAILED")
-                .param("windowKey", uniqueWindowKey)
-                .param("operator", uniqueOperator)
-                .param("page", "1")
-                .param("size", "20"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data").isArray())
-            .andReturn();
-
-        // Then - 验证只返回符合条件的 Run
-        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
-        JsonNode data = response.get("data");
-        
-        // 验证所有返回的 Run 都是 FAILED 状态
-        assertThat(data.size()).as("Should find at least one FAILED run").isGreaterThan(0);
-        for (JsonNode run : data) {
-            assertThat(run.get("status").asText()).isEqualTo("FAILED");
-        }
-    }
-
-    @Test
-    void should_filter_runs_by_release_window_group_code() throws Exception {
-        String uniqueOperator = "op-group-" + System.nanoTime();
-        String groupCode = "G-RUN-" + System.nanoTime();
-        String otherGroupCode = groupCode + "-OTHER";
-        String windowKey = "WK-GROUP-" + System.nanoTime();
-        String otherWindowKey = windowKey + "-OTHER";
+    void filtersByReleaseWindowGroup() throws Exception {
+        String group = "G-" + UUID.randomUUID();
+        String window = "WK-" + UUID.randomUUID();
         Instant now = Instant.now();
+        releaseWindowPort.save(ReleaseWindow.createDraft(window, "Selected group", null, now, group, now));
+        releaseWindowPort.save(ReleaseWindow.createDraft(window + "-other", "Other group", null, now, group + "-other", now));
+        Run expected = createRun(RunExecutionStatus.FAILED, operator, window, now);
+        createRun(RunExecutionStatus.FAILED, operator, window + "-other", now);
 
-        releaseWindowPort.save(ReleaseWindow.createDraft(windowKey, "Window A", null, now, groupCode, now));
-        releaseWindowPort.save(ReleaseWindow.createDraft(otherWindowKey, "Window B", null, now, otherGroupCode, now));
-        createRunWithStatusAndWindowKey("FAILED", uniqueOperator, windowKey);
-        createRunWithStatusAndWindowKey("FAILED", uniqueOperator, otherWindowKey);
-
-        MvcResult result = mockMvc.perform(get("/api/v1/runs/paged")
-                .header("Authorization", "Bearer " + token)
-                .param("status", "FAILED")
-                .param("operator", uniqueOperator)
-                .param("groupCode", groupCode)
-                .param("page", "1")
-                .param("size", "20"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data").isArray())
-            .andReturn();
-
-        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
-        assertThat(data.size()).as("Should only return runs for the selected release window group").isEqualTo(1);
-        assertThat(data.get(0).get("items").get(0).get("windowKey").asText()).isEqualTo(windowKey);
+        JsonNode data = page("FAILED", null, group, 1, 20).path("data");
+        assertThat(data).hasSize(1);
+        assertThat(data.get(0).path("id").asText()).isEqualTo(expected.getId().value());
     }
 
     @Test
-    void should_return_recent_runs_first_for_window_review() throws Exception {
-        String uniqueOperator = "op-recent-" + System.nanoTime();
-        String windowKey = "WK-RECENT-" + System.nanoTime();
+    void returnsRecentRunsFirst() throws Exception {
+        String window = "WK-" + UUID.randomUUID();
         Instant base = Instant.parse("2026-05-23T01:00:00Z");
-        Run olderRun = createRunWithStatusAndWindowKeyAt("SUCCESS", uniqueOperator, windowKey, base);
-        Run newerRun = createRunWithStatusAndWindowKeyAt("FAILED", uniqueOperator, windowKey, base.plusSeconds(60));
+        Run older = createRun(RunExecutionStatus.DONE, operator, window, base);
+        Run newer = createRun(RunExecutionStatus.FAILED, operator, window, base.plusSeconds(60));
 
-        MvcResult result = mockMvc.perform(get("/api/v1/runs/paged")
-                .header("Authorization", "Bearer " + token)
-                .param("windowKey", windowKey)
-                .param("operator", uniqueOperator)
-                .param("page", "1")
-                .param("size", "5"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
-            .andReturn();
-
-        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
+        JsonNode data = page(null, window, null, 1, 5).path("data");
         assertThat(data).hasSize(2);
-        assertThat(data.get(0).get("id").asText()).isEqualTo(newerRun.getId().value());
-        assertThat(data.get(1).get("id").asText()).isEqualTo(olderRun.getId().value());
+        assertThat(data.get(0).path("id").asText()).isEqualTo(newer.getId().value());
+        assertThat(data.get(1).path("id").asText()).isEqualTo(older.getId().value());
     }
 
     @Test
-    void should_paginate_runs_correctly() throws Exception {
-        // Given - 创建多个 Run
-        for (int i = 0; i < 25; i++) {
-            createRunWithStatus("SUCCESS", "operator" + i);
-        }
+    void paginatesAnIsolatedNonEmptyResultSet() throws Exception {
+        Instant base = Instant.parse("2026-05-23T02:00:00Z");
+        for (int i = 0; i < 25; i++) createRun(RunExecutionStatus.DONE, operator, "WK-PAGE", base.plusSeconds(i));
 
-        // When - 请求第一页
-        MvcResult result = mockMvc.perform(get("/api/v1/runs/paged")
-                .header("Authorization", "Bearer " + token)
-                .param("status", "SUCCESS")
-                .param("page", "1")
-                .param("size", "10"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.page.page").value(1))
-            .andExpect(jsonPath("$.page.size").value(10))
-            .andReturn();
-
-        // Then - 验证分页信息
-        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
-        JsonNode page = response.get("page");
-        long total = page.has("totalElements") ? page.get("totalElements").asLong() : page.get("total").asLong();
-        assertThat(total).isGreaterThanOrEqualTo(25);
-        assertThat(page.get("totalPages").asInt()).isGreaterThanOrEqualTo(3);
-        assertThat(page.get("hasNext").asBoolean()).isTrue();
-        // hasPrevious 可能为 true（如果数据库中有其他数据），这里只验证分页功能正常
-        // assertThat(page.get("hasPrevious").asBoolean()).isFalse();
-        
-        // 验证返回的数据数量
-        JsonNode data = response.get("data");
-        assertThat(data.size()).isLessThanOrEqualTo(10);
+        JsonNode response = page("DONE", null, null, 1, 10);
+        JsonNode pagination = response.path("page");
+        assertThat(pagination.path("total").asLong()).isEqualTo(25);
+        assertThat(pagination.path("totalPages").asInt()).isEqualTo(3);
+        assertThat(pagination.path("hasNext").asBoolean()).isTrue();
+        assertThat(pagination.path("hasPrevious").asBoolean()).isFalse();
+        assertThat(response.path("data")).hasSize(10);
+        for (JsonNode run : response.path("data")) assertThat(run.path("status").asText()).isEqualTo("DONE");
     }
 
     @Test
-    void should_return_all_runs_when_status_not_specified() throws Exception {
-        // Given - 创建不同状态的 Run
-        createRunWithStatus("FAILED", "operator1");
-        createRunWithStatus("SUCCESS", "operator1");
-        createRunWithStatus("RUNNING", "operator1");
-        createRunWithStatus("COMPLETED", "operator1");
+    void returnsAllRealExecutionStatesWhenNoStatusFilterIsSupplied() throws Exception {
+        for (RunExecutionStatus state : RunExecutionStatus.values()) createRun(state, operator, "WK-ALL", Instant.now());
 
-        // When - 不指定 status 参数
-        MvcResult result = mockMvc.perform(get("/api/v1/runs/paged")
-                .header("Authorization", "Bearer " + token)
-                .param("page", "1")
-                .param("size", "20"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data").isArray())
-            .andReturn();
-
-        // Then - 验证返回所有状态的 Run
-        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
-        JsonNode pageNode = response.get("page");
-        long total = pageNode.has("totalElements") ? pageNode.get("totalElements").asLong() : pageNode.get("total").asLong();
-        assertThat(total).isGreaterThanOrEqualTo(4);
+        JsonNode response = page(null, null, null, 1, 20);
+        List<String> actual = new ArrayList<>();
+        response.path("data").forEach(run -> actual.add(run.path("status").asText()));
+        assertThat(actual).containsExactlyInAnyOrderElementsOf(
+                java.util.Arrays.stream(RunExecutionStatus.values()).map(Enum::name).toList());
+        assertThat(response.path("page").path("total").asLong()).isEqualTo(RunExecutionStatus.values().length);
     }
 
-    // Helper methods to create test data
-    private Run createRunWithStatus(String status, String operator) {
-        return createRunWithStatusAndWindowKey(status, operator, "WK-TEST");
+    @Test
+    void loadsRealJpaItemsStepsAndMetadataWithoutOsivOrAnOuterTransaction() {
+        String window = "WK-DETACHED-" + UUID.randomUUID();
+        Run persisted = createRun(RunExecutionStatus.DONE, operator, window, Instant.now());
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+        assertThat(jdbc.queryForObject("select count(*) from run_item where run_id = ?", Integer.class,
+                persisted.getId().value())).isEqualTo(1);
+
+        assertMaterialized(runPort.findById(persisted.getId().value()).orElseThrow(), persisted);
+        assertMaterialized(runPort.findAll().stream().filter(run -> run.getId().equals(persisted.getId())).findFirst().orElseThrow(), persisted);
+        assertMaterialized(runPort.findByWindowKey(window).getFirst(), persisted);
+        assertMaterialized(runPort.findPaged(null, operator, window, null, null, "DONE", null, 1, 10).items().getFirst(), persisted);
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
     }
 
-    private Run createRunWithStatusAndWindowKey(String status, String operator, String windowKey) {
-        // 使用纳秒确保唯一时间戳，避免并发问题
-        Instant runTime = Instant.now().plusNanos(System.nanoTime() % 1000000000);
-        return createRunWithStatusAndWindowKeyAt(status, operator, windowKey, runTime);
+    @Test
+    void planEndpointReportsPreviewAndCurrentExecutionStateWithoutPermittingExecution() throws Exception {
+        Run preview = createRun(RunExecutionStatus.PLANNED, operator, "WK-PREVIEW", Instant.now());
+        saveSnapshot(preview);
+        assertThat(plan(preview).path("status").asText()).isEqualTo("PLANNED");
+
+        Run execution = createRun(RunExecutionStatus.RUNNING, operator, "WK-EXECUTING", Instant.now());
+        saveSnapshot(execution);
+        JsonNode running = plan(execution);
+        assertThat(running.path("status").asText()).isEqualTo("RUNNING");
+        assertThat(running.path("executionPermitted").asBoolean()).isFalse();
+
+        RunItem item = execution.getItems().getFirst();
+        finishItem(item, RunItemResult.MERGED, Instant.now());
+        execution.finish(Instant.now());
+        runPort.save(execution);
+        JsonNode done = plan(execution);
+        assertThat(done.path("status").asText()).isEqualTo("DONE");
+        assertThat(done.path("executionVersion").asInt()).isEqualTo(execution.getExecutionVersion());
+        assertThat(done.path("executionPermitted").asBoolean()).isFalse();
+        assertThat(done.path("snapshot")).isEqualTo(running.path("snapshot"));
     }
 
-    private Run createRunWithStatusAndWindowKeyAt(String status, String operator, String windowKey, Instant runTime) {
-        Run run = Run.start(RunType.WINDOW_ORCHESTRATION, operator, runTime);
-        RepoId repoId = RepoId.of("repo-1");
-        IterationKey iterationKey = IterationKey.of("IT-" + System.nanoTime());
-        
-        List<RunItem> items = new ArrayList<>();
-        
-        switch (status) {
-            case "FAILED":
-                // 创建一个 FAILED 的 item（FAILED 或 MERGE_BLOCKED）
-                RunItem failedItem = RunItem.create(windowKey, repoId, iterationKey, 1, runTime);
-                failedItem.finishWith(RunItemResult.FAILED, runTime.plusSeconds(1));
-                items.add(failedItem);
-                // FAILED 状态：有 FAILED item，finishedAt 可以为 null 或不为 null
-                // 注意：根据 RunView.determineStatus() 逻辑，只要有 FAILED item 就会返回 FAILED
-                break;
-            case "SUCCESS":
-                // 创建一个 SUCCESS 的 item
-                RunItem successItem = RunItem.create(windowKey, repoId, iterationKey, 1, runTime);
-                successItem.finishWith(RunItemResult.SUCCESS, runTime.plusSeconds(1));
-                items.add(successItem);
-                // SUCCESS 状态：所有 items 都是 SUCCESS，finishedAt 通常不为 null
-                run.finish(runTime.plusSeconds(2));
-                break;
-            case "COMPLETED":
-                // 创建一个没有 item 但 finishedAt 不为 null 的 Run
-                // 或者有 items 但不是全部 SUCCESS 且不是 FAILED，且 finishedAt 不为 null
-                run.finish(runTime.plusSeconds(10));
-                break;
-            case "RUNNING":
-                // 创建一个没有 item 且 finishedAt 为 null 的 Run
-                // 确保 finishedAt 为 null（Run.start() 创建的 Run 默认 finishedAt 就是 null）
-                // 不添加任何 items，不调用 finish()
-                break;
+    @Test
+    void appliesV37OnTheIsolatedH2Database() {
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where version = '37' and success = true",
+                Integer.class)).isEqualTo(1);
+    }
+
+    private JsonNode page(String statusFilter, String windowKey, String groupCode, int page, int size) throws Exception {
+        var request = get("/api/v1/runs/paged").header("Authorization", "Bearer " + token)
+                .param("operator", operator).param("page", Integer.toString(page)).param("size", Integer.toString(size));
+        if (statusFilter != null) request.param("status", statusFilter);
+        if (windowKey != null) request.param("windowKey", windowKey);
+        if (groupCode != null) request.param("groupCode", groupCode);
+        var response = mockMvc.perform(request).andExpect(status().isOk()).andReturn();
+        JsonNode body = objectMapper.readTree(response.getResponse().getContentAsString());
+        assertThat(body.path("success").asBoolean()).isTrue();
+        return body;
+    }
+
+    private JsonNode plan(Run run) throws Exception {
+        var response = mockMvc.perform(get("/api/v1/runs/{id}/plan", run.getId().value())
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk()).andReturn();
+        JsonNode data = objectMapper.readTree(response.getResponse().getContentAsString()).path("data");
+        assertThat(data.path("executionPermitted").asBoolean()).isFalse();
+        return data;
+    }
+
+    private void saveSnapshot(Run run) {
+        RunItem item = run.getItems().getFirst();
+        var planned = new RunPlanSnapshot.Item(item.getId().value(), item.getPlannedOrder(), item.getRepo().value(),
+                "Persisted repository", item.getIterationKey().value(), "GITLAB", "main", "feature/fixture", "AUTO",
+                "release/fixture", null, null, null, List.of("ENSURE_FEATURE", "ENSURE_RELEASE", "ENSURE_MR", "TRY_MERGE"));
+        var snapshot = new RunPlanSnapshot(item.getWindowKey(), "G001", "DRAFT", false, true, List.of(planned));
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> runPlanPort.save(new SavedRunPlan(
+                run.getId().value(), "window-" + run.getId().value(), run.getOperator(), UUID.randomUUID().toString(),
+                "request-hash", "plan-hash", run.getStartedAt(), snapshot)));
+    }
+
+    private void assertMaterialized(Run actual, Run expected) {
+        assertThat(actual.getId()).isEqualTo(expected.getId());
+        assertThat(actual.getExecutionStatus()).isEqualTo(RunExecutionStatus.DONE);
+        assertThat(actual.getItems()).hasSize(1);
+        RunItem item = actual.getItems().getFirst();
+        assertThat(item.getFinalResult()).isEqualTo(RunItemResult.MERGED);
+        assertThat(item.getMetadata()).containsEntry("test.fixture", "persisted");
+        assertThat(item.getSteps()).hasSize(1);
+        assertThat(item.getSteps().getFirst().actionType()).isEqualTo(ActionType.TRY_MERGE);
+        assertThat(item.getSteps().getFirst().result()).isEqualTo(RunItemResult.MERGED);
+    }
+
+    private Run createRun(RunExecutionStatus state, String actor, String windowKey, Instant now) {
+        Run run = state == RunExecutionStatus.PLANNED ? Run.preview(actor, now)
+                : Run.start(RunType.WINDOW_ORCHESTRATION, actor, now);
+        RunItem item = RunItem.create(windowKey, RepoId.of("repo-primary"), IterationKey.of("IT-" + UUID.randomUUID()), 1, now);
+        item.putMetadata("test.fixture", "persisted");
+        run.addItem(item);
+        switch (state) {
+            case DONE -> finishItem(item, RunItemResult.MERGED, now);
+            case FAILED -> finishItem(item, RunItemResult.FAILED, now);
+            case NEEDS_REVIEW -> finishItem(item, RunItemResult.UNKNOWN, now);
+            case PARTIAL_FAILED -> {
+                finishItem(item, RunItemResult.MERGED, now);
+                RunItem blocked = RunItem.create(windowKey, RepoId.of("repo-blocked"), item.getIterationKey(), 2, now);
+                finishItem(blocked, RunItemResult.MERGE_BLOCKED, now);
+                run.addItem(blocked);
+            }
+            case PLANNED, RUNNING -> { }
         }
-
-        // 添加 items 到 run（必须在 finish 之前添加）
-        for (RunItem item : items) {
-            run.addItem(item);
-        }
-
-        // 保存 run（确保 items 也被保存）
+        if (state != RunExecutionStatus.PLANNED && state != RunExecutionStatus.RUNNING) run.finish(now.plusSeconds(2));
+        assertThat(run.getExecutionStatus()).isEqualTo(state);
         runPort.save(run);
-        
         return run;
+    }
+
+    private void finishItem(RunItem item, RunItemResult result, Instant now) {
+        item.setExecutedOrder(item.getPlannedOrder());
+        item.addStep(new RunStep(ActionType.TRY_MERGE, result, now, now.plusSeconds(1), "Persisted fixture"));
+        item.finishWith(result, now.plusSeconds(1));
     }
 }

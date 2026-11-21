@@ -80,7 +80,7 @@ public record ReleaseWindowReportView(
             return new RunReport(
                     run.getId().value(),
                     run.getRunType().name(),
-                    run.getExecutionStatus() == null ? determineStatus(itemReports, run.getFinishedAt() != null) : run.getExecutionStatus().name(),
+                    run.getExecutionStatus().name(),
                     run.getOperator(),
                     run.getStartedAt() == null ? null : run.getStartedAt().toString(),
                     run.getFinishedAt() == null ? null : run.getFinishedAt().toString(),
@@ -88,25 +88,7 @@ public record ReleaseWindowReportView(
             );
         }
 
-        private static String determineStatus(List<ItemReport> items, boolean finished) {
-            if (items.isEmpty()) {
-                return finished ? "COMPLETED" : "RUNNING";
-            }
-            boolean hasFailed = items.stream()
-                    .anyMatch(item -> item.finalResult() != null
-                            && (item.finalResult().contains("FAILED")
-                            || item.finalResult().equals("MERGE_BLOCKED")));
-            if (hasFailed) {
-                return "FAILED";
-            }
-            boolean allSuccess = items.stream()
-                    .allMatch(item -> item.finalResult() != null
-                            && item.finalResult().contains("SUCCESS"));
-            if (allSuccess) {
-                return "SUCCESS";
-            }
-            return finished ? "COMPLETED" : "RUNNING";
-        }
+
     }
 
     public record ItemReport(

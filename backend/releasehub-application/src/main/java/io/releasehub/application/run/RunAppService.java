@@ -61,6 +61,8 @@ public class RunAppService {
     private final VersionDeriverUseCase versionDeriverUseCase;
     private final SettingsPort settingsPort;
     private final Clock clock;
+    private final io.releasehub.application.run.plan.RunPlanAppService runPlanAppService;
+    private final io.releasehub.application.branchrule.BranchRuleUseCase branchRuleUseCase;
 
     private static final String META_VERSION_BUILD_TOOL = "versionUpdate.buildTool";
     private static final String META_VERSION_BRANCH_NAME = "versionUpdate.branchName";
@@ -75,273 +77,221 @@ public class RunAppService {
         return io.releasehub.application.window.ReleaseBranchNaming.resolve(windowKey, settingsPort.getNaming().orElse(null));
     }
 
-    @Transactional
     public Run startOrchestrate(String windowId, List<String> repoIds, List<String> iterationKeys, boolean failFast, String operator) {
-        Instant now = Instant.now(clock);
-        ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
-        ensureWindowNotClosed(rw);
-        Run run = Run.start(RunType.WINDOW_ORCHESTRATION, operator, now);
-
-        // 冲突预检
-        ConflictReport conflictReport = conflictDetectionAppService.getLatestReport(windowId)
-                .orElseGet(() -> conflictDetectionAppService.checkWindowConflicts(windowId));
-        if (conflictReport.hasConflicts()) {
-            throw BusinessException.conflictDetected(
-                    "发布窗口存在 " + conflictReport.totalCount() + " 个冲突，请先解决所有冲突");
-        }
-
-        String releaseBranch = deriveReleaseBranch(rw.getWindowKey());
-        List<WindowIteration> bindings = new java.util.ArrayList<>(
-                windowIterationPort.listByWindow(ReleaseWindowId.of(windowId)));
-        log.info("[Orchestrate] windowId={} windowIterationBindings={}", windowId, bindings.size());
-        bindings.sort(Comparator.comparing(WindowIteration::getAttachAt));
-        List<IterationKey> orderedIterations = bindings.stream().map(WindowIteration::getIterationKey).distinct().toList();
-        log.info("[Orchestrate] orderedIterations={} repoIds={} iterationKeys={}", orderedIterations, repoIds, iterationKeys);
-        if (orderedIterations.isEmpty()) {
-            log.warn("[Orchestrate] No iterations bound to window {}, orchestration will produce 0 items", windowId);
-        }
-
-        int order = 0;
-        boolean blocked = false;
-
-        for (String repoIdStr : repoIds) {
-            RepoId repoId = RepoId.of(repoIdStr);
-            CodeRepository repo = codeRepositoryPort.findById(repoId).orElse(null);
-            if (repo == null) {
-                log.warn("[Orchestrate] FILTER_B: repo not found: {}", repoIdStr);
-                continue;
-            }
-            GitBranchPort gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-            String token = repo.getGitAccessToken();
-            String cloneUrl = repo.getCloneUrl();
-
-            for (IterationKey ik : orderedIterations) {
-                if (!iterationKeys.isEmpty() && iterationKeys.stream().noneMatch(k -> k.equals(ik.value()))) {
-                    log.debug("[Orchestrate] FILTER_C: iterationKey mismatch, ik={} not in {}", ik.value(), iterationKeys);
-                    continue;
-                }
-                Iteration it = iterationPort.findByKey(ik).orElse(null);
-                if (it == null) {
-                    log.warn("[Orchestrate] FILTER_D: iteration not found for key={}", ik.value());
-                    continue;
-                }
-                if (it.getRepos().stream().noneMatch(r -> r.equals(repoId))) {
-                    log.warn("[Orchestrate] FILTER_D: repo {} not in iteration {} repos {}", repoIdStr, ik.value(), it.getRepos());
-                    continue;
-                }
-
-                log.info("[Orchestrate] Creating RunItem: repo={} iteration={} order={}", repoIdStr, ik.value(), order + 1);
-                RunItem item = RunItem.create(rw.getWindowKey(), repoId, ik, ++order, now);
-                String iterationKey = ik.value();
-
-                Optional<IterationRepoVersionInfo> versionInfoOpt = iterationRepoPort.getVersionInfo(iterationKey, repoIdStr);
-                String featureBranch = versionInfoOpt.map(IterationRepoVersionInfo::getFeatureBranch).orElse(null);
-
-                // Step 1: ENSURE_FEATURE — check feature branch exists
-                Instant s1 = Instant.now(clock);
-                if (featureBranch == null) {
-                    item.addStep(new RunStep(ActionType.ENSURE_FEATURE, RunItemResult.SKIPPED, s1, s1, "featureBranch 未配置"));
-                    item.setExecutedOrder(order);
-                    item.finishWith(RunItemResult.SKIPPED, Instant.now(clock));
-                    run.addItem(item);
-                    continue;
-                }
-                boolean featureExists = gitPort.getBranchStatus(cloneUrl, token, featureBranch).exists();
-                if (!featureExists) {
-                    item.addStep(new RunStep(ActionType.ENSURE_FEATURE, RunItemResult.SKIPPED, s1, s1, "Feature branch not found: " + featureBranch));
-                    item.setExecutedOrder(order);
-                    item.finishWith(RunItemResult.SKIPPED, Instant.now(clock));
-                    run.addItem(item);
-                    continue;
-                }
-                item.addStep(new RunStep(ActionType.ENSURE_FEATURE, RunItemResult.SUCCESS, s1, s1, "Feature branch exists: " + featureBranch));
-
-                // Step 2: ENSURE_RELEASE — create release branch if not exists
-                Instant s2 = Instant.now(clock);
-                boolean releaseExists = gitPort.getBranchStatus(cloneUrl, token, releaseBranch).exists();
-                if (!releaseExists) {
-                    boolean created = gitPort.createBranch(cloneUrl, token, releaseBranch, repo.getDefaultBranch());
-                    if (!created) {
-                        item.addStep(new RunStep(ActionType.ENSURE_RELEASE, RunItemResult.FAILED, s2, s2, "Failed to create release branch: " + releaseBranch));
-                        item.setExecutedOrder(order);
-                        item.finishWith(RunItemResult.FAILED, Instant.now(clock));
-                        run.addItem(item);
-                        if (failFast) { blocked = true; break; }
-                        continue;
-                    }
-                    item.addStep(new RunStep(ActionType.ENSURE_RELEASE, RunItemResult.BRANCH_CREATED, s2, s2, "Created release branch: " + releaseBranch));
-                } else {
-                    item.addStep(new RunStep(ActionType.ENSURE_RELEASE, RunItemResult.BRANCH_EXISTS, s2, s2, "Release branch exists: " + releaseBranch));
-                }
-
-                // Step 3: ENSURE_MR — verify both branches ready for merge
-                Instant s3 = Instant.now(clock);
-                if (!gitPort.getBranchStatus(cloneUrl, token, featureBranch).exists() || !gitPort.getBranchStatus(cloneUrl, token, releaseBranch).exists()) {
-                    item.addStep(new RunStep(ActionType.ENSURE_MR, RunItemResult.SKIPPED, s3, s3, "Branches not ready for merge"));
-                    item.setExecutedOrder(order);
-                    item.finishWith(RunItemResult.SKIPPED, Instant.now(clock));
-                    run.addItem(item);
-                    continue;
-                }
-                item.addStep(new RunStep(ActionType.ENSURE_MR, RunItemResult.SUCCESS, s3, s3, "Ready to merge " + featureBranch + " → " + releaseBranch));
-
-                // Step 4: TRY_MERGE — attempt merge
-                Instant s4 = Instant.now(clock);
-                GitBranchPort.MergeResult mergeResult = gitPort.mergeBranch(cloneUrl, token, featureBranch, releaseBranch,
-                        "Merge " + featureBranch + " into " + releaseBranch);
-                Instant s4End = Instant.now(clock);
-
-                RunItemResult mergeOutcome;
-                String mergeMessage;
-                switch (mergeResult.status()) {
-                    case SUCCESS -> {
-                        mergeOutcome = RunItemResult.MERGED;
-                        mergeMessage = "Merged " + featureBranch + " → " + releaseBranch;
-                        windowIterationPort.updateLastMergeAt(windowId, iterationKey, s4End);
-                    }
-                    case CONFLICT -> {
-                        mergeOutcome = RunItemResult.MERGE_BLOCKED;
-                        mergeMessage = "Merge conflict: " + mergeResult.detail();
-                        if (failFast) { blocked = true; }
-                    }
-                    default -> {
-                        mergeOutcome = RunItemResult.FAILED;
-                        mergeMessage = "Merge failed: " + mergeResult.detail();
-                        if (failFast) { blocked = true; }
-                    }
-                }
-                item.addStep(new RunStep(ActionType.TRY_MERGE, mergeOutcome, s4, s4End, mergeMessage));
-                item.setExecutedOrder(order);
-                item.finishWith(mergeOutcome, s4End);
-                run.addItem(item);
-
-                if (blocked) break;
-            }
-            if (blocked) break;
-        }
-
-        log.info("[Orchestrate] Complete: totalItems={} windowId={}", run.getItems().size(), windowId);
-        if (run.getItems().isEmpty()) {
-            if (orderedIterations.isEmpty()) {
-                log.info("[Orchestrate] Window {} has no bound iterations — nothing to orchestrate", windowId);
-            } else {
-                throw BusinessException.runNoItemsCreated(orderedIterations.size(), windowId);
-            }
-        }
-        run.finish(Instant.now(clock));
-        runPort.save(run);
-        return run;
+        Run run = runPlanAppService.admit(windowId, repoIds, iterationKeys, failFast, operator);
+        return executeOrchestration(run, failFast);
     }
 
-    @Transactional
-    public Run retry(String runId, List<String> items, String operator) {
-        Instant now = Instant.now(clock);
-        Run previous = runPort.findById(runId).orElseThrow();
-        if (previous.getExecutionVersion() > 1) {
-            throw BusinessException.of(io.releasehub.common.exception.ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
-        }
-        if (previous.getRunType() == RunType.VERSION_UPDATE) {
-            return retryVersionUpdate(previous, items, operator, now);
-        }
-        Run run = Run.start(previous.getRunType(), operator, now);
-
-        for (RunItem prevItem : previous.getItems()) {
-            String key = prevItem.getWindowKey() + "::" + prevItem.getRepo().value() + "::" + prevItem.getIterationKey().value();
-            if (items.stream().noneMatch(sel -> sel.equals(key))) {
-                continue;
-            }
-            if (prevItem.getFinalResult() != RunItemResult.FAILED && prevItem.getFinalResult() != RunItemResult.MERGE_BLOCKED) {
-                continue;
-            }
-
-            RepoId repoId = prevItem.getRepo();
-            IterationKey iterationKey = prevItem.getIterationKey();
-            CodeRepository repo = codeRepositoryPort.findById(repoId).orElse(null);
-            if (repo == null) continue;
-
-            GitBranchPort gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-            String token = repo.getGitAccessToken();
-            String cloneUrl = repo.getCloneUrl();
-
-            RunItem item = RunItem.createRetry(prevItem.getWindowKey(), repoId, iterationKey, prevItem.getPlannedOrder(), run.getId().value(), now);
-            addRetryTrace(item, previous, prevItem);
-
-            Optional<IterationRepoVersionInfo> versionInfoOpt = iterationRepoPort.getVersionInfo(iterationKey.value(), repoId.value());
-            String featureBranch = versionInfoOpt.map(IterationRepoVersionInfo::getFeatureBranch).orElse(null);
-            String releaseBranch = windowIterationPort.getReleaseBranch(prevItem.getWindowKey(), iterationKey.value());
-            if (releaseBranch == null) {
-                releaseBranch = "release/" + prevItem.getWindowKey();
-            }
-
-            // Step 1: ENSURE_FEATURE
-            Instant s1 = Instant.now(clock);
-            if (featureBranch == null) {
-                item.addStep(new RunStep(ActionType.ENSURE_FEATURE, RunItemResult.SKIPPED, s1, s1, "featureBranch 未配置"));
-                item.setExecutedOrder(prevItem.getPlannedOrder());
-                item.finishWith(RunItemResult.SKIPPED, Instant.now(clock));
-                run.addItem(item);
-                continue;
-            }
-            if (!gitPort.getBranchStatus(cloneUrl, token, featureBranch).exists()) {
-                item.addStep(new RunStep(ActionType.ENSURE_FEATURE, RunItemResult.SKIPPED, s1, s1, "Feature branch not found: " + featureBranch));
-                item.setExecutedOrder(prevItem.getPlannedOrder());
-                item.finishWith(RunItemResult.SKIPPED, Instant.now(clock));
-                run.addItem(item);
-                continue;
-            }
-            item.addStep(new RunStep(ActionType.ENSURE_FEATURE, RunItemResult.SUCCESS, s1, s1, "Feature branch exists: " + featureBranch));
-
-            // Step 2: ENSURE_RELEASE
-            Instant s2 = Instant.now(clock);
-            if (!gitPort.getBranchStatus(cloneUrl, token, releaseBranch).exists()) {
-                boolean created = gitPort.createBranch(cloneUrl, token, releaseBranch, repo.getDefaultBranch());
-                if (!created) {
-                    item.addStep(new RunStep(ActionType.ENSURE_RELEASE, RunItemResult.FAILED, s2, s2, "Failed to create release branch: " + releaseBranch));
-                    item.setExecutedOrder(prevItem.getPlannedOrder());
-                    item.finishWith(RunItemResult.FAILED, Instant.now(clock));
-                    run.addItem(item);
+    private Run executeOrchestration(Run run, boolean failFast) {
+        Map<String, String> blockedRepositories = new java.util.HashMap<>();
+        int executedOrder = 0;
+        try (var operationScope = io.releasehub.application.gitoperation.GitOperationContext.withRun(run.getId().value())) {
+            for (RunItem item : run.getItems().stream().sorted(Comparator.comparingInt(RunItem::getPlannedOrder)).toList()) {
+                String blockedBy = blockedRepositories.get(item.getRepo().value());
+                if (blockedBy != null) {
+                    item.putMetadata("blockedBy.itemId", blockedBy);
+                    item.addStep(new RunStep(ActionType.TRY_MERGE, RunItemResult.SKIPPED_DUE_TO_BLOCK,
+                            clock.instant(), clock.instant(), "同仓库前序执行项阻塞: " + blockedBy));
+                    item.finishWith(RunItemResult.SKIPPED_DUE_TO_BLOCK, clock.instant());
+                    runPort.save(run);
                     continue;
                 }
-                item.addStep(new RunStep(ActionType.ENSURE_RELEASE, RunItemResult.BRANCH_CREATED, s2, s2, "Created release branch: " + releaseBranch));
-            } else {
-                item.addStep(new RunStep(ActionType.ENSURE_RELEASE, RunItemResult.BRANCH_EXISTS, s2, s2, "Release branch exists: " + releaseBranch));
-            }
-
-            // Step 3: ENSURE_MR
-            Instant s3 = Instant.now(clock);
-            item.addStep(new RunStep(ActionType.ENSURE_MR, RunItemResult.SUCCESS, s3, s3, "Ready to merge " + featureBranch + " → " + releaseBranch));
-
-            // Step 4: TRY_MERGE
-            Instant s4 = Instant.now(clock);
-            GitBranchPort.MergeResult mergeResult = gitPort.mergeBranch(cloneUrl, token, featureBranch, releaseBranch,
-                    "Merge " + featureBranch + " into " + releaseBranch);
-            Instant s4End = Instant.now(clock);
-
-            RunItemResult mergeOutcome;
-            String mergeMessage;
-            switch (mergeResult.status()) {
-                case SUCCESS -> {
-                    mergeOutcome = RunItemResult.MERGED;
-                    mergeMessage = "Merged " + featureBranch + " → " + releaseBranch;
-                }
-                case CONFLICT -> {
-                    mergeOutcome = RunItemResult.MERGE_BLOCKED;
-                    mergeMessage = "Merge conflict: " + mergeResult.detail();
-                }
-                default -> {
-                    mergeOutcome = RunItemResult.FAILED;
-                    mergeMessage = "Merge failed: " + mergeResult.detail();
+                item.setExecutedOrder(++executedOrder);
+                runPort.save(run);
+                executeOrchestrationItem(run, item);
+                if (item.getFinalResult() == RunItemResult.UNKNOWN
+                        || (failFast && item.getFinalResult().isFailure())) {
+                    blockedRepositories.put(item.getRepo().value(), item.getId().value());
                 }
             }
-            item.addStep(new RunStep(ActionType.TRY_MERGE, mergeOutcome, s4, s4End, mergeMessage));
-            item.setExecutedOrder(prevItem.getPlannedOrder());
-            item.finishWith(mergeOutcome, s4End);
-            run.addItem(item);
+            run.finish(clock.instant());
+            runPort.save(run);
+            return run;
         }
+    }
 
-        run.finish(Instant.now(clock));
+    private void executeOrchestrationItem(Run run, RunItem item) {
+        CodeRepository repo;
+        GitBranchPort git;
+        String source = item.getMetadata().get("plan.featureBranch");
+        String target = item.getMetadata().get("plan.releaseBranch");
+        String base = item.getMetadata().get("plan.defaultBranch");
+        String featureMode = item.getMetadata().get("plan.featureBranchMode");
+        try {
+            repo = codeRepositoryPort.findById(item.getRepo()).orElseThrow(() -> invalidRunScope("计划仓库已不存在"));
+            if (repo.getGitProvider() != io.releasehub.domain.repo.GitProvider.GITLAB
+                    || !java.util.Objects.equals(item.getMetadata().get("plan.cloneUrl"), repo.getCloneUrl())
+                    || !java.util.Objects.equals(item.getMetadata().get("plan.gitProvider"), repo.getGitProvider().name())
+                    || isBlank(source) || isBlank(target) || isBlank(base) || isBlank(featureMode)
+                    || !java.util.Set.of("AUTO", "NAMED", "EXISTING").contains(featureMode)) {
+                throw invalidRunScope("仓库映射或计划前置条件已改变");
+            }
+            git = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
+        } catch (RuntimeException error) {
+            saveFailedStep(run, item, ActionType.ENSURE_FEATURE, error);
+            return;
+        }
+        if (!saveBranchStep(run, item, ensureBranch(repo, git, source, base, ActionType.ENSURE_FEATURE,
+                !"EXISTING".equals(featureMode)))) return;
+        if (!saveBranchStep(run, item, ensureBranch(repo, git, target, base, ActionType.ENSURE_RELEASE, true))) return;
+        String windowId = item.getMetadata().get("plan.windowId");
+        windowIterationPort.updateReleaseBranch(windowId, item.getIterationKey().value(), target, clock.instant());
+
+        Instant started = clock.instant();
+        GitBranchPort.MergeResult result;
+        try {
+            result = git.mergeBranch(repo.getCloneUrl(), repo.getGitAccessToken(), source, target,
+                    "Merge " + source + " into " + target);
+        } catch (RuntimeException error) {
+            // The workflow may have written remotely before a local journal/persistence failure.
+            result = GitBranchPort.MergeResult.unknown(safeFailureMessage(error));
+        }
+        if (result == null) result = GitBranchPort.MergeResult.unknown("缺少合并结果");
+        GitBranchPort.MrEvidence evidence = result.mrEvidence();
+        if (result.status() == MergeStatus.SUCCESS && !hasConfirmedMergeEvidence(evidence, source, target)) {
+            result = GitBranchPort.MergeResult.unknown("合并成功响应缺少项目、MR 身份或提交证据").withEvidence(evidence);
+        }
+        recordMergeEvidence(item, result);
+        RunItemResult outcome = switch (result.status()) {
+            case SUCCESS -> evidence.disposition() == GitBranchPort.MrDisposition.ALREADY_MERGED
+                    ? RunItemResult.ALREADY_MERGED : RunItemResult.MERGED;
+            case CONFLICT, BLOCKED -> RunItemResult.MERGE_BLOCKED;
+            case UNKNOWN -> RunItemResult.UNKNOWN;
+            case FAILED -> RunItemResult.FAILED;
+        };
+        boolean hasMergeRequest = evidence != null && !isBlank(evidence.iid());
+        RunItemResult ensuredMr = hasMergeRequest
+                ? (evidence.disposition() == GitBranchPort.MrDisposition.CREATED ? RunItemResult.CREATED : RunItemResult.MR_REUSED)
+                : outcome == RunItemResult.ALREADY_MERGED ? RunItemResult.ALREADY_MERGED : outcome;
+        String message = result.detail() == null ? source + " → " + target : result.detail();
+        item.addStep(new RunStep(ActionType.ENSURE_MR, ensuredMr, started, clock.instant(), message));
+        if (hasMergeRequest || outcome == RunItemResult.ALREADY_MERGED) {
+            item.addStep(new RunStep(ActionType.TRY_MERGE, outcome, started, clock.instant(), message));
+        }
+        item.finishWith(outcome, clock.instant());
         runPort.save(run);
-        return run;
+        if (outcome == RunItemResult.MERGED || outcome == RunItemResult.ALREADY_MERGED) {
+            windowIterationPort.updateLastMergeAt(windowId, item.getIterationKey().value(), clock.instant());
+        }
+    }
+
+    private boolean hasConfirmedMergeEvidence(GitBranchPort.MrEvidence evidence, String source, String target) {
+        if (evidence == null || isBlank(evidence.projectId()) || isBlank(evidence.sourceSha())
+                || !evidence.sourceSha().matches("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}")
+                || !source.equals(evidence.sourceBranch()) || !target.equals(evidence.targetBranch())
+                || evidence.disposition() == null) return false;
+        return evidence.disposition() == GitBranchPort.MrDisposition.ALREADY_MERGED
+                || (!isBlank(evidence.iid()) && !isBlank(evidence.url()));
+    }
+
+    private RunStep ensureBranch(CodeRepository repo, GitBranchPort git, String branch, String base,
+                                 ActionType action, boolean allowCreate) {
+        Instant started = clock.instant();
+        boolean writeAttempted = false;
+        try {
+            if (!branchRuleUseCase.isCompliant(branch, repo.getGroupCode(), repo.getId().value())) {
+                throw invalidRunScope("分支名称不符合当前仓库规则: " + branch);
+            }
+            RunItemResult result;
+            if (git.getBranchStatus(repo.getCloneUrl(), repo.getGitAccessToken(), branch).exists()) {
+                result = RunItemResult.ALREADY_EXISTS;
+            } else if (!allowCreate) {
+                return new RunStep(action, RunItemResult.FAILED, started, clock.instant(),
+                        "EXISTING 分支已不存在: " + branch);
+            } else {
+                writeAttempted = true;
+                boolean created = git.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), branch, base);
+                // A returned false is a confirmed rejection; a thrown exception carries no such proof.
+                writeAttempted = false;
+                result = created ? RunItemResult.CREATED
+                        : git.getBranchStatus(repo.getCloneUrl(), repo.getGitAccessToken(), branch).exists()
+                        ? RunItemResult.ALREADY_EXISTS : RunItemResult.FAILED;
+            }
+            return new RunStep(action, result, started, clock.instant(), branch);
+        } catch (RuntimeException error) {
+            return new RunStep(action, writeAttempted ? RunItemResult.UNKNOWN : failedResult(error),
+                    started, clock.instant(), safeFailureMessage(error));
+        }
+    }
+
+    private boolean saveBranchStep(Run run, RunItem item, RunStep step) {
+        item.addStep(step);
+        boolean failed = step.result().isFailure() || step.result() == RunItemResult.UNKNOWN;
+        if (failed) {
+            item.putMetadata("git.blockReason", "UNKNOWN");
+            item.finishWith(step.result(), clock.instant());
+        }
+        runPort.save(run);
+        return !failed;
+    }
+
+    private void saveFailedStep(Run run, RunItem item, ActionType action, RuntimeException error) {
+        RunItemResult result = failedResult(error);
+        item.putMetadata("git.blockReason", "UNKNOWN");
+        item.addStep(new RunStep(action, result, clock.instant(), clock.instant(), safeFailureMessage(error)));
+        item.finishWith(result, clock.instant());
+        runPort.save(run);
+    }
+
+    private RunItemResult failedResult(RuntimeException error) {
+        if (error instanceof BusinessException business
+                && (io.releasehub.common.exception.ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN.getCode().equals(business.getCode())
+                    || io.releasehub.common.exception.ErrorCode.GIT_WRITE_BLOCKED.getCode().equals(business.getCode()))) {
+            return RunItemResult.UNKNOWN;
+        }
+        return RunItemResult.FAILED;
+    }
+
+    private String safeFailureMessage(RuntimeException error) {
+        return error instanceof BusinessException business ? business.getCode() : error.getClass().getSimpleName();
+    }
+
+    private void recordMergeEvidence(RunItem item, GitBranchPort.MergeResult result) {
+        item.putMetadata("git.requestId", result.remoteRequestId());
+        var evidence = result.mrEvidence();
+        if (evidence == null) {
+            item.putMetadata("git.blockReason", "UNKNOWN");
+            return;
+        }
+        item.putMetadata("git.projectId", evidence.projectId());
+        item.putMetadata("git.sourceBranch", evidence.sourceBranch());
+        item.putMetadata("git.targetBranch", evidence.targetBranch());
+        item.putMetadata("git.mrIid", evidence.iid());
+        item.putMetadata("git.mrUrl", evidence.url());
+        item.putMetadata("git.sourceSha", evidence.sourceSha());
+        item.putMetadata("git.mergeSha", evidence.mergeSha());
+        if (evidence.disposition() != null) item.putMetadata("git.mrDisposition", evidence.disposition().name());
+        if (evidence.blockReason() != null) item.putMetadata("git.blockReason", evidence.blockReason().name());
+    }
+
+    public Run retry(String runId, List<String> items, String operator) {
+        Run previous = runPort.findById(runId).orElseThrow(() ->
+                BusinessException.of(io.releasehub.common.exception.ErrorCode.RUN_NOT_FOUND, runId));
+        if (items == null || items.isEmpty() || items.stream().anyMatch(this::isBlank)) {
+            throw invalidRunScope("请选择明确的失败执行项 ID");
+        }
+        var selectedIds = java.util.Set.copyOf(items);
+        var selected = previous.getItems().stream().filter(item -> selectedIds.contains(item.getId().value())).toList();
+        if (selected.size() != selectedIds.size()) throw invalidRunScope("执行项不属于指定 Run");
+        if (previous.getExecutionStatus() == io.releasehub.domain.run.RunExecutionStatus.PLANNED
+                || previous.getExecutionStatus() == io.releasehub.domain.run.RunExecutionStatus.RUNNING
+                || previous.getExecutionStatus() == io.releasehub.domain.run.RunExecutionStatus.NEEDS_REVIEW
+                || selected.stream().anyMatch(item -> item.getFinalResult() == null || !item.getFinalResult().isFailure())) {
+            throw invalidRunScope("只能重试已确认失败或因阻塞跳过的执行项，未决结果须先核对");
+        }
+        if (previous.getRunType() == RunType.VERSION_UPDATE) {
+            return retryVersionUpdate(previous, items, operator, clock.instant());
+        }
+        if (previous.getRunType() != RunType.WINDOW_ORCHESTRATION) {
+            throw invalidRunScope("该动作尚未具备逐步安全重试条件");
+        }
+        Run run = runPlanAppService.admitRetry(previous, items, operator);
+        boolean failFast = Boolean.parseBoolean(run.getItems().getFirst().getMetadata().get("plan.failFast"));
+        return executeOrchestration(run, failFast);
+    }
+
+    private BusinessException invalidRunScope(String reason) {
+        return BusinessException.of(io.releasehub.common.exception.ErrorCode.RUN_PLAN_INVALID_SCOPE, reason);
     }
 
     @Transactional
@@ -350,7 +300,8 @@ public class RunAppService {
         ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId)).orElseThrow();
         log.info("Starting cleanup run for closed window {}", windowId);
 
-        Run run = Run.start(RunType.WINDOW_ORCHESTRATION, operator, now);
+        Run run = Run.start(RunType.WINDOW_CLEANUP, operator, now);
+        try (var operationScope = io.releasehub.application.gitoperation.GitOperationContext.withRun(run.getId().value())) {
         List<WindowIteration> bindings = new java.util.ArrayList<>(
                 windowIterationPort.listByWindow(ReleaseWindowId.of(windowId)));
         bindings.sort(Comparator.comparing(WindowIteration::getAttachAt));
@@ -525,6 +476,7 @@ public class RunAppService {
         runPort.save(run);
         log.info("Cleanup run {} completed for window {}", run.getId().value(), windowId);
         return run;
+        }
     }
 
     private RunItemResult resolveCleanupFinalResult(boolean itemFailed, RunItemResult ciResult) {
@@ -550,6 +502,7 @@ public class RunAppService {
     ) {
         Instant now = Instant.now(clock);
         Run run = Run.start(RunType.VERSION_UPDATE, operator, now);
+        try (var operationScope = io.releasehub.application.gitoperation.GitOperationContext.withRun(run.getId().value())) {
 
         ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId))
                 .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
@@ -605,6 +558,7 @@ public class RunAppService {
         runPort.save(run);
 
         return run;
+        }
     }
 
     @Transactional
@@ -616,6 +570,7 @@ public class RunAppService {
     ) {
         Instant now = Instant.now(clock);
         Run run = Run.start(RunType.VERSION_UPDATE, operator, now);
+        try (var operationScope = io.releasehub.application.gitoperation.GitOperationContext.withRun(run.getId().value())) {
 
         ReleaseWindow rw = releaseWindowPort.findById(ReleaseWindowId.of(windowId))
                 .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
@@ -676,13 +631,15 @@ public class RunAppService {
         runPort.save(run);
 
         return run;
+        }
     }
 
     private Run retryVersionUpdate(Run previous, List<String> items, String operator, Instant now) {
         Run run = Run.start(RunType.VERSION_UPDATE, operator, now);
+        try (var operationScope = io.releasehub.application.gitoperation.GitOperationContext.withRun(run.getId().value())) {
 
         for (RunItem prevItem : previous.getItems()) {
-            String key = prevItem.getWindowKey() + "::" + prevItem.getRepo().value() + "::" + prevItem.getIterationKey().value();
+            String key = prevItem.getId().value();
             if (items.stream().noneMatch(sel -> sel.equals(key))) {
                 continue;
             }
@@ -751,6 +708,7 @@ public class RunAppService {
         run.finish(Instant.now(clock));
         runPort.save(run);
         return run;
+        }
     }
 
     private Optional<VersionUpdateRequest> buildVersionUpdateRequest(RunItem item) {

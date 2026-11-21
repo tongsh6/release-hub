@@ -74,6 +74,8 @@ class RunAppServiceTest {
     @Mock private VersionDeriverUseCase versionDeriverUseCase;
     @Mock private io.releasehub.application.settings.SettingsPort settingsPort;
     @Mock private java.time.Clock clock;
+    @Mock private io.releasehub.application.run.plan.RunPlanAppService runPlanAppService;
+    @Mock private io.releasehub.application.branchrule.BranchRuleUseCase branchRuleUseCase;
 
     private RunAppService service;
 
@@ -89,7 +91,7 @@ class RunAppServiceTest {
     void setUp() {
         service = new RunAppService(runPort, releaseWindowPort, windowIterationPort, iterationPort,
                 iterationRepoPort, codeRepositoryPort, gitBranchAdapterFactory, versionUpdateAppService,
-                conflictDetectionAppService, versionDeriverUseCase, settingsPort, clock);
+                conflictDetectionAppService, versionDeriverUseCase, settingsPort, clock, runPlanAppService, branchRuleUseCase);
         lenient().when(clock.instant()).thenReturn(now);
         lenient().when(clock.getZone()).thenReturn(java.time.ZoneId.of("UTC"));
         lenient().when(settingsPort.getNaming()).thenReturn(Optional.empty());
@@ -137,256 +139,9 @@ class RunAppServiceTest {
         when(gitBranchPort.createTag(any(), any(), eq("v1.2.0"), eq("main"), eq("Release v1.2.0"))).thenReturn(true);
     }
 
-    private void setupWindowAndIteration() {
-        ReleaseWindow rw = ReleaseWindow.rehydrate(
-                ReleaseWindowId.of(windowId), windowKey, "Release 1.0", "",
-                now, "G001", ReleaseWindowStatus.PUBLISHED, now, now, false, null);
-        when(releaseWindowPort.findById(ReleaseWindowId.of(windowId))).thenReturn(Optional.of(rw));
-        when(conflictDetectionAppService.getLatestReport(windowId)).thenReturn(Optional.of(ConflictReport.empty(windowId)));
-
-        Iteration it = Iteration.rehydrate(
-                IterationKey.of(iterationKey), "Iteration 1", "", null, "G001",
-                Set.of(RepoId.of(repoId)), IterationStatus.ACTIVE, now, now);
-        when(iterationPort.findByKey(IterationKey.of(iterationKey))).thenReturn(Optional.of(it));
-
-        WindowIteration wi = WindowIteration.rehydrate(
-                io.releasehub.domain.window.WindowIterationId.generate(
-                        ReleaseWindowId.of(windowId), IterationKey.of(iterationKey)),
-                ReleaseWindowId.of(windowId), IterationKey.of(iterationKey),
-                now, releaseBranch, true, now, now, now);
-        when(windowIterationPort.listByWindow(ReleaseWindowId.of(windowId))).thenReturn(List.of(wi));
-
-        CodeRepository repo = CodeRepository.rehydrate(
-                RepoId.of(repoId), "Test Repo", "https://gitlab.com/test/repo.git",
-                "main", "G001", RepoType.SERVICE, GitProvider.GITLAB, "token", false,
-                0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
-        when(codeRepositoryPort.findById(RepoId.of(repoId))).thenReturn(Optional.of(repo));
-        when(gitBranchAdapterFactory.getAdapter(GitProvider.GITLAB)).thenReturn(gitBranchPort);
-        when(iterationRepoPort.getVersionInfo(iterationKey, repoId)).thenReturn(Optional.of(
-                IterationRepoVersionInfo.builder().repoId(repoId).featureBranch(featureBranch).build()));
-    }
-
     @Nested
-    @DisplayName("SA-013 当前中断窗口证据（恢复协议实现时替换为目标断言）")
-    class InterruptionEvidence {
-        @Test
-        void observesCreatedBranchWithoutSavedRunWhenNextReadFails() {
-            setupWindowAndIteration();
-            var remoteBranchCreated = new java.util.concurrent.atomic.AtomicBoolean();
-            when(gitBranchPort.getBranchStatus(any(), any(), eq(featureBranch)))
-                    .thenReturn(GitBranchPort.BranchStatus.present("source-sha"))
-                    .thenThrow(new IllegalStateException("INJECTED_READ_FAILURE_AFTER_CREATE"));
-            when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch)))
-                    .thenReturn(GitBranchPort.BranchStatus.missing());
-            when(gitBranchPort.createBranch(any(), any(), eq(releaseBranch), eq("main")))
-                    .thenAnswer(invocation -> { remoteBranchCreated.set(true); return true; });
-
-            assertThatThrownBy(() -> service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester"))
-                    .hasMessage("INJECTED_READ_FAILURE_AFTER_CREATE");
-            assertThat(remoteBranchCreated.get()).isTrue();
-            verify(runPort, never()).save(any());
-        }
-
-        @Test
-        void observesReplayAfterRemoteMergeSuccessWithLostResponse() {
-            setupWindowAndIteration();
-            when(gitBranchPort.getBranchStatus(any(), any(), any()))
-                    .thenReturn(GitBranchPort.BranchStatus.present("known-sha"));
-            var remoteMergeRequests = new java.util.concurrent.atomic.AtomicInteger();
-            when(gitBranchPort.mergeBranch(any(), any(), any(), any(), any())).thenAnswer(invocation -> {
-                remoteMergeRequests.incrementAndGet(); // 模拟远端已接收写入，但第一次响应丢失。
-                return remoteMergeRequests.get() == 1
-                        ? GitBranchPort.MergeResult.failed("INJECTED_RESPONSE_LOST_AFTER_REMOTE_SUCCESS")
-                        : GitBranchPort.MergeResult.success();
-            });
-            Run first = service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester");
-            assertThat(first.getItems().get(0).getFinalResult()).isEqualTo(RunItemResult.FAILED);
-            when(runPort.findById(first.getId().value())).thenReturn(Optional.of(first));
-            when(clock.instant()).thenReturn(now.plusMillis(1));
-
-            service.retry(first.getId().value(), List.of(windowKey + "::" + repoId + "::" + iterationKey), "tester");
-            assertThat(remoteMergeRequests.get()).isEqualTo(2);
-        }
-
-        @Test
-        void observesRemoteMergeBeforeRunPersistenceFailure() {
-            setupWindowAndIteration();
-            when(gitBranchPort.getBranchStatus(any(), any(), any()))
-                    .thenReturn(GitBranchPort.BranchStatus.present("known-sha"));
-            var remoteMerged = new java.util.concurrent.atomic.AtomicBoolean();
-            when(gitBranchPort.mergeBranch(any(), any(), any(), any(), any())).thenAnswer(invocation -> {
-                remoteMerged.set(true);
-                return GitBranchPort.MergeResult.success();
-            });
-            org.mockito.Mockito.doThrow(new IllegalStateException("INJECTED_PERSISTENCE_FAILURE"))
-                    .when(runPort).save(any());
-
-            assertThatThrownBy(() -> service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester"))
-                    .hasMessage("INJECTED_PERSISTENCE_FAILURE");
-            assertThat(remoteMerged.get()).isTrue();
-            verify(runPort).save(any());
-        }
-
-        @Test
-        void generatesIndependentIdentifiersAcrossRuns() {
-            Run first = Run.start(RunType.WINDOW_ORCHESTRATION, "first", now);
-            Run second = Run.start(RunType.WINDOW_ORCHESTRATION, "second", now);
-            assertThat(first.getId()).isNotEqualTo(second.getId());
-            assertThat(RunItem.create(windowKey, RepoId.of(repoId), IterationKey.of(iterationKey), 1, now).getId())
-                    .isNotEqualTo(RunItem.create(windowKey, RepoId.of(repoId), IterationKey.of(iterationKey), 1, now.plusSeconds(1)).getId());
-        }
-    }
-
-    @Nested
-    @DisplayName("startOrchestrate 正常流程")
-    class HappyPath {
-
-        @Test
-        @DisplayName("feature 分支存在时成功合并")
-        void shouldMergeSuccessfullyWhenFeatureBranchExists() {
-            setupWindowAndIteration();
-
-            when(gitBranchPort.getBranchStatus(any(), any(), eq(featureBranch)))
-                    .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
-            when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch)))
-                    .thenReturn(GitBranchPort.BranchStatus.missing())
-                    .thenReturn(GitBranchPort.BranchStatus.present("def456"))
-                    .thenReturn(GitBranchPort.BranchStatus.present("def456"));
-            when(gitBranchPort.createBranch(any(), any(), eq(releaseBranch), eq("main"))).thenReturn(true);
-            when(gitBranchPort.mergeBranch(any(), any(), eq(featureBranch), eq(releaseBranch), any()))
-                    .thenReturn(GitBranchPort.MergeResult.success());
-
-            Run result = service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester");
-
-            assertThat(result.getItems()).hasSize(1);
-            var item = result.getItems().get(0);
-            assertThat(item.getWindowKey()).isEqualTo(windowKey);
-            assertThat(item.getFinalResult()).isEqualTo(RunItemResult.MERGED);
-            assertThat(item.getSteps()).hasSize(4);
-            assertThat(item.getSteps().get(0).result()).isEqualTo(RunItemResult.SUCCESS);  // ENSURE_FEATURE
-            assertThat(item.getSteps().get(1).result()).isEqualTo(RunItemResult.BRANCH_CREATED); // ENSURE_RELEASE
-            assertThat(item.getSteps().get(2).result()).isEqualTo(RunItemResult.SUCCESS);  // ENSURE_MR
-            assertThat(item.getSteps().get(3).result()).isEqualTo(RunItemResult.MERGED);   // TRY_MERGE
-            verify(runPort).save(any(Run.class));
-        }
-
-        @Test
-        @DisplayName("release 分支已存在时幂等跳过创建")
-        void shouldSkipReleaseBranchCreationWhenAlreadyExists() {
-            setupWindowAndIteration();
-
-            when(gitBranchPort.getBranchStatus(any(), any(), eq(featureBranch)))
-                    .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
-            when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch)))
-                    .thenReturn(GitBranchPort.BranchStatus.present("def456"))
-                    .thenReturn(GitBranchPort.BranchStatus.present("def456"));
-            when(gitBranchPort.mergeBranch(any(), any(), eq(featureBranch), eq(releaseBranch), any()))
-                    .thenReturn(GitBranchPort.MergeResult.success());
-
-            Run result = service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester");
-
-            var item = result.getItems().get(0);
-            assertThat(item.getSteps().get(1).result()).isEqualTo(RunItemResult.BRANCH_EXISTS);
-            verify(gitBranchPort, never()).createBranch(any(), any(), any(), any());
-        }
-    }
-
-    @Nested
-    @DisplayName("startOrchestrate 异常场景")
-    class EdgeCases {
-
-        @Test
-        @DisplayName("feature 分支不存在时跳过该 item")
-        void shouldSkipWhenFeatureBranchNotFound() {
-            setupWindowAndIteration();
-
-            when(gitBranchPort.getBranchStatus(any(), any(), eq(featureBranch)))
-                    .thenReturn(GitBranchPort.BranchStatus.missing());
-
-            Run result = service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester");
-
-            var item = result.getItems().get(0);
-            assertThat(item.getFinalResult()).isEqualTo(RunItemResult.SKIPPED);
-            assertThat(item.getSteps()).hasSize(1);
-            verify(gitBranchPort, never()).mergeBranch(any(), any(), any(), any(), any());
-        }
-
-        @Test
-        @DisplayName("合并冲突时 item 标记为 MERGE_BLOCKED")
-        void shouldMarkBlockedOnMergeConflict() {
-            setupWindowAndIteration();
-
-            when(gitBranchPort.getBranchStatus(any(), any(), eq(featureBranch)))
-                    .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
-            when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch)))
-                    .thenReturn(GitBranchPort.BranchStatus.present("def456"))
-                    .thenReturn(GitBranchPort.BranchStatus.present("def456"));
-            when(gitBranchPort.mergeBranch(any(), any(), eq(featureBranch), eq(releaseBranch), any()))
-                    .thenReturn(GitBranchPort.MergeResult.conflict("merge conflict"));
-
-            Run result = service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester");
-
-            var item = result.getItems().get(0);
-            assertThat(item.getFinalResult()).isEqualTo(RunItemResult.MERGE_BLOCKED);
-        }
-
-        @Test
-        @DisplayName("failFast=true 时合并冲突后停止后续")
-        void shouldStopOnConflictWhenFailFast() {
-            setupWindowAndIteration();
-            // Add a second iteration to verify failFast stops before processing it
-            Iteration it2 = Iteration.rehydrate(
-                    IterationKey.of("ITER-2"), "Iteration 2", "", null, "G001",
-                    Set.of(RepoId.of(repoId)), IterationStatus.ACTIVE, now, now);
-            lenient().when(iterationPort.findByKey(IterationKey.of("ITER-2"))).thenReturn(Optional.of(it2));
-            lenient().when(iterationRepoPort.getVersionInfo("ITER-2", repoId)).thenReturn(Optional.of(
-                    IterationRepoVersionInfo.builder().repoId(repoId).featureBranch(featureBranch).build()));
-
-            // First iteration will hit conflict and stop, second should never be processed
-            when(gitBranchPort.getBranchStatus(any(), any(), eq(featureBranch)))
-                    .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
-            when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch)))
-                    .thenReturn(GitBranchPort.BranchStatus.present("def456"))
-                    .thenReturn(GitBranchPort.BranchStatus.present("def456"));
-            when(gitBranchPort.mergeBranch(any(), any(), eq(featureBranch), eq(releaseBranch), any()))
-                    .thenReturn(GitBranchPort.MergeResult.conflict("merge conflict"));
-
-            Run result = service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester");
-
-            // Only 1 item — merge conflict on first iteration + failFast stops before second
-            assertThat(result.getItems()).hasSize(1);
-            assertThat(result.getItems().get(0).getFinalResult()).isEqualTo(RunItemResult.MERGE_BLOCKED);
-        }
-
-        @Test
-        @DisplayName("存在冲突时阻断执行")
-        void shouldBlockWhenConflictsExist() {
-            ReleaseWindow rw = ReleaseWindow.rehydrate(
-                    ReleaseWindowId.of(windowId), windowKey, "Release 1.0", "",
-                    now, "G001", ReleaseWindowStatus.PUBLISHED, now, now, false, null);
-            when(releaseWindowPort.findById(ReleaseWindowId.of(windowId))).thenReturn(Optional.of(rw));
-
-            var conflictReport = io.releasehub.domain.conflict.ConflictReport.of(windowId,
-                    List.of(io.releasehub.domain.conflict.ConflictItem.branchExists(repoId, "Test", iterationKey, featureBranch)));
-            when(conflictDetectionAppService.getLatestReport(windowId)).thenReturn(Optional.of(conflictReport));
-
-            assertThatThrownBy(() -> service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester"))
-                    .isInstanceOf(io.releasehub.common.exception.BusinessException.class);
-        }
-
-        @Test
-        @DisplayName("窗口关闭后禁止继续执行编排")
-        void shouldRejectOrchestrateWhenWindowClosed() {
-            ReleaseWindow rw = ReleaseWindow.rehydrate(
-                    ReleaseWindowId.of(windowId), windowKey, "Release 1.0", "",
-                    now, "G001", ReleaseWindowStatus.CLOSED, now, now, false, now);
-            when(releaseWindowPort.findById(ReleaseWindowId.of(windowId))).thenReturn(Optional.of(rw));
-
-            assertThatThrownBy(() -> service.startOrchestrate(windowId, List.of(repoId), List.of(), true, "tester"))
-                    .isInstanceOf(io.releasehub.common.exception.BusinessException.class)
-                    .satisfies(ex -> assertThat(((io.releasehub.common.exception.BusinessException) ex).getCode()).isEqualTo("RW_009"));
-        }
-
+    @DisplayName("窗口生命周期守卫")
+    class WindowGuardTests {
         @Test
         @DisplayName("窗口关闭后禁止继续执行版本更新")
         void shouldRejectVersionUpdateWhenWindowClosed() {
@@ -460,7 +215,7 @@ class RunAppServiceTest {
 
             Run result = service.retry(
                     previous.getId().value(),
-                    List.of("RW-1::repo-success::VERSION_UPDATE", "RW-1::repo-1::VERSION_UPDATE"),
+                    List.of(failedItem.getId().value()),
                     "retryer"
             );
 

@@ -25,10 +25,10 @@
 #   SA-005: 分组仓库纳管、真实 GitLab cloneUrl、token 安全审计
 #   SA-006/SA-009: 分支创建模式（AUTO/NAMED/NAMED非法写入前拒绝/EXISTING/Branches端点）
 #   SA-008: 发布窗口创建、空窗口发布拒绝、windowKey
-#   SA-010: Attach 迭代、GitLab release 分支创建、解除挂载后 release 分支归档、runItems 细粒度断言
+#   SA-010: Attach/Detach 仅改变绑定、显式编排创建分支、解除挂载保留共享 release 内容
 #   SA-011: 冲突检测和分类统计、MERGE_CONFLICT / CROSS_REPO_VERSION_MISMATCH / REPO_AHEAD / SYSTEM_AHEAD / GIT_PERMISSION_DENIED / GIT_UNAVAILABLE 真实 GitLab 强证据
 #   SA-012: 冲突解决回路（USE_SYSTEM、feature 缺失、release 已存在、分支名不合规强证据）
-#   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS
+#   SA-013: 干净窗口黄金路径：Attach → 0 冲突 → Publish → Orchestrate DONE
 #   SA-014: 版本更新、校验、Maven 单模块/多模块、Gradle Git 远程提交验证、批量部分失败证据
 #   SA-015: Run 执行详情（RunItem/RunStep）、真实部分失败重试
 #   SA-016: 窗口关闭、关闭后关键操作禁止、收尾 Run 可见、关闭后 tag/merge/archive 真实 GitLab 证据
@@ -250,7 +250,28 @@ wait_for_run() {
 
 is_run_success() {
     local status=$1
-    [ "$status" = "SUCCESS" ] || [ "$status" = "COMPLETED" ]
+    [ "$status" = "DONE" ]
+}
+
+# 显式执行入口；Attach/Detach 仅改变配置，不生成执行 Run。
+orchestrate_selected() {
+    local window_id=$1
+    local repo_ids=$2
+    local iteration_key=$3
+    local response
+    response=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$window_id/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
+        -d "{\"repoIds\":$repo_ids,\"iterationKeys\":[\"$iteration_key\"],\"failFast\":true,\"operator\":\"acceptance\"}")
+    echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data','') if d.get('success') else '')"
+}
+
+gitlab_branch_sha() {
+    local clone_url=$1
+    local branch=$2
+    local encoded_path encoded_branch
+    encoded_path=$(gitlab_project_path_from_clone_url "$clone_url" | gitlab_encode)
+    encoded_branch=$(echo "$branch" | gitlab_encode)
+    curl -s -H "PRIVATE-TOKEN: $GITLAB_PAT" "$GITLAB/api/v4/projects/$encoded_path/repository/branches/$encoded_branch" \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('commit',{}).get('id',''))"
 }
 
 # 验证 GitLab 侧是否产生了预期的 Commit
@@ -329,7 +350,7 @@ except Exception:
     sys.exit(0)
 if isinstance(d, dict) and d.get('name') == branch:
     print('FOUND')
-elif isinstance(d, dict) and d.get('message'):
+elif isinstance(d, dict) and str(d.get('message','')).startswith('404'):
     print('NOT_FOUND')
 else:
     print('UNKNOWN')
@@ -365,7 +386,7 @@ except Exception:
     sys.exit(0)
 if isinstance(d, dict) and d.get('name') == tag:
     print('FOUND')
-elif isinstance(d, dict) and d.get('message'):
+elif isinstance(d, dict) and str(d.get('message','')).startswith('404'):
     print('NOT_FOUND')
 else:
     print('UNKNOWN')
@@ -854,66 +875,46 @@ GL_AFTER=$(curl -s "$BACKEND/api/v1/settings/gitlab" -H "$AUTH" | python3 -c "im
 REPO_AFTER=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',{}).keys()))" 2>/dev/null)
 [ "${REPO_AFTER:-0}" -gt 0 ] && ok "仓库数据重启后可查询" || warn "仓库数据重启后查询异常"
 
-# ---- 4. 场景: Attach + 分支创建 ----
-h2 "SA-010: 4. 场景: Attach 迭代 & GitLab release 分支创建"
+# ---- 4. 场景: Attach 只保存绑定 ----
+h2 "SA-010: 4. 场景: Attach 迭代仅保存绑定"
 ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"iterationKeys\":[\"$ITER_KEY\"]}")
-HAS_ERR=$(echo "$ATTACH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(any(r.get('hasErrors', False) for r in d.get('data', [])))" 2>/dev/null)
-if [ "$HAS_ERR" = "True" ]; then
-    echo "$ATTACH" | python3 -c "
+ATTACH_OK=$(echo "$ATTACH" | python3 -c "
 import sys,json
-for r in json.load(sys.stdin).get('data', []):
-    for e in r.get('errors',[]): print(f'    {e.get(\"repoName\", \"?\")}: {e.get(\"message\", \"?\")}')
-" | while read l; do no "Attach 失败: $l"; done
-else
-    ok "Attach 成功"
-fi
+d=json.load(sys.stdin)
+items=d.get('data') or []
+print(bool(d.get('success')) and len(items)==1 and bool(items[0].get('attachAt')) and not items[0].get('branchCreated') and not items[0].get('releaseBranch') and 'hasErrors' not in items[0] and 'errors' not in items[0])
+" 2>/dev/null || echo "False")
+[ "$ATTACH_OK" = "True" ] && ok "Attach 仅返回配置绑定及挂载时间" || no "Attach 配置返回异常: $ATTACH"
 
-# 4.1 Attach 细粒度结果：每个 repo 的分支创建/MR 状态 + RunItem 数
-ATTACH_DETAIL=$(echo "$ATTACH" | python3 -c "
-import sys,json
-for r in json.load(sys.stdin).get('data', []):
-    ik = r.get('iterationKey', '?')
-    he = r.get('hasErrors', False)
-    ec = len(r.get('errors', []))
-    print(f'{ik}: hasErrors={he} errorCount={ec}')
-")
-if [ -n "$ATTACH_DETAIL" ]; then
-    while IFS= read -r detail_line; do
-        [ -n "$detail_line" ] && info "  $detail_line"
-    done <<< "$ATTACH_DETAIL"
-fi
-
-# 验证 GitLab 上真实分支存在
 if [ "$GITLAB_READY" = "true" ]; then
-    BRANCH_COUNT=0
     WINDOW_KEY_FOR_BRANCH=$(curl -s "$BACKEND/api/v1/release-windows/$WINDOW_ID" -H "$AUTH" \
-        | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))" 2>/dev/null)
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))")
     EXPECTED_RELEASE_BRANCH="release/$WINDOW_KEY_FOR_BRANCH"
     for rh_repo_id in $REPO_IDS; do
         REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$rh_repo_id" -H "$AUTH" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))")
         RELEASE_BRANCH_STATE=$(gitlab_branch_state "$REPO_URL" "$EXPECTED_RELEASE_BRANCH")
-        if [ "$RELEASE_BRANCH_STATE" = "FOUND" ]; then
-            BRANCH_COUNT=$((BRANCH_COUNT+1))
-        fi
+        [ "$RELEASE_BRANCH_STATE" = "NOT_FOUND" ] \
+            && ok "Attach 未创建 release 分支: $rh_repo_id" \
+            || no "Attach 后 release 分支状态异常: $rh_repo_id $RELEASE_BRANCH_STATE"
     done
-    [ "$BRANCH_COUNT" -eq 3 ] && ok "GitLab 真实 release 分支: 3/3 ($EXPECTED_RELEASE_BRANCH)" || warn "GitLab release 分支: $BRANCH_COUNT/3 ($EXPECTED_RELEASE_BRANCH)"
 fi
 
-# 验证 WindowIteration 状态
-WI_STATE=$(curl -s "$BACKEND/api/v1/release-windows/$WINDOW_ID/iterations" -H "$AUTH" | python3 -c "
-import sys,json
-for wi in json.load(sys.stdin).get('data',[]):
-    print(f\"branchCreated={wi['branchCreated']} releaseBranch={wi['releaseBranch']}\")
-")
-echo "$WI_STATE" | while read l; do info "  $l"; done
+# 后续集成证据由用户动作语义相同的显式 Orchestrate 产生。
+ATTACH_ORCH_RUN_ID=$(orchestrate_selected "$WINDOW_ID" "[\"$R1\",\"$R2\",\"$R3\"]" "$ITER_KEY")
+if [ -n "$ATTACH_ORCH_RUN_ID" ]; then
+    ATTACH_ORCH_STATUS=$(wait_for_run "$ATTACH_ORCH_RUN_ID" 60)
+    info "显式编排 Run: $ATTACH_ORCH_RUN_ID status=$ATTACH_ORCH_STATUS"
+else
+    no "显式编排未返回 Run"
+fi
 
-# 4.2 解除挂载真实 GitLab release 分支归档复核（独立窗口，避免影响后续主线场景）
-h2 "SA-010: 4.2 场景: Detach 迭代 & GitLab release 分支归档"
+# 4.2 解除一个迭代不影响仍挂载迭代共享的 release 分支
+h2 "SA-010: 4.2 场景: Detach 仅移除绑定，保留共享 release 内容"
 if [ "$GITLAB_READY" = "true" ]; then
     DETACH_WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "Content-Type: application/json" \
-        -d "{\"name\":\"验收-解除挂载-$TS\",\"description\":\"SA-010 detach archive evidence $TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
+        -d "{\"name\":\"验收-解除挂载-$TS\",\"description\":\"SA-010 detach configuration evidence $TS\",\"plannedReleaseAt\":\"$NEXT_WEEK\",\"groupCode\":\"$GROUP_CODE\"}")
     DETACH_WINDOW_ID=$(echo "$DETACH_WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))" 2>/dev/null)
     [ -n "$DETACH_WINDOW_ID" ] && ok "解除挂载窗口创建: $DETACH_WINDOW_ID" || no "解除挂载窗口创建失败: $DETACH_WINDOW_RESP"
 
@@ -931,30 +932,37 @@ if [ "$GITLAB_READY" = "true" ]; then
             | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
 
         DETACH_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$DETACH_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
-            -d "{\"iterationKeys\":[\"$DETACH_ITER_KEY\"]}")
-        DETACH_ATTACH_OK=$(echo "$DETACH_ATTACH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
-        DETACH_ATTACH_HAS_ERR=$(echo "$DETACH_ATTACH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(any(r.get('hasErrors', False) for r in d.get('data', [])))" 2>/dev/null)
-        [ "$DETACH_ATTACH_OK" = "True" ] && [ "$DETACH_ATTACH_HAS_ERR" != "True" ] && ok "解除挂载证据 attach 成功" || no "解除挂载证据 attach 失败: $DETACH_ATTACH"
-
-        DETACH_RELEASE_BEFORE=$(gitlab_branch_state "$DETACH_REPO_URL" "$DETACH_RELEASE_BRANCH")
-        [ "$DETACH_RELEASE_BEFORE" = "FOUND" ] && ok "GitLab attach 后 release 分支存在: $DETACH_RELEASE_BRANCH" || no "GitLab attach 后 release 分支状态异常: $DETACH_RELEASE_BEFORE ($DETACH_RELEASE_BRANCH)"
+            -d "{\"iterationKeys\":[\"$DETACH_ITER_KEY\",\"$ITER_KEY\"]}")
+        DETACH_ATTACH_OK=$(echo "$DETACH_ATTACH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))")
+        [ "$DETACH_ATTACH_OK" = "True" ] && ok "共享仓库的两个迭代挂载成功" || no "解除挂载证据 attach 失败: $DETACH_ATTACH"
+        DETACH_ORCH_RUN_ID=$(orchestrate_selected "$DETACH_WINDOW_ID" "[\"$R1\"]" "$DETACH_ITER_KEY")
+        if [ -n "$DETACH_ORCH_RUN_ID" ]; then
+            DETACH_ORCH_STATUS=$(wait_for_run "$DETACH_ORCH_RUN_ID" 60)
+            info "解除挂载前显式编排: run=$DETACH_ORCH_RUN_ID status=$DETACH_ORCH_STATUS"
+        else
+            no "解除挂载前编排未返回 Run"
+        fi
+        DETACH_RELEASE_BEFORE=$(gitlab_branch_sha "$DETACH_REPO_URL" "$DETACH_RELEASE_BRANCH")
+        [ -n "$DETACH_RELEASE_BEFORE" ] && ok "显式编排后 release 存在并记录提交" || no "显式编排后 release 不存在"
 
         DETACH_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$DETACH_WINDOW_ID/detach" -H "$AUTH" -H "Content-Type: application/json" \
             -d "{\"iterationKey\":\"$DETACH_ITER_KEY\"}")
         DETACH_OK=$(echo "$DETACH_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
         [ "$DETACH_OK" = "True" ] && ok "解除挂载 API 成功" || no "解除挂载 API 失败: $DETACH_RESP"
 
-        DETACH_ITER_COUNT=$(curl -s "$BACKEND/api/v1/release-windows/$DETACH_WINDOW_ID/iterations" -H "$AUTH" \
-            | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo "UNKNOWN")
-        [ "$DETACH_ITER_COUNT" = "0" ] && ok "解除挂载后 WindowIteration 为空" || no "解除挂载后 WindowIteration 异常: $DETACH_ITER_COUNT"
+        DETACH_REMAINING=$(curl -s "$BACKEND/api/v1/release-windows/$DETACH_WINDOW_ID/iterations" -H "$AUTH" \
+            | python3 -c "import sys,json; print(','.join(i.get('iterationKey','') for i in json.load(sys.stdin).get('data',[])))")
+        [ "$DETACH_REMAINING" = "$ITER_KEY" ] && ok "Detach 保留同仓库另一个迭代绑定" || no "Detach 后绑定异常: $DETACH_REMAINING"
 
-        DETACH_RELEASE_AFTER=$(gitlab_branch_state "$DETACH_REPO_URL" "$DETACH_RELEASE_BRANCH")
+        DETACH_RELEASE_AFTER=$(gitlab_branch_sha "$DETACH_REPO_URL" "$DETACH_RELEASE_BRANCH")
         DETACH_ARCHIVE_AFTER=$(gitlab_branch_state "$DETACH_REPO_URL" "$DETACH_ARCHIVE_BRANCH")
-        [ "$DETACH_RELEASE_AFTER" = "NOT_FOUND" ] && ok "GitLab detach 后原 release 分支已删除: $DETACH_RELEASE_BRANCH" || no "GitLab detach 后原 release 分支仍异常: $DETACH_RELEASE_AFTER ($DETACH_RELEASE_BRANCH)"
-        [ "$DETACH_ARCHIVE_AFTER" = "FOUND" ] && ok "GitLab detach 后归档分支存在: $DETACH_ARCHIVE_BRANCH" || no "GitLab detach 后归档分支状态异常: $DETACH_ARCHIVE_AFTER ($DETACH_ARCHIVE_BRANCH)"
+        [ -n "$DETACH_RELEASE_AFTER" ] && [ "$DETACH_RELEASE_AFTER" = "$DETACH_RELEASE_BEFORE" ] \
+            && ok "Detach 保留共享 release 分支及原提交，不回滚已合并内容" \
+            || no "Detach 改变了共享 release 分支内容"
+        [ "$DETACH_ARCHIVE_AFTER" = "NOT_FOUND" ] && ok "Detach 未产生归档分支" || no "Detach 意外产生归档分支: $DETACH_ARCHIVE_AFTER"
     fi
 else
-    skip "跳过解除挂载 GitLab 分支归档复核 (MOCK_MODE)"
+    skip "跳过解除挂载共享分支保留复核 (MOCK_MODE)"
 fi
 
 # ---- 5. 场景: 冲突检测 ----
@@ -997,7 +1005,7 @@ if [ -n "$CONFLICT_TYPES" ]; then
     echo "$CONFLICT_TYPES"
 fi
 
-# ---- 5.2 干净窗口黄金路径：解决冲突 → 0 冲突 → Publish → Orchestrate COMPLETED/SUCCESS ----
+# ---- 5.2 干净窗口黄金路径：解决冲突 → 0 冲突 → Publish → Orchestrate DONE ----
 h2 "SA-012/SA-013: 5.2 干净窗口黄金路径: 冲突解决 + 编排验证"
 
 # 5.2.1 创建干净窗口（新 key 确保 release 分支不冲突）
@@ -1121,7 +1129,7 @@ print(f'items={len(items)} stepActions={dict(actions)} stepResults={dict(results
 " 2>/dev/null)
                     ok "SA-013 RunItem 详情: $CLEAN_STEP_INFO"
                 else
-                    no "SA-013 干净窗口编排状态: $CLEAN_FINAL_STATUS (预期 COMPLETED/SUCCESS)"
+                    no "SA-013 干净窗口编排状态: $CLEAN_FINAL_STATUS (预期 DONE)"
                 fi
             else
                 ORCH_CODE=$(echo "$CLEAN_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code','?'))")
@@ -1173,12 +1181,8 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
 
         MISSING_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$MISSING_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
             -d "{\"iterationKeys\":[\"$MISSING_ITER_KEY\"]}")
-        MISSING_ATTACH_ERRORS=$(echo "$MISSING_ATTACH" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-print(any(r.get('hasErrors', False) for r in d.get('data', [])))
-" 2>/dev/null || echo "False")
-        [ "$MISSING_ATTACH_ERRORS" = "True" ] && ok "Attach 显式报告 feature 缺失导致的合并问题" || warn "Attach 未报告错误，继续以 branch-status/orchestrate 复核"
+        MISSING_ATTACH_OK=$(echo "$MISSING_ATTACH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))")
+        [ "$MISSING_ATTACH_OK" = "True" ] && ok "远端 feature 缺失不影响纯配置 Attach" || no "纯配置 Attach 失败: $MISSING_ATTACH"
 
         MISSING_BRANCH_STATUS=$(curl -s "$BACKEND/api/v1/release-windows/$MISSING_WINDOW_ID/branch-status" -H "$AUTH")
         MISSING_STATUS_SUMMARY=$(echo "$MISSING_BRANCH_STATUS" | python3 -c "
@@ -1201,41 +1205,26 @@ else:
         else
             no "branch-status feature 缺失证据异常: $MISSING_STATUS_SUMMARY"
         fi
-        [ "$MISSING_RB_EXISTS" = "True" ] && ok "branch-status 同时确认 release 分支存在: $MISSING_RB_NAME" || warn "release 分支状态: $MISSING_RB_NAME exists=$MISSING_RB_EXISTS"
+        [ "$MISSING_RB_EXISTS" = "False" ] && ok "Attach 未创建 release 分支" || no "Attach 后 release 分支状态异常: $MISSING_RB_NAME exists=$MISSING_RB_EXISTS"
 
-        MISSING_PUB=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$MISSING_WINDOW_ID/publish" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
-        MISSING_PUB_OK=$(echo "$MISSING_PUB" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
-        if [ "$MISSING_PUB_OK" = "True" ]; then
-            MISSING_ORCH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$MISSING_WINDOW_ID/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
-                -d "{\"repoIds\":[\"$R1\"],\"iterationKeys\":[\"$MISSING_ITER_KEY\"],\"failFast\":false,\"operator\":\"acceptance-feature-missing-$MISSING_TS\"}")
-            MISSING_ORCH_OK=$(echo "$MISSING_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
-            if [ "$MISSING_ORCH_OK" = "True" ]; then
-                MISSING_RUN_ID=$(echo "$MISSING_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',''))" 2>/dev/null)
-                MISSING_FINAL_STATUS=$(wait_for_run "$MISSING_RUN_ID" 60)
-                MISSING_RUN_DETAIL=$(curl -s "$BACKEND/api/v1/runs/$MISSING_RUN_ID" -H "$AUTH")
-                MISSING_ENSURE_FEATURE=$(echo "$MISSING_RUN_DETAIL" | python3 -c "
+        MISSING_RUN_ID=$(orchestrate_selected "$MISSING_WINDOW_ID" "[\"$R1\"]" "$MISSING_ITER_KEY")
+        if [ -n "$MISSING_RUN_ID" ]; then
+            MISSING_FINAL_STATUS=$(wait_for_run "$MISSING_RUN_ID" 60)
+            MISSING_RUN_DETAIL=$(curl -s "$BACKEND/api/v1/runs/$MISSING_RUN_ID" -H "$AUTH")
+            MISSING_STEP_RESULT=$(echo "$MISSING_RUN_DETAIL" | python3 -c "
 import sys,json
-d=json.load(sys.stdin).get('data', {})
-for item in d.get('items', []):
-    for step in item.get('steps', []):
+for item in json.load(sys.stdin).get('data',{}).get('items',[]):
+    for step in item.get('steps',[]):
         if step.get('actionType') == 'ENSURE_FEATURE':
-            print('{}|{}'.format(step.get('result'), step.get('message','')))
+            print(step.get('result',''))
             raise SystemExit
-print('MISSING_STEP|')
-" 2>/dev/null || echo "MISSING_STEP|")
-                IFS='|' read -r MISSING_STEP_RESULT MISSING_STEP_MESSAGE <<< "$MISSING_ENSURE_FEATURE"
-                if [ "$MISSING_STEP_RESULT" = "SKIPPED" ] && echo "$MISSING_STEP_MESSAGE" | grep -q "$MISSING_FEATURE_BRANCH"; then
-                    ok "Orchestrate RunStep 显式报告 feature 缺失: $MISSING_STEP_RESULT ($MISSING_FINAL_STATUS)"
-                else
-                    no "Orchestrate feature 缺失 RunStep 异常: $MISSING_ENSURE_FEATURE"
-                fi
-            else
-                MISSING_ORCH_CODE=$(echo "$MISSING_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code','?'))" 2>/dev/null)
-                MISSING_ORCH_MSG=$(echo "$MISSING_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('message','?'))" 2>/dev/null)
-                no "feature 缺失编排启动失败: code=$MISSING_ORCH_CODE msg=$MISSING_ORCH_MSG"
-            fi
+" 2>/dev/null)
+            MISSING_FEATURE_RESTORED=$(gitlab_branch_state "$MISSING_REPO_URL" "$MISSING_FEATURE_BRANCH")
+            [ "$MISSING_STEP_RESULT" = "CREATED" ] && [ "$MISSING_FEATURE_RESTORED" = "FOUND" ] \
+                && ok "显式编排恢复缺失 feature 并记录 CREATED: $MISSING_FINAL_STATUS" \
+                || no "ENSURE_FEATURE 未恢复分支: result=$MISSING_STEP_RESULT state=$MISSING_FEATURE_RESTORED"
         else
-            warn "feature 缺失窗口发布失败，跳过 Orchestrate RunStep 复核: $MISSING_PUB"
+            no "feature 缺失编排未返回 Run"
         fi
     fi
 else
@@ -1284,7 +1273,7 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
         EXISTS_ATTACH_OK=$(echo "$EXISTS_ATTACH" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
-print(bool(d.get('success', False)) and not any(r.get('hasErrors', False) for r in d.get('data', [])))
+print(bool(d.get('success', False)))
 " 2>/dev/null || echo "False")
         [ "$EXISTS_ATTACH_OK" = "True" ] && ok "Attach 在 release 已存在时完成并保留证据" || warn "Attach release 已存在路径返回异常: $EXISTS_ATTACH"
 
@@ -1311,28 +1300,22 @@ else:
         fi
         [ "$EXISTS_FB_EXISTS" = "True" ] && ok "branch-status 同时确认 feature 分支存在: $EXISTS_FB_NAME" || warn "feature 分支状态: $EXISTS_FB_NAME exists=$EXISTS_FB_EXISTS"
 
-        EXISTS_ATTACH_RUN=$(curl -s "$BACKEND/api/v1/runs" -H "$AUTH" | python3 -c "
+        EXISTS_RUN_ID=$(orchestrate_selected "$EXISTS_WINDOW_ID" "[\"$R1\"]" "$EXISTS_ITER_KEY")
+        if [ -n "$EXISTS_RUN_ID" ]; then
+            EXISTS_RUN_STATUS=$(wait_for_run "$EXISTS_RUN_ID" 60)
+            EXISTS_STEP_RESULT=$(curl -s "$BACKEND/api/v1/runs/$EXISTS_RUN_ID" -H "$AUTH" | python3 -c "
 import sys,json
-window_key='''$EXISTS_WINDOW_KEY'''
-iteration_key='''$EXISTS_ITER_KEY'''
-repo_id='''$R1'''
-runs=json.load(sys.stdin).get('data', [])
-for r in reversed(runs):
-    if r.get('runType') != 'ATTACH_ITERATION':
-        continue
-    for item in r.get('items', []):
-        if item.get('windowKey') == window_key and item.get('iterationKey') == iteration_key and item.get('repoId') == repo_id:
-            for step in item.get('steps', []):
-                if step.get('actionType') == 'ENSURE_RELEASE':
-                    print('{}|{}|{}'.format(r.get('id',''), step.get('result',''), step.get('message','')))
-                    raise SystemExit
-print('MISSING_RUN|MISSING_STEP|')
-" 2>/dev/null || echo "MISSING_RUN|MISSING_STEP|")
-        IFS='|' read -r EXISTS_RUN_ID EXISTS_STEP_RESULT EXISTS_STEP_MESSAGE <<< "$EXISTS_ATTACH_RUN"
-        if [ "$EXISTS_STEP_RESULT" = "BRANCH_EXISTS" ] && echo "$EXISTS_STEP_MESSAGE" | grep -q "$EXISTS_RELEASE_BRANCH"; then
-            ok "Attach RunStep 显式报告 release 分支已存在: $EXISTS_STEP_RESULT"
+for item in json.load(sys.stdin).get('data',{}).get('items',[]):
+    for step in item.get('steps',[]):
+        if step.get('actionType') == 'ENSURE_RELEASE':
+            print(step.get('result',''))
+            raise SystemExit
+")
+            [ "$EXISTS_STEP_RESULT" = "ALREADY_EXISTS" ] \
+                && ok "显式编排复用 release 分支: $EXISTS_STEP_RESULT" \
+                || no "release 已存在 RunStep 异常: $EXISTS_STEP_RESULT"
         else
-            no "Attach release 已存在 RunStep 异常: $EXISTS_ATTACH_RUN"
+            no "release 已存在编排未返回 Run"
         fi
     fi
 else
@@ -1359,9 +1342,16 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ] && [ -n "$ITER_KEY" ]; t
         NONCOMPLIANT_ATTACH_OK=$(echo "$NONCOMPLIANT_ATTACH" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
-print(bool(d.get('success', False)) and not any(r.get('hasErrors', False) for r in d.get('data', [])))
+print(bool(d.get('success', False)))
 " 2>/dev/null || echo "False")
         [ "$NONCOMPLIANT_ATTACH_OK" = "True" ] && ok "分支名不合规证据窗口 Attach 成功" || warn "分支名不合规证据窗口 Attach 返回异常: $NONCOMPLIANT_ATTACH"
+        NONCOMPLIANT_RUN_ID=$(orchestrate_selected "$NONCOMPLIANT_WINDOW_ID" "[\"$R1\"]" "$ITER_KEY")
+        if [ -n "$NONCOMPLIANT_RUN_ID" ]; then
+            NONCOMPLIANT_RUN_STATUS=$(wait_for_run "$NONCOMPLIANT_RUN_ID" 60)
+            info "显式编排准备 release: $NONCOMPLIANT_RUN_ID status=$NONCOMPLIANT_RUN_STATUS"
+        else
+            no "显式编排未返回 Run"
+        fi
 
         NONCOMPLIANT_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
             | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
@@ -1643,9 +1633,16 @@ print("{}|{}|{}|{}".format(
             CROSS_ATTACH_OK=$(echo "$CROSS_ATTACH" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
-print(bool(d.get('success', False)) and not any(r.get('hasErrors', False) for r in d.get('data', [])))
+print(bool(d.get('success', False)))
 " 2>/dev/null || echo "False")
             [ "$CROSS_ATTACH_OK" = "True" ] && ok "跨仓版本证据窗口 Attach 成功" || warn "跨仓版本证据窗口 Attach 返回异常: $CROSS_ATTACH"
+            CROSS_RUN_ID=$(orchestrate_selected "$CROSS_WINDOW_ID" "[\"$R1\",\"$R2\"]" "$CROSS_ITER_KEY")
+            if [ -n "$CROSS_RUN_ID" ]; then
+                CROSS_RUN_STATUS=$(wait_for_run "$CROSS_RUN_ID" 60)
+                info "显式编排准备 release: $CROSS_RUN_ID status=$CROSS_RUN_STATUS"
+            else
+                no "显式编排未返回 Run"
+            fi
 
             CROSS_RELEASE_BRANCH="release/$CROSS_WINDOW_KEY"
             CROSS_R1_RELEASE_STATE=$(gitlab_branch_state "$CROSS_REPO_URL_1" "$CROSS_RELEASE_BRANCH")
@@ -1781,9 +1778,16 @@ print("{}|{}|{}|{}".format(
             VERSION_CLASS_ATTACH_OK=$(echo "$VERSION_CLASS_ATTACH" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
-print(bool(d.get('success', False)) and not any(r.get('hasErrors', False) for r in d.get('data', [])))
+print(bool(d.get('success', False)))
 " 2>/dev/null || echo "False")
             [ "$VERSION_CLASS_ATTACH_OK" = "True" ] && ok "版本领先证据窗口 Attach 成功" || warn "版本领先证据窗口 Attach 返回异常: $VERSION_CLASS_ATTACH"
+            VERSION_CLASS_RUN_ID=$(orchestrate_selected "$VERSION_CLASS_WINDOW_ID" "[\"$R1\",\"$R2\"]" "$VERSION_CLASS_ITER_KEY")
+            if [ -n "$VERSION_CLASS_RUN_ID" ]; then
+                VERSION_CLASS_RUN_STATUS=$(wait_for_run "$VERSION_CLASS_RUN_ID" 60)
+                info "显式编排准备 release: $VERSION_CLASS_RUN_ID status=$VERSION_CLASS_RUN_STATUS"
+            else
+                no "显式编排未返回 Run"
+            fi
 
             VERSION_CLASS_RELEASE_BRANCH="release/$VERSION_CLASS_WINDOW_KEY"
             VERSION_CLASS_R1_RELEASE_STATE=$(gitlab_branch_state "$VERSION_CLASS_REPO_URL_1" "$VERSION_CLASS_RELEASE_BRANCH")
@@ -1856,15 +1860,14 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
         if [ -n "$GIT_ACCESS_ITER_KEY" ]; then
             GIT_ACCESS_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$GIT_ACCESS_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
                 -d "{\"iterationKeys\":[\"$GIT_ACCESS_ITER_KEY\"]}")
-            GIT_ACCESS_ATTACH_HAS_ERRORS=$(echo "$GIT_ACCESS_ATTACH" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-print(any(r.get('hasErrors', False) for r in d.get('data', [])))
-" 2>/dev/null || echo "False")
-            if [ "$GIT_ACCESS_ATTACH_HAS_ERRORS" = "True" ]; then
-                ok "Attach 可追踪 Git 不可达类外部失败"
+            GIT_ACCESS_ATTACH_OK=$(echo "$GIT_ACCESS_ATTACH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))")
+            [ "$GIT_ACCESS_ATTACH_OK" = "True" ] && ok "Git 不可达不影响配置 Attach" || no "纯配置 Attach 失败: $GIT_ACCESS_ATTACH"
+            GIT_ACCESS_RUN_ID=$(orchestrate_selected "$GIT_ACCESS_WINDOW_ID" "$GIT_ACCESS_REPO_JSON" "$GIT_ACCESS_ITER_KEY")
+            if [ -n "$GIT_ACCESS_RUN_ID" ]; then
+                GIT_ACCESS_RUN_STATUS=$(wait_for_run "$GIT_ACCESS_RUN_ID" 60)
+                [ "$GIT_ACCESS_RUN_STATUS" = "FAILED" ] && ok "Git 访问失败记录在显式 Run" || no "Git 访问失败 Run 状态异常: $GIT_ACCESS_RUN_STATUS"
             else
-                info "Attach 未产生异常返回，继续以冲突扫描复核 Git 访问风险"
+                no "Git 访问失败编排未返回 Run"
             fi
 
             GIT_ACCESS_SCAN=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$GIT_ACCESS_WINDOW_ID/conflicts/check" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
@@ -1981,50 +1984,31 @@ for rule in json.load(sys.stdin).get('data', []):
 
             PARTIAL_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$PARTIAL_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
                 -d "{\"iterationKeys\":[\"$PARTIAL_ITER_KEY\"]}")
-            PARTIAL_ATTACH_HAS_ERRORS=$(echo "$PARTIAL_ATTACH" | python3 -c "
+            PARTIAL_ATTACH_OK=$(echo "$PARTIAL_ATTACH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))")
+            [ "$PARTIAL_ATTACH_OK" = "True" ] && ok "潜在合并阻塞不影响配置 Attach" || no "部分失败场景 Attach 失败: $PARTIAL_ATTACH"
+            PARTIAL_RUN_ID=$(orchestrate_selected "$PARTIAL_WINDOW_ID" "[\"$PARTIAL_OK_REPO_ID\",\"$PARTIAL_BLOCKED_REPO_ID\"]" "$PARTIAL_ITER_KEY")
+            PARTIAL_RUN_STATUS=$(wait_for_run "$PARTIAL_RUN_ID" 60)
+            [ "$PARTIAL_RUN_STATUS" = "PARTIAL_FAILED" ] && ok "显式编排准确汇总部分失败" || no "部分失败汇总异常: $PARTIAL_RUN_STATUS"
+            PARTIAL_RUN_SUMMARY=$(curl -s "$BACKEND/api/v1/runs/$PARTIAL_RUN_ID" -H "$AUTH" | python3 -c "
 import sys,json
-d=json.load(sys.stdin)
-print(any(r.get('hasErrors', False) for r in d.get('data', [])))
-" 2>/dev/null || echo "False")
-            if [ "$PARTIAL_ATTACH_HAS_ERRORS" = "True" ]; then
-                ok "Attach 响应报告部分失败（继续保留成功项）"
-            else
-                info "Attach 响应无 errors 字段失败；部分失败以 RunItem 复核"
-            fi
-
-            PARTIAL_ATTACH_RUN=$(curl -s "$BACKEND/api/v1/runs" -H "$AUTH" | python3 -c "
-import sys,json
-window_key='''$PARTIAL_WINDOW_KEY'''
-iteration_key='''$PARTIAL_ITER_KEY'''
-ok_repo='''$PARTIAL_OK_REPO_ID'''
-blocked_repo='''$PARTIAL_BLOCKED_REPO_ID'''
-runs=json.load(sys.stdin).get('data', [])
-for r in reversed(runs):
-    if r.get('runType') != 'ATTACH_ITERATION':
-        continue
-    items=[
-        item for item in r.get('items', [])
-        if item.get('windowKey') == window_key and item.get('iterationKey') == iteration_key
-    ]
-    if not items:
-        continue
-    ok_items=[item for item in items if item.get('repoId') == ok_repo and item.get('finalResult') == 'MERGED']
-    blocked_items=[item for item in items if item.get('repoId') == blocked_repo and item.get('finalResult') == 'MERGE_BLOCKED']
-    if ok_items and blocked_items:
-        key='{}::{}::{}'.format(window_key, blocked_repo, iteration_key)
-        print('{}|{}|{}|{}'.format(r.get('id',''), len(items), len(ok_items), key))
-        raise SystemExit
-print('MISSING_RUN|0|0|')
+r=json.load(sys.stdin).get('data',{})
+items=r.get('items',[])
+ok_items=[i for i in items if i.get('repoId') == '$PARTIAL_OK_REPO_ID' and i.get('finalResult') in ('MERGED','ALREADY_MERGED')]
+blocked_items=[i for i in items if i.get('repoId') == '$PARTIAL_BLOCKED_REPO_ID' and i.get('finalResult') == 'MERGE_BLOCKED']
+if ok_items and blocked_items:
+    i=blocked_items[0]
+    key=i.get('id','')
+    print('{}|{}|{}|{}'.format(r.get('id',''),len(items),len(ok_items),key))
+else:
+    print('MISSING_RUN|0|0|')
 " 2>/dev/null || echo "MISSING_RUN|0|0|")
-            IFS='|' read -r PARTIAL_ATTACH_RUN_ID PARTIAL_ATTACH_ITEM_COUNT PARTIAL_ATTACH_OK_COUNT PARTIAL_RETRY_KEY <<< "$PARTIAL_ATTACH_RUN"
-            if [ "$PARTIAL_ATTACH_RUN_ID" != "MISSING_RUN" ] && [ -n "$PARTIAL_RETRY_KEY" ]; then
-                ok "Attach Run 同时包含成功项和 MERGE_BLOCKED 项: run=$PARTIAL_ATTACH_RUN_ID items=$PARTIAL_ATTACH_ITEM_COUNT"
-            else
-                no "Attach 部分失败 Run 证据异常: $PARTIAL_ATTACH_RUN"
-            fi
+            IFS='|' read -r PARTIAL_EVIDENCE_RUN_ID PARTIAL_ITEM_COUNT PARTIAL_OK_COUNT PARTIAL_RETRY_KEY <<< "$PARTIAL_RUN_SUMMARY"
+            [ "$PARTIAL_EVIDENCE_RUN_ID" != "MISSING_RUN" ] && [ -n "$PARTIAL_RETRY_KEY" ] \
+                && ok "Orchestrate Run 同时包含成功项和 MERGE_BLOCKED 项" \
+                || no "Orchestrate 部分失败 Run 证据异常: $PARTIAL_RUN_SUMMARY"
 
-            if [ "$PARTIAL_ATTACH_RUN_ID" != "MISSING_RUN" ] && [ -n "$PARTIAL_RETRY_KEY" ]; then
-                PARTIAL_RETRY_RESP=$(curl -s -X POST "$BACKEND/api/v1/runs/$PARTIAL_ATTACH_RUN_ID/retry" -H "$AUTH" -H "Content-Type: application/json" \
+            if [ "$PARTIAL_EVIDENCE_RUN_ID" != "MISSING_RUN" ] && [ -n "$PARTIAL_RETRY_KEY" ]; then
+                PARTIAL_RETRY_RESP=$(curl -s -X POST "$BACKEND/api/v1/runs/$PARTIAL_EVIDENCE_RUN_ID/retry" -H "$AUTH" -H "Content-Type: application/json" \
                     -d "{\"items\":[\"$PARTIAL_RETRY_KEY\"],\"operator\":\"acceptance-partial-retry-$PARTIAL_TS\"}")
                 PARTIAL_RETRY_RUN_ID=$(echo "$PARTIAL_RETRY_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',''))" 2>/dev/null)
                 if [ -n "$PARTIAL_RETRY_RUN_ID" ]; then
@@ -2040,11 +2024,11 @@ ok_repo='''$PARTIAL_OK_REPO_ID'''
 retry_key='''$PARTIAL_RETRY_KEY'''
 selected=[
     item for item in items
-    if '{}::{}::{}'.format(item.get('windowKey'), item.get('repoId'), item.get('iterationKey')) == retry_key
+    if item.get('metadata', {}).get('retry.sourceItemId') == retry_key and item.get('id') != retry_key
 ]
 has_ok_repo=any(item.get('repoId') == ok_repo for item in items)
 has_try_merge=any(
-    step.get('actionType') == 'TRY_MERGE' and step.get('result') in ('MERGE_BLOCKED', 'MERGED', 'FAILED')
+    step.get('actionType') == 'TRY_MERGE' and step.get('result') in ('MERGE_BLOCKED', 'MERGED', 'ALREADY_MERGED', 'FAILED')
     for item in items
     for step in item.get('steps', [])
 )

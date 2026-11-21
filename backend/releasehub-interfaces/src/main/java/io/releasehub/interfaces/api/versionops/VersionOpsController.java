@@ -62,8 +62,8 @@ public class VersionOpsController {
                                 " | Repo: " + item.getRepo().value() +
                                 " | Iteration: " + item.getIterationKey().value());
                         for (RunStep step : item.getSteps()) {
-                            String level = step.result().name().contains("FAILED") ||
-                                    step.result().name().contains("BLOCKED") ? "ERROR" : "INFO";
+                            String level = step.result().isFailure() ||
+                                    step.result() == io.releasehub.domain.run.RunItemResult.UNKNOWN ? "ERROR" : "INFO";
                             lines.add("[" + level + "] " + step.actionType() +
                                     ": " + step.message());
                         }
@@ -89,7 +89,7 @@ public class VersionOpsController {
             return new RunSummaryView(
                     run.getId().value(),
                     run.getRunType().name(),
-                    determineStatus(run),
+                    run.getExecutionStatus().name(),
                     null,
                     null,
                     run.getStartedAt() != null ? run.getStartedAt().toString() : null,
@@ -97,21 +97,7 @@ public class VersionOpsController {
             );
         }
 
-        private static String determineStatus(Run run) {
-            if (run.getItems().isEmpty()) {
-                return run.getFinishedAt() != null ? "SUCCEEDED" : "RUNNING";
-            }
-            boolean hasFailed = run.getItems().stream()
-                    .anyMatch(item -> item.getFinalResult() != null &&
-                            (item.getFinalResult().name().contains("FAILED") ||
-                             item.getFinalResult().name().equals("MERGE_BLOCKED")));
-            if (hasFailed) return "FAILED";
-            boolean allSuccess = run.getItems().stream()
-                    .allMatch(item -> item.getFinalResult() != null &&
-                            item.getFinalResult().name().contains("SUCCESS"));
-            if (allSuccess) return "SUCCEEDED";
-            return run.getFinishedAt() != null ? "SUCCEEDED" : "RUNNING";
-        }
+
     }
 
     public record RunDetailView(
@@ -135,7 +121,7 @@ public class VersionOpsController {
             return new RunDetailView(
                     run.getId().value(),
                     run.getRunType().name(),
-                    RunSummaryView.determineStatus(run),
+                    run.getExecutionStatus().name(),
                     null,
                     run.getStartedAt() != null ? run.getStartedAt().toString() : null,
                     run.getFinishedAt() != null ? run.getFinishedAt().toString() : null,

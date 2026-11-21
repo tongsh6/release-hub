@@ -65,7 +65,12 @@ class WindowIterationApiTest {
                        .content(objectMapper.writeValueAsString(java.util.Map.of("iterationKeys", java.util.List.of(itAKey, itBKey)))))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.data[0].iterationKey").value(itAKey))
-               .andExpect(jsonPath("$.data[1].iterationKey").value(itBKey));
+               .andExpect(jsonPath("$.data[1].iterationKey").value(itBKey))
+               .andExpect(jsonPath("$.data[0].attachAt").exists())
+               .andExpect(jsonPath("$.data[0].branchCreated").value(false))
+               .andExpect(jsonPath("$.data[0].releaseBranch").isEmpty())
+               .andExpect(jsonPath("$.data[0].hasErrors").doesNotExist())
+               .andExpect(jsonPath("$.data[0].errors").doesNotExist());
 
         mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/iterations")
                        .header("Authorization", "Bearer " + token))
@@ -85,7 +90,8 @@ class WindowIterationApiTest {
         mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/iterations")
                        .header("Authorization", "Bearer " + token))
                .andExpect(status().isOk())
-               .andExpect(jsonPath("$.data").isArray());
+               .andExpect(jsonPath("$.data.length()").value(1))
+               .andExpect(jsonPath("$.data[0].iterationKey").value(itBKey));
     }
 
     private String createGroupAndGetCode(String token) throws Exception {

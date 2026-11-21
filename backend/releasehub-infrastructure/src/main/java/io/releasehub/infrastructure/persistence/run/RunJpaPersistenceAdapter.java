@@ -18,6 +18,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -37,11 +38,13 @@ public class RunJpaPersistenceAdapter implements RunPort {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<Run> findById(String runId) {
         return repository.findById(runId).map(this::toDomain);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<Run> findAll() {
         return repository.findAll().stream()
                          .map(this::toDomain)
@@ -49,6 +52,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<Run> findByWindowKey(String windowKey) {
         String normalizedWindowKey = normalize(windowKey);
         if (normalizedWindowKey == null) {
@@ -60,6 +64,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PageResult<Run> findPaged(String runType, String operator, String windowKey, String repoId, String iterationKey, String status, String groupCode, int page, int size) {
         String normalizedRunType = normalize(runType);
         String normalizedOperator = normalize(operator);

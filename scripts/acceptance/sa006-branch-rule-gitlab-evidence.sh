@@ -194,30 +194,36 @@ assert_named_denied() {
 }
 
 assert_release_denied() {
-    local label=$1
-    local group_code=$2
-    local repo_id=$3
-    local clone_url=$4
-    local iteration_key=$5
-    local window_resp window_id release_window_key release_branch release_resp release_success state
+    local label=$1 group_code=$2 repo_id=$3 clone_url=$4 iteration_key=$5
+    local window_resp window_id release_window_key release_branch attach_resp release_resp state run_id run_status run_detail denied
     window_resp=$(api POST "/api/v1/release-windows" "{\"name\":\"$label release 拒绝 $TS\",\"description\":\"SA-006 release branch rule evidence\",\"groupCode\":\"$group_code\"}")
     window_id=$(echo "$window_resp" | json_get "((d.get('data') or {}).get('id') or '')")
     release_window_key=$(echo "$window_resp" | json_get "((d.get('data') or {}).get('windowKey') or '')")
     release_branch="release/$release_window_key"
-    release_resp=$(api POST "/api/v1/release-windows/$window_id/iterations/$iteration_key/create-release-branch" "")
-    release_success=$(echo "$release_resp" | json_get "d.get('success', False)")
-    if [ "$release_success" = "False" ]; then
-        ok "$label 不合规 release 分支被创建前拒绝"
-    else
-        no "$label 不合规 release 分支未被拒绝: $release_resp"
+    attach_resp=$(api POST "/api/v1/release-windows/$window_id/attach" "{\"iterationKeys\":[\"$iteration_key\"]}")
+    if [ "$(echo "$attach_resp" | json_get "d.get('success', False)")" != "True" ]; then
+        no "$label 配置 Attach 失败: $attach_resp"
+        return
     fi
-
+    release_resp=$(api POST "/api/v1/release-windows/$window_id/orchestrate" "{\"repoIds\":[\"$repo_id\"],\"iterationKeys\":[\"$iteration_key\"],\"failFast\":true}")
+    if [ "$(echo "$release_resp" | json_get "d.get('success', False)")" = "True" ]; then
+        run_id=$(echo "$release_resp" | json_get "d.get('data','')")
+        run_status="RUNNING"
+        for attempt in $(seq 1 60); do
+            run_detail=$(api GET "/api/v1/runs/$run_id")
+            run_status=$(echo "$run_detail" | json_get "((d.get('data') or {}).get('status') or '')")
+            [ "$run_status" != "RUNNING" ] && break
+            sleep 1
+        done
+        denied=$(echo "$run_detail" | json_get "any(s.get('actionType') == 'ENSURE_RELEASE' and s.get('result') == 'FAILED' for i in (d.get('data') or {}).get('items',[]) for s in i.get('steps',[]))")
+        [ "$run_status" = "FAILED" ] && [ "$denied" = "True" ] \
+            && ok "$label 不合规 release 在 Run 中明确失败" \
+            || no "$label release 规则失败证据异常: status=$run_status denied=$denied"
+    else
+        no "$label 有效配置未进入可审计编排: $release_resp"
+    fi
     state=$(gitlab_branch_state "$clone_url" "$release_branch")
-    if [ "$state" = "NOT_FOUND" ]; then
-        ok "$label GitLab 直查确认不合规 release 分支未创建: $release_branch"
-    else
-        no "$label GitLab release 分支状态异常: $state"
-    fi
+    [ "$state" = "NOT_FOUND" ] && ok "$label 不合规 release 未写入 GitLab" || no "$label release 分支状态异常: $state"
 }
 
 echo -e "${CYAN}=== SA-006 BranchRule GitLab evidence ===${NC}"
@@ -339,24 +345,7 @@ else
     no "GitLab 不合规 NAMED 分支状态异常: $DENIED_STATE"
 fi
 
-WINDOW_RESP=$(api POST "/api/v1/release-windows" "{\"name\":\"SA-006 release 拒绝 $TS\",\"description\":\"SA-006 release branch rule evidence\",\"groupCode\":\"$GROUP_CODE\"}")
-WINDOW_ID=$(echo "$WINDOW_RESP" | json_get "((d.get('data') or {}).get('id') or '')")
-RELEASE_WINDOW_KEY=$(echo "$WINDOW_RESP" | json_get "((d.get('data') or {}).get('windowKey') or '')")
-RELEASE_BRANCH="release/$RELEASE_WINDOW_KEY"
-RELEASE_RESP=$(api POST "/api/v1/release-windows/$WINDOW_ID/iterations/$ITER_OK/create-release-branch" "")
-RELEASE_SUCCESS=$(echo "$RELEASE_RESP" | json_get "d.get('success', False)")
-if [ "$RELEASE_SUCCESS" = "False" ]; then
-    ok "不合规 release 分支被创建前拒绝"
-else
-    no "不合规 release 分支未被拒绝: $RELEASE_RESP"
-fi
-
-RELEASE_STATE=$(gitlab_branch_state "$REPO_CLONE" "$RELEASE_BRANCH")
-if [ "$RELEASE_STATE" = "NOT_FOUND" ]; then
-    ok "GitLab 直查确认不合规 release 分支未创建: $RELEASE_BRANCH"
-else
-    no "GitLab release 分支状态异常: $RELEASE_STATE"
-fi
+assert_release_denied "REPOSITORY" "$GROUP_CODE" "$REPO_ID" "$REPO_CLONE" "$ITER_OK"
 
 api DELETE "/api/v1/branch-rules/$RULE_ID" >/dev/null || true
 

@@ -1,20 +1,18 @@
 package io.releasehub.application.releasewindow;
 
 import io.releasehub.application.group.GroupPort;
-import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.run.RunAppService;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.window.WindowIterationPort;
+import io.releasehub.application.window.PlanAppService;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.group.Group;
 import io.releasehub.domain.group.GroupId;
-import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
-import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
@@ -22,6 +20,7 @@ import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.Run;
+import io.releasehub.domain.run.RunPlanSnapshot;
 import io.releasehub.domain.run.RunType;
 import io.releasehub.domain.window.WindowIteration;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,13 +31,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -47,6 +43,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -62,13 +59,11 @@ class ReleaseWindowAppServiceTest {
     @Mock
     private GroupPort groupPort;
     @Mock
-    private IterationPort iterationPort;
-    @Mock
     private CodeRepositoryPort codeRepositoryPort;
     @Mock
     private GitBranchAdapterFactory gitBranchAdapterFactory;
     @Mock
-    private ApplicationEventPublisher eventPublisher;
+    private PlanAppService planAppService;
 
     private ReleaseWindowAppService releaseWindowAppService;
 
@@ -76,7 +71,7 @@ class ReleaseWindowAppServiceTest {
     void setUp() {
         releaseWindowAppService = new ReleaseWindowAppService(
                 releaseWindowPort, windowIterationPort, runAppService, groupPort,
-                iterationPort, codeRepositoryPort, gitBranchAdapterFactory, eventPublisher);
+                codeRepositoryPort, gitBranchAdapterFactory, planAppService);
     }
 
     @Nested
@@ -185,7 +180,7 @@ class ReleaseWindowAppServiceTest {
         }
 
         @Test
-        @DisplayName("成功后只更新状态，不触发收尾任务")
+        @DisplayName("发布只更新配置，不发事件或触发编排")
         void shouldPublishWithoutTriggeringRun() {
             Instant now = Instant.now();
             ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
@@ -196,8 +191,7 @@ class ReleaseWindowAppServiceTest {
             ReleaseWindowView view = releaseWindowAppService.publish("window-1");
 
             verify(releaseWindowPort).save(any(ReleaseWindow.class));
-            // publish no longer triggers run creation (only close does)
-            verify(runAppService, never()).executeCleanup(any(), any());
+            verifyNoInteractions(runAppService);
             assertThat(view.getStatus()).isEqualTo("PUBLISHED");
             assertThat(view.getPublishedAt()).isNotNull();
         }
@@ -300,23 +294,13 @@ class ReleaseWindowAppServiceTest {
             String iterKey = "ITER-1";
             String repoId = "repo-1";
 
-            ReleaseWindow window = ReleaseWindow.rehydrate(
-                    ReleaseWindowId.of(windowId), windowKey, "Window", null, now, "G001",
-                    io.releasehub.domain.releasewindow.ReleaseWindowStatus.PUBLISHED, now, now, false, null);
-            when(releaseWindowPort.findById(ReleaseWindowId.of(windowId))).thenReturn(Optional.of(window));
-
-            WindowIteration wi = WindowIteration.attach(ReleaseWindowId.of(windowId), IterationKey.of(iterKey), now, now);
-            when(windowIterationPort.listByWindow(ReleaseWindowId.of(windowId))).thenReturn(List.of(wi));
-
-            Iteration iteration = Iteration.rehydrate(
-                    IterationKey.of(iterKey), "Iter", null, LocalDate.now(), "G001",
-                    Set.of(RepoId.of(repoId)), IterationStatus.ACTIVE, now, now);
-            when(iterationPort.findByKey(IterationKey.of(iterKey))).thenReturn(Optional.of(iteration));
-
-            when(windowIterationPort.getReleaseBranch(windowId, iterKey)).thenReturn("release/" + windowKey);
+            var item = new RunPlanSnapshot.Item("item-1", 1, repoId, "my-repo", iterKey, "GITLAB", "main",
+                    "feature/" + iterKey, "AUTO", "release/" + windowKey, null, null, null, List.of());
+            when(planAppService.getSnapshotByWindow(windowId)).thenReturn(new RunPlanSnapshot(
+                    windowKey, "G001", "PUBLISHED", false, true, List.of(item)));
 
             CodeRepository repo = CodeRepository.rehydrate(
-                    RepoId.of(repoId), "my-repo", "https://github.com/org/repo.git",
+                    RepoId.of(repoId), "my-repo", "https://gitlab.example/org/repo.git",
                     "main", "G001", null, GitProvider.GITLAB, "token", false,
                     0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
             when(codeRepositoryPort.findById(RepoId.of(repoId))).thenReturn(Optional.of(repo));
@@ -338,17 +322,17 @@ class ReleaseWindowAppServiceTest {
             assertThat(repoStatus.featureBranch().exists()).isTrue();
             assertThat(repoStatus.featureBranch().latestCommit()).isEqualTo("abc123");
             assertThat(repoStatus.releaseBranch().exists()).isFalse();
-            assertThat(repoStatus.releaseBranch().mergeStatus()).isEqualTo("PENDING");
+            assertThat(BranchStatusView.ReleaseBranchInfo.class.getRecordComponents())
+                    .extracting(java.lang.reflect.RecordComponent::getName)
+                    .doesNotContain("mergeStatus");
         }
 
         @Test
         @DisplayName("无迭代时返回空仓库列表")
         void shouldReturnEmptyReposWhenNoIterations() {
-            Instant now = Instant.now();
             String windowId = "window-1";
-            ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
-            when(releaseWindowPort.findById(ReleaseWindowId.of(windowId))).thenReturn(Optional.of(window));
-            when(windowIterationPort.listByWindow(ReleaseWindowId.of(windowId))).thenReturn(List.of());
+            when(planAppService.getSnapshotByWindow(windowId)).thenReturn(new RunPlanSnapshot(
+                    "RW-1", "G001", "DRAFT", false, true, List.of()));
 
             BranchStatusView result = releaseWindowAppService.getBranchStatus(windowId);
 

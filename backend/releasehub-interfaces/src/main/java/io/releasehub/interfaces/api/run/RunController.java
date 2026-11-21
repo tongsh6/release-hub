@@ -73,7 +73,7 @@ public class RunController {
         }
 
         public static RunView from(Run run) {
-            String status = determineStatus(run);
+            String status = run.getExecutionStatus().name();
             return new RunView(
                     run.getId().value(),
                     run.getRunType().name(),
@@ -85,26 +85,7 @@ public class RunController {
             );
         }
 
-        private static String determineStatus(Run run) {
-            if (run.getExecutionStatus() != null) return run.getExecutionStatus().name();
-            if (run.getItems().isEmpty()) {
-                return run.getFinishedAt() != null ? "COMPLETED" : "RUNNING";
-            }
-            boolean hasFailed = run.getItems().stream()
-                    .anyMatch(item -> item.getFinalResult() != null &&
-                            (item.getFinalResult().name().contains("FAILED") ||
-                             item.getFinalResult().name().equals("MERGE_BLOCKED")));
-            if (hasFailed) {
-                return "FAILED";
-            }
-            boolean allSuccess = run.getItems().stream()
-                    .allMatch(item -> item.getFinalResult() != null &&
-                            item.getFinalResult().name().contains("SUCCESS"));
-            if (allSuccess) {
-                return "SUCCESS";
-            }
-            return run.getFinishedAt() != null ? "COMPLETED" : "RUNNING";
-        }
+
     }
 
     public record RunItemView(
@@ -113,9 +94,13 @@ public class RunController {
             String repoId,
             String iterationKey,
             String finalResult,
+            int plannedOrder,
+            int executedOrder,
+            java.util.Map<String, String> metadata,
             List<RunStepView> steps
     ) {
         public RunItemView {
+            metadata = metadata == null ? java.util.Map.of() : java.util.Map.copyOf(metadata);
             steps = steps == null ? List.of() : List.copyOf(steps);
         }
 
@@ -130,6 +115,9 @@ public class RunController {
                     item.getRepo().value(),
                     item.getIterationKey().value(),
                     item.getFinalResult() != null ? item.getFinalResult().name() : null,
+                    item.getPlannedOrder(),
+                    item.getExecutedOrder(),
+                    item.getMetadata(),
                     item.getSteps().stream().map(RunStepView::from).toList()
             );
         }

@@ -3,6 +3,10 @@ package io.releasehub.interfaces.api.run;
 import io.releasehub.application.run.plan.RunPlanAppService;
 import io.releasehub.application.run.plan.RunPlanSummary;
 import io.releasehub.application.run.plan.SavedRunPlan;
+import io.releasehub.application.run.RunPort;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.ErrorCode;
+import io.releasehub.domain.run.Run;
 import io.releasehub.common.response.ApiResponse;
 import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.run.RunPlanSnapshot;
@@ -19,26 +23,32 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RunPlanController {
     private final RunPlanAppService service;
+    private final RunPort runs;
 
     @PostMapping("/release-windows/{id}/run-plans")
     @Operation(summary = "保存不可执行的本地计划预览")
     public ApiResponse<PlanView> create(@PathVariable("id") String windowId,
             @RequestHeader(value = "Idempotency-Key", required = false) String key, @RequestBody(required = false) CreateRequest request) {
         if (request == null) throw ValidationException.invalidParameter("request");
-        return ApiResponse.success(PlanView.from(service.create(windowId, request.repoIds(), request.iterationKeys(),
+        return ApiResponse.success(view(service.create(windowId, request.repoIds(), request.iterationKeys(),
                 request.failFast() == null || request.failFast(), SecurityUtils.getCurrentUsername(), key)));
     }
 
     @GetMapping("/release-windows/{id}/run-plans")
-    @Operation(summary = "查询窗口最近 20 条已保存预览")
+    @Operation(summary = "查询窗口最近 20 条计划快照")
     public ApiResponse<List<RunPlanSummary>> list(@PathVariable("id") String windowId) {
         return ApiResponse.success(service.list(windowId));
     }
 
     @GetMapping("/runs/{id}/plan")
-    @Operation(summary = "按 Run ID 查询不可变计划预览")
+    @Operation(summary = "按 Run ID 查询不可变计划快照与当前运行状态")
     public ApiResponse<PlanView> get(@PathVariable("id") String runId) {
-        return ApiResponse.success(PlanView.from(service.get(runId)));
+        return ApiResponse.success(view(service.get(runId)));
+    }
+
+    private PlanView view(SavedRunPlan plan) {
+        Run run = runs.findById(plan.runId()).orElseThrow(() -> BusinessException.of(ErrorCode.RUN_NOT_FOUND, plan.runId()));
+        return PlanView.from(plan, run);
     }
 
     public record CreateRequest(List<String> repoIds, List<String> iterationKeys, Boolean failFast) {
@@ -56,9 +66,9 @@ public class RunPlanController {
     public record PlanView(String runId, String windowId, String operator, Instant createdAt, String planHash,
                            int executionVersion, String status, String evidenceLevel, boolean executionPermitted,
                            RunPlanSnapshot snapshot) {
-        static PlanView from(SavedRunPlan plan) {
+        static PlanView from(SavedRunPlan plan, Run run) {
             return new PlanView(plan.runId(), plan.windowId(), plan.operator(), plan.createdAt(), plan.planHash(),
-                    2, "PLANNED", "LOCAL_ONLY", false, plan.snapshot());
+                    run.getExecutionVersion(), run.getExecutionStatus().name(), "LOCAL_ONLY", false, plan.snapshot());
         }
     }
 }

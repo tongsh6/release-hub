@@ -62,8 +62,6 @@ echo "Attach iterations to window..."
 curl -s -X POST "$BASE/windows/$ID/attach" -H "$AUTH" -H "Content-Type: application/json" -d "{\"iterationKeys\":[\"$IT1_KEY\",\"$IT2_KEY\"]}" | python3 -m json.tool
 echo "Plan..."
 curl -s -X GET "$BASE/windows/$ID/plan" -H "$AUTH" | python3 -m json.tool
-echo "Dry-Plan..."
-curl -s -X GET "$BASE/windows/$ID/dry-plan" -H "$AUTH" | python3 -m json.tool
 
 echo "Orchestrate..."
 RUN=$(curl -s -X POST "$BASE/windows/$ID/orchestrate" -H "$AUTH" -H "Content-Type: application/json" -d '{"repoIds":["repo-1"],"iterationKeys":[],"failFast":true,"operator":"tester"}')

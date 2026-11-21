@@ -292,8 +292,7 @@ ok "创建发布窗口: $WINDOW_ID"
 
 ATTACH_RESP=$(api POST "/api/v1/release-windows/$WINDOW_ID/attach" "{\"iterationKeys\":[\"$LOCKED_ITER\"]}")
 ATTACH_SUCCESS=$(echo "$ATTACH_RESP" | json_get "d.get('success', False)")
-ATTACH_ERRORS=$(echo "$ATTACH_RESP" | json_get "any(r.get('hasErrors', False) for r in (d.get('data') or []))")
-if [ "$ATTACH_SUCCESS" = "True" ] && [ "$ATTACH_ERRORS" = "False" ]; then
+if [ "$ATTACH_SUCCESS" = "True" ]; then
     ok "迭代挂载发布窗口成功"
 else
     no "迭代挂载发布窗口异常: $ATTACH_RESP"

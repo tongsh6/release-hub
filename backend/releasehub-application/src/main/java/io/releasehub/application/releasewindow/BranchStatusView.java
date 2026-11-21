@@ -46,11 +46,10 @@ public record BranchStatusView(
     public record ReleaseBranchInfo(
             String branchName,
             boolean exists,
-            String latestCommit,
-            String mergeStatus
+            String latestCommit
     ) {
         public static ReleaseBranchInfo missing(String branchName) {
-            return new ReleaseBranchInfo(branchName, false, null, "PENDING");
+            return new ReleaseBranchInfo(branchName, false, null);
         }
     }
 }

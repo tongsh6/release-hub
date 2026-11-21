@@ -1,6 +1,11 @@
 package io.releasehub.domain.run;
 
-/** S1 只支持不可执行的计划预览。 */
+/** 所有 Run 消费者使用的持久化执行状态。 */
 public enum RunExecutionStatus {
-    PLANNED
+    PLANNED,
+    RUNNING,
+    DONE,
+    PARTIAL_FAILED,
+    FAILED,
+    NEEDS_REVIEW
 }
