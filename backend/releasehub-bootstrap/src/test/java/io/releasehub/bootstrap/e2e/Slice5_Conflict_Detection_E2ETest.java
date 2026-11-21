@@ -121,7 +121,7 @@ class Slice5_Conflict_Detection_E2ETest extends AbstractGitLabE2ETest {
                 .get("data").get("id").asText();
 
         // 手动设置初始版本 1.0.0
-        mockMvc.perform(post("/api/v1/repositories/" + repoId + "/initial-version")
+        mockMvc.perform(put("/api/v1/repositories/" + repoId + "/initial-version")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"version\":\"1.0.0\"}"))

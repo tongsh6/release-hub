@@ -2,7 +2,7 @@
 # ============================================================
 # US-AUTO: 发布自动化功能测试
 # ============================================================
-# 测试覆盖 tasks.md 中已实现的发布自动化功能：
+# HTTP 契约检查；需提供可用 fixture，不等同真实 GitLab 或页面旅程验收。
 # - 迭代仓库版本管理
 # - 代码合并功能
 # - 运行任务管理
@@ -208,154 +208,76 @@ test_iteration_version_api() {
 # ============================================================
 
 test_code_merge_api() {
-    log_section "测试套件 2: 代码合并功能"
-    
-    if [ -z "$TEST_WINDOW_ID" ] || [ -z "$TEST_ITER_KEY" ]; then
-        log_skip "测试数据不完整，跳过代码合并测试"
+    log_section "测试套件 2: 显式窗口编排"
+    if [ -z "$TEST_WINDOW_ID" ] || [ -z "$TEST_ITER_KEY" ] || [ -z "$TEST_REPO_ID" ]; then
+        log_skip "测试数据不完整，跳过编排契约检查"
         return
     fi
-    
-    # 2.1 单迭代合并
-    echo ""
-    echo "测试 2.1: 单迭代代码合并"
-    echo "  API: POST /release-windows/{windowId}/iterations/{iterationKey}/merge"
-    
-    local response=$(api_post "/release-windows/$TEST_WINDOW_ID/iterations/$TEST_ITER_KEY/merge" "{}")
-    local success=$(json_get "$response" ".success")
-    
-    if [ "$success" = "True" ]; then
-        local merge_count=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('data',[])) if d.get('data') else 0)" 2>/dev/null || echo "0")
-        log_success "  ✓ 单迭代合并成功，返回 $merge_count 个合并结果"
-    else
-        local code=$(json_get "$response" ".code")
-        log_info "  API 响应: success=$success, code=$code (代码合并可能需要 GitLab 连接)"
-    fi
-    
-    # 2.2 批量合并 (全部迭代)
-    echo ""
-    echo "测试 2.2: 批量代码合并"
-    echo "  API: POST /release-windows/{windowId}/merge"
-    
-    response=$(api_post "/release-windows/$TEST_WINDOW_ID/merge" "{}")
+
+    local request_key="us-auto-$TEST_TIMESTAMP-$TEST_WINDOW_ID"
+    local response success
+    response=$(curl -s -X POST "$BASE_URL/release-windows/$TEST_WINDOW_ID/orchestrate" \
+        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+        -H "Idempotency-Key: $request_key" \
+        -d "{\"repoIds\":[\"$TEST_REPO_ID\"],\"iterationKeys\":[\"$TEST_ITER_KEY\"],\"failFast\":true}")
     success=$(json_get "$response" ".success")
-    
-    if [ "$success" = "True" ]; then
-        local merge_count=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('data',[])) if d.get('data') else 0)" 2>/dev/null || echo "0")
-        log_success "  ✓ 批量合并成功，返回 $merge_count 个合并结果"
+    TEST_RUN_ID=$(json_get "$response" ".data")
+    if [ "$success" = "True" ] && [ -n "$TEST_RUN_ID" ] && [ "$TEST_RUN_ID" != "null" ]; then
+        log_success "  ✓ 编排受理返回 Run ID: $TEST_RUN_ID"
+        response=$(api_get "/runs/$TEST_RUN_ID")
+        local protocol=$(json_get "$response" ".data.executionVersion")
+        local run_type=$(json_get "$response" ".data.runType")
+        local run_status=$(json_get "$response" ".data.status")
+        if [ "$protocol" = "3" ] && [ "$run_type" = "WINDOW_ORCHESTRATION" ]; then
+            log_success "  ✓ 持久窗口协议可查询，实际状态: $run_status"
+        else
+            log_fail "  ✗ 编排回执协议异常: version=$protocol type=$run_type"
+        fi
     else
-        local code=$(json_get "$response" ".code")
-        log_info "  API 响应: success=$success, code=$code (代码合并可能需要 GitLab 连接)"
+        TEST_RUN_ID=""
+        log_fail "  ✗ 编排受理失败: $(json_get "$response" ".code")"
     fi
 }
-
 # ============================================================
 # 测试套件 3: 运行任务管理
 # ============================================================
 
 test_run_task_api() {
-    log_section "测试套件 3: 运行任务管理"
-    
-    # 先获取一个 Run ID
-    echo ""
-    echo "测试 3.0: 获取可用的运行记录"
-    
-    local response=$(api_get "/runs/paged?page=0&size=10")
-    local success=$(json_get "$response" ".success")
-    
-    if [ "$success" = "True" ]; then
-        local run_count=$(json_get "$response" ".page.total")
-        log_info "  总运行记录数: $run_count"
-        
-        if [ "$run_count" != "0" ] && [ -n "$run_count" ]; then
-            TEST_RUN_ID=$(json_get "$response" ".data[0].id")
-            log_info "  使用运行记录 ID: $TEST_RUN_ID"
-        fi
-    fi
-    
+    log_section "测试套件 3: 查询本轮持久任务"
     if [ -z "$TEST_RUN_ID" ] || [ "$TEST_RUN_ID" = "null" ]; then
-        log_info "  没有可用的运行记录，尝试发布窗口来创建运行记录"
-        
-        # 尝试发布窗口来创建运行记录
-        if [ -n "$TEST_WINDOW_ID" ]; then
-            response=$(api_post "/release-windows/$TEST_WINDOW_ID/publish" "{}")
-            success=$(json_get "$response" ".success")
-            
-            if [ "$success" = "True" ]; then
-                log_info "  窗口发布成功，查找新创建的运行记录"
-                
-                # 重新获取运行记录
-                sleep 1
-                response=$(api_get "/runs/paged?page=0&size=10")
-                TEST_RUN_ID=$(json_get "$response" ".data[0].id")
-            fi
-        fi
-    fi
-    
-    if [ -z "$TEST_RUN_ID" ] || [ "$TEST_RUN_ID" = "null" ]; then
-        log_skip "没有可用的运行记录，跳过任务管理测试"
+        log_skip "本轮编排未返回 Run，不用 Publish 或其他历史记录伪造任务证据"
         return
     fi
-    
-    # 3.1 获取运行任务列表
-    echo ""
-    echo "测试 3.1: 获取运行任务列表"
-    echo "  API: GET /runs/{runId}/tasks"
-    
+
+    local response success valid
     response=$(api_get "/runs/$TEST_RUN_ID/tasks")
     success=$(json_get "$response" ".success")
-    
-    if [ "$success" = "True" ]; then
-        local task_count=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('data',[])) if d.get('data') else 0)" 2>/dev/null || echo "0")
-        log_success "  ✓ 获取任务列表成功，共 $task_count 个任务"
-        
-        # 显示任务类型和状态
-        if [ "$task_count" -gt 0 ]; then
-            echo "$response" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for task in (data.get('data', []) or [])[:5]:
-    task_type = task.get('taskType', 'unknown')
-    status = task.get('status', 'unknown')
-    print(f'      - {task_type}: {status}')
-" 2>/dev/null || true
-        fi
-        
-        # 获取第一个失败的任务 ID（如果有）
-        local failed_task_id=$(echo "$response" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for task in (data.get('data', []) or []):
-    if task.get('status') == 'FAILED':
-        print(task.get('id', ''))
-        break
-" 2>/dev/null || echo "")
-        
-        # 3.2 尝试重试失败的任务
-        if [ -n "$failed_task_id" ] && [ "$failed_task_id" != "" ]; then
-            echo ""
-            echo "测试 3.2: 重试失败的任务"
-            echo "  API: POST /runs/{runId}/tasks/{taskId}/retry"
-            
-            response=$(api_post "/runs/$TEST_RUN_ID/tasks/$failed_task_id/retry" "{}")
-            success=$(json_get "$response" ".success")
-            
-            if [ "$success" = "True" ]; then
-                log_success "  ✓ 任务重试成功"
-            else
-                local code=$(json_get "$response" ".code")
-                log_info "  API 响应: success=$success, code=$code"
-            fi
-        else
-            echo ""
-            echo "测试 3.2: 重试任务 (跳过)"
-            log_info "  没有失败的任务可供重试"
-        fi
-    else
-        local code=$(json_get "$response" ".code")
-        log_fail "  ✗ 获取任务列表失败: $code"
+    if [ "$success" != "True" ]; then
+        log_fail "  ✗ 获取任务列表失败: $(json_get "$response" ".code")"
+        return
     fi
+    valid=$(echo "$response" | python3 -c '
+import json,sys
+data=json.load(sys.stdin).get("data") or []
+expected={"ENSURE_FEATURE","ENSURE_RELEASE","ENSURE_MR","TRY_MERGE"}
+valid=bool(data) and len({t.get("taskId") for t in data}) == len(data)
+valid=valid and {t.get("actionType") for t in data} == expected
+valid=valid and all(t.get("runId") == sys.argv[1] and t.get("itemId") and t.get("taskOrder",0)>0 for t in data)
+valid=valid and all("claimToken" not in t and "claim_token" not in t for t in data)
+print("True" if valid else "False")
+' "$TEST_RUN_ID")
+    if [ "$valid" = "True" ]; then
+        log_success "  ✓ 四动作任务具有真实 taskId、Run/Item 归属及顺序"
+        echo "$response" | python3 -c '
+import json,sys
+for task in json.load(sys.stdin).get("data",[]):
+    print("      - {} {}: {}".format(task["taskOrder"],task["actionType"],task["status"]))
+'
+    else
+        log_fail "  ✗ 持久任务字段、动作范围或归属不完整"
+    fi
+    log_info "  普通重试使用选定 Item ID 和新的 Idempotency-Key；没有单任务重试或自动恢复入口。"
 }
-
 # ============================================================
 # 测试套件 4: 仓库初始版本管理
 # ============================================================
@@ -501,7 +423,7 @@ main() {
     echo ""
     echo "╔════════════════════════════════════════════════════════════╗"
     echo "║      US-AUTO: 发布自动化功能测试                          ║"
-    echo "║      覆盖 tasks.md 中已实现的功能                          ║"
+    echo "║      检查实际 HTTP 契约，不预先声明功能已验收              ║"
     echo "╚════════════════════════════════════════════════════════════╝"
     echo ""
     

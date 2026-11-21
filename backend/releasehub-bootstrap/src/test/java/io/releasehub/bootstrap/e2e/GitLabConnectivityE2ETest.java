@@ -1,6 +1,7 @@
 package io.releasehub.bootstrap.e2e;
 
 import org.junit.jupiter.api.*;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 
 import java.util.List;
@@ -20,16 +21,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GitLabConnectivityE2ETest extends AbstractGitLabE2ETest {
 
     private String token;
-    private String gitlabToken;
-    private String gitlabBaseUrl;
-    private String gitlabUser;
-
-    @BeforeAll
-    void setUp() throws Exception {
-        gitlabToken = System.getenv().getOrDefault("E2E_GITLAB_TOKEN", "");
-        gitlabBaseUrl = System.getenv().getOrDefault("E2E_GITLAB_URL", "http://localhost:9080");
-        gitlabUser = System.getenv().getOrDefault("E2E_GITLAB_USER", "root");
-    }
+    private String groupCode;
+    private String repoId;
 
     @Test
     @Order(1)
@@ -43,29 +36,19 @@ class GitLabConnectivityE2ETest extends AbstractGitLabE2ETest {
     @Order(2)
     @DisplayName("[连通性] 验证 GitLab 可访问")
     void verifyGitLabAccessible() throws Exception {
-        // 通过 ReleaseHub 的 GitLab 适配器间接验证
-        // 如果有 token，直接通过 GitLab API 验证
-        if (!gitlabToken.isEmpty()) {
-            boolean created = gitLabCreateBranch(gitlabBaseUrl, gitlabToken,
-                    "root%2Fseed-repo-1-maven", "test-e2e-connectivity", "main");
-            System.out.println("GitLab branch creation test: " + (created ? "SUCCESS" : "FAILED (repo may not exist yet)"));
-            // Repo might not exist if init-gitlab.sh wasn't run — that's OK for connectivity check
-        }
+        groupCode = createGroup(token);
+        repoId = createRepo(token, groupCode);
+        var main = gitLabRequest(repoId, HttpMethod.GET, "/repository/branches/main", null);
+        assertThat(gitLabProjectId(repoId)).matches("[1-9][0-9]*");
+        assertThat(main.path("name").asText()).isEqualTo("main");
+        assertThat(main.path("commit").path("id").asText()).matches("[0-9a-fA-F]{40}|[0-9a-fA-F]{64}");
     }
 
     @Test
     @Order(3)
-    @DisplayName("[连通性] 创建真实 GitLab 仓库并注册到 ReleaseHub")
+    @DisplayName("[连通性] 验证隔离 GitLab 仓库的注册与发布生命周期")
     void createRealGitLabRepo() throws Exception {
-        assertThat(gitlabToken).withFailMessage(
-                "E2E_GITLAB_TOKEN 未设置。请先运行: scripts/e2e/init-gitlab.sh").isNotBlank();
-
-        String groupCode = createGroup(token);
-
-        // Use seed-repo-1-maven from init-gitlab.sh
-        String cloneUrl = String.format("http://gitlab.local/%s/seed-repo-1-maven.git", gitlabUser);
-        String repoId = createGitLabRepo(token, groupCode, cloneUrl, gitlabToken);
-        assertThat(repoId).isNotBlank();
+        assertThat(repoId).as("仓库必须由本次隔离 fixture 创建并完成 Settings 核验").isNotBlank();
 
         // Verify the repo was created in ReleaseHub
         mockMvc.perform(get("/api/v1/repositories/" + repoId)
@@ -101,6 +84,7 @@ class GitLabConnectivityE2ETest extends AbstractGitLabE2ETest {
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/unfreeze")
                         .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
         var orchestration = mockMvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
+                        .header("Idempotency-Key", "connectivity-orchestrate-" + windowId)
                         .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("repoIds", List.of(repoId),
                                 "iterationKeys", List.of(iterKey), "failFast", true))))
@@ -114,6 +98,6 @@ class GitLabConnectivityE2ETest extends AbstractGitLabE2ETest {
         assertThat(cleanup.path("status").asText()).isEqualTo("DONE");
         assertThat(cleanup.path("items").get(0).path("metadata").path("cleanup.referencePolicy").asText()).isEqualTo("RETAIN");
 
-        System.out.println("Full lifecycle completed with real GitLab repo: " + cloneUrl);
+        System.out.println("Full lifecycle completed with isolated GitLab project: " + gitLabProjectId(repoId));
     }
 }

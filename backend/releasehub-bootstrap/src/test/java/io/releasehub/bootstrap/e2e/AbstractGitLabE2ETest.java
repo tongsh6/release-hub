@@ -1,5 +1,6 @@
 package io.releasehub.bootstrap.e2e;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.releasehub.application.run.RunPort;
 import io.releasehub.domain.run.Run;
@@ -15,9 +16,11 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -60,12 +63,17 @@ public abstract class AbstractGitLabE2ETest {
         return E2ETestFixtures.createGroup(mockMvc, token);
     }
 
-    protected String createRepo(String token, String groupCode) throws Exception {
-        return E2ETestFixtures.createRepo(mockMvc, objectMapper, token, groupCode);
-    }
+    private final Map<String, E2ETestFixtures.GitLabRepositoryFixture> gitLabProjects = new HashMap<>();
 
-    protected String createGitLabRepo(String token, String groupCode, String cloneUrl, String gitAccessToken) throws Exception {
-        return E2ETestFixtures.createGitLabRepo(mockMvc, objectMapper, token, groupCode, cloneUrl, gitAccessToken);
+    protected String createRepo(String token, String groupCode) throws Exception {
+        Map<String, String> environment = System.getenv();
+        var project = E2ETestFixtures.createIsolatedGitLabProject(gitLabClient, environment);
+        E2ETestFixtures.configureGitLabSettings(mockMvc, objectMapper, token,
+                environment.get("E2E_GITLAB_URL").replaceAll("/+$", ""), environment.get("E2E_GITLAB_TOKEN"));
+        String repoId = E2ETestFixtures.createGitLabRepo(mockMvc, objectMapper, token, groupCode,
+                project.cloneUrl(), environment.get("E2E_GITLAB_TOKEN"));
+        gitLabProjects.put(repoId, project);
+        return repoId;
     }
 
     protected String createIteration(String token, String groupCode) throws Exception {
@@ -123,6 +131,29 @@ public abstract class AbstractGitLabE2ETest {
     // ─── GitLab API 辅助（用于制造冲突场景） ───
 
     private static final RestTemplate gitLabClient = new RestTemplate();
+
+    /** 仅访问本测试通过 createRepo 新建的数字项目，不接受任意远端项目参数。 */
+    protected JsonNode gitLabRequest(String repoId, HttpMethod method, String projectPath, Map<String, ?> body) {
+        E2ETestFixtures.GitLabRepositoryFixture project = gitLabProjects.get(repoId);
+        if (project == null || !projectPath.startsWith("/")) {
+            throw new IllegalArgumentException("GitLab 证据查询必须指向本测试创建的仓库");
+        }
+        String baseUrl = System.getenv("E2E_GITLAB_URL").replaceAll("/+$", "");
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("PRIVATE-TOKEN", System.getenv("E2E_GITLAB_TOKEN"));
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        JsonNode response = gitLabClient.exchange(
+                URI.create(baseUrl + "/api/v4/projects/" + project.projectId() + projectPath),
+                method, new HttpEntity<>(body, headers), JsonNode.class).getBody();
+        assertThat(response).as("GitLab fixture 请求必须返回真实 JSON 证据").isNotNull();
+        return response;
+    }
+
+    protected String gitLabProjectId(String repoId) {
+        E2ETestFixtures.GitLabRepositoryFixture project = gitLabProjects.get(repoId);
+        assertThat(project).as("仓库必须由当前真实 GitLab fixture 创建").isNotNull();
+        return project.projectId();
+    }
 
     protected boolean gitLabCreateBranch(String gitlabBaseUrl, String token, String projectId,
                                           String branchName, String fromBranch) {

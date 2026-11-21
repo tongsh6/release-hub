@@ -1,5 +1,5 @@
 #!/bin/bash
-# SA-009 focused acceptance: removing an unpublished iteration repo archives its real GitLab feature branch.
+# SA-009 focused acceptance: iteration configuration never writes Git; removing a repo retains its existing feature branch.
 
 set -euo pipefail
 
@@ -56,32 +56,32 @@ gitlab_project_path_from_clone_url() {
 }
 
 gitlab_branch_state() {
-    local clone_url=$1
-    local branch=$2
-    local project_path
-    project_path=$(gitlab_project_path_from_clone_url "$clone_url")
-    local encoded_path
-    encoded_path=$(echo "$project_path" | gitlab_encode)
-    local encoded_branch
+    local clone_url=$1 branch=$2 output=${3:-state}
+    local encoded_path encoded_branch response
+    encoded_path=$(gitlab_project_path_from_clone_url "$clone_url" | gitlab_encode)
     encoded_branch=$(echo "$branch" | gitlab_encode)
-    local resp
-    resp=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_PAT" \
-        "$GITLAB/api/v4/projects/$encoded_path/repository/branches/$encoded_branch")
-    echo "$resp" | python3 -c "
-import sys,json
-branch = '''$branch'''
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    print('NON_JSON_RESPONSE')
-    raise SystemExit
-if isinstance(d, dict) and d.get('name') == branch:
-    print('FOUND')
-elif isinstance(d, dict) and d.get('message'):
-    print('NOT_FOUND')
+    response=$(curl -sS -w '\n%{http_code}' -H "PRIVATE-TOKEN: $GITLAB_PAT" \
+        "$GITLAB/api/v4/projects/$encoded_path/repository/branches/$encoded_branch") || { echo "UNAVAILABLE"; return; }
+    printf '%s' "$response" | python3 -c '
+import sys,json,re
+branch,output=sys.argv[1:]
+body,_,status=sys.stdin.read().rpartition("\n")
+if status=="404":
+    print("NOT_FOUND")
+elif status!="200":
+    print("HTTP_"+status)
 else:
-    print('UNKNOWN')
-"
+    try:
+        d=json.loads(body); sha=(d.get("commit") or {}).get("id","")
+        valid=d.get("name")==branch and re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}",sha)
+        print((sha if output=="sha" else "FOUND") if valid else "INVALID_REF_EVIDENCE")
+    except (ValueError,TypeError,AttributeError):
+        print("INVALID_REF_EVIDENCE")
+' "$branch" "$output"
+}
+
+gitlab_branch_sha() {
+    gitlab_branch_state "$1" "$2" sha
 }
 
 enabled_branch_rule_ids() {
@@ -102,16 +102,41 @@ create_acceptance_group() {
 }
 
 create_gitlab_project() {
-    local path=$1
-    local resp
-    resp=$(curl -s -X POST "$GITLAB/api/v4/projects" \
+    local path=$1 response
+    response=$(curl -sS -w '\n%{http_code}' -X POST "$GITLAB/api/v4/projects" \
         -H "PRIVATE-TOKEN: $GITLAB_PAT" \
-        --data-urlencode "name=$path" \
-        --data-urlencode "path=$path" \
-        --data-urlencode "visibility=private" \
-        --data-urlencode "initialize_with_readme=true" \
+        --data-urlencode "name=$path" --data-urlencode "path=$path" \
+        --data-urlencode "visibility=private" --data-urlencode "initialize_with_readme=true" \
         --data-urlencode "default_branch=main")
-    echo "$resp" | json_get "d.get('path_with_namespace','')"
+    printf '%s' "$response" | python3 -c '
+import sys,json
+body,_,status=sys.stdin.read().rpartition("\n")
+d=json.loads(body)
+assert status=="201" and isinstance(d.get("id"),int) and d["id"]>0
+assert d.get("path")==sys.argv[1] and d.get("path_with_namespace")
+print(str(d["id"])+"|"+d["path_with_namespace"])
+' "$path"
+}
+
+# Explicit external fixture in this script-created project; it is not an iteration action or a UI journey.
+prepare_feature_fixture() {
+    local project_id=$1 namespace=$2 branch=$3 identity response
+    identity=$(curl -sS -H "PRIVATE-TOKEN: $GITLAB_PAT" "$GITLAB/api/v4/projects/$project_id")
+    printf '%s' "$identity" | python3 -c '
+import sys,json
+d=json.load(sys.stdin)
+assert str(d.get("id"))==sys.argv[1] and d.get("path_with_namespace")==sys.argv[2]
+' "$project_id" "$namespace" || return 1
+    response=$(curl -sS -w '\n%{http_code}' -X POST \
+        "$GITLAB/api/v4/projects/$project_id/repository/branches" \
+        -H "PRIVATE-TOKEN: $GITLAB_PAT" --data-urlencode "branch=$branch" --data-urlencode "ref=main")
+    printf '%s' "$response" | python3 -c '
+import sys,json,re
+body,_,status=sys.stdin.read().rpartition("\n")
+d=json.loads(body); sha=(d.get("commit") or {}).get("id","")
+assert status=="201" and d.get("name")==sys.argv[1]
+assert re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}",sha)
+' "$branch"
 }
 
 create_repo_ref() {
@@ -163,7 +188,7 @@ assert_repo_present_in_iteration() {
     fi
 }
 
-echo -e "${CYAN}=== SA-009 Remove Repo GitLab archive evidence ===${NC}"
+echo -e "${CYAN}=== SA-009 Iteration configuration and retained GitLab branch evidence ===${NC}"
 
 if ! curl -s -o /dev/null "$BACKEND/actuator/health"; then
     no "后端未就绪: $BACKEND"
@@ -201,7 +226,8 @@ if [ -z "$GROUP_ID" ]; then
 fi
 ok "创建独立叶子分组: $GROUP_CODE"
 
-REMOVABLE_PROJECT=$(create_gitlab_project "sa009-removable-$TS")
+IFS='|' read -r REMOVABLE_PROJECT_ID REMOVABLE_PROJECT <<< "$(create_gitlab_project "sa009-removable-$TS")"
+[ -n "$REMOVABLE_PROJECT_ID" ] && [ -n "$REMOVABLE_PROJECT" ] || { no "创建独立 GitLab 项目失败"; exit 1; }
 REMOVABLE_CLONE="http://localhost:9080/${REMOVABLE_PROJECT}.git"
 REMOVABLE_REPO_ID=$(create_repo_ref "SA-009 可移除仓库 $TS" "$REMOVABLE_CLONE" "$GROUP_CODE")
 if [ -z "$REMOVABLE_REPO_ID" ]; then
@@ -226,12 +252,21 @@ else
     no "未取得 featureBranch: $REMOVABLE_VINFO"
 fi
 
-STATE_BEFORE=$(gitlab_branch_state "$REMOVABLE_CLONE" "$REMOVABLE_FEATURE")
-if [ "$STATE_BEFORE" = "FOUND" ]; then
-    ok "移除前 GitLab 原 feature 分支存在: $REMOVABLE_FEATURE"
+CONFIG_STATE=$(gitlab_branch_state "$REMOVABLE_CLONE" "$REMOVABLE_FEATURE")
+if [ "$CONFIG_STATE" = "NOT_FOUND" ]; then
+    ok "创建迭代只保存计划，未创建 GitLab feature: $REMOVABLE_FEATURE"
 else
-    no "移除前 GitLab 原 feature 分支状态异常: $STATE_BEFORE"
+    no "迭代配置意外写 Git 或读取证据异常: $CONFIG_STATE"
+    exit 1
 fi
+prepare_feature_fixture "$REMOVABLE_PROJECT_ID" "$REMOVABLE_PROJECT" "$REMOVABLE_FEATURE" \
+    || { no "无法在已确认项目准备已有分支 fixture"; exit 1; }
+SHA_BEFORE=$(gitlab_branch_sha "$REMOVABLE_CLONE" "$REMOVABLE_FEATURE")
+ARCHIVE_BEFORE=$(gitlab_branch_state "$REMOVABLE_CLONE" "$REMOVABLE_ARCHIVE")
+[[ "$SHA_BEFORE" =~ ^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$ ]] \
+    && [ "$ARCHIVE_BEFORE" = "NOT_FOUND" ] \
+    || { no "移除前分支/SHA/归档证据不完整"; exit 1; }
+ok "外部 fixture 已准备；未挂窗原 feature 分支及 SHA 已确认"
 
 REMOVE_RESP=$(api POST "/api/v1/iterations/$REMOVABLE_ITER/repos/remove" "{\"repoIds\":[\"$REMOVABLE_REPO_ID\"]}")
 REMOVE_SUCCESS=$(echo "$REMOVE_RESP" | json_get "d.get('success', False)")
@@ -243,20 +278,21 @@ fi
 
 assert_repo_absent_from_iteration "$REMOVABLE_ITER" "$REMOVABLE_REPO_ID"
 
-STATE_AFTER=$(gitlab_branch_state "$REMOVABLE_CLONE" "$REMOVABLE_FEATURE")
+SHA_AFTER=$(gitlab_branch_sha "$REMOVABLE_CLONE" "$REMOVABLE_FEATURE")
 ARCHIVE_STATE=$(gitlab_branch_state "$REMOVABLE_CLONE" "$REMOVABLE_ARCHIVE")
-if [ "$STATE_AFTER" = "NOT_FOUND" ]; then
-    ok "移除后 GitLab 原 feature 分支不再活跃: $REMOVABLE_FEATURE"
+if [ "$SHA_AFTER" = "$SHA_BEFORE" ]; then
+    ok "移除后原 feature 分支保留且 SHA 不变: $REMOVABLE_FEATURE"
 else
-    no "移除后 GitLab 原 feature 分支仍异常: $STATE_AFTER"
+    no "移除后 feature 分支被更改或读取证据异常: $SHA_AFTER"
 fi
-if [ "$ARCHIVE_STATE" = "FOUND" ]; then
-    ok "移除后 GitLab 归档分支存在: $REMOVABLE_ARCHIVE"
+if [ "$ARCHIVE_STATE" = "NOT_FOUND" ]; then
+    ok "移除没有产生归档分支: $REMOVABLE_ARCHIVE"
 else
-    no "移除后 GitLab 归档分支状态异常: $ARCHIVE_STATE"
+    no "移除意外归档或读取证据异常: $ARCHIVE_STATE"
 fi
 
-LOCKED_PROJECT=$(create_gitlab_project "sa009-locked-$TS")
+IFS='|' read -r LOCKED_PROJECT_ID LOCKED_PROJECT <<< "$(create_gitlab_project "sa009-locked-$TS")"
+[ -n "$LOCKED_PROJECT_ID" ] && [ -n "$LOCKED_PROJECT" ] || { no "创建挂窗 fixture 项目失败"; exit 1; }
 LOCKED_CLONE="http://localhost:9080/${LOCKED_PROJECT}.git"
 LOCKED_REPO_ID=$(create_repo_ref "SA-009 挂窗仓库 $TS" "$LOCKED_CLONE" "$GROUP_CODE")
 if [ -z "$LOCKED_REPO_ID" ]; then
@@ -275,12 +311,15 @@ ok "创建挂窗迭代: $LOCKED_ITER"
 LOCKED_VINFO=$(api GET "/api/v1/iterations/$LOCKED_ITER/repos/$LOCKED_REPO_ID/version-info")
 LOCKED_FEATURE=$(echo "$LOCKED_VINFO" | json_get "((d.get('data') or {}).get('featureBranch') or '')")
 LOCKED_ARCHIVE=$(archive_branch_name "$LOCKED_FEATURE")
-LOCKED_BEFORE=$(gitlab_branch_state "$LOCKED_CLONE" "$LOCKED_FEATURE")
-if [ "$LOCKED_BEFORE" = "FOUND" ]; then
-    ok "挂窗前 GitLab 原 feature 分支存在: $LOCKED_FEATURE"
-else
-    no "挂窗前 GitLab 原 feature 分支状态异常: $LOCKED_BEFORE"
-fi
+LOCKED_CONFIG_STATE=$(gitlab_branch_state "$LOCKED_CLONE" "$LOCKED_FEATURE")
+[ "$LOCKED_CONFIG_STATE" = "NOT_FOUND" ] \
+    || { no "挂窗 fixture 的迭代配置意外写 Git: $LOCKED_CONFIG_STATE"; exit 1; }
+ok "挂窗前创建迭代仍未写 Git"
+prepare_feature_fixture "$LOCKED_PROJECT_ID" "$LOCKED_PROJECT" "$LOCKED_FEATURE" \
+    || { no "无法准备挂窗保护的已有分支 fixture"; exit 1; }
+LOCKED_SHA_BEFORE=$(gitlab_branch_sha "$LOCKED_CLONE" "$LOCKED_FEATURE")
+[[ "$LOCKED_SHA_BEFORE" =~ ^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$ ]] \
+    || { no "挂窗前 feature SHA 证据不完整"; exit 1; }
 
 WINDOW_RESP=$(api POST "/api/v1/release-windows" "{\"name\":\"SA-009 挂窗保护 $TS\",\"description\":\"SA-009 remove repo lock evidence\",\"groupCode\":\"$GROUP_CODE\"}")
 WINDOW_ID=$(echo "$WINDOW_RESP" | json_get "((d.get('data') or {}).get('id') or '')")
@@ -308,10 +347,10 @@ fi
 
 assert_repo_present_in_iteration "$LOCKED_ITER" "$LOCKED_REPO_ID"
 
-LOCKED_AFTER=$(gitlab_branch_state "$LOCKED_CLONE" "$LOCKED_FEATURE")
+LOCKED_AFTER=$(gitlab_branch_sha "$LOCKED_CLONE" "$LOCKED_FEATURE")
 LOCKED_ARCHIVE_STATE=$(gitlab_branch_state "$LOCKED_CLONE" "$LOCKED_ARCHIVE")
-if [ "$LOCKED_AFTER" = "FOUND" ]; then
-    ok "拒绝移除后 GitLab 原 feature 分支仍活跃: $LOCKED_FEATURE"
+if [ "$LOCKED_AFTER" = "$LOCKED_SHA_BEFORE" ]; then
+    ok "拒绝移除后 GitLab 原 feature 分支保留且 SHA 不变: $LOCKED_FEATURE"
 else
     no "拒绝移除后 GitLab 原 feature 分支状态异常: $LOCKED_AFTER"
 fi

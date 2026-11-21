@@ -2,12 +2,18 @@ package io.releasehub.bootstrap.e2e;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -21,6 +27,75 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public final class E2ETestFixtures {
 
     private E2ETestFixtures() {}
+
+    /** 此值只保存本次 E2E 新建远端的身份，不携带凭据。 */
+    record GitLabRepositoryFixture(String projectId, String cloneUrl) {}
+
+    /**
+     * 真实 E2E 的外部 fixture：每个本地仓库独占一个新 GitLab 项目。
+     * 配置必须来自 init-gitlab.sh 导出的专用测试环境，禁止退回示例 URL 或匿名访问。
+     */
+    static GitLabRepositoryFixture createIsolatedGitLabProject(
+            RestTemplate client, Map<String, String> environment) {
+        String endpoint = requiredEnvironment(environment, "E2E_GITLAB_URL");
+        String accessToken = requiredEnvironment(environment, "E2E_GITLAB_TOKEN");
+        String username = requiredEnvironment(environment, "E2E_GITLAB_USER");
+        URI base;
+        try {
+            base = URI.create(endpoint);
+        } catch (IllegalArgumentException error) {
+            throw new IllegalStateException("E2E_GITLAB_URL 必须是无凭据的 HTTP(S) 地址");
+        }
+        if (!("http".equals(base.getScheme()) || "https".equals(base.getScheme()))
+                || base.getHost() == null || base.getRawUserInfo() != null
+                || base.getRawQuery() != null || base.getRawFragment() != null) {
+            throw new IllegalStateException("E2E_GITLAB_URL 必须是无凭据的 HTTP(S) 地址");
+        }
+        if (!username.matches("[A-Za-z0-9][A-Za-z0-9_.-]*")) {
+            throw new IllegalStateException("E2E_GITLAB_USER 必须是专用测试账号的用户名");
+        }
+        String baseUrl = endpoint.replaceAll("/+$", "");
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("PRIVATE-TOKEN", accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        JsonNode account = client.exchange(URI.create(baseUrl + "/api/v4/user"), HttpMethod.GET,
+                new HttpEntity<>(headers), JsonNode.class).getBody();
+        if (account == null || !username.equals(account.path("username").asText())) {
+            throw new IllegalStateException("GitLab 当前账号与 E2E_GITLAB_USER 不一致，未创建测试项目");
+        }
+
+        String path = "releasehub-e2e-" + UUID.randomUUID();
+        Map<String, Object> request = Map.of(
+                "name", path, "path", path, "visibility", "private",
+                "initialize_with_readme", true, "default_branch", "main", "auto_devops_enabled", false);
+        JsonNode project = client.exchange(URI.create(baseUrl + "/api/v4/projects"), HttpMethod.POST,
+                new HttpEntity<>(request, headers), JsonNode.class).getBody();
+        String fullPath = username + "/" + path;
+        if (project == null || !project.path("id").isIntegralNumber() || project.path("id").asLong() <= 0
+                || !path.equals(project.path("path").asText())
+                || !fullPath.equals(project.path("path_with_namespace").asText())
+                || !"main".equals(project.path("default_branch").asText())) {
+            throw new IllegalStateException("GitLab 新建项目的身份或默认分支未得到确认");
+        }
+        String projectId = project.path("id").asText();
+        JsonNode main = client.exchange(
+                URI.create(baseUrl + "/api/v4/projects/" + projectId + "/repository/branches/main"),
+                HttpMethod.GET, new HttpEntity<>(headers), JsonNode.class).getBody();
+        if (main == null || !"main".equals(main.path("name").asText())
+                || main.path("commit").path("id").asText().isBlank()) {
+            throw new IllegalStateException("GitLab 新建项目尚无已确认的 main 提交");
+        }
+        // external_url 可能是容器外别名；沿用 seed 脚本的 E2E 可达地址及已核实项目路径。
+        return new GitLabRepositoryFixture(projectId, baseUrl + "/" + fullPath + ".git");
+    }
+
+    private static String requiredEnvironment(Map<String, String> environment, String key) {
+        String value = environment.get(key);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException(key + " 未设置，请先运行 scripts/e2e/init-gitlab.sh 并加载其环境文件");
+        }
+        return value;
+    }
 
     public static String loginAndGetToken(MockMvc mockMvc, ObjectMapper objectMapper) throws Exception {
         String body = "{\"username\":\"admin\",\"password\":\"admin\"}";
@@ -61,6 +136,22 @@ public final class E2ETestFixtures {
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString())
                 .get("data").get("id").asText();
+    }
+
+    /** 仅在专用 E2E 账号与隔离项目已核验后调用，校准安全门读取的持久设置。 */
+    static void configureGitLabSettings(MockMvc mockMvc, ObjectMapper objectMapper, String token,
+                                        String baseUrl, String gitAccessToken) throws Exception {
+        mockMvc.perform(post("/api/v1/settings/gitlab")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "baseUrl", baseUrl, "token", gitAccessToken))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(true));
+        mockMvc.perform(get("/api/v1/settings/gitlab")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.baseUrl").value(baseUrl));
     }
 
     /**

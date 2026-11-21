@@ -258,9 +258,12 @@ orchestrate_selected() {
     local window_id=$1
     local repo_ids=$2
     local iteration_key=$3
+    # 同一场景重发保留原 key；需要新的执行意图时由调用者显式传第 4 参数。
+    local request_key=${4:-"acceptance-selected-$TS-$window_id-$iteration_key"}
     local response
     response=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$window_id/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
-        -d "{\"repoIds\":$repo_ids,\"iterationKeys\":[\"$iteration_key\"],\"failFast\":true,\"operator\":\"acceptance\"}")
+        -H "Idempotency-Key: $request_key" \
+        -d "{\"repoIds\":$repo_ids,\"iterationKeys\":[\"$iteration_key\"],\"failFast\":true}")
     echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data','') if d.get('success') else '')"
 }
 
@@ -322,39 +325,30 @@ gitlab_project_path_from_clone_url() {
 }
 
 gitlab_branch_state() {
-    local clone_url=$1
-    local branch=$2
+    local clone_url=$1 branch=$2 output=${3:-state}
     local gl_token="${GITLAB_PAT:-}"
-    if [ -z "$gl_token" ] || [ "$gl_token" = "null" ]; then
-        echo "MISSING_TOKEN"
-        return 1
-    fi
-
-    local project_path
-    project_path=$(gitlab_project_path_from_clone_url "$clone_url")
-    local encoded_path
-    encoded_path=$(echo "$project_path" | gitlab_encode)
-    local encoded_branch
+    [ -n "$gl_token" ] && [ "$gl_token" != "null" ] || { echo "MISSING_TOKEN"; return 1; }
+    local encoded_path encoded_branch response
+    encoded_path=$(gitlab_project_path_from_clone_url "$clone_url" | gitlab_encode)
     encoded_branch=$(echo "$branch" | gitlab_encode)
-    local resp
-    resp=$(curl -s -H "PRIVATE-TOKEN: $gl_token" \
-        "$GITLAB/api/v4/projects/$encoded_path/repository/branches/$encoded_branch")
-
-    echo "$resp" | python3 -c "
-import sys,json
-branch = '''$branch'''
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    print('NON_JSON_RESPONSE')
-    sys.exit(0)
-if isinstance(d, dict) and d.get('name') == branch:
-    print('FOUND')
-elif isinstance(d, dict) and str(d.get('message','')).startswith('404'):
-    print('NOT_FOUND')
+    response=$(curl -sS -w '\n%{http_code}' -H "PRIVATE-TOKEN: $gl_token" \
+        "$GITLAB/api/v4/projects/$encoded_path/repository/branches/$encoded_branch") || { echo "UNAVAILABLE"; return; }
+    printf '%s' "$response" | python3 -c '
+import sys,json,re
+branch,output=sys.argv[1:]
+body,_,status=sys.stdin.read().rpartition("\n")
+if status=="404":
+    print("NOT_FOUND")
+elif status!="200":
+    print("HTTP_"+status)
 else:
-    print('UNKNOWN')
-"
+    try:
+        d=json.loads(body); sha=(d.get("commit") or {}).get("id","")
+        valid=d.get("name")==branch and re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}",sha)
+        print((sha if output=="sha" else "FOUND") if valid else "INVALID_REF_EVIDENCE")
+    except (ValueError,TypeError,AttributeError):
+        print("INVALID_REF_EVIDENCE")
+' "$branch" "$output"
 }
 
 gitlab_tag_state() {
@@ -393,24 +387,6 @@ else:
 "
 }
 
-gitlab_delete_branch() {
-    local clone_url=$1
-    local branch=$2
-    local gl_token="${GITLAB_PAT:-}"
-    if [ -z "$gl_token" ] || [ "$gl_token" = "null" ]; then
-        echo "MISSING_TOKEN"
-        return 1
-    fi
-
-    local project_path
-    project_path=$(gitlab_project_path_from_clone_url "$clone_url")
-    local encoded_path
-    encoded_path=$(echo "$project_path" | gitlab_encode)
-    local encoded_branch
-    encoded_branch=$(echo "$branch" | gitlab_encode)
-    curl -s -o /dev/null -w "%{http_code}" -X DELETE -H "PRIVATE-TOKEN: $gl_token" \
-        "$GITLAB/api/v4/projects/$encoded_path/repository/branches/$encoded_branch"
-}
 
 gitlab_create_branch() {
     local clone_url=$1
@@ -822,18 +798,22 @@ WINDOW_RESP=$(curl -s -X POST "$BACKEND/api/v1/release-windows" -H "$AUTH" -H "C
 WINDOW_ID=$(echo "$WINDOW_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('id', ''))")
 [ -n "$WINDOW_ID" ] && ok "创建窗口: 验收-$TS" || { no "创建窗口失败: $WINDOW_RESP"; exit 1; }
 
-# 3.5 创建迭代
+# 3.5 保存迭代与仓库配置（不写 Git）
 REPO_JSON="[\"$R1\",\"$R2\",\"$R3\"]"
 ITER_RESP=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"name\":\"验收迭代-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":$REPO_JSON}")
 ITER_KEY=$(echo "$ITER_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))")
 [ -n "$ITER_KEY" ] && ok "创建迭代: $ITER_KEY" || { no "创建迭代失败: $ITER_RESP"; exit 1; }
 
-# 3.6 创建 feature 分支
+# 3.6 外部 GitLab fixture：为后续集成准备 feature 提交，不是迭代配置副作用
 if [ "$GITLAB_READY" = "true" ] && [ -n "$E2E_GITLAB_TOKEN" ] && [ -n "$ITER_KEY" ]; then
     FEATURE_BRANCH="feature/${ITER_KEY}"
-    h2 "3.6 创建 feature 分支: $FEATURE_BRANCH"
+    h2 "3.6 准备外部 feature 提交 fixture: $FEATURE_BRANCH"
     for repo_path in e2e-user/seed-repo-1-maven e2e-user/seed-repo-2-maven-multi e2e-user/seed-repo-3-gradle; do
+        CONFIG_FEATURE_STATE=$(gitlab_branch_state "http://localhost:9080/${repo_path}.git" "$FEATURE_BRANCH")
+        [ "$CONFIG_FEATURE_STATE" = "NOT_FOUND" ] \
+            && ok "迭代配置未创建远端 feature: $repo_path" \
+            || { no "迭代配置写 Git 或读取证据异常: $CONFIG_FEATURE_STATE"; exit 1; }
         CLONE_URL="http://oauth2:${E2E_GITLAB_TOKEN}@localhost:9080/${repo_path}.git"
         TMP_CLONE="/tmp/e2e-feature-$(echo $repo_path | tr '/' '-')"
         rm -rf "$TMP_CLONE"
@@ -850,7 +830,7 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$E2E_GITLAB_TOKEN" ] && [ -n "$ITER_KEY
         cd "$PROJECT_ROOT"
         rm -rf "$TMP_CLONE"
     done
-    ok "Feature 分支已就绪"
+    ok "外部 Feature 提交 fixture 已就绪；真实集成由后续 Orchestrate 验证"
 else
     skip "跳过 Feature 分支创建 (MOCK_MODE or missing key)"
 fi
@@ -1026,6 +1006,18 @@ if [ -n "$CLEAN_WINDOW_ID" ]; then
         CLEAN_ADD=$(curl -s -X POST "$BACKEND/api/v1/iterations/$CLEAN_ITER_KEY/repos/add" -H "$AUTH" -H "Content-Type: application/json"             -d "{\"repoIds\":[\"$R1\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"$CLEAN_BRANCH\"}")
         CLEAN_ADD_OK=$(echo "$CLEAN_ADD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success', False))")
         [ "$CLEAN_ADD_OK" = "True" ] && ok "干净迭代 addRepos 成功" || warn "干净迭代 addRepos 部分失败"
+        if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+            CLEAN_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))")
+            CLEAN_CONFIG_STATE=$(gitlab_branch_state "$CLEAN_REPO_URL" "$CLEAN_BRANCH")
+            [ "$CLEAN_CONFIG_STATE" = "NOT_FOUND" ] \
+                || { no "干净迭代配置意外写 Git 或读取异常: $CLEAN_CONFIG_STATE"; exit 1; }
+            # SA-012 的编排前版本冲突检查需要已有 feature；显式准备外部 fixture。
+            CLEAN_FIXTURE_STATUS=$(gitlab_create_branch "$CLEAN_REPO_URL" "$CLEAN_BRANCH" main)
+            [ "$CLEAN_FIXTURE_STATUS" = "201" ] \
+                || { no "干净窗口 feature fixture 创建失败: $CLEAN_FIXTURE_STATUS"; exit 1; }
+            ok "NAMED 配置零 Git 写；编排前检查所需 feature fixture 已单独准备"
+        fi
 
         # 5.2.4 Attach 到干净窗口
         CLEAN_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$CLEAN_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json"             -d "{\"iterationKeys\":[\"$CLEAN_ITER_KEY\"]}")
@@ -1093,7 +1085,9 @@ for c in json.load(sys.stdin).get("data",{}).get("conflicts",[]):
 
             # 5.2.9 Orchestrate → 应有 items > 0
             sleep 2
-            CLEAN_ORCH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$CLEAN_WINDOW_ID/orchestrate" -H "$AUTH" -H "Content-Type: application/json"                 -d "{\"repoIds\":[\"$R1\"],\"iterationKeys\":[\"$CLEAN_ITER_KEY\"],\"failFast\":false,\"operator\":\"acceptance-clean-$CLEAN_TS\"}")
+            CLEAN_ORCH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$CLEAN_WINDOW_ID/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
+                -H "Idempotency-Key: acceptance-clean-$CLEAN_TS-$CLEAN_WINDOW_ID" \
+                -d "{\"repoIds\":[\"$R1\"],\"iterationKeys\":[\"$CLEAN_ITER_KEY\"],\"failFast\":false}")
             CLEAN_ORCH_OK=$(echo "$CLEAN_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))")
             if [ "$CLEAN_ORCH_OK" = "True" ]; then
                 CLEAN_RUN_ID=$(echo "$CLEAN_ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin)['data'])")
@@ -1166,18 +1160,10 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
         MISSING_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
             | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
         MISSING_FEATURE_BRANCH="feature/$MISSING_ITER_KEY"
-        MISSING_FEATURE_BEFORE=$(gitlab_branch_state "$MISSING_REPO_URL" "$MISSING_FEATURE_BRANCH")
-        [ "$MISSING_FEATURE_BEFORE" = "FOUND" ] && ok "GitLab feature 分支已由迭代创建: $MISSING_FEATURE_BRANCH" || warn "删除前 GitLab feature 分支状态: $MISSING_FEATURE_BEFORE"
-
-        DELETE_STATUS=$(gitlab_delete_branch "$MISSING_REPO_URL" "$MISSING_FEATURE_BRANCH")
-        if [ "$DELETE_STATUS" = "204" ] || [ "$DELETE_STATUS" = "200" ] || [ "$DELETE_STATUS" = "404" ]; then
-            ok "已制造本轮 feature 缺失 GitLab 状态: $MISSING_FEATURE_BRANCH (delete=$DELETE_STATUS)"
-        else
-            warn "删除 feature 分支返回异常状态: $DELETE_STATUS"
-        fi
-
         MISSING_FEATURE_AFTER=$(gitlab_branch_state "$MISSING_REPO_URL" "$MISSING_FEATURE_BRANCH")
-        [ "$MISSING_FEATURE_AFTER" = "NOT_FOUND" ] && ok "GitLab 直查确认 feature 分支不存在: $MISSING_FEATURE_BRANCH" || no "GitLab 直查 feature 分支状态异常: $MISSING_FEATURE_AFTER"
+        [ "$MISSING_FEATURE_AFTER" = "NOT_FOUND" ] \
+            && ok "迭代纯配置后 feature 尚不存在，后续显式编排负责创建: $MISSING_FEATURE_BRANCH" \
+            || no "迭代配置写 Git 或 feature 读取证据异常: $MISSING_FEATURE_AFTER"
 
         MISSING_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$MISSING_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
             -d "{\"iterationKeys\":[\"$MISSING_ITER_KEY\"]}")
@@ -1625,8 +1611,9 @@ print("{}|{}|{}|{}".format(
                 | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
             CROSS_R1_FEATURE_STATE=$(gitlab_branch_state "$CROSS_REPO_URL_1" "$CROSS_R1_FEATURE")
             CROSS_R2_FEATURE_STATE=$(gitlab_branch_state "$CROSS_REPO_URL_2" "$CROSS_R2_FEATURE")
-            [ "$CROSS_R1_FEATURE_STATE" = "FOUND" ] && ok "GitLab 直查确认 R1 feature 分支存在: $CROSS_R1_FEATURE" || no "R1 feature 分支状态异常: $CROSS_R1_FEATURE_STATE"
-            [ "$CROSS_R2_FEATURE_STATE" = "FOUND" ] && ok "GitLab 直查确认 R2 feature 分支存在: $CROSS_R2_FEATURE" || no "R2 feature 分支状态异常: $CROSS_R2_FEATURE_STATE"
+            [ "$CROSS_R1_FEATURE_STATE" = "NOT_FOUND" ] && [ "$CROSS_R2_FEATURE_STATE" = "NOT_FOUND" ] \
+                && ok "跨仓版本配置未创建 feature，等待显式 Orchestrate" \
+                || { no "跨仓配置意外写 Git 或读取异常"; exit 1; }
 
             CROSS_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$CROSS_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
                 -d "{\"iterationKeys\":[\"$CROSS_ITER_KEY\"]}")
@@ -1643,6 +1630,11 @@ print(bool(d.get('success', False)))
             else
                 no "显式编排未返回 Run"
             fi
+
+            CROSS_R1_FEATURE_STATE=$(gitlab_branch_state "$CROSS_REPO_URL_1" "$CROSS_R1_FEATURE")
+            CROSS_R2_FEATURE_STATE=$(gitlab_branch_state "$CROSS_REPO_URL_2" "$CROSS_R2_FEATURE")
+            [ "$CROSS_R1_FEATURE_STATE" = "FOUND" ] && ok "显式编排后 GitLab 直查确认 R1 feature 分支存在: $CROSS_R1_FEATURE" || no "R1 feature 分支状态异常: $CROSS_R1_FEATURE_STATE"
+            [ "$CROSS_R2_FEATURE_STATE" = "FOUND" ] && ok "显式编排后 GitLab 直查确认 R2 feature 分支存在: $CROSS_R2_FEATURE" || no "R2 feature 分支状态异常: $CROSS_R2_FEATURE_STATE"
 
             CROSS_RELEASE_BRANCH="release/$CROSS_WINDOW_KEY"
             CROSS_R1_RELEASE_STATE=$(gitlab_branch_state "$CROSS_REPO_URL_1" "$CROSS_RELEASE_BRANCH")
@@ -1763,8 +1755,14 @@ print("{}|{}|{}|{}".format(
                 | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
             VERSION_CLASS_R1_FEATURE_STATE=$(gitlab_branch_state "$VERSION_CLASS_REPO_URL_1" "$VERSION_CLASS_R1_FEATURE")
             VERSION_CLASS_R2_FEATURE_STATE=$(gitlab_branch_state "$VERSION_CLASS_REPO_URL_2" "$VERSION_CLASS_R2_FEATURE")
-            [ "$VERSION_CLASS_R1_FEATURE_STATE" = "FOUND" ] && ok "GitLab 直查确认 REPO_AHEAD feature 分支存在: $VERSION_CLASS_R1_FEATURE" || no "REPO_AHEAD feature 分支状态异常: $VERSION_CLASS_R1_FEATURE_STATE"
-            [ "$VERSION_CLASS_R2_FEATURE_STATE" = "FOUND" ] && ok "GitLab 直查确认 SYSTEM_AHEAD feature 分支存在: $VERSION_CLASS_R2_FEATURE" || no "SYSTEM_AHEAD feature 分支状态异常: $VERSION_CLASS_R2_FEATURE_STATE"
+            [ "$VERSION_CLASS_R1_FEATURE_STATE" = "NOT_FOUND" ] && [ "$VERSION_CLASS_R2_FEATURE_STATE" = "NOT_FOUND" ] \
+                || { no "版本领先配置意外写 Git 或读取异常"; exit 1; }
+            # 版本差异需要先写入 feature；这是明确的外部 fixture，后续仅编排一次。
+            VERSION_CLASS_CREATE_R1=$(gitlab_create_branch "$VERSION_CLASS_REPO_URL_1" "$VERSION_CLASS_R1_FEATURE" main)
+            VERSION_CLASS_CREATE_R2=$(gitlab_create_branch "$VERSION_CLASS_REPO_URL_2" "$VERSION_CLASS_R2_FEATURE" main)
+            [ "$VERSION_CLASS_CREATE_R1" = "201" ] && [ "$VERSION_CLASS_CREATE_R2" = "201" ] \
+                || { no "版本领先外部 feature fixture 创建失败"; exit 1; }
+            ok "版本领先配置零 Git 写，所需外部 feature fixture 已明确准备"
 
             VERSION_CLASS_REPO_AHEAD_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>repo-ahead</artifactId><version>1.2.0-SNAPSHOT</version></project>"
             VERSION_CLASS_SYSTEM_AHEAD_POM="<project><modelVersion>4.0.0</modelVersion><groupId>io.releasehub.acceptance</groupId><artifactId>system-ahead</artifactId><version>1.0.0-SNAPSHOT</version></project>"
@@ -2009,7 +2007,8 @@ else:
 
             if [ "$PARTIAL_EVIDENCE_RUN_ID" != "MISSING_RUN" ] && [ -n "$PARTIAL_RETRY_KEY" ]; then
                 PARTIAL_RETRY_RESP=$(curl -s -X POST "$BACKEND/api/v1/runs/$PARTIAL_EVIDENCE_RUN_ID/retry" -H "$AUTH" -H "Content-Type: application/json" \
-                    -d "{\"items\":[\"$PARTIAL_RETRY_KEY\"],\"operator\":\"acceptance-partial-retry-$PARTIAL_TS\"}")
+                    -H "Idempotency-Key: acceptance-retry-$PARTIAL_TS-$PARTIAL_EVIDENCE_RUN_ID" \
+                    -d "{\"items\":[\"$PARTIAL_RETRY_KEY\"]}")
                 PARTIAL_RETRY_RUN_ID=$(echo "$PARTIAL_RETRY_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',''))" 2>/dev/null)
                 if [ -n "$PARTIAL_RETRY_RUN_ID" ]; then
                     ok "Run retry 已创建新 Run: $PARTIAL_RETRY_RUN_ID"
@@ -2071,7 +2070,8 @@ fi
 # 手动编排
 sleep 2
 ORCH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$WINDOW_ID/orchestrate" -H "$AUTH" -H "Content-Type: application/json" \
-    -d "{\"repoIds\":[\"$R1\",\"$R2\",\"$R3\"],\"iterationKeys\":[\"$ITER_KEY\"],\"failFast\":false,\"operator\":\"acceptance-$TS\"}")
+    -H "Idempotency-Key: acceptance-final-$TS-$WINDOW_ID" \
+    -d "{\"repoIds\":[\"$R1\",\"$R2\",\"$R3\"],\"iterationKeys\":[\"$ITER_KEY\"],\"failFast\":false}")
 ORCH_SUCCESS=$(echo "$ORCH" | python3 -c "import sys,json; print(json.load(sys.stdin)['success'])" 2>/dev/null)
 
 if [ "$ORCH_SUCCESS" = "True" ]; then
@@ -2233,6 +2233,12 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
             no "SA-014 Maven 多模块 addRepos 失败: $SA14_MULTI_ADD"
         else
             SA14_MULTI_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R2" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))")
+            MULTI_CONFIG_STATE=$(gitlab_branch_state "$SA14_MULTI_REPO_URL" "$SA14_MULTI_BRANCH")
+            [ "$MULTI_CONFIG_STATE" = "NOT_FOUND" ] \
+                || { no "Maven 配置意外创建 feature 或读取异常: $MULTI_CONFIG_STATE"; exit 1; }
+            MULTI_FEATURE_STATUS=$(gitlab_create_branch "$SA14_MULTI_REPO_URL" "$SA14_MULTI_BRANCH" main)
+            [ "$MULTI_FEATURE_STATUS" = "201" ] \
+                || { no "Maven 多模块外部 feature fixture 创建失败: $MULTI_FEATURE_STATUS"; exit 1; }
             SA14_MULTI_PARENT_POM='<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.e2e</groupId><artifactId>seed-repo-2-parent</artifactId><version>2.2.0-SNAPSHOT</version><packaging>pom</packaging><modules><module>module-a</module><module>module-b</module></modules></project>'
             SA14_MULTI_MODULE_A_POM='<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><parent><groupId>com.e2e</groupId><artifactId>seed-repo-2-parent</artifactId><version>2.2.0-SNAPSHOT</version></parent><artifactId>module-a</artifactId></project>'
             SA14_MULTI_MODULE_B_POM='<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><parent><groupId>com.e2e</groupId><artifactId>seed-repo-2-parent</artifactId><version>2.2.0-SNAPSHOT</version></parent><artifactId>module-b</artifactId><version>2.2.0-SNAPSHOT</version></project>'
@@ -2253,14 +2259,13 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
             else
                 SA14_MULTI_WINDOW_KEY=$(curl -s "$BACKEND/api/v1/release-windows/$SA14_MULTI_WINDOW_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))" 2>/dev/null)
                 SA14_MULTI_RELEASE_BRANCH="release/$SA14_MULTI_WINDOW_KEY"
-                MULTI_RELEASE_ROOT_STATUS=$(gitlab_upsert_file "$SA14_MULTI_REPO_URL" "$SA14_MULTI_RELEASE_BRANCH" "pom.xml" "$SA14_MULTI_PARENT_POM" "ReleaseHub acceptance: prepare multi parent release $SA14_MULTI_TS")
-                MULTI_RELEASE_A_STATUS=$(gitlab_upsert_file "$SA14_MULTI_REPO_URL" "$SA14_MULTI_RELEASE_BRANCH" "module-a/pom.xml" "$SA14_MULTI_MODULE_A_POM" "ReleaseHub acceptance: upsert module-a release $SA14_MULTI_TS")
-                MULTI_RELEASE_B_STATUS=$(gitlab_upsert_file "$SA14_MULTI_REPO_URL" "$SA14_MULTI_RELEASE_BRANCH" "module-b/pom.xml" "$SA14_MULTI_MODULE_B_POM" "ReleaseHub acceptance: upsert module-b release $SA14_MULTI_TS")
-                if [ "$MULTI_RELEASE_ROOT_STATUS" = "201" ] && [ "$MULTI_RELEASE_A_STATUS" = "201" ] && [ "$MULTI_RELEASE_B_STATUS" = "201" ]; then
-                    ok "SA-014 Maven 多模块 release fixture 已就绪: $SA14_MULTI_RELEASE_BRANCH"
-                else
-                    no "SA-014 Maven 多模块 release fixture 提交异常: root=$MULTI_RELEASE_ROOT_STATUS module-a=$MULTI_RELEASE_A_STATUS module-b=$MULTI_RELEASE_B_STATUS"
-                fi
+                SA14_MULTI_ORCH_RUN_ID=$(orchestrate_selected "$SA14_MULTI_WINDOW_ID" "[\"$R2\"]" "$SA14_MULTI_ITER_KEY")
+                [ -n "$SA14_MULTI_ORCH_RUN_ID" ] \
+                    || { no "Maven 多模块显式编排未返回 Run"; exit 1; }
+                SA14_MULTI_ORCH_STATUS=$(wait_for_run "$SA14_MULTI_ORCH_RUN_ID" 45)
+                is_run_success "$SA14_MULTI_ORCH_STATUS" \
+                    || { no "Maven 多模块显式集成失败: $SA14_MULTI_ORCH_STATUS"; exit 1; }
+                ok "显式 Orchestrate 已将多模块 feature fixture 集成到 release: $SA14_MULTI_RELEASE_BRANCH"
 
                 SA14_MULTI_UPDATE=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA14_MULTI_WINDOW_ID/execute/version-update" -H "$AUTH" -H "Content-Type: application/json" \
                     -d "{\"repoId\":\"$R2\",\"targetVersion\":\"2.3.0\",\"buildTool\":\"MAVEN\",\"repoPath\":\".\",\"pomPath\":\"pom.xml\"}")
@@ -2322,6 +2327,12 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
             no "SA-014 Gradle addRepos 失败: $SA14_GRADLE_ADD"
         else
             SA14_GRADLE_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R3" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))")
+            GRADLE_CONFIG_STATE=$(gitlab_branch_state "$SA14_GRADLE_REPO_URL" "$SA14_GRADLE_BRANCH")
+            [ "$GRADLE_CONFIG_STATE" = "NOT_FOUND" ] \
+                || { no "Gradle 配置意外创建 feature 或读取异常: $GRADLE_CONFIG_STATE"; exit 1; }
+            GRADLE_FEATURE_STATUS=$(gitlab_create_branch "$SA14_GRADLE_REPO_URL" "$SA14_GRADLE_BRANCH" main)
+            [ "$GRADLE_FEATURE_STATUS" = "201" ] \
+                || { no "Gradle 外部 feature fixture 创建失败: $GRADLE_FEATURE_STATUS"; exit 1; }
             SA14_GRADLE_PROPERTIES=$'version=3.1.0-SNAPSHOT\ngroup=com.e2e\n'
             GRADLE_PROPS_STATUS=$(gitlab_upsert_file "$SA14_GRADLE_REPO_URL" "$SA14_GRADLE_BRANCH" "gradle.properties" "$SA14_GRADLE_PROPERTIES" "ReleaseHub acceptance: upsert gradle properties $SA14_GRADLE_TS")
             [ "$GRADLE_PROPS_STATUS" = "201" ] && ok "SA-014 Gradle feature fixture 已提交" || no "SA-014 Gradle fixture 提交异常: $GRADLE_PROPS_STATUS"
@@ -2334,10 +2345,13 @@ if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
             else
                 SA14_GRADLE_WINDOW_KEY=$(curl -s "$BACKEND/api/v1/release-windows/$SA14_GRADLE_WINDOW_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('windowKey',''))" 2>/dev/null)
                 SA14_GRADLE_RELEASE_BRANCH="release/$SA14_GRADLE_WINDOW_KEY"
-                GRADLE_RELEASE_PROPS_STATUS=$(gitlab_upsert_file "$SA14_GRADLE_REPO_URL" "$SA14_GRADLE_RELEASE_BRANCH" "gradle.properties" "$SA14_GRADLE_PROPERTIES" "ReleaseHub acceptance: upsert gradle release properties $SA14_GRADLE_TS")
-                [ "$GRADLE_RELEASE_PROPS_STATUS" = "201" ] || [ "$GRADLE_RELEASE_PROPS_STATUS" = "200" ] \
-                    && ok "SA-014 Gradle release fixture 已提交: $SA14_GRADLE_RELEASE_BRANCH" \
-                    || no "SA-014 Gradle release fixture 提交异常: $GRADLE_RELEASE_PROPS_STATUS"
+                SA14_GRADLE_ORCH_RUN_ID=$(orchestrate_selected "$SA14_GRADLE_WINDOW_ID" "[\"$R3\"]" "$SA14_GRADLE_ITER_KEY")
+                [ -n "$SA14_GRADLE_ORCH_RUN_ID" ] \
+                    || { no "Gradle 显式编排未返回 Run"; exit 1; }
+                SA14_GRADLE_ORCH_STATUS=$(wait_for_run "$SA14_GRADLE_ORCH_RUN_ID" 45)
+                is_run_success "$SA14_GRADLE_ORCH_STATUS" \
+                    || { no "Gradle 显式集成失败: $SA14_GRADLE_ORCH_STATUS"; exit 1; }
+                ok "显式 Orchestrate 已将 Gradle feature fixture 集成到 release: $SA14_GRADLE_RELEASE_BRANCH"
                 SA14_GRADLE_UPDATE=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA14_GRADLE_WINDOW_ID/execute/version-update" -H "$AUTH" -H "Content-Type: application/json" \
                     -d "{\"repoId\":\"$R3\",\"targetVersion\":\"3.2.0\",\"buildTool\":\"GRADLE\",\"repoPath\":\".\",\"gradlePropertiesPath\":\"gradle.properties\"}")
                 SA14_GRADLE_UPDATE_OK=$(echo "$SA14_GRADLE_UPDATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null)
@@ -2585,7 +2599,7 @@ info "历史窗口: $PREV_WINDOWS"
 h2 "SA-006/SA-009: 10. 场景: 分支创建模式验证"
 
 # 10.1 AUTO 模式：创建迭代带仓库，无 repoConfigs → 默认 AUTO
-info "10.1 AUTO 模式（向后兼容）"
+info "10.1 AUTO 模式（默认命名配置，零 Git 写）"
 AUTO_ITER=$(curl -s -X POST "$BACKEND/api/v1/iterations" -H "$AUTH" -H "Content-Type: application/json" \
     -d "{\"name\":\"验收-AUTO-$TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[\"$R1\"]}")
 AUTO_ITER_KEY=$(echo "$AUTO_ITER" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data', {}).get('key', ''))" 2>/dev/null)
@@ -2596,7 +2610,14 @@ if [ -n "$AUTO_ITER_KEY" ]; then
     AUTO_VINFO=$(curl -s "$BACKEND/api/v1/iterations/$AUTO_ITER_KEY/repos/$R1/version-info" -H "$AUTH")
     AUTO_FB=$(echo "$AUTO_VINFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('featureBranch','NONE'))" 2>/dev/null)
     if echo "$AUTO_FB" | grep -q "^feature/ITER-"; then
-        ok "AUTO featureBranch: $AUTO_FB"
+        ok "AUTO featureBranch 计划: $AUTO_FB"
+        if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+            AUTO_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R1" -H "$AUTH" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))")
+            AUTO_BRANCH_STATE=$(gitlab_branch_state "$AUTO_REPO_URL" "$AUTO_FB")
+            [ "$AUTO_BRANCH_STATE" = "NOT_FOUND" ] \
+                && ok "AUTO 配置未创建远端 feature" || no "AUTO 配置写 Git 或读取异常: $AUTO_BRANCH_STATE"
+        fi
     else
         no "AUTO featureBranch 异常: $AUTO_FB"
     fi
@@ -2623,7 +2644,7 @@ if [ -n "$NAMED_ITER_KEY" ]; then
         NAMED_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$R2" -H "$AUTH" \
             | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
         NAMED_BRANCH_STATE=$(gitlab_branch_state "$NAMED_REPO_URL" "$NAMED_FB")
-        [ "$NAMED_BRANCH_STATE" = "FOUND" ] && ok "GitLab 直查确认 NAMED 合规分支已创建: $NAMED_FB" || no "GitLab NAMED 分支状态异常: $NAMED_BRANCH_STATE"
+        [ "$NAMED_BRANCH_STATE" = "NOT_FOUND" ] && ok "NAMED 配置仅保存分支名，尚未创建 GitLab 分支: $NAMED_FB" || no "NAMED 配置意外写 Git 或读取异常: $NAMED_BRANCH_STATE"
     else
         no "NAMED featureBranch 异常: $NAMED_FB"
     fi

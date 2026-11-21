@@ -12,6 +12,7 @@ PASS=0
 FAIL=0
 GLOBAL_RULE_IDS=""
 GLOBAL_RULES_RESTORED=0
+ORCHESTRATION_RULE_ID=""
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -31,15 +32,21 @@ api() {
     local method=$1
     local path=$2
     local body=${3:-}
+    local request_key=${4:-}
+    local headers=(-H "$AUTH")
+    if [ -n "$request_key" ]; then
+        headers+=(-H "Idempotency-Key: $request_key")
+    fi
     if [ -n "$body" ]; then
-        curl -s -X "$method" "$BACKEND$path" -H "$AUTH" -H "Content-Type: application/json" -d "$body"
+        curl -s -X "$method" "$BACKEND$path" "${headers[@]}" -H "Content-Type: application/json" -d "$body"
     else
-        curl -s -X "$method" "$BACKEND$path" -H "$AUTH"
+        curl -s -X "$method" "$BACKEND$path" "${headers[@]}"
     fi
 }
 
 cleanup_branch_rules() {
     set +e
+    [ -n "$ORCHESTRATION_RULE_ID" ] && api DELETE "/api/v1/branch-rules/$ORCHESTRATION_RULE_ID" >/dev/null
     [ -n "${RULE_ID:-}" ] && api DELETE "/api/v1/branch-rules/$RULE_ID" >/dev/null
     [ -n "${GLOBAL_RULE_ID:-}" ] && api DELETE "/api/v1/branch-rules/$GLOBAL_RULE_ID" >/dev/null
     [ -n "${SUB_RULE_ID:-}" ] && api DELETE "/api/v1/branch-rules/$SUB_RULE_ID" >/dev/null
@@ -59,32 +66,28 @@ gitlab_project_path_from_clone_url() {
 }
 
 gitlab_branch_state() {
-    local clone_url=$1
-    local branch=$2
-    local project_path
-    project_path=$(gitlab_project_path_from_clone_url "$clone_url")
-    local encoded_path
-    encoded_path=$(echo "$project_path" | gitlab_encode)
-    local encoded_branch
+    local clone_url=$1 branch=$2 output=${3:-state}
+    local encoded_path encoded_branch response
+    encoded_path=$(gitlab_project_path_from_clone_url "$clone_url" | gitlab_encode)
     encoded_branch=$(echo "$branch" | gitlab_encode)
-    local resp
-    resp=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_PAT" \
-        "$GITLAB/api/v4/projects/$encoded_path/repository/branches/$encoded_branch")
-    echo "$resp" | python3 -c "
-import sys,json
-branch = '''$branch'''
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    print('NON_JSON_RESPONSE')
-    raise SystemExit
-if isinstance(d, dict) and d.get('name') == branch:
-    print('FOUND')
-elif isinstance(d, dict) and d.get('message'):
-    print('NOT_FOUND')
+    response=$(curl -sS -w '\n%{http_code}' -H "PRIVATE-TOKEN: $GITLAB_PAT" \
+        "$GITLAB/api/v4/projects/$encoded_path/repository/branches/$encoded_branch") || { echo "UNAVAILABLE"; return; }
+    printf '%s' "$response" | python3 -c '
+import sys,json,re
+branch,output=sys.argv[1:]
+body,_,status=sys.stdin.read().rpartition("\n")
+if status=="404":
+    print("NOT_FOUND")
+elif status!="200":
+    print("HTTP_"+status)
 else:
-    print('UNKNOWN')
-"
+    try:
+        d=json.loads(body); sha=(d.get("commit") or {}).get("id","")
+        valid=d.get("name")==branch and re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}",sha)
+        print((sha if output=="sha" else "FOUND") if valid else "INVALID_REF_EVIDENCE")
+    except (ValueError,TypeError,AttributeError):
+        print("INVALID_REF_EVIDENCE")
+' "$branch" "$output"
 }
 
 enabled_branch_rule_ids() {
@@ -138,9 +141,9 @@ assert_named_allowed() {
     add_resp=$(api POST "/api/v1/iterations/$iter_key/repos/add" "{\"repoIds\":[\"$repo_id\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"$branch\"}")
     add_success=$(echo "$add_resp" | json_get "d.get('success', False)")
     if [ "$add_success" = "True" ]; then
-        ok "$label 合规 NAMED 分支写入成功"
+        ok "$label 合规 NAMED 分支配置保存成功"
     else
-        no "$label 合规 NAMED 分支写入失败: $add_resp"
+        no "$label 合规 NAMED 分支配置保存失败: $add_resp"
     fi
 
     vinfo=$(api GET "/api/v1/iterations/$iter_key/repos/$repo_id/version-info")
@@ -152,11 +155,13 @@ assert_named_allowed() {
     fi
 
     state=$(gitlab_branch_state "$clone_url" "$branch")
-    if [ "$state" = "FOUND" ]; then
-        ok "$label GitLab 直查确认合规 NAMED 分支已创建: $branch"
+    if [ "$state" = "NOT_FOUND" ]; then
+        ok "$label NAMED 配置保存后未创建 GitLab 分支: $branch"
     else
-        no "$label GitLab 合规 NAMED 分支状态异常: $state"
+        no "$label 配置意外写 Git 或分支读取异常: $state"
+        return 1
     fi
+    orchestrate_named_feature "$label" "$group_code" "$repo_id" "$clone_url" "$iter_key" "$branch"
     LAST_ALLOWED_ITERATION_KEY="$iter_key"
 }
 
@@ -193,6 +198,40 @@ assert_named_denied() {
     fi
 }
 
+# The positive naming case needs an allowed release ref; this exact temporary rule
+# is removed before the separate release-denied case, so the negative assertion stays meaningful.
+orchestrate_named_feature() {
+    local label=$1 group_code=$2 repo_id=$3 clone_url=$4 iteration_key=$5 branch=$6
+    local window_resp window_id window_key scope_level scope_project scope_sub rule_resp attach_resp response run_id status state
+    window_resp=$(api POST "/api/v1/release-windows" "{\"name\":\"$label NAMED 编排 $TS\",\"groupCode\":\"$group_code\"}")
+    window_id=$(echo "$window_resp" | json_get "((d.get('data') or {}).get('id') or '')")
+    window_key=$(echo "$window_resp" | json_get "((d.get('data') or {}).get('windowKey') or '')")
+    [ -n "$window_id" ] && [ -n "$window_key" ] || { no "$label 创建命名编排窗口失败"; return 1; }
+    scope_level="PROJECT"; scope_project="\"$group_code\""; scope_sub="null"
+    if [ "$label" = "GLOBAL" ]; then
+        scope_level="GLOBAL"; scope_project="null"
+    elif [ "$label" = "SUB_PROJECT" ]; then
+        scope_level="SUB_PROJECT"; scope_sub="\"$repo_id\""
+    fi
+    rule_resp=$(api POST "/api/v1/branch-rules" "{\"name\":\"SA-006 exact release $window_id\",\"pattern\":\"^release/$window_key$\",\"type\":\"REGEX\",\"description\":\"Allow only this positive fixture release\",\"scopeLevel\":\"$scope_level\",\"scopeProjectId\":$scope_project,\"scopeSubProjectId\":$scope_sub}")
+    ORCHESTRATION_RULE_ID=$(echo "$rule_resp" | json_get "((d.get('data') or {}).get('id') or '')")
+    [ -n "$ORCHESTRATION_RULE_ID" ] || { no "$label 精确 release 规则创建失败"; return 1; }
+    attach_resp=$(api POST "/api/v1/release-windows/$window_id/attach" "{\"iterationKeys\":[\"$iteration_key\"]}")
+    [ "$(echo "$attach_resp" | json_get "d.get('success', False)")" = "True" ] \
+        || { no "$label 配置挂载失败"; return 1; }
+    response=$(api POST "/api/v1/release-windows/$window_id/orchestrate" \
+        "{\"repoIds\":[\"$repo_id\"],\"iterationKeys\":[\"$iteration_key\"],\"failFast\":true}" "sa006-feature-$TS-$window_id")
+    run_id=$(echo "$response" | json_get "d.get('data','') if d.get('success') else ''")
+    [ -n "$run_id" ] || { no "$label 显式编排未返回 Run"; return 1; }
+    status=$(api GET "/api/v1/runs/$run_id" | json_get "((d.get('data') or {}).get('status') or '')")
+    [ "$status" = "DONE" ] || { no "$label 命名编排未完成: $run_id/$status"; return 1; }
+    state=$(gitlab_branch_state "$clone_url" "$branch")
+    [ "$state" = "FOUND" ] || { no "$label 编排后 feature 证据异常: $state"; return 1; }
+    ok "$label 显式 Orchestrate 后合规 NAMED feature 已创建，Run=$run_id"
+    api DELETE "/api/v1/branch-rules/$ORCHESTRATION_RULE_ID" >/dev/null
+    ORCHESTRATION_RULE_ID=""
+}
+
 assert_release_denied() {
     local label=$1 group_code=$2 repo_id=$3 clone_url=$4 iteration_key=$5
     local window_resp window_id release_window_key release_branch attach_resp release_resp state run_id run_status run_detail denied
@@ -205,7 +244,7 @@ assert_release_denied() {
         no "$label 配置 Attach 失败: $attach_resp"
         return
     fi
-    release_resp=$(api POST "/api/v1/release-windows/$window_id/orchestrate" "{\"repoIds\":[\"$repo_id\"],\"iterationKeys\":[\"$iteration_key\"],\"failFast\":true}")
+    release_resp=$(api POST "/api/v1/release-windows/$window_id/orchestrate" "{\"repoIds\":[\"$repo_id\"],\"iterationKeys\":[\"$iteration_key\"],\"failFast\":true}" "sa006-release-$TS-$window_id")
     if [ "$(echo "$release_resp" | json_get "d.get('success', False)")" = "True" ]; then
         run_id=$(echo "$release_resp" | json_get "d.get('data','')")
         run_status="RUNNING"
@@ -300,9 +339,9 @@ ITER_OK=$(echo "$ITER_OK_RESP" | json_get "((d.get('data') or {}).get('key') or 
 ADD_OK_RESP=$(api POST "/api/v1/iterations/$ITER_OK/repos/add" "{\"repoIds\":[\"$REPO_ID\"],\"branchCreationMode\":\"NAMED\",\"customBranchName\":\"$ALLOWED_BRANCH\"}")
 ADD_OK_SUCCESS=$(echo "$ADD_OK_RESP" | json_get "d.get('success', False)")
 if [ "$ADD_OK_SUCCESS" = "True" ]; then
-    ok "合规 NAMED 分支写入成功"
+    ok "合规 NAMED 分支配置保存成功"
 else
-    no "合规 NAMED 分支写入失败: $ADD_OK_RESP"
+    no "合规 NAMED 分支配置保存失败: $ADD_OK_RESP"
 fi
 
 VINFO=$(api GET "/api/v1/iterations/$ITER_OK/repos/$REPO_ID/version-info")
@@ -314,11 +353,13 @@ else
 fi
 
 ALLOWED_STATE=$(gitlab_branch_state "$REPO_CLONE" "$ALLOWED_BRANCH")
-if [ "$ALLOWED_STATE" = "FOUND" ]; then
-    ok "GitLab 直查确认合规 NAMED 分支已创建: $ALLOWED_BRANCH"
+if [ "$ALLOWED_STATE" = "NOT_FOUND" ]; then
+    ok "NAMED 配置保存后未创建 GitLab 分支: $ALLOWED_BRANCH"
 else
-    no "GitLab 合规 NAMED 分支状态异常: $ALLOWED_STATE"
+    no "NAMED 配置意外写 Git 或分支读取异常: $ALLOWED_STATE"
+    exit 1
 fi
+orchestrate_named_feature "PROJECT" "$GROUP_CODE" "$REPO_ID" "$REPO_CLONE" "$ITER_OK" "$ALLOWED_BRANCH"
 
 ITER_BAD_RESP=$(api POST "/api/v1/iterations" "{\"name\":\"SA-006 非法 NAMED $TS\",\"groupCode\":\"$GROUP_CODE\",\"repoIds\":[]}")
 ITER_BAD=$(echo "$ITER_BAD_RESP" | json_get "((d.get('data') or {}).get('key') or '')")
