@@ -29,7 +29,9 @@ C2-B2 的范围仅为 ENSURE_FEATURE/ENSURE_RELEASE 的 CREATE_BRANCH/APPLIED。
 
 **S3-C2-B6 已完成并分阶段推送**：锁内核完整未发送证明后，当前 Task 结果、原操作 NOT_SENT 与匹配 guard 释放同事务完成；已开始 SEND 的操作拒绝提前 UNKNOWN，保留真实响应处理权。业务 UNKNOWN 仍阻断同仓后继及普通/自动重试。相关单次 749/749、API 48/48、普通 816 项（811 PASS/5 既有 SKIP）、前端 217/217 和静态通过。实现 [`4e992e9c2406586ec23fa7636292e3d48c163118`](https://github.com/tongsh6/release-hub/commit/4e992e9c2406586ec23fa7636292e3d48c163118)、文档 `29ec00586be20730e66cf37da12614e6450d240d` 已推送，固定该实现完整 SHA 的 [Full-Link 44940092094](https://github.com/tongsh6/release-hub/actions/runs/44940092094) 为 5/5，B6 已 DONE，详见[验收记录第 19 节](tasks/records/2026-11-21-sa-013-orchestration-consistency.md)。
 
-当前按[执行路线图](docs/execution-roadmap.md)接续 B7「原 CREATE_BRANCH 未发送意图的安全接续与本地收口」：先独立验证 feature/release 两类分支仍消费原冻结 SHA、原数值项目和完整未发送证明，并完成可证明无写时的本地 NOT_SENT。原 sourceRef 前进或删除不重新求值；项目重映射不把请求带到新项目。独立契约与两路只读审查完成，源码及新测试尚未实施、待 RED；CREATE_MR、SEND/UNKNOWN 与完整 UI 黄金旅程继续独立验收。
+**S3-C2-B7 已完成验收，实现已推送**：feature/release 沿原冻结 SHA 和数值项目接续完整未发送意图，并原子收口真实 NOT_SENT；sourceRef 前进/删除不重新求值，项目重映射在预检前拒绝，SEND 无响应时保留真实发送者处理权。独立 RED 后定向 91/91、单次相关 840/840、API 48/48、普通后端 831（826 PASS / 5 既有 SKIP）、静态与源码绑定均通过。实现 `00def779f82d4b10b13c547bacda08fd91706fc9` 已推送；[固定实现 SHA 的 Full-Link 44945748427](https://github.com/tongsh6/release-hub/actions/runs/44945748427) attempt 2 为 5 PASS/0 FAIL，B7 已 DONE。首轮 Docker 依赖下载 Central 429 与重跑全过程保留于[验收记录第 20 节](tasks/records/2026-11-21-sa-013-orchestration-consistency.md)，验收文档单独收口；该验收限后端 API 与隔离 GitLab，不扩大完整 UI 旅程。
+
+当前按[执行路线图](docs/execution-roadmap.md)接续 B8「正常 CREATE_MR 完整请求的发送证明闭环」：由现 producer、Journal begin/sending、返回 Operation 重建的实际 HTTP body，到 B3 响应与原结果消费者形成闭环，同时覆盖正常 ENSURE_MR 和已有非 Task cleanup 写链。独立契约已收敛，源码与新测试待 RED；B9 原 CREATE_MR INTENT 接续/本地收口、SEND/UNKNOWN 和完整 UI 继续独立验收。
 
 > **协作入口：[`AGENTS.md`](AGENTS.md)** — 唯一项目画像、工程规则与知识导航；生命周期、工作模式和发布事实分别记录。
 > 📋 **实现与验证事实：[`docs/project-ledger.md`](docs/project-ledger.md)** — 已交付基线、当前任务目标与验收边界。

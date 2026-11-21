@@ -720,7 +720,7 @@ C2-B6 已 DONE：独立契约、RED→GREEN 与本地门禁完成，实现 4e992
 
 ### Requirement: 原 CREATE_BRANCH 未发送意图的安全接续与本地收口
 
-C2-B7 为当前唯一实施队首；以下是经根侧及两路只读反驳收敛的独立实施前契约，源码和新测试尚未实施、待 RED，事实见 tasks 与记录 20。系统 SHALL 只在 ENSURE_FEATURE、ENSURE_RELEASE 的原完整 CREATE_BRANCH/INTENT 具有当前 fence、匹配 guard、同 attempt 唯一 seq0、无 SEND/自身 Step 时沿原 Task 接续或本地结束，不因快照、到期或任意 FOUND 授权写入。
+C2-B7 已 DONE；以下契约先经过独立 RED 再实现。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。当前唯一 HEAD 为 C2-B8 正常 CREATE_MR 完整请求的发送证明闭环，独立契约与正反例已收敛，源码与新测试尚未修改、待 RED。系统 SHALL 只在 ENSURE_FEATURE、ENSURE_RELEASE 的原完整 CREATE_BRANCH/INTENT 具有当前 fence、匹配 guard、同 attempt 唯一 seq0、无 SEND/自身 Step 时沿原 Task 接续或本地结束，不因快照、到期或任意 FOUND 授权写入。
 
 #### Scenario: 原准备路径交付既有操作快照但不交付绕过权限
 
@@ -803,6 +803,101 @@ C2-B7 为当前唯一实施队首；以下是经根侧及两路只读反驳收�
 - **THEN** 完整未发送意图只沿原操作续发一次 branch POST，随后 APPLIED 再强杀的第三 JVM 零 HTTP 补原结果
 - **AND** 已 SEND/UNKNOWN 不自动重发；回归 B2–B6、后继及普通 retry/观察保护
 - **AND** CREATE_MR 原摘要不含完整 title/description/源分支删除选项 且含随机 marker，不能借本片宽松续用；其他动作和完整 UI 另行验收
+
+### Requirement: 正常 CREATE_MR 完整请求的发送证明闭环
+
+C2-B8 是当前唯一 HEAD；根侧与独立 boundary 已收敛以下实施前契约，源码和新测试尚未修改、待独立 RED，不代表已通过。系统 SHALL 沿现 producer → adapter/interceptor → Journal begin/sending → 实际 HTTP → B3 响应 → 原结果消费者证明正常 CREATE_MR 发送了已接纳的完整请求；同时覆盖 ENSURE_MR Task 及现 cleanup/GitMergeWorkflow 非 Task producer，不新建实体、schema、DTO、Port 或用户入口，也不开放 CREATE_MR 恢复。
+
+#### Scenario: 正常 producer 提供严格五字段请求
+
+- **GIVEN** 现 GitLabMergeRequestAdapter.create 由 ENSURE_MR 或非 Task cleanup 调用
+- **WHEN** 构造正常 CREATE_MR
+- **THEN** 正文严格只有非空白字符串（保持原值、不 trim） source_branch/target_branch/title、字符串 description、布尔 false 的 remove_source_branch；原 producer 显式提供 description 空字符串
+- **AND** description 不能 null，缺字段/错类型/多字段在 SEND 前拒绝，不默补、不保留旧四字段入口；false 维护共享 feature 不得擅删
+
+#### Scenario: 受控 marker 唯一并可由现 observer 整行匹配
+
+- **GIVEN** 入站 description 不含 reserved ReleaseHub-Operation: 前缀，候选 opId 非空白且不含 CR/LF，保持原值、不 trim
+- **WHEN** interceptor 为新鲜 UUID opId 追加 `\nReleaseHub-Operation: <id>`
+- **THEN** recorded description 的 marker 是完整独立末行、精确对应本 opId，reserved 前缀只出现一次
+- **AND** foreign/重复前缀、错误末行、空白或含 CR/LF 的 opId 均拒绝，不静默清洗/去重；合法 Unicode/引号/换行按原值保留
+- **AND** 现 observer description.lines().anyMatch(marker::equals) 的整行精确匹配保持，FOUND 不授权发送或完成
+
+#### Scenario: 完整 typed target 与 canonical 指纹一致
+
+- **GIVEN** 合法五字段正文及严格 40 或 64 位 hex expectedSha
+- **WHEN** 记录 CREATE_MR 命令
+- **THEN** target 严格为 method=POST、suffix=/merge_requests、五个 typed 正文域及 sha 共八字段，sha 字节与大小写保留
+- **AND** canonical UTF-8 body 固定 source_branch、target_branch、title、description、remove_source_branch 次序，不额外 trim 或清洗
+- **AND** hash 为 SHA256("POST|" + remoteKey + "|/merge_requests||" + SHA256(canonicalBodyUtf8) + "|" + expectedSha)，不改变 MERGE 既有规则
+- **AND** 任意 query（含空 ?）、错误 hash/字段/marker 均拒绝；本地 sha 不成为创建 POST 的原子前置条件
+
+#### Scenario: begin 返回的 Operation 约束实际 HTTP body
+
+- **GIVEN** begin 仍返回已有 Operation，hash/session/fence 由 Journal 实体负责
+- **WHEN** interceptor 消费返回值
+- **THEN** 核候选 id/action/repo/remote/provider/base/project/target/run/operator、INTENT_RECORDED 状态和 null reason，并从返回 target 重建实际 body
+- **AND** 错误 id/target/其他可见身份导致零 SEND/POST，不沿原入站 body 继续；Operation 不加 hash/session/fence 展示字段
+- **AND** 快照不授权发送，不新增 expectedVersion 发送门禁
+
+#### Scenario: 当前 Task sending 实时核完整实体证明
+
+- **GIVEN** begin 已核准正常 ENSURE_MR 请求
+- **WHEN** 当前 owner 进入原 sending 事务
+- **THEN** 锁内重新核 typed target/hash/marker、op.reason=null、GITLAB/canonical base/正整数 project 与 remoteKey 自洽以及真实 session/guard
+- **AND** 原 ENSURE_MR source/target、consistentProject、当前 fence、原历史 owner、同 attempt 唯一 seq0、无 SEND/自身 Step、匹配 INTENT_PENDING guard 均成立
+- **AND** begin 后实体破坏、换权、错 guard 或迟到 owner 均零发送；合法 guard 不替代完整实体证明
+
+#### Scenario: 非 Task cleanup 正常写继续消费完整请求
+
+- **GIVEN** executeCleanup → executeCleanupItem → executeMerge → GitLab mergeBranch → GitMergeWorkflow 使用同一个 create，taskFence=null
+- **WHEN** 正常 Journal.begin/sending 及真实 HTTP 执行
+- **THEN** 完整 target/hash/marker、现 session/guard 和实际 HTTP body 同样一致，不误拒绝合法非 Task 创建
+- **AND** Task metadata/计划/fence/无自身 Step 只对 Task 追加；复用现发送事务，无额外 GET 或网络持锁
+
+#### Scenario: Journal 自身事务失败只回滚本事务新增变化
+
+- **GIVEN** 正常 CREATE_MR 已进入 Journal admission/sending 自身事务
+- **WHEN** 该事务失败，sending 反例真正经过 seq1/guard 暂写后抛错
+- **THEN** 只回滚该未提交事务内的新变化，零非法 SEND/POST，保留此前已独立提交的事实
+- **AND** 旧 fence/owner、事件/自身 Step 污染仍被拒绝；真实 PG 锁等待与回滚反例证明实际经过相应阶段，不以前置拒绝冒充
+
+#### Scenario: 外层业务回滚保留独立提交的写入事实
+
+- **GIVEN** INTENT、SEND 或响应事实已通过 REQUIRES_NEW 独立提交
+- **WHEN** 外层业务事务回滚
+- **THEN** 已提交事实保持，不把已知 APPLIED 改说远端 UNKNOWN
+- **AND** Task 沿既有结果确认/APPLIED 投影边界，非 Task 沿既有会话收口保持必要 guard
+- **AND** 不因回滚自动重放，不抹去已发生的 HTTP 证据
+
+#### Scenario: 完整 CREATE_MR INTENT 仍无恢复资格
+
+- **GIVEN** 完整 CREATE_MR/INTENT 已持久化且 Task 期限已到
+- **WHEN** 默认 worker、prepareUnsentTaskClaim 或 RunJpa 领取路径检查候选
+- **THEN** 0 token 换权、0 SEND、0 Step、0 POST
+- **AND** validUnsentOperation 恢复白名单、Context resume 快照和 NOT_SENT 不扩大到 CREATE_MR；B9 另行定义 workflow 按原 A 决策及真实本地结果
+
+#### Scenario: source 前进反例保留 UNKNOWN 和 guard
+
+- **GIVEN** 创建 POST 前读取 source A，真实创建响应 SHA 已为 B
+- **WHEN** B3 原响应证明判定结果
+- **THEN** 仍 UNKNOWN/保留 guard，不建 CREATED 检查点、不启动 TRY
+- **AND** GitLab 17.11 创建 POST 无 sha-CAS，不能把完整本地请求或一次读取冒充原子前置条件；merge PUT 的 SHA 前置条件保持原语义
+
+#### Scenario: 历史 B3 APPLIED 保持原响应投影
+
+- **GIVEN** 历史 CREATE_MR/APPLIED 的三字段 target/任意 hash 已具有原 201/三处 project 身份/source-target/SHA/IID/URL 成功响应证明
+- **WHEN** 原 ENSURE_MR 检查点或已有独立进程恢复执行
+- **THEN** 沿原纯 DB 投影补原 Task 及后继消费者，保留原 HTTP 事件；不追加新完整请求/hash 门禁
+- **AND** 不把正常请求证明扩大为历史 INTENT、SEND/UNKNOWN 或完整 UI 已验收
+
+#### Scenario: 现 targetJson 返回受支持完整请求并保留隐私边界
+
+- **GIVEN** Task 与现非 Task producer 的 title 均为 `Merge <source> into <target>`，唯一 MR POST 无 description 参数，本片使用空字符串加 marker
+- **WHEN** 现 GitOperationController repo/run 列表或详情序列化 targetJson
+- **THEN** 该既有字段返回受支持的完整 title/description/布尔值等请求信息，不宣称数据仅在 DB 内部或 API 数据完全不变
+- **AND** 现操作查询需认证但无仓库级/操作者级过滤，不声称仅创建者可见，不在 B8 扩 RBAC；GitOperationsPanel 不渲染 targetJson，无新增 UI 入口
+- **AND** 原“标题不存”测试断言按完整请求可审计调整，token/认证 header/无关正文及响应证据隐私约束保留，不泛化存任意 body 或 secret；独立 RED 冻结后的契约仍须保留
 
 ## MODIFIED Requirements
 
