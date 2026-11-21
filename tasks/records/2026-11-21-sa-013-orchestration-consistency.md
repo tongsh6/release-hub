@@ -1,6 +1,6 @@
 # 2026-11-21 SA-013：分支收敛与唯一编排语义
 
-状态：已交付阶段及其固定 SHA 证据按各节保留；C2-B4 已完成分阶段推送与固定 SHA 5/5，交付收口见 17.5。当前 C2-B5 仅完成独立契约与只读职责审查，源码未实施、新测试待 RED，见第 18 节；任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
+状态：已交付阶段及其固定 SHA 证据按各节保留；C2-B4 已完成分阶段推送与固定 SHA 5/5，交付收口见 17.5。当前 C2-B5 已完成独立 RED、实现和本地验收，相关 692 项分批汇总、API 48、普通 816 及静态证据见第 18 节；后端 0642828 已提交推送，仍为 HEAD，文档阶段及固定该后端完整 SHA 的 CI 待完成。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
 
 ## 1. 目标与范围
 
@@ -741,9 +741,9 @@ PG 覆盖终态候选、CREATED/MR_REUSED、40/64 位等值大小写、合法 nu
 
 该 CI 绑定 B4 自身已推送 SHA；backend 仍与最终 533/48/789/静态验收树一致，B4 标记 DONE。最初编译失败 0 tests、各自源码树的独立 RED、533/2 FAIL 首轮及仅测试修正历史原样保留，重叠用例不累计。5/5 仍为后端 API 与隔离 GitLab 切片，不等于完整 UI 黄金旅程，不扩大 Slice4/5 既有较弱边界，不为 INTENT/SEND/UNKNOWN 提供本片未做的恢复验收。
 
-## 18. C2-B5 实施前：原 MERGE 未发送意图的安全续发
+## 18. C2-B5：原 MERGE 未发送意图的安全续发
 
-B4 固定 SHA CI 成功后，唯一 HEAD 接续 B5。此时只读职责审查与独立契约已完成，尚未修改本片生产/测试源码或运行新 RED；以下是源码定位和待验证结论，不作为已测缺陷或已完成能力。
+B4 固定 SHA CI 成功后，唯一 HEAD 接续 B5。最初先完成只读职责审查与独立契约，再以旧生产隔离快照运行 RED；随后实现并通过首轮 108/108 定向。相关回归、补充真实 CAS 反例和最终本地门禁现已完成，后端 0642828 已提交推送；文档阶段及固定该后端完整 SHA 的 CI 待完成，B5 不标 DONE；18.1–18.2 保留实施前依据，后续各轮事实见 18.3 起。
 
 ### 18.1 独立正反例与源码定位
 
@@ -751,7 +751,7 @@ B4 固定 SHA CI 成功后，唯一 HEAD 接续 B5。此时只读职责审查与
 
 最强反例推翻仅允许同 token 再进 SEND 的方案：发送输家被拒后会沿 RunAppService 映射成 UNKNOWN；若仍持同一 Task fence，旧 completeTask 可抢先结束新发送者的任务，随后实际 HTTP 响应可能因任务不再 RUNNING 而丢失。因此需要 Task 当前 owner 轮换，同时约束 sending、finish 与完整结果提交；只修 SEND CAS 不足以证明安全。
 
-源码只读定位还显示：原 operationForUpdate、ack、APPLIED 证明把原 op claim/session 与当前 Task token 等值；HTTP interceptor 当时忽略 begin 返回的 operation ID，原 target 不完整保存 merge_commit_message/should_remove_source_branch，原 body hash 依赖序列化字节。guard 映射保护与非 Task completeSession 存在真实 session 消费者，不能为接管一起轮换原 reservation。上述位置决定最小职责调整，必须先以独立 RED 验证，不能直接当作已测结论。
+源码只读定位还显示：原 operationForUpdate、ack、APPLIED 证明把原 op claim/session 与当前 Task token 等值；HTTP interceptor 当时忽略 begin 返回的 operation ID，原 target 不完整保存 merge_commit_message/should_remove_source_branch，原 body hash 依赖序列化字节。guard 映射保护与非 Task completeSession 存在真实 session 消费者，不能为接管一起轮换原 reservation。上述位置决定最小职责调整；当时仅是源码定位，随后按 18.3 的独立 RED 验证，未将只读推断当作测试结论。
 
 ### 18.2 最小契约与验收边界
 
@@ -761,4 +761,72 @@ B4 固定 SHA CI 成功后，唯一 HEAD 接续 B5。此时只读职责审查与
 
 旧 SEND 先提交时不能接管，其迟到真实响应仍须保存；新接管先提交时旧 sending 与旧 UNKNOWN complete 均拒绝。SEND 已提交但 HTTP 前中断不得再次发送。前置 GET 失败、closed 或 source B 可令 Task UNKNOWN，但 operation 仍 INTENT 且无 SEND/响应，guard 原 reservation/INTENT_PENDING 保持，不能误写 REMOTE_RESULT_UNKNOWN 或引入新状态；前置 GET 已包含 A 或 BLOCKED 不伪造 APPLIED/REJECTED，允许原 completeTask 整事务拒绝回滚并保 RUNNING/INTENT/INTENT_PENDING，这一边界尚不能自动收口，留待后续独立处理。
 
-下一验证按先 RED 推进：真 PG 锁两种胜出顺序、两名新 worker、输家 UNKNOWN、显式 fence 与旧/新 version；坏前页 keyset、同仓前序/跨仓进展；跨 JVM 在 INTENT 后强杀、到期后复用原 operation 一次 PUT，并回归 B2/B3/B4。其他 INTENT 动作、SEND/UNKNOWN、cleanup/version 与完整 UI 仍 QUEUED；回滚停派发并保留事实，不撤销远端写。
+实施前据此安排先 RED：真 PG 锁两种胜出顺序、两名新 worker、输家 UNKNOWN、显式 fence 与旧/新 version；坏前页 keyset、同仓前序/跨仓进展；跨 JVM 在 INTENT 后强杀、到期后复用原 operation 一次 PUT，并回归 B2/B3/B4。其他 INTENT 动作、SEND/UNKNOWN、cleanup/version 与完整 UI 仍 QUEUED；回滚停派发并保留事实，不撤销远端写。
+
+### 18.3 旧生产冻结树的独立 RED
+
+所有有效初轮 RED 的生产均为 `4a067a8f292f48a5854bc5f4d13d9c28bd54276a`，在 ignored 隔离冻结树执行；provider/HTTP/process 与后续 PG 使用各自测试快照，各阶段内部 sourceStable=true，不合称同一测试树。以下路径以 `.ai/reports/validation/c2-b5/` 为根。
+
+| 独立范围 | 实际结果 | 原始结果路径 |
+|---|---|---|
+| provider | 25 tests / 21 FAIL / 0 ERROR / 0 SKIP | initial-red-frozen-v2-jdk21/provider/result.json |
+| 真实 HTTP 组合 | 7 tests / 7 FAIL / 0 ERROR / 0 SKIP | initial-red-frozen-v2-jdk21/http/result.json |
+| PostgreSQL | 71 tests / 17 FAIL / 0 ERROR / 0 SKIP | initial-red-pg-frozen-jdk21/pg/result.json |
+| 独立进程 | 3 tests / 2 FAIL / 0 ERROR / 0 SKIP | initial-red-frozen-v2-jdk21/process/result.json |
+
+有效初轮共 106 个新实例。PG 明确复现末尾 INTENT 不入候选、完整未发送意图不可领取、旧/缺失 fence 仍可 sending/finish、未发送 UNKNOWN 被错误标为 REMOTE_RESULT_UNKNOWN。进程两项 INTENT 恢复失败；SEND 已提交后不重发的独立场景在旧生产已通过，不能把保护行为也算成待修缺陷。
+
+最初 `initial-red-frozen-jdk21/provider/result.json` 为 25 tests / 17 FAIL / 4 ERROR / 0 SKIP 且 sourceStable=false；四个 ERROR 为 Mockito 重设 begin 桩时命中空 Command 的夹具错误。该轮单列保留，不算有效业务 RED；随后只修测试夹具，在新冻结快照重跑得到上表 provider 结果，生产未改。后来新增 producer null/empty 两个边界，使首轮实现后定向为 108，未把新增边界冒称已在初轮 106 内执行。
+
+### 18.4 实现职责、发送权与历史事实
+
+RunJpa 仍通过原 claimNextTask 领取：Run→Task 锁后以数据库时间核完整过期、正执行顺序、仓内前序和 no Step，再由唯一实际消费者调用 Journal 的 MANDATORY prepareUnsentMergeClaim。Journal 在原 remote/operation/guard 锁内核唯一原 attempt/INTENT、完整 typed 请求、指纹、检查点和 reservation，使用 PESSIMISTIC_FORCE_INCREMENT 即时提升观察版本；同一物理事务随后按原 token/lease 做 Task CAS，失败抛错回滚。原无证据 CAS 保持，不把 JSON proof 复制进候选 SQL。
+
+Task 当前 token/lease 可以轮换；原 startedAt/实际顺序、operation ID/claim/session/attempt、sequence 0 与 guard session/operation/generation 保持。begin 返回原 ID，interceptor 实际消费；sending/finish 明确接收 caller fence，seq1 保存实际 sender 的 taskId/claimToken。MERGE 的 finish/ack/APPLIED 证明核该 sender，历史观察按 Task 关联与 expectedVersion 判断。旧 API 重载与测试反射桥已删除，无新增实体、表、API、DTO、attempt 或 dispatcher。
+
+正常 producer 保留原消息文本，完整持久 sha、merge_commit_message、should_remove_source_branch=false 的 JSON 类型；固定顺序请求指纹覆盖既有 envelope，无 query（含空 query）。B5 接手额外要求原计划默认消息，不要求非 Task 消费者拥有计划。缺 typed 请求或旧 hash 不能自动续发；历史 MERGE/APPLIED 投影按完整成功响应、原 target method/suffix/SHA 和 seq1 实际 sender 核证明，不要求补齐未参与投影职责的消息/hash。旧 seq1={} 不能投影，也不以原 op token 补造 sender；B2/B3 原资格不普遍放宽。
+
+前置 GET 失败、closed、source B 可使 Task UNKNOWN，但 operation 仍 INTENT、没有 SEND/响应，guard reservation/INTENT_PENDING 保留。读取已包含 A 或 BLOCKED 时，不造 APPLIED/REJECTED，现 completeTask 整事务拒绝回滚并保 RUNNING/INTENT/INTENT_PENDING；此边界尚不能自动收口，仍属后续独立工作。
+
+### 18.5 首轮 108 定向与真实竞争/进程证据
+
+`first-green-jdk21/result.json` 为 5 suites / 108 tests / 0 FAIL / 0 ERROR / 0 SKIP、sourceStable=true：HTTP 7、PG 71、独立进程 3、MR adapter 3、HTTP interceptor 24。PG XML 输出四条 pg_blocking_pids 等待证据，包含双新 worker 的 78→77、79→78 排队关系；旧 SEND 先赢、新接管先赢分别在独立测试中确认实际数据库阻塞，未以同时启动线程代替锁竞争。
+
+| 进程场景 | 原 Run / 进程 | 实际结果 |
+|---|---|---|
+| INTENT 后强杀、到期续发 | d0de2379-edbd-491a-af5a-2494b351a41c；99310 → 99424，exit=137 | 强杀时无 PENDING、原 MERGE 只有 1 条事件；senderChanged=true、原 provenance 保持，MR POST=1、merge PUT=1、原 attempt 最终 3 条事件 |
+| 续发 APPLIED 后再次强杀 | b026284d-a983-4ea8-8b1a-d64ec7026868；99435 → 99446 → 99449，两次 exit=137 | 原 operation/attempt 保持；merge PUT 总数 1，第三 JVM 投影 HTTP=0，原 MERGE 三条事件保持 |
+| SEND 已提交、HTTP 前强杀 | bd9ae6bc-fc36-455b-b18a-a97134f5b426；99281 → 99290，exit=137 | 到期后完成 3 轮实际扫描，重启后 HTTP=0、merge PUT=0，原 Task 与 2 条事件保持；这是安全停住，不是 SEND 恢复 |
+
+原始逐行日志在 `first-green-jdk21/xml/releasehub-bootstrap/TEST-io.releasehub.bootstrap.api.RunTaskProcessKillIT.xml`，锁等待证据在同目录 RunTaskPersistenceIT XML。进程使用隔离 PostgreSQL/HTTP fixture 与真实独立 JVM，不冒称真实 GitLab 强杀或完整 UI 旅程。首轮中的事务回滚用例为外层 TransactionTemplate.setRollbackOnly；最终 Task CAS 实际返回 0 的补充验证单列于 18.6。
+
+### 18.6 相关回归与真实 CAS 拒绝补强
+
+`regression-green-jdk21/result.json` 实际为 13 suites / 691 tests / 1 FAIL / 0 ERROR / 0 SKIP、sourceStable=true。唯一失败是 GitWriteSafetyIT 的旧 committedIntentWinsTheLockAndEveryOperationStatePreventsTakeover：它把 INTENT 不可领取当作不可扫描发现。随后仅校正该测试候选断言及名称，继续要求旧人工摘要不可领取、不可投影、零 HTTP；生产不改，不以旧测试期待放宽请求资格。
+
+为独立证明最终 CAS 返回 0 也回滚已准备的 version，新增 mergeIntentClaimCasRejectionRollsBackPreparedVersion：只对原 Task 的 token 变化安装真实 PG BEFORE UPDATE trigger，RETURN NULL 令影响行数为 0；用现有 Clock 在同事务 prepare 后、最终 CAS 前读取已增版本，要求 BusinessException 且所有 projectionFacts 回滚，finally 删除 trigger/function。此项不替代或改名主动 setRollbackOnly 用例。
+
+`cas-red-frozen-jdk21/pg/result.json` 已在旧 HEAD 4a067a8 的原 PG 冻结文件上仅加入该方法，实测 1 test / 1 FAIL / 0 ERROR / 0 SKIP、sourceStable=true；失败是旧领取返回 empty，未发生应有的 CAS 拒绝异常。随后复验前源码变化限于 PG 新增用例与 HTTP 旧发现断言两份测试，生产不改。
+
+最终受影响两套已在 `final-affected-green-jdk21/result.json` 复验为 HTTP 119 + PG 209 = 328 tests / 0 FAIL / 0 ERROR / 0 SKIP，sourceStable=true；新增真实 CAS 返回 0 用例的 XML testcase 无 failure/error/skipped，已确认本事务 version 曾增加、最终抛错后全部事实回滚。原主动 setRollbackOnly 用例继续保留，两类回滚证据不互相替代。
+
+### 18.7 最终本地门禁与交付边界
+
+| 范围 | 实际结果 | 证据（测试结果相对本节验证根目录） |
+|---|---|---|
+| 相关回归 | 13 suites / 692 PASS / 0 FAIL / 0 ERROR / 0 SKIP | final-related-jdk21/result.json |
+| API | 3 suites / 48 PASS / 0 FAIL / 0 ERROR / 0 SKIP | final-gates/api/result.json 与 final-gates/result.json |
+| 普通后端 | 58 suites / 816 tests：811 PASS、5 既有 SKIP、0 FAIL / ERROR | final-gates/ordinary/result.json 与 final-gates/result.json |
+| 静态 | 六份 fresh SpotBugs XML 均 0；typecheck PASS；lint 0 errors / 8 既有 warnings | final-gates/result.json；.ai/reports/static-scan/20261122-021853/summary.md |
+
+692 是按源码核对的分批汇总，`assembly.singleInvocation=false`：本轮重跑两套 328 项，前次未改的 11 套 364 项保留通过证据。生产未变；前后 495 份 backend 文件仅 PG 新增真实 CAS 用例与 HTTP 旧发现断言两份测试改变，其余 493 份完全一致。首轮 691/1 FAIL、106 独立 RED、108 首轮定向及新增 CAS 的 1/1 RED 均保留原轮次，不与最终结果累加。
+
+最终受影响测试、API、普通与静态的七份源码快照及当前源码均为同一组 495 文件；`local-evidence-audit.json` 保存清单、结果与既有五项 SKIP。API 清单为 RunPagedApiTest、RunPlanApiIT、WindowRunApiIT。TopN 八项既有 fixture 告警逐项说明保留理由，前端没有改动，lint 原始输出与 B4 逐字节相同；规则未关闭，也不扩为完整 UI 验收。
+
+### 18.8 后端阶段提交推送，固定 SHA CI 待验收
+
+后端 14 文件纵向切片已提交为 `064282887ae825255360bcf3b04d0377163219aa`（父提交 `4a067a8f292f48a5854bc5f4d13d9c28bd54276a`），提交说明 `feat(run): safely resume unsent merge intents`。提交的 14 文件逐一匹配最终验收 hash，`backend-commit.json` 保存清单与 validatedSourceMatchesCommit=true；`backend-push.json` 确认第一阶段已推送至 feature/orchestration-consistency。
+
+推送后 main/develop 仍共同指向 `d4534ccc34fedb9bbf394ced89b4726f43ec197c`，远端恰为 main、develop 与该 feature 三分支。文档阶段仍待 review/commit/push；本片 CI 固定后端完整 SHA `064282887ae825255360bcf3b04d0377163219aa`，结果待验收，其绑定对象不扩为后续文档提交。
+
+B5 本地验收通过，仍为唯一 HEAD，不借用 B4 CI。前置读取已包含 A/BLOCKED 仍只验证整事务拒绝回滚并保留 RUNNING/INTENT/INTENT_PENDING，不能宣称自动收口；其他动作 INTENT、SEND/UNKNOWN、cleanup/version 和完整 UI 继续独立排队。

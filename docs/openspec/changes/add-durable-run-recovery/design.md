@@ -213,16 +213,16 @@ B3 固定 SHA 验收后接续本片。用户价值是 MERGE_MR 的完整成功�
 
 本片不恢复 INTENT/SEND/UNKNOWN，不扩 cleanup/version 或完整 UI，不迁移缺证明旧摘要。回滚先停派发，保留任务、操作、保护及已提交结果，不撤销已发生的 merge。B4 已用本片固定 SHA 完成远端验收；C2 整体及后续恢复能力未因此完成。
 
-##### C2-B5：原 MERGE 未发送意图的安全续发（当前子片 / HEAD，实施前契约）
+##### C2-B5：原 MERGE 未发送意图的安全续发（当前子片 / HEAD，本地验收通过、待交付）
 
-B4 交付后接续本片。只读审查与独立正反例已完成；尚未实施源码或运行本片新 RED，状态以 tasks 与任务记录 18 为准。目标是在原 MERGE 意图已经持久化、任何 SEND 尚未发生时，安全续用原操作，并防止旧执行者以 UNKNOWN 结果覆盖新发送者。
+B4 交付后接续本片。实施前先定义正反例并只读核对职责，再在旧生产 HEAD 4a067a8 的隔离冻结树运行独立 RED；目前实现、补充真实 CAS 拒绝反例与本地门禁已通过，相关 692 项的分批汇总方式及完整证据见 tasks 与任务记录 18。目标是在原 MERGE 意图已经持久化、任何 SEND 尚未发生时，安全续用原操作，并防止旧执行者以 UNKNOWN 结果覆盖新发送者。B5 仍为 HEAD，后端 0642828 已提交推送；文档阶段及固定该后端完整 SHA 的 CI 待完成。
 
 资格只限当前 WINDOW 协议活动 Run 的原 TRY_MERGE：RUNNING 领取字段完整且数据库时间确认到期、实际顺序有效、仓内前序满足、无当前 Step；同任务仅有一个 MERGE_MR/INTENT_RECORDED，原 attempt 只有完整 sequence 0，未出现任何 SEND/响应。原 numeric project、remote、计划、CREATED/MR_REUSED 检查点、PUT/suffix、冻结 SHA、完整请求与 guard reservation 必须一致。缺字段、历史摘要、其他动作、SEND_STARTED/UNKNOWN/NEEDS_REVIEW 或 owner 已提交结果均不接管。
 
 | 已有职责 | 当前权利与历史事实的边界 |
 |---|---|
 | RunPort.claimNextTask / RunJpaPersistenceAdapter | 保持唯一领取入口；Run→Task→guard 锁内重核资格并 CAS 更新 Task 当前 token/lease，保留原 startedAt、实际顺序和业务身份；不增加 dispatcher 或第二领取路径 |
-| GitOperationJournalPort / persistence | 在原事务中核未发送资格并使 operation observation version 递增；原 operation ID、claim_token/session/attempt、sequence 0 和 guard session/operation/generation 均是原 reservation，接管不改写 |
+| GitOperationJournalPort / persistence | 已有 Journal 增加 MANDATORY prepareUnsentMergeClaim，唯一消费者为 RunJpa 原领取入口；锁内完整证明成立后 PESSIMISTIC_FORCE_INCREMENT 即时递增 observation version，再由同一物理事务做 Task token/lease CAS，失败抛错回滚；原 operation ID、claim_token/session/attempt、sequence 0 与 guard reservation 均保持 |
 | GitOperationContext / GitSafetySessions / HTTP interceptor | 现有 TaskFence 承担实际调用者身份；sending/finish 显式核对 caller fence，非 Task 调用显式无 TaskFence，不保留旧重载旁路；begin 返回原 operation ID，interceptor 后续实际消费该返回值 |
 | 原 seq1/ack/APPLIED 证明 | SEND 事件记录实际 sender 的 taskId/claimToken；本片同 attempt 的 finish、结果确认及后续 APPLIED 投影核实际 sender 与当前 Task，而 B2/B3 原 token 资格不得普遍放宽 |
 | 原 guard / Settings / Repository 保护 | guard 继续表示原 reservation，session 等值的映射保护与非 Task completeSession 保持原义；不能为恢复轮换历史 session 或开放另一请求 |
@@ -230,9 +230,11 @@ B4 交付后接续本片。只读审查与独立正反例已完成；尚未实�
 
 原 MERGE target 在 method/suffix 等既有身份之外持久化完整请求体三键：sha 为合法文本 SHA、merge_commit_message 为原输入文本、should_remove_source_branch 为布尔 false；只接受这三键，不把缺失值补成默认值。B5 自动续发另要求持久消息精确等于原计划默认消息 `Merge {source} into {target}`；这是本片 Task 恢复资格，不要求正常的非 Task 调用拥有计划，也不改写原自定义消息。不允许 query，包括空 `?`。正常与恢复共用固定字段次序、固定 JSON 类型的请求指纹，覆盖既有请求 envelope；复用现有 hash 能力，不引入通用 canonical 框架。未知/缺失键、错类型、篡改消息/删除标志、错 SHA/路径或旧 hash 一律拒绝且零远端写，无兼容层或回填。恢复重建原请求，仍走现有 workflow/adapter/interceptor，复用原 operation 与 attempt，不新造实体、表、API 或 DTO。
 
+缺 typed 请求或旧 hash 不得自动续发。历史 MERGE 的 APPLIED 投影按完整成功响应、原 target 的 method/suffix/SHA 和 sequence 1 的实际 sender 核证明，不要求补齐未参与投影职责的消息/hash；旧 `seq1={}` 不能投影，也不以原 op token 补造 sender。B2/B3 的原动作证明资格不因此放宽。
+
 锁顺序与所有权必须同时覆盖发送和业务结果。旧 worker 先提交 SEND，则新 worker 在锁内刷新后不得接管，即便原 lease 已到期；已发生的旧 HTTP 观察和迟到 finish 必须保留。新 worker 先接管，则旧 sending 以及其异常映射得到的旧 UNKNOWN completeTask 均无权提交；新 sender 的 SEND 与 finish 只能由其显式 fence 授权。两名新 worker 竞争也只准一个当前 owner。发送只通过 durable SEND 授权；SEND 已提交但 HTTP 尚未执行时不得重发，这一中断窗口不属于本片恢复范围。
 
-| 独立正反例 | 待验证出口 |
+| 独立正反例 | 本片验收要求 |
 |---|---|
 | 完整 INTENT、原 checkpoint 仍 ready；跨 JVM 在 INTENT 后 exit=137 | 到期后复用原 Task/op/attempt 与精确请求，仅一次 PUT；原首次时间/顺序/历史 reservation 保持 |
 | 旧 SEND 先赢；新接管先赢；两名新 worker；旧发送者异常返回 UNKNOWN | 真 PG 锁两序验证；输家零发送、零结果写，实际 sender 的响应不丢失且最多一个业务 Step |
@@ -242,7 +244,7 @@ B4 交付后接续本片。只读审查与独立正反例已完成；尚未实�
 | 前置 GET 已证 target 包含 A，或返回 BLOCKED | 不把未发送 INTENT 伪造为 APPLIED/REJECTED；允许原 completeTask 整个结果事务拒绝回滚并保 RUNNING/INTENT/INTENT_PENDING 及原 reservation，此边界尚不能自动收口，后续独立处理 |
 | 坏候选占满前页，后页为合法末尾 INTENT；仓内前序与跨仓进展 | 原有有界 keyset 向后推进；锁内决定授权，同仓不越序、跨仓不被坏候选饿死 |
 
-先以真实 PG、HTTP 和独立进程验证上述正反例，再实现与回归 B2/B3/B4。其他 INTENT 动作、SEND/UNKNOWN 恢复、cleanup/version 与完整 UI 均不扩入本片。回滚停止派发并保留 Task、原意图、事件与保护，不撤销已发生的 GitLab 写入。
+有效独立 RED 共 106 个新实例；首轮定向 108/108 包含两个 producer null/empty 边界，真实 PG 等待关系、旧/新 owner 竞争及三个独立进程中断场景均有证据。相关回归首轮 691/1 FAIL 为旧 HTTP 候选断言；随后仅修两份测试，真实 Task CAS 返回 0 的补充反例已独立 RED→GREEN，不能用主动 setRollbackOnly 代替。最终相关 13 套 692 项为按源码核对的分批汇总，API 48、普通 816（811 PASS/5 既有 SKIP）和静态门禁通过，详见记录 18.6–18.7。后端 0642828 已完成第一阶段推送；文档阶段与固定该后端完整 SHA 的 CI 尚待完成，CI 绑定对象不扩为后续文档 SHA。其他 INTENT 动作、SEND/UNKNOWN 恢复、cleanup/version 与完整 UI 均不扩入本片；前置读取已包含 A/BLOCKED 仍只验证整事务拒绝回滚与保留保护，尚不能自动收口。回滚停止派发并保留事实，不撤销已发生的 GitLab 写入。
 
 ### 分阶段依赖与交付
 

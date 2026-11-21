@@ -580,13 +580,13 @@ C2-B4 已交付，分阶段推送与本片固定完整 SHA 5/5 证据见 tasks �
 
 ### Requirement: 原 MERGE 未发送意图的安全续发
 
-C2-B5 为当前唯一实施队首；以下是独立实施前契约，源码未实施、新测试待 RED，事实见 tasks 与任务记录 18。系统 SHALL 仅复用原过期 TRY_MERGE 的完整未发送 MERGE_MR 意图，分开 Task 当前发送/结果权与 op/guard 历史 reservation，不新增操作、attempt、实体、表、API、DTO 或 dispatcher。
+C2-B5 仍为当前唯一实施队首；独立契约、有效 RED、实现及本地门禁已通过，相关回归的分批汇总与真实 CAS 拒绝证据见 tasks 与任务记录 18；后端 0642828 已提交推送，文档阶段和固定该后端完整 SHA 的 CI 待完成。系统 SHALL 仅复用原过期 TRY_MERGE 的完整未发送 MERGE_MR 意图，分开 Task 当前发送/结果权与 op/guard 历史 reservation，不新增操作、attempt、实体、表、API、DTO 或 dispatcher。
 
 #### Scenario: 唯一原领取入口内接管完整未发送意图
 
 - **GIVEN** 当前协议活动 Run 的原 TRY_MERGE 为完整到期 RUNNING、实际顺序及仓内前序有效、无当前 Step，且只有一个 MERGE_MR/INTENT_RECORDED，其原 attempt 只有完整 sequence 0、未出现任何 SEND 或响应
 - **WHEN** 原 claimNextTask 在 Run→Task→guard 锁内刷新数据库时间、原项目/remote/计划/checkpoint/request 与 reservation 后取得 CAS 权限
-- **THEN** 只更新 Task 当前 token/lease 并递增 operation observation version，保留原 startedAt、实际顺序、业务身份及原 op claim_token/session/attempt、guard session/operation/generation 与事件
+- **THEN** 原领取入口唯一调用 MANDATORY prepareUnsentMergeClaim，以 PESSIMISTIC_FORCE_INCREMENT 即时递增 operation observation version，并在同一物理事务 CAS 只更新 Task 当前 token/lease；CAS 失败 SHALL 抛错并回滚版本变化，保留原 startedAt、实际顺序、业务身份及原 op claim_token/session/attempt、guard session/operation/generation 与事件
 - **AND** 非完整到期、错误 owner/guard/checkpoint、其他动作或状态、已有 Step/SEND/响应均不接管；候选发现不能代替锁内授权
 
 #### Scenario: 原请求的完整 typed 持久化与精确重建
@@ -618,6 +618,8 @@ C2-B5 为当前唯一实施队首；以下是独立实施前契约，源码未�
 - **WHEN** 当前 worker 发送、完成或确认原操作
 - **THEN** sequence 1 记录实际 sender 的 taskId/claimToken，finish、ack 及本片后续 APPLIED 证明按原 attempt 的 sender 和当前 Task 核权；B2/B3 原 token 资格不放宽
 - **AND** 原 session 等值映射保护、非 Task completeSession 与历史事件归属保持，不为接管重写历史 reservation
+- **AND** MERGE 缺 typed 请求或旧 hash 不得自动续发；历史 APPLIED 投影按完整成功响应、原 target 的 method/suffix/SHA 与同 attempt sequence 1 的实际 sender 核证明，不要求补齐未参与投影职责的消息/hash
+- **AND** 旧 sequence 1 空对象不能获得投影资格；保留历史但不以原 op token 补造 sender，不设兼容回填
 
 #### Scenario: 接管使旧观察版本失效但保留合法历史观察
 
