@@ -26,9 +26,9 @@ S3-A/B1 已完成单元、H2/PostgreSQL/API、前端门禁、静态扫描与交�
 
 B2 已完成：普通后端 613 项（608 PASS、5 既有 SKIP）、六类数据库/API/HTTP fixture 70/70、前端 38 文件/149 项及全部门禁通过。最终静态扫描 `.ai/reports/static-scan/20261121-153304/summary.md`：SpotBugs 0、lint 0 errors/8 既有 fixture warnings，逐项处置已记录。关闭受理与 CLOSED 同事务；共享仓库只执行一次；Tag/CI 失败零后继写；release 缺失零发布副作用；共享 Iteration 和引用保留；重复/并发 close 返回原 Run；在途编排与关闭通过同一窗口锁互斥。
 
-当前 C1 仍在研发，尚未联合编译闭合或验收；目标是将请求线程接入唯一持久任务路径，固定 ENSURE_FEATURE / ENSURE_RELEASE / ENSURE_MR / TRY_MERGE 四动作。先定义同 key 并发、MR 已创建但提交失败、Git 成功但投影失败、过期领取者及不同仓库同时提交的反例；再用真实 PostgreSQL、HTTP fixture 和独立进程中断验证。C1 的验收是可查询且安全停住，C2 才交付自动扫描和继续执行。
+C1 的本地最后候选验证已通过：普通后端 57 类 657 项（652 PASS/5 SKIP），最新契约 9 类 148/148，前端 170/170，以及 MR 检查点提交后独立 JVM 强杀、重启同 key 零新增 HTTP。受理回执已收窄为 runId；迭代配置建分支/归档旧入口已删除，repoConfigs 范围已校验；E2E fixture 使用隔离项目与已验证 Settings。最终扫描 `20261121-175548` 为 SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings，TopN 与 EOF 修正复验已留痕。分组推送和新 SHA Full-Link 尚待完成，HEAD 保持 C1；其验收边界是可查询且安全停住，C2 才交付自动扫描和继续执行。
 
-完整范围及分阶段依赖见 `docs/openspec/changes/add-durable-run-recovery/design.md` 与 `tasks.md`。后台 worker、自动 resume、独立进程硬中断、真实 GitLab/UI 全旅程尚未验收；B2 的 E2E 夹具只完成迁移、编译与脚本语法检查。当前真实外部写验证限明确隔离 fixture，未对业务 GitLab 仓库执行写操作。
+完整范围及分阶段依赖见 `docs/openspec/changes/add-durable-run-recovery/design.md` 与 `tasks.md`。后台 worker、自动 resume、任意中断点接管及当前真实 UI 黄金旅程仍未验收。CI profile/Python 修复已推送；固定 SHA a7181fa 的 Full-Link 已执行 5 切片，其中 1/2/4 通过、3/5 失败，不能作为当前 C1 全绿证据。真实外部写仅限明确隔离 fixture，未对业务 GitLab 仓库执行写操作。
 
 ## 4. 暂缓项
 

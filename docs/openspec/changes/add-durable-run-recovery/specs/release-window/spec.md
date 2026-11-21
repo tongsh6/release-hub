@@ -1,10 +1,10 @@
 # 窗口配置与收尾规范增量
 
-Attach/Detach 与 Publish 的 MANUAL 边界属于 S3-A/B1；仓库级收尾持久受理属于 S3-B2。后台异步恢复仍属于 S3-C/S4，CLOSED 只表达业务生命周期，不能当作收尾成功。
-
 ## ADDED Requirements
 
 ### Requirement: 配置与执行分离
+
+范围说明：Attach/Detach 与 Publish 的 MANUAL 边界属于 S3-A/B1；仓库级收尾持久受理属于 S3-B2。C1 固定四动作任务只用于窗口集成，后台异步及收尾恢复仍是 C2/S4 目标。CLOSED 只表达业务生命周期，不能当作收尾成功。
 
 系统 SHALL 将 Attach/Detach 作为关系维护，将 Publish 作为生命周期变化；默认不写 GitLab、不创建执行 Run。Orchestrate 是 feature → release 的唯一显式入口。
 
@@ -24,7 +24,7 @@ Attach/Detach 与 Publish 的 MANUAL 边界属于 S3-A/B1；仓库级收尾持�
 
 系统 SHALL 使用现有关闭入口和 Run/计划模型，在短事务中原子受理窗口 CLOSED 状态与仓库级收尾计划，再在该事务之外执行远端动作；异步 worker 属于 S4。业务关闭和收尾执行状态分别展示。重复或并发 close 不得派发第二个收尾批次。
 
-#### Scenario: 关闭后收尾尚未执行
+#### Scenario: 触发收尾编排
 - **WHEN** 用户关闭窗口且关闭事务提交
 - **THEN** 窗口显示 CLOSED，收尾 Run 显示已受理
 - **AND** 即使执行尚未开始或进程退出，原 Run 与封存计划仍可查询；自动接续须待恢复能力验收
@@ -32,7 +32,7 @@ Attach/Detach 与 Publish 的 MANUAL 边界属于 S3-A/B1；仓库级收尾持�
 #### Scenario: 收尾步骤结果未知
 - **GIVEN** 窗口已关闭且收尾步骤可能已产生外部副作用
 - **WHEN** 系统未得到确定结果
-- **THEN** 收尾任务进入 UNKNOWN 或 NEEDS_REVIEW
+- **THEN** 收尾 Item/Step 记录 UNKNOWN，Run 进入 NEEDS_REVIEW
 - **AND** 页面不宣称收尾成功，也不自动把窗口恢复为 PUBLISHED
 
 ### Requirement: 收尾任务类型
@@ -42,12 +42,12 @@ Attach/Detach 与 Publish 的 MANUAL 边界属于 S3-A/B1；仓库级收尾持�
 依赖顺序为合并 → 精确 SHA 的 Tag → 已选择的 CI；任一步失败或未知停止后继步骤。缺失 release 不得回退默认分支继续发布。关闭一个窗口不改变共享 Iteration 的全局状态，也不自动归档/删除 feature 或 release。尚无原子 SHA 删除前置条件时保持 DELETE 阻断。
 
 #### Scenario: 任务按顺序执行
-- **GIVEN** 一个包含收尾任务的 Run
+- **GIVEN** 一个包含收尾步骤的 Run，且尚未接入 C1 的窗口集成任务协议
 - **WHEN** 首次受理者执行封存计划
 - **THEN** 仅在前置步骤已确认完成后派发后继步骤
 - **AND** plannedOrder、executedOrder 和步骤记录与实际执行一致
 
-#### Scenario: 确认失败停止后继任务
+#### Scenario: 任务执行失败停止
 - **GIVEN** 收尾任务确认失败且不再允许重试
 - **WHEN** 执行器处理结果
 - **THEN** 不继续派发依赖该任务的步骤

@@ -7,7 +7,11 @@
 [![Vue](https://img.shields.io/badge/Vue-3.5+-blue.svg)](https://vuejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-blue.svg)](https://www.typescriptlang.org/)
 
-核心能力：窗口/迭代/仓库与绑定、权威计划预览、显式 MR-first 编排、Run/Item 结果与证据、失败项精确重试。Attach/Detach/Publish 只维护配置和生命周期；关闭按仓库受理收尾，重复请求返回原 Run，Tag 使用确认的合并提交，CI 默认关闭并由用户显式选择。共享分支与迭代保留，结果未知时保留仓库阻断并要求核对。后台恢复执行仍在研发中。
+核心能力：窗口/迭代/仓库与绑定、权威计划预览、显式 MR-first 编排、Run/Item/Step 与持久任务证据，以及按原计划精确重试。Attach/Detach/Publish 只维护配置和生命周期；Orchestrate 将所选 feature 分支集成到窗口 release 分支。
+
+当前 WINDOW 编排由请求线程消费已落库的 ENSURE_FEATURE → ENSURE_RELEASE → ENSURE_MR → TRY_MERGE 四动作任务，沿用冻结计划并核对已确认的 GitLab 数值项目 ID。执行和重试必须提供 `Idempotency-Key`；同一主体、同一键及同一请求返回原 Run，不重新驱动执行。MR 检查点与任务结果可查询；结果未知时保留仓库阻断并要求核对。
+
+关闭窗口使用独立的仓库级收尾 Run；重复关闭返回原回执，Tag 使用确认的合并提交，CI 默认关闭并由用户显式选择，共享分支与迭代保留。当前 S3-C1 本地候选已通过真实数据库、本地 HTTP fixture、进程硬杀、前端回归和最终静态扫描；修复后新 SHA 的 Full-Link CI 待完成。真实 UI 黄金旅程仍需单独验收，不能用后端测试替代。后台 worker、202/轮询、租约接管和自动恢复属于后续 S3-C2，当前不会自动继续中断执行。
 
 > **协作入口：[`AGENTS.md`](AGENTS.md)** — 唯一项目画像、工程规则与知识导航；生命周期、工作模式和发布事实分别记录。
 > 📋 **实现与验证事实：[`docs/project-ledger.md`](docs/project-ledger.md)** — 已交付基线、当前任务目标与验收边界。

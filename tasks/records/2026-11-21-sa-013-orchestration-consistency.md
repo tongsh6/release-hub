@@ -149,12 +149,157 @@
 
 两项已正常 fast-forward 推送，远端 feature 精确为 5ad0666；远端只有 main/develop/feature/orchestration-consistency，main/develop 仍同指 d4534cc。逐文件 SHA-256 与暂存范围、提交树一致。提交脚本首次因 NUL 分隔输出末尾空项校验失败而停在 commit 前，核实 70 个暂存文件完整后修正过滤并完成，没有重放提交或丢弃工作。
 
-## 8. 未完成边界与下一切片
+## 8. B2 完成时的边界与后续切片
 
-- 当前 HEAD 为 S3-C1：复用已有 run_task，唯一 WINDOW_ORCHESTRATION 路径按四动作持久提交；请求 key、MR 分段、任务/Item CAS、guard 事务确认与进程中断安全是同一纵向切片。
-- Run 现有结果保存仍为聚合保存；仅增加 @Version 不能解决已在领域递增版本和多仓覆盖。C1 必须定向提交并从数据库事实汇总。
+以下保留 B2 收尾时的任务边界；S3-C1 的新增实现与验证事实见第 9 节。
+
+- B2 完成后接续的 HEAD 为 S3-C1：复用已有 run_task，唯一 WINDOW_ORCHESTRATION 路径按四动作持久提交；请求 key、MR 分段、任务/Item CAS、guard 事务确认与进程中断安全是同一纵向切片。
+- B2 提交时 Run 仍按聚合保存；仅增加 @Version 不能解决已在领域递增版本和多仓覆盖。C1 因此要求定向提交并从数据库事实汇总。
 - C1 请求线程消费持久任务，目标为中断后可查询且安全停住；C2 才引入同一执行器的后台 worker、202/轮询、数据库扫描、核对与继续，不保留双轨。
 - UNKNOWN 的只读核对不会自动解除仓库保留；普通 retry 不接受 NEEDS_REVIEW。SEND_STARTED 之后不能用租约过期或一次 404 证明允许重发。
 - 原子删除分支没有已核实的 provider 前置条件，真实 HTTP 删除继续拒绝。cleanup 的自动恢复属于 S4，B2 不宣称具备。
 - 实际 HTTP X-Request-Id 尚未向上采集，字段保持 null，不能用 MR IID 代替。
-- 本轮尚未执行真实 GitLab、浏览器全旅程或独立进程 kill/restart；后续按蓝图完成对应验收。
+- 截至 B2 收尾，本轮未执行真实 GitLab、浏览器全旅程或独立进程 kill/restart。后续 S3-C1 已取得的独立进程硬杀证据及其限制单列于第 9.5 节。
+
+## 9. S3-C1：持久四动作与安全中断（专项验证记录）
+
+状态：**本地候选验证通过，等待分组交付与新 SHA Full-Link**。后端/API/真实 PostgreSQL 与本地 HTTP/进程硬杀/前端门禁已通过；编排受理已收窄为 runId 回执，配置隐式 Git 写和 repoConfigs 越界已修复。新提交的真实 GitLab CI 仍待运行，不据此认定 C1 已整体交付。本节的 S3-C1 是恢复蓝图阶段，不是第 6 节已交付的 Git 安全提交分组 C1。
+
+### 9.1 目标、依赖与非目标
+
+依赖已交付的 S3-A/B1、S3-B2，接续同一份 `docs/openspec/changes/add-durable-run-recovery/design.md` 和 `tasks.md`。用户可观察的目标是：一次窗口编排先持久受理，再逐动作提交；重复请求返回原记录；已提交的 MR 检查点可查询，进程中断或结果未决不会导致盲目重发。
+
+本次由请求线程消费真实持久任务，替换原 WINDOW_ORCHESTRATION 直接循环；cleanup 仍是实际存在的复合 MR 消费者，但复用同一 ensure/try 规则。未新增第二套 Git Port、恢复实体或并行窗口执行入口，已删除经全仓消费者核查后确认无实际入口的 ReleaseBranchService 及其旧自测。
+
+C1 不引入后台 worker、202/自动轮询、lease、代次接管、自动重领、自动核对后续跑或自动重发。C2 才将同一执行器交给有界 worker 与持久扫描；cleanup 自动恢复仍属于 S4。真实 HTTP DELETE 继续阻断，历史 GitLab 验收不作为本轮重跑证据。
+
+### 9.2 已确认契约与实际消费者
+
+| 责任 | 当前实现与边界 |
+|---|---|
+| 受理幂等 | RunPlanAppService 使用调用方原始 request key、持久 actor 与规范化请求 hash；同 key 同意图返回原 Run，不再 claim；同 key 异动作或异 payload 拒绝。历史无 task 的 Run 只读，不补造任务。 |
+| 四动作任务 | 复用已有 run_task，RunPort 提供 createTasks、claimNextTask、completeTask、findTasks；固定 ENSURE_FEATURE → ENSURE_RELEASE → ENSURE_MR → TRY_MERGE。TaskFence 只含 taskId/claimToken；TaskClaim 携带已持久化 actor、repo、action 和计划/检查点 metadata。 |
+| 唯一执行路径 | RunAppService 从存储领取任务，在 GitOperationContext.withTask(claim) 内执行窄动作并提交。completeTask 位于 Git 异常转换之外；提交失败向外传播，不领取后继，不回退旧聚合 save。 |
+| MR 分段 | GitBranchPort.ensureMergeRequest(url, token, source, target, message) 返回 `GitWriteResult<MrEvidence>`；APPLIED 表示本动作目标已确认，可能是纯读复用，不能直接当作已合并。tryMergeRequest(url, token, checkpoint, message) 只消费持久 checkpoint；复核当前包含关系、IID 与 SHA 后才尝试一次合并，不补造 MR、不自动 close。 |
+| 检查点证据 | 复用 MrEvidence 与 GitMergeWorkflow.isValidCheckpoint；保存 numeric project ID、source/target、IID/URL（如有）、冻结 source SHA、disposition 和合并证据。零差异可凭真实包含关系成立，不制造空 MR。历史 merge SHA 须另证实仍被 target 包含，不能拿旧历史 SHA 给 cleanup 打 Tag。 |
+| 首次纯读身份 | 现有 BranchStatus 增加 projectId，统一 present(projectId, sha)/missing(projectId)，无旧重载。GitLab 读取先复用 resolver，再访问 numeric URI；只有真实分支 404 才是 missing。首次 ALREADY_EXISTS 或 missing 的项目 ID 同样由结果事务持久化。 |
+| 跨任务身份 | withTask 从持久 git.projectId 初始化；bindProjectId 只能绑定同一任务的同一项目。claim/complete 汇集同 Run、同 repo 的既有项目 ID，首个 Item 纯读也能约束后续 Item；retry 继承该事实。namespace 改向时，在远端发送之前拒绝。不同 repo 可绑定不同 ID。 |
+| 意图与发送 | GitOperationJournalPort.Command 带 TaskFence；begin/sending/finish 校验持久 task/token、actor、repo、action、计划和检查点。一次 task 仅对应一个写 operation；调用方省略 fence 不能绕过持久任务协议。 |
+| 结果原子提交 | 统一 Run → Task → guard 锁顺序。completeTask 定向提交 Step、Item、metadata、绑定，再在 task 仍 RUNNING 时调用 MANDATORY acknowledgeTask；随后 task terminal CAS、从数据库重汇总 Run，处于同一短事务。HTTP 在这些结果事务之外。 |
+| guard 收口 | task scope 退出不自动释放。HTTP APPLIED 但业务 UNKNOWN 转 NEEDS_REVIEW 并保留 guard；SENT/未决请求不重发。纯读没有 operation 时不制造 guard；已确认拒绝/阻塞按结果事务收口。其他仓库已变 UNKNOWN 时，本仓合法 task 仍可完成。 |
+| 证据不可覆盖 | TRY 的 UNKNOWN/部分响应只更新结果字段，不能覆盖已确认项目、MR IID、source SHA 等身份；不一致的“成功”转 UNKNOWN。实际 X-Request-Id 未取得时保持 null，不能用 IID 冒充。 |
+
+迁移使用 V39，将 task 领取身份、operation/task 关联、唯一 task Step 等约束落到既有持久化边界；没有另建任务平台。旧历史不伪造 task/claim/step 证据。代码责任位于既有 application/run、application/gitoperation、application/port/out、infrastructure/git 与 infrastructure/persistence/run、gitoperation。
+
+### 9.3 独立反例与 RED → GREEN
+
+以下 RED 均记录真实断言失败；编译失败未计为 RED。部分旧行为在独立旧树中复现，避免协同迁移期间的编译缺口掩盖根因。后续 GREEN 与同用例的重复验证不能相加为总覆盖数。
+
+| 反例 | 已取得的 RED | 修复与 GREEN 依据 |
+|---|---|---|
+| 旧 API 同意图重复执行、请求身份约束不成立 | RunPlanApiIT 6/6 断言失败、0 error/skip；`.ai/reports/validation/c1-api-idempotency-red.log`、`.xml` | 当前 RunPlanApiIT 24/24，归入下表 API/HTTP 联合 88 项；最新 HTTP 方法边界与该类合并的 63 项复验也已通过，重叠结果不重复计数。 |
+| 受理后没有持久任务、重叠范围仍被接收 | 独立旧树 RunTaskPersistenceIT 5 项中 4 个断言失败、0 error；`.ai/reports/validation/c1-task-red/tree/backend/releasehub-bootstrap/target/surefire-reports/TEST-io.releasehub.bootstrap.api.RunTaskPersistenceIT.xml` | 真实 PostgreSQL RunTaskPersistenceIT 16/16，归入下表 core 联合 82 项。 |
+| 不完整 SHA/URL 被当作合法 MR checkpoint | 36 项中 6 个断言失败、0 error；`.ai/reports/validation/c1-mr-checkpoint-red.xml` | GitMergeWorkflowTest 最终 42/42；完整形状校验由既有 workflow 统一承担。 |
+| 历史 merged MR 的 merge SHA 已不在当前 target 中 | 独立旧树 GitMergeHistoryEvidenceTest 3/3 断言失败；`.ai/reports/validation/c1-git-red/tree/backend/releasehub-application/target/surefire-reports/TEST-io.releasehub.application.gitoperation.GitMergeHistoryEvidenceTest.xml` | 同类最终 3/3；只确认 source 包含关系时不暴露未经确认的历史 merge SHA。 |
+| task scope 随机生成 session、正常返回或 UNKNOWN 提前释放 guard | GitSafetySessionsTaskTest 5 项中 3 个断言失败、0 error；`.ai/reports/validation/c1-task-scope-red.xml` | 同类最终 5/5；复用 claimToken，释放移交结果事务。 |
+| 首次纯读未固定项目、namespace 改向后仍允许写入 | GitTaskIdentityTest 4/4 断言失败、0 error；`.ai/reports/validation/c1-task-identity-red.xml` | 同类最终 4/4；真实 RestTemplate/interceptor + 本地 HTTP fixture 验证 numeric 读取和改向零写。 |
+| A 仓 UNKNOWN 后 B 仓结果被 journal 错拦 | 真实 PostgreSQL 1/1 断言失败；`.ai/reports/validation/c1-task-protocol/cross-repository-unknown-red.xml` | journal 允许 Run 为 RUNNING 或 NEEDS_REVIEW，同时严格校验本 task/token；16/16 持久化组包含 B 仓完成与真实 ack。 |
+| retry 丢失同仓已确认项目身份 | 3/3 断言失败；`.ai/reports/validation/c1-task-protocol/retry-project-red.xml` | 复用 Run.repositoryProjectId 统一规则，由 Plan 与持久化实际消费；归入 core 联合 GREEN。 |
+| 协调器漏存首次纯读 ID、错误 MR 项目覆盖原事实 | RunOrchestrationTest 19 项中 4 个目标断言失败、0 error | 最终 19/19；另覆盖 checkpoint 提交失败后零 TRY、UNKNOWN 保留原 IID/SHA、重复受理零 claim。证据见下表 driver/process-kill 日志。 |
+
+前端另保留 45 项定向用例的真实 RED（11 断言失败、34 通过）→GREEN（45/45）：retry 复用 apiPost 解包原 Run ID；RunDetail 以当前 route 为唯一事实，拒绝旧查询/旧确认/离页响应覆盖新页；无持久计划的 VERSION_UPDATE 不发计划查询；OrchestrationPanel 离页后不继续导航。完整前端回归为 170/170，不与定向结果相加。证据：`.ai/reports/validation/c1-ui-receipt-lifecycle-{red,green}.log`。
+
+### 9.4 当前已运行的专项 GREEN
+
+| 范围 | 结果 | 精确归档 |
+|---|---|---|
+| Git 契约、scope、身份、HTTP 与真实替身 | 9 类 163/163，0 failure/error/skip：GitMergeWorkflowTest 42、GitMergeHistoryEvidenceTest 3、GitTaskIdentityTest 4、GitLabMergeRequestAdapterTest 26、GitLabGitBranchAdapterTest 37、GitSafetyBeanDecoratorTest 6、GitSafetySessionsTaskTest 5、InMemoryGitBranchEvidenceTest 14、GitWriteHttpInterceptorTest 26 | `.ai/reports/validation/c1-git-green/` 各类 Surefire XML |
+| 领域、受理、重试、并发持久化 | 5 类 82/82：RunIdentityTest 3、RunPlanAppServiceTest 38、CleanupAdmissionTest 23、RunRepositoryScopePersistenceTest 2、RunTaskPersistenceIT 16 | `.ai/reports/validation/c1-task-protocol/green/` 各类 Surefire XML |
+| 非默认 schema | 既有 3 个方法复验 3/3，非新增 3 个覆盖用例；Hibernate/Flyway schema=c1_task_scope，连接默认 schema=public，定向 SQL 仍落到 c1_task_scope | `.ai/reports/validation/c1-task-protocol/nondefault-schema/maven.log` 及 `TEST-io.releasehub.bootstrap.api.RunTaskPersistenceIT.xml` |
+| API、真实 HTTP 与隔离数据库组合 | 6 类 88/88，0 failure/error/skip：RunPlanApiIT 24、RunPagedApiTest 22、WindowRunApiIT 1、GitWriteSafetyIT 28、GitOperationJournalIT 8、RunRecoveryPersistenceEvidenceIT 5 | `.ai/reports/validation/c1-api-http-combined-green.log`、`.json` 与对应 green-xml 归档 |
+| 协调器与独立进程硬杀 | RunOrchestrationTest 19/19 + RunTaskProcessKillIT 1/1，0 failure/error/skip | `.ai/reports/validation/c1-driver-process-kill-green.log`、`.json` |
+| 普通后端回归 | 最近一次完整回归 57 类 657 项：652 PASS、5 既有 SKIP，0 failure/error；其后范围校验由最终 148 项覆盖 | `.ai/reports/validation/c1-backend-candidate-final.log`、`.json`；初轮 639 项日志保留 |
+| 前端组件与工程门禁 | 38 文件 170/170；typecheck、i18n、lint、build 全过；0 errors、8 既有 fixture warnings | `.ai/reports/validation/c1-frontend-final-{tests,typecheck,i18n,lint,build}.log` |
+| CI fixture 与 HTTP 方法契约 | 63/63：GitLabE2EFixtureTest 13、RepositorySyncApiTest 4、RunPagedApiTest 22、RunPlanApiIT 24；含错误 POST=405、Allow 真实方法、版本不变及合法 PUT | `.ai/reports/validation/c1-ci-fixture-http-contracts.json`、`.log` 与对应 XML；后续 Settings 前置补丁另验 |
+| OpenAPI 真实生成 | 100 paths；必填 Idempotency-Key、TaskView 不暴露 claim token；生成类型逐字节一致 | `.ai/reports/validation/c1-openapi.json`、`c1-openapi-schema.patch` |
+
+非默认 schema 的三个方法分别验证跨仓并发结果不覆盖、retry 继承已成功前缀且不制造额外 MR、UNKNOWN 只停止本仓且不妨碍另一仓完成。Git 组使用离线 Maven，命令为 `mvn -B -o -pl releasehub-infrastructure -am -Dtest=GitMergeWorkflowTest,GitMergeHistoryEvidenceTest,GitLabMergeRequestAdapterTest,GitLabGitBranchAdapterTest,GitWriteHttpInterceptorTest,GitSafetyBeanDecoratorTest,GitSafetySessionsTaskTest,GitTaskIdentityTest,InMemoryGitBranchEvidenceTest -Dsurefire.failIfNoSpecifiedTests=false test`，在 backend 目录执行。
+
+### 9.5 真实进程硬杀：已证明与未证明
+
+RunTaskProcessKillIT 使用独立 JVM、隔离 PostgreSQL 与本地 GitLab HTTP fixture。测试仅在真实数据库 ENSURE_MR 已提交 COMPLETED 后、下一次 claim 之前暂停，随后由父进程强制终止子进程；它没有用抛异常或重建同一内存对象冒充进程重启。
+
+| 观察点 | 本轮实际值 |
+|---|---|
+| 原 Run | a9e7b049-8383-4bca-a903-18f3fa3238a2 |
+| 被终止的 JVM | PID 38279，退出码 137 |
+| 重启后的 JVM | PID 38341 |
+| Git 写入 | MR POST=1，MERGE PUT=0 |
+| 相同意图重放后的 HTTP | 新增请求=0 |
+| 重启后的结果 | 返回原 Run；任务保持 COMPLETED、COMPLETED、COMPLETED、PENDING；既有 MR/project/source SHA 证据仍可读，Step 数仍为 3 |
+
+该证据证明：**已提交的 MR 检查点跨进程保留；同一请求重启后返回原记录且不重放远端操作。**
+
+它没有证明 SEND_STARTED 后、响应丢失时或本地 checkpoint 提交前的硬杀恢复；没有执行自动继续、worker 领取或 lease 接管，也没有证明后台最终完成。TRY_MERGE 保持 PENDING 正是本次安全停住的预期。测试使用本地 HTTP fixture，不能称为业务 GitLab 或浏览器全旅程 E2E。
+
+### 9.6 交叉复核、风险与待收口项
+
+只读交叉复核已确认：结果提交在 Git 异常转换之外；TRY UNKNOWN 不覆盖已确认身份；首次纯读项目 ID 在结果事务内保存；其他仓库 UNKNOWN 不会使本仓合法 ack 失效。前端 receipt/路由问题已取得独立反例并修复，API/HTTP/数据库组合 88 项与前端 170 项均已通过；最新 receipt、迭代范围和 CI fixture 已在最终 9 类 148 项组合中复验，源码 hash 未在运行期间变化。
+
+| 事后检查 | 当前判定 |
+|---|---|
+| 行为 | 已取得四动作提交、重复请求零执行、原身份保留与检查点硬杀专项证据；未把自动恢复计入完成。 |
+| 层级 | Run/Plan/Port/JPA/Git 与 API/HTTP/数据库组合已验证；前端 retry envelope、同页路由和离页生命周期已修复并通过 170 项回归、类型与构建门禁。 |
+| 测试 | RED/GREEN、普通后端 652 PASS/5 SKIP、最后候选契约 148 PASS、独立进程硬杀和前端 170 PASS 已归档；真实 GitLab 新 SHA Full-Link 仍待收口。 |
+| 架构 | 复用 run_task、现有 Port/metadata/guard；无第二套 WINDOW executor，无租约重发或兼容重载。 |
+| 性能 | HTTP 不占结果事务；C1 仍由请求线程逐项消费，不宣称已交付仓库后台并发或性能基准。 |
+| 文档 | 台账、路线图、矩阵、设计及 iteration delta 已同步当前事实；OpenSpec 2.1.1 最终 strict 通过，HEAD 在真实 CI 收口前保留 C1。 |
+| 工作区 | 已按后端、前端、E2E/脚本分组提交；本记录随后随文档提交。远端 hash 与固定 SHA CI 结果另行记录，不提前宣称通过。 |
+
+静态首扫 `.ai/reports/static-scan/20261121-173206/summary.md` 的 OrchestrationAdmission 两项可变聚合暴露已通过 runId 回执消除，无 suppress 或新抽象。复扫 `.ai/reports/static-scan/20261121-175548/summary.md`：六模块 SpotBugs 0，typecheck 通过，lint 0 errors/8 个既有测试替身 warnings。复扫首次发现本记录 EOF 多一个空行，本次已修正并在报告中追加独立 diff-check 复验；原始失败日志保留。TopN 逐项处理及仍保留的 fixture warning 理由写入两轮报告。
+
+中断安全的剩余限制是有意保留的：未决 task/guard 可能持续停留，需要后续 C2 在证据约束下继续处理；不能通过手工改终态、清库、跳过 guard 或降回旧同步路径来“恢复”。V39 后已有真实任务/operation 证据时，回退必须先停止派发并保留数据，不能把删除新证据当作代码回滚。
+
+### 9.7 本阶段代码提交
+
+| 分组 | 提交 | 范围 |
+|---|---|---|
+| 后端 | `44e742c2f590a7368e122c840e17e02df2558057` | 持久任务、原子结果、冻结身份、幂等回执、配置零 Git、请求范围与真实故障验证 |
+| 前端 | `376668606cff57a1500e3e5faa5032f9ee6ba34f` | 持久任务展示、回执保留、精确重试、路由/离页生命周期及配置文案 |
+| E2E/脚本 | `4c6b3e9ff7f17c36a4556a629f5eb05b05cc6ac4` | 隔离 GitLab fixture、真实首次编排/合并、正确 HTTP 方法、配置边界消费者；删除无实际消费者的旧脚本 |
+
+提交前 staged diff-check 额外发现新 GitLabE2EFixtureTest 的 EOF 空行，已仅删除该空行并重新检查；没有变更验证后的 Java 语义，也没有绕过钩子或改写历史提交。远端推送与新 SHA CI 以实际观察结果补充。
+
+## 10. Full-Link E2E：按实际失败层逐项修复
+
+本节记录 GitHub Actions 的实际执行结果，不把启动成功或测试编译当作业务闭环；该工作流是后端 API + 隔离 GitLab 验收，不是浏览器用户旅程。
+
+| 固定提交 / run | 观察到的失败或进展 | 处置与证据 |
+|---|---|---|
+| `d4534cc` / [44869040704](https://github.com/tongsh6/release-hub/actions/runs/44869040704) | Dockerfile 固定参数 `gitlab-e2e` 覆盖 Compose 的 `e2e`，JWT 测试配置未加载，后端未启动；尚未执行业务断言 | `08432e9` 删除启动参数中的 profile，Compose 统一选择；未增加等待或引入真实密钥。`.ai/reports/validation/ci-profile-original-e2e-logs.txt`、`ci-compose-profile-preflight.json` |
+| `08432e9` / [44885542824](https://github.com/tongsh6/release-hub/actions/runs/44885542824) | 后端约 20 秒就绪，GitLab 健康；init-gitlab.sh 因 test-runner 缺少 python3 在 Java 测试前退出 127 | `a7181fa` 在既有 Alpine test-runner 安装 python3；shell 语法与消费者审计通过，远端下一轮证明初始化已越过。`ci-profile-44885542824-job-136789914349.log` |
+| `a7181fa` / [44886918919](https://github.com/tongsh6/release-hub/actions/runs/44886918919) | 已执行 5 个业务切片：Slice1/2/4 PASS；Slice3 的假仓库地址/空 token 导致 branch-status 500；Slice5 对 PUT 端点发 POST 得到 500 | 真实隔离项目 fixture、正确 PUT 与显式 405 已补；未放宽原业务成功断言。`ci-python-44886918919-job-136794077207.log`、`ci-python-44886918919-slice-summary.txt` |
+
+进一步核对发现两个原验收缺口：Slice3 未显式 Orchestrate，close 即使失败也会有三个 Step，旧断言可能假通过；Slice1 会把 GLOBAL GitLab 设置写成假地址，真实安全 resolver 读取数据库设置而不是 YAML。因此本轮保持生产身份校验，fixture 在核实专用 E2E 用户与独立项目之后显式配置现有 Settings API；Slice3 用实际 plan 准备 feature 差异，由 Orchestrate 首建 release/MR，断言 Run DONE、完整四动作、数值项目/IID/SHA、远端 merged 与同 key 零额外 MR，并要求 close 真实 DONE。
+
+下一轮只运行包含上述修复的新提交。当前尚未取得该提交的 Full-Link 全绿结果；不重跑旧 SHA 作为本轮验收，不宣称真实 UI 全旅程已完成。
+
+
+## 11. 真实 fixture 揭露的迭代配置边界
+
+旧 IterationAppService 在 create/update/addRepos 配置事务内调用 createBranch，并吞掉失败；update/removeRepos 又会直接归档 feature。假地址和空 token 使这些写入失败，不能证明“配置零 Git”。修正真实 fixture 后，本轮独立的零写断言定位到这两条真实旧入口。
+
+当前复用原 initializeRepoMapping 保存模式、分支名和版本映射；AUTO/NAMED 零 Git 读写，EXISTING 保留只读存在验证。update/remove 仍由原持久化适配器删除被移除的关联行，保留其他仓库配置、远端分支与历史 Run。旧建分支/归档私有路径已经删除，feature 建立交给已有 ENSURE_FEATURE。
+
+同时修复 repoConfigs 范围漏洞：repoIds 是权威集合；额外同组或跨组配置、重复配置均在写入前拒绝。update 对完整请求校验后才筛新增仓；未指定配置的新仓使用既有 AUTO 默认，合法既存配置不被错误拒绝，也不被重写。
+
+| 反例与验收 | RED | GREEN / 归档 |
+|---|---|---|
+| create/add/update 建分支、update/remove 归档，以及 Git 不可用时配置仍偷偷访问远端 | 27 tests 中 8 个断言失败、0 error；映射断言先成立，再因旧 Git 交互失败 | 27/27；`.ai/reports/validation/iteration-config-boundary/{red,green}/` |
+| repoConfigs 越界、重复，以及只在既存仓重复也必须拒绝 | 扩展后的 37 tests 中 7 个断言失败、0 error | 37/37；`.ai/reports/validation/iteration-repo-config-scope/{red,green}/`；与上行重叠，不累计 |
+| Settings fixture 必须纠正旧 GLOBAL，并拒绝保存后读回仍错误 | 2 tests、2 断言失败、0 error | 全类 15/15；`c1-e2e-settings-{red,green}.xml` |
+| 最后候选契约组合 | 无编译错误冒充 RED | 9 类 148/148：Iteration 37 + bootstrap/API/PG/HTTP/fixture/独立进程 111；`.ai/reports/validation/c1-final-contracts.{log,json}` 与对应 XML，backend 源码 hash 在运行前后完全一致 |
+
+普通后端最近一次完整回归为 57 类 657 项（652 PASS、5 既有 SKIP）；其后新增范围校验由上述 37 项及最终 148 项覆盖。证据在 `c1-backend-candidate-final.{log,json}`，记录当次完整 source manifest。前端本轮文案迁移的 3 文件/6 项及 i18n 另验通过，不与此前 170 项相加。
+
+未纳入本切片的输入边界：HTTP `repoConfigs:[null]` 会在旧 DTO 转换器进入服务前解引用；本轮不宣称所有非法 JSON 都已返回统一校验错误。该边界不会被本轮服务层范围/重复测试冒充覆盖。真实 GitLab 五切片与浏览器黄金旅程仍分别按第 10 节和后续阶段验收。

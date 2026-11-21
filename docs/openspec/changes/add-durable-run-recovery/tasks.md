@@ -1,6 +1,6 @@
 # 实施切片与验收追踪
 
-完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2 已分阶段交付，当前实施队首为 S3-C1 持久四动作与安全中断，C1 尚未联合编译闭合或验收；C2 在同一执行器上增加后台驱动和恢复，验收逐切片记录。
+完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2 已分阶段交付，当前实施队首为 S3-C1 持久四动作与安全中断，C1 已通过最终候选后端/API/真实数据库与 HTTP/前端专项验证及静态复扫，代码已分组提交，本轮文档交付、阶段推送和新 SHA Full-Link 仍待收口；C2 在同一执行器上增加后台驱动和恢复，验收逐切片记录。
 
 关联：[需求](../../../requirements/in-progress/SA-013-发布编排中断恢复.md)、[提案](proposal.md)、[Run delta](specs/run/spec.md)、[窗口 delta](specs/release-window/spec.md)。依赖顺序为 S0 → S1 → S2 → S3 → S4 → S5。
 
@@ -72,7 +72,7 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 - [x] A4：统一 Run 聚合状态、前端唯一集成入口、默认策略、权威 scope 和集合计数。
 - [x] B1：MR-first 复用、阻塞枚举与证据、UNKNOWN 停止，失败项重试遵循原动作。
 - [x] B2：以 `(window, repository)` 原子受理关闭和收尾计划；重复 close 返回原 Run；真实 release/MR 合并 SHA 驱动 Tag、CI 默认关闭且显式选择；失败停止后继；共享分支与 Iteration 保留；生命周期锁及在途屏障。
-- [x] A/B1 单测/组件测试 RED→GREEN、真实数据库/API、编译/类型检查、静态扫描 TopN 处理/复扫与代码审查；C1 独立树 194 项通过。B2 已单独通过普通后端 613 项（608 PASS、5 既有 SKIP）、六类数据库/API/HTTP fixture 70/70、前端 38 文件/149 项及 typecheck/i18n/lint/build；最终静态扫描 `20261121-153304` 为 SpotBugs 0、lint 0 errors/8 既有 warnings。
+- [x] A/B1 单测/组件测试 RED→GREEN、真实数据库/API、编译/类型检查、静态扫描 TopN 处理/复扫与代码审查；A/B1 提交前 Git 基础独立树 194 项通过。B2 已单独通过普通后端 613 项（608 PASS、5 既有 SKIP）、六类数据库/API/HTTP fixture 70/70、前端 38 文件/149 项及 typecheck/i18n/lint/build；最终静态扫描 `20261121-153304` 为 SpotBugs 0、lint 0 errors/8 既有 warnings。
 - [x] A/B1 按依赖分组提交并分阶段推送：53eed67（Git）、a4007f2（编排）、71a1487（UI）；B2 后端 e127023、前端 5ad0666 已推送并核对远端 hash；证据见本轮任务记录。S3-C 尚未交付。
 
 ## S3-C1：持久四动作与安全中断
@@ -82,14 +82,15 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 - 涉及层：既有 run_task、Run/Item/Step、RunPlanPort/RunPort、Git 工作流与 Journal、API/UI 请求 key、迁移及故障验证。
 - 依赖：S3-A/B1、B2 已验收。请求线程消费唯一持久任务路径，删除旧 WINDOW_ORCHESTRATION 循环；不保留平行协议。
 - 回滚：停止新受理与派发，保留计划、任务、操作证据和仓库保护；旧历史只读，不猜测生成任务。
-- [ ] 原始 request key 与带动作域的规范化请求指纹；同 actor/key 同请求返回原 Run，异动作或 payload 返回 409；重复 receipt 在动态范围校验前识别。
-- [ ] Run、Item、不可变计划、四动作任务同事务受理；任何部分失败全部回滚且零 Git 写。
-- [ ] 短事务领取与持久实际顺序；任务/步骤稳定身份；结果 CAS、Item/Run/绑定投影和 guard 确认同事务，不再整 Run 级联覆盖。
-- [ ] ENSURE_MR 保存 numeric project/IID/URL/source/target/冻结 SHA；TRY_MERGE 从此证据继续，身份重绑定不得转写新项目。
-- [ ] Task 所有权约束 journal begin、SEND_STARTED 与结果确认；已 SEND_STARTED 不因超时、代次或一次 404 获得重新发送资格。
-- [ ] FAIL_FAST 只传播同仓；UNKNOWN 在 CONTINUE 下仍停止同仓；精确 retry 不重放成功动作、不接受未知事实。
-- [ ] 真实 PostgreSQL/HTTP fixture 验证并发受理、两仓定向提交、HTTP 成功后本地提交失败、旧领取者、真实独立进程硬中断后原 receipt 可查询且零重放。
-- [ ] 删除旧 WINDOW 写路径并通过后端/API/前端/静态扫描/TopN、文档与工作区门禁。
+- [x] 原始 request key 与带动作域的规范化请求指纹；同 actor/key 同请求返回原 Run，异动作或 payload 返回 409；重复 receipt 在动态范围校验前识别。
+- [x] Run、Item、不可变计划、四动作任务同事务受理；任何部分失败全部回滚且零 Git 写。
+- [x] 短事务领取与持久实际顺序；任务/步骤稳定身份；结果 CAS、Item/Run/绑定投影和 guard 确认同事务，不再整 Run 级联覆盖。
+- [x] ENSURE_MR 保存 numeric project/IID/URL/source/target/冻结 SHA；TRY_MERGE 从此证据继续，身份重绑定不得转写新项目。
+- [x] Task 所有权约束 journal begin、SEND_STARTED 与结果确认；已 SEND_STARTED 不因超时、代次或一次 404 获得重新发送资格。
+- [x] FAIL_FAST 只传播同仓；UNKNOWN 在 CONTINUE 下仍停止同仓；精确 retry 不重放成功动作、不接受未知事实。
+- [x] 真实 PostgreSQL/HTTP fixture 验证并发受理、两仓定向提交、HTTP 成功后本地提交失败、旧领取者、真实独立进程硬中断后原 receipt 可查询且零重放。
+- [x] 移除迭代 create/update/addRepos 建分支、update/removeRepos 归档的隐式 Git 写；保留命名/版本映射、EXISTING 只读校验、挂窗/同组约束，前端文案与真实 fixture 同步。
+- [ ] 收口交付：确认旧 WINDOW 写路径已删除，后端/API/前端/静态扫描/TopN、文档与工作区门禁通过，分组推送并通过新 SHA Full-Link。
 - 非目标：不提供 worker、自动 resume 或重启后自动继续，不把安全停住描述成恢复完成。
 
 ## S3-C2：同一执行器的后台驱动、核对与恢复
@@ -98,6 +99,7 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 - 依赖：C1 唯一任务协议；版本更新与收尾在 S4 前不宣称同等恢复保障。
 - 回滚：停止受理/派发，保留任务和在途保护，核对后再切换；不重启旧 WINDOW 执行路径。
 - [ ] 202 契约、前端轮询退出与统一状态；有界 worker 调用 C1 同一执行器。
+- [ ] 已保存原请求的回执入口不依赖当前可执行范围；窗口冻结或绑定变化后仍可用原 key/原 payload 查询 receipt，新请求仍严格校验当前范围。
 - [ ] AFTER_COMMIT 仅作唤醒提示，数据库扫描找回已提交任务；短事务领取、租约和代次具有真实消费者。
 - [ ] UNKNOWN/NEEDS_REVIEW 的精确只读核对、受证据约束的 resume；无 force 绕过或任意 FOUND 自动释放 guard。
 - [ ] 独立进程硬中断并重启继续、双 worker、丢失唤醒、数据库提交失败、租约过期及旧 worker 延迟发送验收。

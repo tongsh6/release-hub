@@ -1,141 +1,282 @@
 # Run 执行规范增量
 
-当前实现范围为 S3-A/B1：同步 Orchestrate、持久受理与封存计划、统一状态、精确失败项重试、Git 操作账本及未决写阻断。以下涉及 RunTask、worker、自动核对后继续、202 响应和硬中断恢复的场景是 S3-C/S4 目标，未完成验收前不作为现有能力展示。
-
 ## ADDED Requirements
 
 ### Requirement: 唯一手动编排与权威计划
 
-系统 SHALL 从窗口的绑定关系生成仓库并集和 `(window, iteration, repository)` 计划，完整校验后先保存 Run 与不可变快照，再执行 GitLab MR-first。计划包含真实 feature 分支模式、source/target、ref、提供方、仓库映射和稳定顺序；执行及重试不得重新解释这些目标。
+系统 SHALL 从窗口绑定关系生成仓库并集和 `(window, iteration, repository)` 计划，完整校验后，在同一受理事务保存协议 3 的 Run、不可变快照与每个 Item 的固定四动作任务，再执行 GitLab MR-first。计划包含真实 feature 分支模式、source/target、ref、提供方、仓库映射和稳定顺序；执行及重试不得重新解释这些目标。Publish/Attach 不因此获得隐式 Git 写入权限。
+
+当前 C1 契约仅覆盖 protocol 3 的 WINDOW_ORCHESTRATION，由请求线程消费任务；S3-B2 cleanup 复用 MR 规则，未迁入四动作协议。独立进程硬杀已证明提交后检查点保留及零重放，未证明整个恢复能力。C2 的 worker、202、持久扫描、lease 与自动继续，以及 S4 的其他执行类型恢复仍为目标；交付状态以任务记录和验收证据为准。
 
 #### Scenario: 相同仓库属于多个迭代
+
 - **GIVEN** 同一仓库被窗口中的两个迭代引用
 - **WHEN** 用户选择这两个迭代执行 Orchestrate
 - **THEN** 二者按 attachAt 与稳定消歧顺序依次合并到同一 release 分支
 - **AND** 计划次序与实际执行次序分别记录，共享仓库计数为一
 
 #### Scenario: 所选范围存在无效绑定
+
 - **WHEN** 仓库、迭代、分支模式或远端映射不完整或相互冲突
 - **THEN** 整次受理被拒绝且没有 Git 写入
 - **AND** 不以过滤无效项后的子集代替用户范围
 
+### Requirement: MR 检查点分段提交
+
+系统 SHALL 以 ENSURE_MR 和 TRY_MERGE 两个独立持久动作执行窗口合并；ENSURE_MR 的 APPLIED 只证明创建、复用或包含关系目标成立，不能代替 TRY_MERGE 的合并确认。TRY_MERGE SHALL 消费已提交的项目、source/target、冻结 source SHA、disposition 及可用的 MR IID/URL 检查点，不得重新创建 MR。cleanup 的实际复合调用 SHALL 复用同一 ensure/try 规则，不形成第二套窗口执行路径。
+
+#### Scenario: 创建或复用 MR 后继续合并
+
+- **GIVEN** ENSURE_MR 已确认唯一 MR，且项目、分支、IID、URL 与冻结 source SHA 完整
+- **WHEN** 该动作的结果提交成功
+- **THEN** 后继 TRY_MERGE 读取持久检查点并复核同一项目、MR 与 source SHA
+- **AND** 只在当前门禁允许时尝试合并，不重新创建或自动关闭 MR
+
+#### Scenario: source 已被 target 包含
+
+- **GIVEN** 精确 source SHA 已被当前 target 包含，且没有可关联的历史 MR
+- **WHEN** 执行 ENSURE_MR 与后继 TRY_MERGE
+- **THEN** 记录有项目、分支、source SHA 和 ALREADY_MERGED disposition 的证据，IID/URL 可以为空
+- **AND** TRY_MERGE 重新确认包含关系，不制造空 MR
+
+#### Scenario: 历史合并 SHA 已不在 target 中
+
+- **GIVEN** 当前 target 仍包含 source SHA，但历史 MR 的 merge SHA 已不被 target 包含
+- **WHEN** 确认 ALREADY_MERGED
+- **THEN** 不向 cleanup 提供该历史 merge SHA 作为 Tag 依据
+- **AND** 不能猜测当前 target tip；包含关系读取不完整时保持 UNKNOWN
+
 ### Requirement: 阻塞传播与结果聚合
 
-系统 SHALL 默认 FAIL_FAST，仅显式选择时使用 CONTINUE_ON_BLOCK。失败或阻塞停止同仓后续项并记录 SKIPPED_DUE_TO_BLOCK；其他仓库可以继续。UNKNOWN 不受继续策略豁免，Run 必须进入 NEEDS_REVIEW。
+系统 SHALL 默认 FAIL_FAST，仅显式选择时使用 CONTINUE_ON_BLOCK。FAIL_FAST 下失败或阻塞停止同仓后续 Item 并记录 SKIPPED_DUE_TO_BLOCK；CONTINUE_ON_BLOCK 只允许其他 Item 按原队列继续，不执行当前失败 Item 的后继动作。UNKNOWN 不受继续策略豁免，必须停止本仓后继并使 Run 进入 NEEDS_REVIEW；其他仓库仍可领取并完成其合法任务。
 
 #### Scenario: 第一个迭代阻塞
+
 - **GIVEN** 同仓第二个迭代尚未执行且使用 FAIL_FAST
 - **WHEN** 第一个迭代得到 MERGE_BLOCKED 或 FAILED
 - **THEN** 第二个迭代记录跳过原因、前置 Item ID 和 executedOrder=0
 - **AND** 不丢弃该项，也不把跳过记为成功
 
+#### Scenario: UNKNOWN 只停止发生未决写的仓库
+
+- **GIVEN** A、B 两仓同属一个 Run，且用户显式选择 CONTINUE_ON_BLOCK
+- **WHEN** A 仓动作得到 UNKNOWN
+- **THEN** A 仓后继任务停止，Run 保持 NEEDS_REVIEW
+- **AND** B 仓仍可领取任务、提交结果并完成自己的 guard 确认
+- **AND** 不因 Run 为 NEEDS_REVIEW 把 B 仓合法结果拒绝或丢弃
+
 #### Scenario: 所有仓库或部分仓库失败
+
 - **WHEN** Run 完成可确认的执行
 - **THEN** 全仓完成为 DONE，全部仓库失败或没有有效执行为 FAILED，部分仓库失败为 PARTIAL_FAILED
 - **AND** 任一未决副作用优先 NEEDS_REVIEW；API、分页筛选、详情和导出读取同一持久状态
 
 ### Requirement: 重试使用原计划与精确选择
 
-系统 SHALL 只接受原 Run 的实际 Item ID，并为已确认失败或阻塞项创建有来源的新 Run/Item。成功、运行中、预览和 UNKNOWN 项不得普通重试；收尾项不得被转成 feature → release。
+系统 SHALL 只接受原 Run 的实际 RunItem UUID，为已确认失败、阻塞或符合依赖条件的跳过项创建有来源的新 Run/Item 和四动作任务。成功、运行中、预览、UNKNOWN 或不具备协议 3 任务证据的历史 Run 不得普通重试；收尾项不得被转成 feature → release。成功连续前缀 SHALL 以 INHERITED 表达，保留来源与原 MR/项目证据，不生成新的执行 Step、claim 或外部写入。
 
 #### Scenario: 选择依赖阻塞而跳过的项
+
 - **GIVEN** 原计划为 FAIL_FAST
 - **WHEN** 用户只选择 SKIPPED_DUE_TO_BLOCK 而未选择其同仓失败前置项
 - **THEN** 拒绝受理并解释依赖
 - **AND** 不擅自扩大用户选择范围
 
 #### Scenario: 当前分支配置已改变
+
 - **WHEN** 用户重试一个具有有效原计划的失败项
 - **THEN** 使用原快照的 source/target、分支模式、顺序和策略
 - **AND** 当前映射或绑定不再满足前置条件时拒绝，不改写原计划
 
+#### Scenario: 已创建 MR 的合并被明确阻塞
+
+- **GIVEN** ENSURE_FEATURE、ENSURE_RELEASE、ENSURE_MR 已提交成功，TRY_MERGE 得到可确认的 MERGE_BLOCKED
+- **WHEN** 用户按原 Item UUID 受理新的重试
+- **THEN** 新 Run 为前三个动作保存 INHERITED，保留原 project ID、MR IID/URL、source SHA 与来源 Run/Item
+- **AND** 只领取待执行的 TRY_MERGE，不重复建分支或 MR，不为继承动作伪造本次 Step
+
+#### Scenario: 同仓其他 Item 已固定项目身份
+
+- **GIVEN** 原 Run 的同一仓库已有一致的数字项目 ID，包括由纯读成功 Item 保存的事实
+- **WHEN** 选择一个缺少自身项目字段的失败或跳过 Item 重试
+- **THEN** 新 Run 继承该仓库唯一已确认项目 ID
+- **AND** 原 Run 中项目 ID 冲突、非法或新的远端映射不一致时拒绝，不重新解析为另一个目标
+
 ### Requirement: 确认身份与未决写保持一致
 
-系统 SHALL 将 GitLab 写请求发送到已确认的数字项目 ID，并将正常返回的业务 UNKNOWN 纳入会话收口；传输层确认某请求 APPLIED 不能代替业务结果完整性。
+系统 SHALL 从首次确认的 GitLab 分支读取开始冻结数字项目 ID，而非等到首次 HTTP 写入。该身份 SHALL 经既有任务上下文与 Item metadata 持久化，并约束同 Run、同仓库的后继任务、其他 Item 和重试；不同仓库分别绑定。所有真实读写 SHALL 校验期望身份并使用 numeric URI；业务 UNKNOWN 不得覆盖已确认的项目或 MR 检查点。传输层某请求 APPLIED 不能代替业务证据完整性。
+
+#### Scenario: 首次分支已存在且没有写 operation
+
+- **GIVEN** ENSURE_FEATURE 只读确认项目 A 的 feature 分支存在，未产生写账本
+- **WHEN** 该动作提交 ALREADY_EXISTS
+- **THEN** 项目 A 的数字 ID 与动作结果一起持久化
+- **AND** 后续 ENSURE_RELEASE 即使是本 Run 首次写入，也必须使用该期望身份
+- **AND** namespace 已改向项目 B 时，在发送写请求之前拒绝
+
+#### Scenario: 分支不存在但身份无法确认
+
+- **WHEN** 分支读取缺少项目身份、有效分支证据，或未取得真实分支 404
+- **THEN** 不将该响应当作可创建的 missing
+- **AND** 不发送建分支请求；真实分支 404 仍须携带已确认项目 ID
 
 #### Scenario: 传输成功但 MR 证据不完整
+
 - **GIVEN** HTTP 2xx 已记录 APPLIED，但业务无法确认 MR 身份、分支或提交
-- **WHEN** mergeBranch 返回 UNKNOWN
-- **THEN** 已发生操作转入 NEEDS_REVIEW 并保留仓库 guard
-- **AND** 后续新 Run 的写请求在远端发送前被拒绝
+- **WHEN** ENSURE_MR 或 TRY_MERGE 返回 UNKNOWN
+- **THEN** 结果事务保留 NEEDS_REVIEW 与仓库 guard
+- **AND** 任务 scope 正常退出不能提前释放 guard，后续新 Run 的写请求在远端发送前被拒绝
+
+#### Scenario: TRY 返回不完整或不一致的身份
+
+- **GIVEN** 已提交 checkpoint 的项目、MR IID 与 source SHA 均已确认
+- **WHEN** TRY 返回 UNKNOWN，或“成功”响应对应另一个项目、MR 或 source SHA
+- **THEN** 记录 UNKNOWN 及阻塞证据，保留原 checkpoint 身份
+- **AND** 不用 null、部分响应或错误项目覆盖原事实
 
 #### Scenario: namespace 在身份解析后被重用
+
 - **GIVEN** namespace 读取对应项目 A，随后该路径可能映射项目 B
-- **WHEN** 执行已受理的 Git 写请求
-- **THEN** 最终 URI 固定为项目 A 的数字 ID，保留动作 suffix 与 query
-- **AND** 不向可变 namespace 发送写请求
+- **WHEN** 派发已通过期望身份校验的 Git 写请求
+- **THEN** 最终 URI 固定为项目 A 的数字 ID，保留原动作 suffix 与 raw query
+- **AND** 不向可变 namespace 发送写请求，不向远端发送内部身份或任务控制头
 
 ### Requirement: 外部写入前持久受理
 
-系统 SHALL 在新执行协议的每次外部写入之前，持久化 Run、封存计划、任务和操作意图；协调器不得用覆盖整轮网络调用的数据库事务代替持久检查点。
+系统 SHALL 在协议 3 窗口编排的每次外部写入之前，先持久化 Run、封存计划、固定四动作任务与操作意图；协调器不得用覆盖整轮网络调用的数据库事务代替检查点。C1 请求线程只消费已领取任务，重复受理不得从内存计划或旧直接循环继续执行。
 
 #### Scenario: 受理提交后进程退出
-- **GIVEN** 新协议 Run 已受理但没有派发外部写入
-- **WHEN** 进程重启
-- **THEN** Run 和任务仍可查询
-- **AND** 调度器从持久状态继续，不依赖内存回调
+
+- **GIVEN** 协议 3 Run 已受理但没有派发外部写入
+- **WHEN** 进程重启并查询或以相同 key 和请求重新提交
+- **THEN** 原 Run 与任务仍可查询，相同请求返回原 Run
+- **AND** C1 不自动领取、重放或继续任务；数据库扫描后的继续属于 C2 目标
+
+#### Scenario: 已提交 MR 后独立进程被强制终止
+
+- **GIVEN** 独立进程已完成并提交 ENSURE_MR，TRY_MERGE 尚未领取
+- **WHEN** 该进程被强制终止，新进程使用同一数据库与相同请求 key 重放受理
+- **THEN** 返回原 Run，ENSURE_MR 仍为 COMPLETED、TRY_MERGE 仍为 PENDING，MR 身份与 source SHA 保留
+- **AND** 不新增 MR POST 或 MERGE PUT，不执行自动继续
+- **AND** 此场景不作为 SEND_STARTED 后结果未提交时的恢复、lease 接管或后台最终完成的证明
 
 #### Scenario: 计划预览不执行 Git 写入
+
 - **WHEN** 用户创建 S1 持久计划预览
-- **THEN** 系统返回可查询的计划
+- **THEN** 系统返回可查询的 PLANNED 计划，不创建协议 3 执行任务
 - **AND** 不派发任何 Git 写请求
+
+### Requirement: 任务结果与仓库保留原子提交
+
+系统 SHALL 对协议 3 任务按同一 claim 身份定向提交唯一 Step、Item 结果与 metadata、必要绑定、任务终态及 Run 汇总，并在同一短事务内确认 guard；锁定顺序为 Run → Task → guard。任务保持 RUNNING 时校验 taskId/claimToken，确认成功后才进入终态。系统 SHALL 拒绝用旧完整 Run 聚合保存覆盖已有持久任务的结果。
+
+#### Scenario: MR 检查点提交失败
+
+- **GIVEN** MR 外部操作已经发生，但 ENSURE_MR 结果事务无法提交
+- **WHEN** 协调器收到数据库或业务投影提交异常
+- **THEN** 异常向调用方传播，Step、Item、任务终态与 guard 确认一并回滚
+- **AND** 独立操作账本保留已发生的 HTTP 事实，guard 不被 scope 关闭释放
+- **AND** 不领取或派发 TRY_MERGE，不把提交异常转换为可继续的普通失败
+
+#### Scenario: 两个仓库的结果先后到达
+
+- **GIVEN** A、B 仓的任务均已合法领取
+- **WHEN** 两个执行结果分别提交
+- **THEN** 各自定向更新任务与 Item，并根据数据库事实重新汇总 Run
+- **AND** 后到的旧内存 Run 不能覆盖另一仓已提交的 Step、metadata、状态或绑定
+
+#### Scenario: 同一任务重复提交结果
+
+- **GIVEN** 某 taskId/claimToken 的结果已经提交终态
+- **WHEN** 同一或不匹配领取身份再次尝试提交
+- **THEN** CAS 拒绝重复结果，不产生第二条 task Step
+- **AND** 不重复释放 guard 或改变已保存的执行事实
 
 ### Requirement: 运行身份与请求幂等隔离
 
-系统 SHALL 为新 Run、RunItem、Attempt 分配不碰撞的独立标识，使用单独的幂等键和规范化请求哈希去重；后续运行不得改变历史执行项归属。
+系统 SHALL 为新 Run、RunItem 与持久 task 分配独立、不碰撞的标识；Orchestrate 和协议 3 Item retry SHALL 要求非空 Idempotency-Key，使用持久 actor、原始 key 与包含动作语义的规范化请求 hash 去重。请求 key 不是 taskId、claimToken 或可选服务端随机值；后续运行不得改变历史执行项归属。C1 不引入独立 Attempt 实体或租约代次。
 
 #### Scenario: 同范围多次执行
-- **WHEN** 同一仓库、迭代、窗口被纳入两个不同的新 Run
-- **THEN** 两个 Run 的执行项独立保存
+
+- **WHEN** 同一仓库、迭代、窗口以不同合法意图被纳入两个新 Run
+- **THEN** 两个 Run 的 Item 与 task 独立保存
 - **AND** 第一次运行的执行项和证据保持不变
 
+#### Scenario: 缺少必填请求 key
+
+- **WHEN** Orchestrate 或 retry 请求缺少 Idempotency-Key，或 key 为空白
+- **THEN** 明确拒绝请求，不创建 Run、计划或 task
+- **AND** 不用随机 key 代替调用方意图，不派发 Git
+
 #### Scenario: 同幂等键重复请求
+
 - **WHEN** 同一调用主体以相同 key 和相同规范化请求再次提交
-- **THEN** 返回原 Run
-- **AND** 不新建或重复派发任务
+- **THEN** 返回原 Run，包括仍在运行或安全停住的 Run
+- **AND** 不重新校验为另一个动态范围，不领取或重复派发任务
 
 #### Scenario: 幂等键对应不同请求
-- **WHEN** 已使用的 key 对应的请求内容改变
+
+- **WHEN** 同一主体已使用的 key 对应不同动作、范围、策略或 retry 选择
 - **THEN** 返回冲突
-- **AND** 不修改原计划
+- **AND** 不修改原计划，不以添加 key 前缀或另建执行入口规避冲突
 
 ### Requirement: 未知结果先核对
 
-系统 SHALL 将可能已到达外部系统但未确认结果的写请求标为 UNKNOWN，并在独立核对后决定下一步，不得当作普通失败直接重试。
+系统 SHALL 保留可能已到达外部系统但未确认结果的写请求及仓库 guard，不得当作普通失败直接重试。C1 在调用线程取得未决结果后提交 UNKNOWN；若进程在结果提交前终止，则保留数据库中真实的 RUNNING/SENT 等事实，不伪造任务完成或自动恢复。独立只读观察不能自行授权继续；核对后原子补记与自动继续属于 C2 目标。
 
-#### Scenario: Git 成功但结果保存失败
-- **GIVEN** SEND_STARTED 已持久化，外部操作成功但结果未提交
-- **WHEN** 系统恢复
-- **THEN** 先核对精确操作标识和计划证据
-- **AND** 确认成功时只补记结果，不重放外部写入
+#### Scenario: Git 成功但本地结果尚未提交
+
+- **GIVEN** SEND_STARTED 已持久化，外部操作可能成功但业务结果未提交
+- **WHEN** 当前请求失败或进程中断
+- **THEN** 保留已有操作证据与仓库 guard，不因时间经过或重复受理重新发送
+- **AND** C1 查询返回实际已保存状态，不宣称自动恢复已完成
+
+#### Scenario: 核对已发生的外部成功（C2 目标）
+
+- **GIVEN** 后续恢复执行器已通过精确操作身份和计划证据确认外部成功
+- **WHEN** 执行证据驱动的恢复提交
+- **THEN** 只补记尚缺的本地结果，不重放已发生的外部写入
+- **AND** 只有结果、任务与 guard 原子确认后才允许后继继续
 
 #### Scenario: 查询未找到结果但原请求可能在途
+
 - **WHEN** 核对没有找到目标，但不能证明原请求已终结且未生效
-- **THEN** 保持 UNKNOWN 或进入 NEEDS_REVIEW
+- **THEN** 保持未决记录或进入 NEEDS_REVIEW
 - **AND** 不以一次不存在响应为依据再次发送写请求
 
 ### Requirement: 仓库写入互斥与过期执行者隔离
 
-系统 SHALL 对同一规范化仓库建立原子写入保留，覆盖新旧内部入口；租约过期只允许接管核对，不能自动释放未决副作用的保留。
+系统 SHALL 对同一规范化仓库建立原子写入保留，覆盖当前真实内部入口。C1 SHALL 在意图记账、发送及结果确认边界校验持久 taskId/claimToken、Run、actor、repo 和动作资格；不匹配身份不得发送或提交。C1 不存在超时重领或 lease 接管；C2 的租约过期也只允许接管核对，不能自动释放未决副作用的保留。
 
-#### Scenario: 旧 worker 返回
-- **GIVEN** 任务执行代次已经变化
+#### Scenario: 领取身份不匹配或任务已经结束
+
+- **GIVEN** taskId 的持久 claimToken 与调用方不符，或任务已不处于允许执行的状态
+- **WHEN** 调用方尝试登记意图、发送请求或提交结果
+- **THEN** 在相应持久边界拒绝该动作
+- **AND** 不产生新的远端写入，不覆盖现有结果或释放 guard
+
+#### Scenario: 旧 worker 返回（C2 目标）
+
+- **GIVEN** 后续 worker 机制已更换任务领取身份
 - **WHEN** 旧 worker 尝试保存结果或继续派发
 - **THEN** 数据库 CAS 拒绝旧结果覆盖
 - **AND** 旧 worker 不得继续派发后续写请求
 
 #### Scenario: 未决仓库被其他入口操作
-- **GIVEN** 仓库仍有 UNKNOWN 的写操作
-- **WHEN** 另一个 Run 或旧业务入口请求写该仓库
+
+- **GIVEN** 仓库仍有 SENT、UNKNOWN 或待本地结果确认的写操作
+- **WHEN** 另一个 Run 或其他真实业务入口请求写该仓库
 - **THEN** 返回明确阻断，不绕过保留
 
 #### Scenario: 冲突检查没有已有 MR
+
 - **GIVEN** 合并检查未找到可唯一确认的已有 MR
 - **WHEN** 用户请求冲突检查
 - **THEN** 返回无法确认的读取结果
 - **AND** 仅允许 GET/HEAD，不创建或关闭临时 MR，不产生写账本
 
 #### Scenario: 仓库别名与配置改向
+
 - **GIVEN** 两个本地仓库标识对应同一远端项目，且该项目存在未知操作
 - **WHEN** 另一个入口请求写入或尝试修改原仓库的远端映射
 - **THEN** 使用同一远端保留阻断操作，不允许改向后绕过
@@ -145,11 +286,13 @@
 系统 SHALL 为受控的新旧写入口维护独立操作账本，即使来源尚无持久 RunTask，也必须先提交意图与发送事件；业务事务回滚不得删除已发生外部操作的证据。
 
 #### Scenario: 外部成功后业务事务回滚
+
 - **WHEN** 外部操作已发送且成功，但外层业务事务回滚
 - **THEN** 操作意图和已确认的外部证据仍可查询
 - **AND** 本地业务结果未确认时保留待复核阻断，不自动重放
 
 #### Scenario: 本地文件模式无法识别受保护目标
+
 - **WHEN** 受控入口请求写本地文件，但无法确定目标身份及保留关系
 - **THEN** 在修改文件前明确拒绝
 - **AND** 不回退到无门禁的文件访问实现
@@ -159,39 +302,51 @@
 系统 SHALL 为只读核对使用独立的外部证据查询接口，区分权限失败、不可达、不完整、不支持和确认观察结果；核对不得发出外部写入，过时观察不得覆盖新的状态。
 
 #### Scenario: 核对查询不完整
+
 - **WHEN** 核对遇到权限失败、分页未完成或网络异常
 - **THEN** 保留未知或人工复核状态
 - **AND** 不把空结果当成可以安全重试的证据
 
 #### Scenario: 幂等核对与外部零写入
+
 - **WHEN** 同一主体用相同幂等键和请求内容重复核对
 - **THEN** 返回同一核对记录
 - **AND** 外部请求仅允许 GET/HEAD，不创建或关闭 MR，不修改引用或文件
 
 ### Requirement: 归档删除具有确认依据
 
-系统 SHALL 将归档引用创建和源引用删除作为独立操作；只有归档已确认且源引用满足删除前置条件时才允许发送删除，证据不足或外部并发保护能力未证实则保持阻断。
+系统 SHALL 将归档引用创建和源引用删除作为独立操作；只有归档已确认且源引用满足经验证的原子删除前置条件时，后续 S4 才可实现受控删除。当前 C1 真实 HTTP DELETE SHALL 继续拒绝；证据不足或提供方并发保护能力未证实不能授权发送。
 
-#### Scenario: 归档创建失败
+#### Scenario: 当前入口请求真实分支删除
+
+- **WHEN** 当前实现收到真实 GitLab HTTP DELETE 写请求
+- **THEN** 在远端发送前明确阻断
+- **AND** 不以完成恢复闭环为由绕过保护
+
+#### Scenario: 归档创建失败（S4 目标）
+
 - **WHEN** 归档引用创建失败或响应无法确认
 - **THEN** 不发送源分支删除请求
 - **AND** 保留失败或未知的独立证据
 
-#### Scenario: 源引用在归档后漂移
+#### Scenario: 源引用在归档后漂移（S4 目标）
+
 - **WHEN** 删除前发现源引用已变化，或不能可靠保障删除前置条件
 - **THEN** 阻断删除并要求复核
 - **AND** 不把旧观察当作新的删除授权
 
 ### Requirement: 历史记录与补偿边界
 
-系统 SHALL 保留旧 Run 的查询导出，不自动构造历史操作意图或重放；补偿必须是有来源、前置条件和明确授权的新计划。
+系统 SHALL 保留旧 Run 的查询导出，不自动构造历史 task、claim、Step 或操作意图，不重放旧执行路径；无协议 3 证据的旧 Run 不能通过新 retry 被隐式升级。补偿属于后续有来源、前置条件和明确授权的新计划。
 
 #### Scenario: 打开历史 Run
+
 - **WHEN** 用户查看无新协议元数据的历史 Run
 - **THEN** 按实际已保存事实及单向规范化的统一执行状态展示记录
-- **AND** 不提供无证据的自动恢复
+- **AND** 不补造任务或提供无证据的自动恢复
 
 #### Scenario: 合并已经发生
+
 - **WHEN** 后续步骤失败
 - **THEN** 不自动回滚合并、删除已有引用或重触发 CI
 - **AND** 保留已发生事实和人工决策入口
@@ -200,75 +355,105 @@
 
 ### Requirement: 运行任务管理
 
-系统 SHALL 为新协议提供真正持久化的 RunTask、依赖、尝试和证据查询；已有任务表或前端调用声明不构成能力已实现的证明。
+系统 SHALL 为 executionVersion=3 的 WINDOW_ORCHESTRATION 在受理事务中持久化固定四动作任务，复用现有 run_task 及 Run/Item 身份；请求线程通过唯一任务执行器消费这些记录。任务列表 SHALL 展示实际持久字段，不把未来依赖图、Attempt 或 lease 摘要当作已有 API。
 
 #### Scenario: 创建运行任务
-- **GIVEN** 一个已持久受理的新协议 Run
-- **WHEN** 计划被封存
-- **THEN** 创建包含任务类型、目标、顺序、依赖和前置条件的持久任务
-- **AND** 初始状态为 PENDING，不得先执行后补记录
+
+- **GIVEN** 一个通过完整校验的新协议窗口编排
+- **WHEN** 封存计划并提交受理
+- **THEN** 每个 Item 按固定次序保存 ENSURE_FEATURE、ENSURE_RELEASE、ENSURE_MR、TRY_MERGE
+- **AND** 新执行动作初始为 PENDING；retry 已确认成功前缀为 INHERITED
+- **AND** Run、快照和任务一并提交，禁止先执行后补记录
 
 #### Scenario: 查看运行任务列表
+
 - **GIVEN** 新协议 Run 已创建任务
 - **WHEN** 用户调用 GET /api/v1/runs/{id}/tasks
-- **THEN** 返回任务状态、顺序、依赖、阻断原因和尝试摘要
-- **AND** 不返回 Token、请求头或敏感响应
+- **THEN** 按 taskOrder 返回实际 taskId、runId、itemId、actionType、status、startedAt、finishedAt 与脱敏 errorMessage
+- **AND** 不返回 claimToken、访问 Token、内部请求头或敏感响应，不伪造尝试摘要
 
 ### Requirement: 任务状态流转
 
-系统 SHALL 明确区分 PENDING、RUNNING、COMPLETED、FAILED、UNKNOWN、NEEDS_REVIEW、SKIPPED 和 CANCELLED。UNKNOWN 只能经过证据核对进入可继续或终止状态。
+系统 SHALL 在 C1 区分任务 PENDING、RUNNING、COMPLETED、FAILED、UNKNOWN、SKIPPED 与 INHERITED。普通任务仅一次 PENDING → RUNNING 领取，随后根据已确认结果进入 COMPLETED、FAILED 或 UNKNOWN；依赖阻断的未执行任务进入 SKIPPED。INHERITED 是新 retry 中对原成功前缀的引用，不代表本次执行。NEEDS_REVIEW 是 Run/操作的待复核状态，不冒充当前 task 终态。C1 不将失败或未知任务自动退回 PENDING。
 
 #### Scenario: 任务执行成功
-- **GIVEN** 一个 PENDING 任务
-- **WHEN** worker 领取并按协议执行
-- **THEN** 记录开始时间和尝试代次
-- **AND** 只有外部证据和结果提交成功后，才记录 COMPLETED 与结束时间
 
-#### Scenario: 已确认失败的自动重试预算
-- **GIVEN** 计划允许有限自动重试，且请求已确认未生效、前置条件仍满足
+- **GIVEN** 一个符合仓库队列资格的 PENDING 任务
+- **WHEN** 请求线程以 CAS 领取
+- **THEN** 记录 RUNNING、startedAt 与唯一 claimToken
+- **AND** 只有动作证据与结果事务提交成功后，才记录 COMPLETED 与 finishedAt
+
+#### Scenario: 继承前缀不作为新执行
+
+- **GIVEN** retry 中某动作由原 Run 的成功连续前缀继承
+- **WHEN** 任务列表被查询或执行器领取后继
+- **THEN** 该动作保持 INHERITED，不生成新的 claim、开始结束时间或执行 Step
+- **AND** 实际执行顺序只由本次真正领取的任务推进
+
+#### Scenario: 任务执行失败重试
+
+- **GIVEN** 本场景为 C2 目标，恢复执行器已实现且计划明确允许有限自动重试，请求已确认未生效、前置条件仍满足
 - **WHEN** 当前尝试失败
-- **THEN** 增加尝试计数并记录脱敏原因
-- **AND** 未达到预算时回到 PENDING，预算耗尽或不允许重试时进入 FAILED
-- **AND** UNKNOWN 不适用此自动重试规则
+- **THEN** 记录新的执行尝试与预算，再按后续恢复协议决定是否重新排队
+- **AND** C1 不实现此自动回队行为，UNKNOWN 不适用已确认失败的重试规则
 
 #### Scenario: 传输响应丢失
+
 - **GIVEN** 写请求已进入 SEND_STARTED
-- **WHEN** 连接中断或响应缺失
-- **THEN** 任务进入 UNKNOWN
-- **AND** 不能按普通 FAILED 的自动重试策略再次发送
+- **WHEN** 调用线程收到连接中断或缺失响应，且本地结果事务可提交
+- **THEN** 任务进入 UNKNOWN 并保留未决 guard
+- **AND** 不能按普通 FAILED 策略再次发送；提交前进程硬中断则保留真实持久状态而不伪造该转移
 
 ### Requirement: 手动重试任务
 
-系统 SHALL 只允许对已确认失败且满足安全重放条件的新协议任务创建有来源关联的新 Run 和 attempt；原终态 Run 不变，未知结果先核对，成功步骤不得重复执行。
+系统 SHALL 通过现有 POST /api/v1/runs/{id}/retry 接收必填 Idempotency-Key 与 `items` 原 RunItem UUID 集合；不得把 taskIds、任务序号或窗口/迭代/仓库复合字符串当作选择契约。仅对已确认失败、阻塞或符合依赖条件的跳过项，沿原协议 3 计划创建有来源的新 Run/Item/四动作任务。响应沿用 `ApiResponse<String>` 的新 Run ID；原终态 Run 不变，成功前缀继承而不重复执行。
 
 #### Scenario: 非失败状态不可重试
-- **GIVEN** 一个已完成或尚在运行的任务
+
+- **GIVEN** 原 Item 已完成、尚在运行，或属于预览/无协议 3 证据的历史 Run
 - **WHEN** 用户请求 retry
-- **THEN** 返回状态不允许重试的错误
-- **AND** 不重复执行成功步骤
+- **THEN** 返回状态或证据不允许重试的错误
+- **AND** 不改变原 Run，不重复执行成功步骤
 
 #### Scenario: 对 UNKNOWN 调用 retry
-- **WHEN** 用户对 UNKNOWN 任务请求 retry
+
+- **WHEN** 用户对 UNKNOWN Item 或 NEEDS_REVIEW Run 请求普通 retry
 - **THEN** 返回需要核对的阻断原因
 - **AND** 不派发外部写请求
 
-#### Scenario: 已确认失败项重试
-- **GIVEN** 任务已确认未生效且前置条件仍满足
-- **WHEN** 用户显式重试
-- **THEN** 创建有来源关联的新 Run 和 attempt，并返回新 Run ID
-- **AND** 原始证据及已成功任务保持不变
+#### Scenario: 使用任务 ID 或伪造 Item 选择
+
+- **WHEN** retry 仅提供 taskIds，或 items 中包含 task ID、非原 Run 的 Item UUID、复合业务键
+- **THEN** 拒绝受理，不把它们转换成另一个执行范围
+- **AND** 不生成新 Run 或外部写入
+
+#### Scenario: 手动重试失败任务
+
+- **GIVEN** 原 Item 的未完成动作已确认失败或阻塞，前置条件仍满足
+- **WHEN** 用户使用新的请求 key 和该 Item 的原 UUID 显式重试
+- **THEN** 返回有来源关联的新 Run ID，为其建立固定四动作任务
+- **AND** 已成功前缀标为 INHERITED，待执行后缀才可领取；原始证据保持不变
+
+#### Scenario: 相同重试请求再次提交
+
+- **WHEN** 相同 actor、原 Run ID、items 与请求 key 再次提交
+- **THEN** 返回首次重试的 Run ID
+- **AND** 不重新领取任务，不生成第三个 Run
 
 ### Requirement: 异步任务执行
 
-系统 SHALL 在 S3-C 完成后，于显式 Orchestrate 的受理事务提交后返回 202 与 Run ID，由持久队列和有界 worker 执行。默认 MANUAL 下 Publish 仅返回业务状态，不生成编排意图；可选 AUTO_ON_ATTACH 必须另行实现显式开关并复用唯一受理入口。
+系统 SHALL 在后续 S3-C2 完成验收后，于显式 Orchestrate 的受理事务提交后返回 202 与 Run ID，由持久扫描和有界 worker 驱动同一任务执行器；C1 仍由请求线程消费任务，不承诺 202、后台自动继续或 lease 接管。默认 MANUAL 下 Publish 仅返回业务状态，不生成编排意图；可选 AUTO_ON_ATTACH 必须另行实现显式开关并复用唯一受理入口，不增加第二套执行路径。
 
-#### Scenario: 异步任务不阻塞受理
+#### Scenario: 异步执行不阻塞
+
+- **GIVEN** C2 的持久扫描与 worker 已实现并通过验收
 - **WHEN** 用户显式触发 Orchestrate
-- **THEN** 系统先提交持久受理意图并返回相应业务响应
-- **AND** 后台任务独立执行，用户能用 Run 查询进度
+- **THEN** 系统先提交持久受理意图，再返回 202 与 Run ID
+- **AND** 后台通过同一任务执行器处理，用户能用 Run 查询进度
 
-#### Scenario: 受理后唤醒丢失
+#### Scenario: 受理后唤醒丢失（C2 目标）
+
 - **GIVEN** Run、封存计划和持久任务已一起提交
 - **WHEN** AFTER_COMMIT 唤醒没有执行
-- **THEN** 数据库轮询仍能发现并处理意图
-- **AND** 不创建重复计划
+- **THEN** 后续 C2 的数据库扫描仍能发现并处理意图
+- **AND** 不创建重复计划，不以租约过期为依据重发未决写请求

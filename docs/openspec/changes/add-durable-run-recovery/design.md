@@ -30,7 +30,9 @@
 | GitLabFilePort / 文件适配器 | 内容与读取版本同源 | A→B→A′ 必须拒绝，缺读取 revision 零写 |
 | 现有前端 API/组件与无状态展示工具 | 权威 scope、精确状态、入口收敛 | 详情 503 不缩小请求；共享 repo 只计一次；集成按钮不描述收尾 |
 
-新增记录或辅助对象必须有上述实际消费者；不预建完整任务平台。已有 `run_task` 表没有实际执行器，表名不能作为实现证据。先删除无人承责的旧写路径，再将持久执行接入唯一入口。
+新增记录或辅助对象必须有上述实际消费者；不预建完整任务平台。接手时 `run_task` 只有表结构、没有执行消费者；C1 由既有 RunAppService 消费固定任务协议，表结构与实际执行证据分别核对。无人调用的 ReleaseBranchService 及其自测已删除，不保留第二条窗口写路径。
+
+真实 E2E 前置复核又发现 IterationAppService 的 create/update/addRepos 直接建分支，以及 update/removeRepos 直接归档的旧入口。它们会在配置事务内写 Git，且创建失败曾被日志吞掉。C1 同批移除这些副作用，保留已有分支命名、模式和版本映射职责；AUTO/NAMED 只配置，EXISTING 保留必要只读存在验证。移除仓库只调整关联与关联版本配置，远端分支和历史 Run 证据保留。建 feature 统一由已有 ENSURE_FEATURE 消费，不建立另一种迭代执行器；具体正反例见本 change 的 iteration delta。
 
 ### S3-B2：仓库级关闭受理与收尾执行
 
@@ -53,6 +55,10 @@ C1 将请求线程接入唯一 WINDOW_ORCHESTRATION 持久任务路径，固定 
 C1 采用一次领取凭据，PENDING → RUNNING 后由 taskId/claimToken/status 约束 journal begin、SEND_STARTED 和结果提交。没有重领入口，不预建无人消费的租约、心跳或 generation 平台。Task 结果、唯一 Step、所属 Item、Run 汇总、绑定投影及 guard 确认必须同一短事务；远端事实先独立记录，但 adapter 返回不等于业务提交。禁止新任务协议回到整份 Run 级联保存。不同仓库的短事务投影必须保留彼此进度，同仓任务仍按稳定顺序执行。
 
 ENSURE_MR 持久保存项目 ID、IID/URL、source/target、冻结 source SHA 与 disposition；TRY_MERGE 只从该检查点继续，并固定预期项目身份。MR 创建成功后结果提交失败、Git 合并成功后投影失败、进程在两阶段之间退出，都不得重新创建 MR 或派发后继写入。SEND_STARTED 后即使旧线程暂停、超时或只读查询暂时 404，仍不能证明可以再发一次。
+
+项目身份从第一次已确认分支读取开始固定，包含 ALREADY_EXISTS 和确认 404，不等到第一次 POST 才确认。GitBranchPort.BranchStatus 携带项目 ID，Context 在单任务内拒绝重新绑定；同 Run 同仓库的后续 Item 和重试从已有 metadata 继承唯一身份，原 MR 身份及冻结 SHA 不被部分响应清除。Run.repositoryProjectId 承担聚合内唯一事实规则，由受理与存储投影共同消费。
+
+成功重试前缀使用 INHERITED 状态和原 Run/Item 来源，不复制成功 Step 或伪造新的 CREATED/MERGED。FAIL_FAST 只跳过同仓后继；UNKNOWN 始终停止该仓，Run 进入 NEEDS_REVIEW 后其他仓库仍可领取和提交。任务结果、Step、Item/Run 投影与 guard 确认同一事务，旧 claimToken 和整份 Run 保存均不能覆盖新事实。
 
 C1 的独立验收是重复请求返回原回执，已确认步骤具有持久事实，中断后可查询且安全停住；它不声称自动恢复。C2 使用同一个执行器增加有界 worker、202/前端轮询、数据库扫描、租约和证据驱动的核对/继续；AFTER_COMMIT 仅作唤醒提示。完整硬中断、重启继续、双 worker 与丢失唤醒在 C2 验收。两阶段都不提供 force 绕过未知事实，收尾恢复仍属于 S4。
 
@@ -138,54 +144,50 @@ flowchart TD
 
 ## 4. 数据模型与身份
 
-2026-10-08 S2 评审细化见 [s2-review.md](s2-review.md)。旧入口包含没有持久 RunTask 的冲突检查和迭代初始化，故操作账本独立于任务存在；S3 复用同一账本，不新建同义尝试表。
+当前 C1 直接复用 S1/S2 的计划、操作账本和 V21 任务表。下表记录实际承载关系，不把未来候选字段写成现有能力。
 
-优先扩展现有结构；下表的未实现结构是待验证设计候选，不是新建授权清单。引入前须查重、说明现有对象为何不能承责和实际消费者。状态规范化可做单向迁移，但不得补造或改写外部执行证据；具体 Flyway 版本号取当时下一空号。
-
-| 结构 | 关键字段与约束 |
+| 结构 / 责任 | C1 实际约束 |
 |---|---|
-| run 扩展 | UUID 新 ID、execution_version=2、显式 status、window_id、source、idempotency_key、request_hash、plan_hash、cancel_requested；旧 ID 保留 |
-| run_item | 新执行项独立 UUID；唯一 `(run_id, repo_id, iteration_key, ordinal)`；业务范围键仅供展示和选择，不再作全局主键 |
-| run_task 扩展 | 复用现有表；run_id 长度对齐 run.id，新增 item_id、action、ordinal、state_version、lease_owner、lease_until、generation、operation_key、前置条件和目标快照；保留旧行 |
-| run_task_dependency | 前后任务边，禁止环；首版按仓库串行，跨仓并发待门禁验收后再开启 |
-| git_operation / git_operation_event | 独立操作及追加式尝试事件；attempt UUID、次数、代次、INTENT_RECORDED / SEND_STARTED / 结果、时间和脱敏外部证据；ownerType/ownerId 不依赖未提交 Run，S3 用 task 关联复用 |
-| git_operation_observation | 只读核对的幂等键、观察版本、完整性、远端证据与结论；不覆盖历史观察 |
-| repo_execution_guard | 按规范化 provider/project 仓库标识唯一保留，持有者、代次及阻断原因；未决副作用保留独立于 worker 租约存活 |
-| run_recovery_decision | 操作者、幂等键、原因、观察版本、证据摘要、决策、源 Run/Task/Attempt；不能只手工修改状态字符串 |
+| Run | 独立 UUID；窗口执行使用 execution_version=3；预览和现有收尾仍使用各自协议；实际状态由后端汇总 |
+| SavedRunPlan / 既有计划存储 | window、actor、原始 key、请求 hash、计划 hash 和不可变快照；不把同义字段再复制到 Run |
+| RunItem | 独立 UUID；编排保留 window/iteration/repository 三元组，收尾为仓库级范围；plannedOrder 与 executedOrder 分别记录，metadata 保存已确认 Git 身份和 retry 来源 |
+| run_task | 复用 run_id、target_type=RUN_ITEM、target_id、task_type、task_order；V39 增加 claim_token；同 Run/Item/action 唯一；没有新增 item_id 或依赖表 |
+| run_step | V39 增加可空且唯一的 task_id；新任务一个实际结果对应一个 Step，INHERITED 不伪造新执行 Step |
+| Git 操作及事件账本 | 独立提交意图、SEND_STARTED 与 HTTP 结果；V39 增加 task_id/claim_token 关联，每个 C1 动作至多一次外部写；非任务收尾和文件操作继续复用同一账本 |
+| 既有只读 observation 与仓库 guard | 保留外部观察、版本和保护状态；Task 完成确认加入业务结果事务，远端未决证据独立保留 |
 
-计划不保存 Token、请求头或完整敏感响应体。凭据使用时按仓库引用读取；仓库映射与分支目标在活跃计划期间受保护，凭据轮换不允许把原计划改指向其他远端。
+C1 不建立通用 DAG、任务依赖表、第二份 attempt 账本或恢复决策实体。C2 若需要租约、代次或恢复投影，必须先核实既有 RunTask、Git operation/observation 能否承责，并给出真实 worker/API/页面消费者。
 
-逐步保存不能直接复用当前“整个 Run 转成实体后级联重写全部 items”的方式。Journal 对任务、attempt 和必要投影做有版本条件的定向更新；RunStep 可作为展示投影，append-only attempt 才是恢复证据。终态历史记录禁止被另一次 Run 更新。
+计划不保存 Token、请求头或完整敏感响应体。凭据按仓库引用读取；已有计划中的仓库映射、分支目标和第一次读取确认的 numeric project ID 不能因路径重用或凭据轮换而改向。
 
-幂等键唯一约束按调用主体/入口与 key 建立：相同 key 和相同 request_hash 返回原 Run；相同 key 不同 hash 返回 409。request_hash 对规范化业务输入计算，排除 operator 文本、时间戳和密钥。没有 key 的旧客户端由一次性请求产生新 key，不能因此声称具备跨请求去重。
+任务结果使用 Run → Task → guard 的锁顺序与条件更新，定向写 Step、Item、metadata 和 Run 汇总；旧整份 Run 级联保存不能覆盖含持久任务的 Run。业务结果与 guard 确认一起提交或一起回滚，HTTP 结果先独立保存。
 
-计划受理还需拒绝空范围、失效引用和不满足既有分组/生命周期约束的输入，不能静默丢弃仓库后返回成功。集合规范化与执行顺序分开：计划固定顺序及确定的同序号消歧规则。预览可有多个，但同一窗口/动作类型只能有一个活跃执行；跨窗口共享仓库再由仓库门禁串行化。
+Orchestrate/retry 的 Idempotency-Key 必填，缺失返回 400。唯一性按 actor 与原始 key 建立；动作域及规范化业务输入进入 request_hash，同 key 异动作或异 payload 返回 409，不静默为缺 key 的客户端生成写请求身份。原 receipt 的识别先于可变化的窗口范围校验。
 
-## 5. 状态与恢复决策
+受理拒绝空范围、失效引用及不满足分组/生命周期约束的输入，不过滤后偷偷缩小用户范围。同窗口中的活跃 Run 只阻断重叠仓库范围，互不重叠的仓库可以独立受理；跨窗口的未决外部写由既有仓库 guard 保护。
 
-Run：PLANNED → PENDING → RUNNING → DONE / PARTIAL_FAILED / FAILED；中断进入 RECOVERING，再进入 RUNNING / NEEDS_REVIEW / 终态。取消仅停止未发出的任务；已发出的请求必须核对，页面显示已有副作用。
+## 5. 当前状态与后续恢复决策
 
-Task：PENDING → RUNNING → COMPLETED / FAILED / UNKNOWN。UNKNOWN 经核对进入 COMPLETED、PENDING（已证明未发出或未生效）或 NEEDS_REVIEW；不能直接交给普通 retry。SKIPPED / CANCELLED 只适用于未执行或被规则跳过的任务。
+C1 Run 状态为 PLANNED、RUNNING、DONE、PARTIAL_FAILED、FAILED、NEEDS_REVIEW。受理的任务保持可查询；发生未知副作用时优先 NEEDS_REVIEW，其他仓库仍可完成。不存在 C1 后台 RECOVERING worker，也不以 finishedAt 或一次 HTTP 成功推断业务完成。
 
-已确认未生效且被计划策略允许的自动重试，可以在预算内回到 PENDING 并追加 attempt；确认不可重试或预算耗尽才终结为 FAILED。该预算与读取核对的重试预算分别记录，不能由 adapter 隐式决定。
+C1 Task 为 PENDING → RUNNING → COMPLETED / FAILED / UNKNOWN；规则跳过项为 SKIPPED，成功前缀继承为 INHERITED。一次 claimToken 只能提交一次结果，没有超时重领入口。UNKNOWN 始终停止受影响仓库，不能交给普通 retry。
 
-确认 FAILED 的终态 Run 保持不可变：retry 创建带来源链接的新 Run/Item/Task 和 attempt，只选择确认失败项；原成功步骤通过证据引用继承，不重新执行。resume 仅继续尚未终结的 RECOVERING/NEEDS_REVIEW Run，经核对后的任务才可进入下一步。这样保留现有“retry 返回新 Run ID”的用户路径，同时避免把历史终态改回运行中。
+确认失败后的 retry 创建带来源的新 Run/Item/Task，只选择实际 Item UUID；已成功前缀引用原事实，不再执行，也不制造新成功 Step。原终态 Run 不被改回运行中。当前版本更新和收尾不能通过窗口编排 retry 路径重放。
 
-聚合状态由后端统一判定：任何未决副作用优先显示 RECOVERING/NEEDS_REVIEW，不能仅凭部分成功或 finishedAt 显示完成。failFast=true 时确认失败仅停止同仓后续派发并显式记录 SKIPPED_DUE_TO_BLOCK；其他仓库继续。未知结果无论策略如何始终阻断同仓写入，并明确记录未执行原因。
+以下为 C2/S4 的恢复目标，并非 C1 已交付能力。恢复始终区分数据库任务所有权与远端请求是否已经发生；新 worker 取得租约不等于取得再次写 Git 的资格。
 
-| 中断位置 / 证据 | 决策 |
+| 中断位置 / 证据 | 恢复目标与限制 |
 |---|---|
 | 受理事务未提交 | 无任务可派发；同一 key 重交可创建计划 |
-| 计划已提交，尚无 SEND_STARTED | 按协议证明未发出，允许重新领取 |
+| 计划已提交，尚无 SEND_STARTED | 核实旧领取者不能再发送后，才可继续领取或执行 |
 | SEND_STARTED 已提交，无完整响应 | UNKNOWN，保留仓库阻断，先核对 |
-| 明确外部完成，结果未落库 | 核对精确操作标识及计划 SHA 后，只补记完成，不再次写入 |
-| 查询暂时不可达 / 403 / 列表分页未完整 | UNKNOWN / NEEDS_REVIEW，不能判定不存在 |
-| 查询未找到目标，但原请求仍可能在途 | 仍是 UNKNOWN；一次“查不到”不构成安全重放依据 |
-| 外部状态与计划 SHA、所有权或版本不一致 | NEEDS_REVIEW，不把其他人的操作算作本 Run 成功 |
-| 旧 worker 在代次变更后返回 | CAS 拒绝结果覆盖；禁止其再发后续写请求 |
+| 明确外部完成，业务结果未落库 | 核对精确操作标识及计划 SHA 后只补记完成，不再次写入 |
+| 查询不可达 / 403 / 列表不完整 | UNKNOWN / NEEDS_REVIEW，不能判定不存在 |
+| 未找到目标但原请求仍可能在途 | 保持 UNKNOWN，一次 404 不构成重放依据 |
+| 外部状态与计划身份或 SHA 不一致 | NEEDS_REVIEW，不把其他人的操作算成本 Run 成功 |
+| 旧 worker 在代次变化后返回 | CAS 拒绝旧结果覆盖，禁止后续写请求 |
 
-读取失败可以有限退避重试；写请求只有已证明未发出、明确未生效且满足前置条件，才按策略允许新 attempt。退避、最大次数和截止时间必须入计划，不能藏在 HTTP 适配器内无界重试。
-
+C2 中已确认未发出、未生效且前置条件仍成立的写入，才可按受控预算重新派发；读取退避与写入资格分开判定。任何新增状态或预算字段都必须由实际调度、核对或页面消费，不预建平台。取消只停止未发出动作，已发送请求仍需核对。
 ## 6. 各类外部操作的核对策略
 
 | 操作 | 必须保存的事实 | 核对与限制 |
@@ -203,36 +205,35 @@ Task：PENDING → RUNNING → COMPLETED / FAILED / UNKNOWN。UNKNOWN 经核对�
 
 官方资料核对：GitLab 合并 API 的 `sha` 校验针对源分支 HEAD，不能据此假设目标分支 CAS 或通用 fencing；文件更新支持 `last_commit_id` 前置字段；pipeline 创建支持关联变量和返回 ID。本方案仍按“不依赖通用写请求幂等保证”设计。参见 [MR API](https://docs.gitlab.com/api/merge_requests/#merge-a-merge-request)、[文件 API](https://docs.gitlab.com/api/repository_files/)、[Pipeline API](https://docs.gitlab.com/api/pipelines/#create-a-new-pipeline)。当前文档包含新版本特性，17.11 归档页面本轮未读取成功；S2 必须在仓库使用的 GitLab 17.11.3 fixture 上确认能力，不直接套用 19.x 行为。
 
-## 7. 并发、租约和旧入口
+## 7. 并发、租约与写入口
 
-工作领取使用短事务、`FOR UPDATE SKIP LOCKED` 或等价 CAS。调度周期、超时、心跳和并发度可配置；首版 worker 并发为 1，但数据协议从第一版支持代次检查。数据库时钟决定租约，避免节点时间差。
+C1 使用 Run → Task 的短事务锁序和一次性 claimToken；没有后台 worker、租约或自动重领。以下调度要求属于 C2：沿同一任务协议用短事务、`FOR UPDATE SKIP LOCKED` 或等价 CAS 领取；有实际 worker 消费后再增加租约与代次检查，数据库时钟决定租约。首轮有界 worker 的并发度从 1 起验证，仓内串行约束不因并发度变化而放宽。
 
 仓库保留与 worker 租约分离：worker 消失不等于外部请求结束。租约过期只允许新 worker 接管核对，不自动取得继续写入权。每个外部写入之前重新核验代次；同一仓库最多一个在途写操作。
 
-必须覆盖的内部写入口包括 Run 编排/重试/版本更新/收尾、`AttachAppService`、`IterationAppService`、`CodeMergeService`、`ReleaseBranchService` 以及其 Git 分支和文件 Port。旧入口必须原子登记写入保留，而不只是先查一个布尔值；否则查询到派发间有竞争窗口。无法纳入门禁的入口，在新协议启用范围内显式拒绝执行。
+当前 Run 编排/重试、版本更新、收尾及其 Git 分支和文件 Port 均必须原子登记写入保留，不能先查询一个布尔值再发送请求。Attach/Detach/Publish 与迭代配置已经收敛为纯配置；CodeMergeService 和无实际消费者的 ReleaseBranchService 已删除，历史 S2 覆盖表不再作为现存写入口清单。无法进入门禁的外部写入在派发前拒绝。
 
 S2 核对补充：`ConflictDetectionAppService.checkMergeability` 会创建和关闭临时 MR/PR，也必须进入写账本。文件更新的本地路径若不能识别目标并受保护，须在写前拒绝。仓库和连接配置不得在活跃/未知操作期间改变远端映射；详细覆盖表、事务分段和启用边界见 [S2 评审](s2-review.md)。只读核对禁止复用这些带副作用的旧检查方法。
 
 系统无法阻止 GitLab 上的人工或其他 CI 写入。源/目标漂移必须进入复核；不声称内部租约可以阻止外部写入。未知旧请求未明确终结前，不能因超时就释放仓库保留给另一个 Run。
 
-## 8. API、页面和兼容策略
+## 8. API、页面与执行协议
 
-| 入口 | 目标行为 |
-|---|---|
-| 新增 `POST /release-windows/{id}/run-plans` | S1 创建只读执行计划预览并返回可查询 Run，绝不派发 Git 写入 |
-| `POST /release-windows/{id}/orchestrate` | 新协议受理返回 202 与现有 `ApiResponse<String>` Run ID；增加 Idempotency-Key；这是需联动客户端的行为变更 |
-| `GET /runs/{id}`、paged、export | 统一 executionVersion/status、进度、阻断原因、窗口与计划关联；旧记录按 legacy 口径展示 |
-| `GET /runs/{id}/tasks`、`.../tasks/{taskId}/attempts` | 补齐真实后端能力，返回任务与尝试证据，不返回凭据 |
-| `POST /runs/{id}/reconcile` | 只读外部核对并记录决策，不写 Git；请求需幂等 |
-| `POST /runs/{id}/resume` | 仅对满足恢复前置条件的任务继续；UNKNOWN 不允许 force 绕过 |
-| 现有 retry | 新协议只选择确认失败且可重放的任务；未知结果返回明确阻断；历史 Run 不自动转成新协议 |
+| 入口 | C1 当前行为 | 后续边界 |
+|---|---|---|
+| `POST /release-windows/{id}/run-plans` | 创建只读计划预览，零 Git 写；返回可查询 Run | 不把预览当可执行任务 |
+| `POST /release-windows/{id}/orchestrate` | 必填 Idempotency-Key；HTTP 200 与 `ApiResponse<String>` Run ID；请求线程驱动持久任务 | C2 改为 202 和同一执行器的后台驱动 |
+| `GET /runs/{id}`、paged、export | 后端统一 executionVersion/status；展示范围、证据和来源 | 时间戳及 HTTP 成功不表示业务完成 |
+| `GET /runs/{id}/tasks` | 只读真实任务顺序、状态和动作；INHERITED 展示原 Run/Item 来源 | 操作尝试复用既有 Git 账本，不新增同义 attempts 模型 |
+| `POST /runs/{id}/retry` | 必填 Idempotency-Key；`items` 为精确 RunItem UUID；仅 protocol 3 窗口编排的已确认失败项，成功前缀继承 | 未知结果、旧协议、版本更新及收尾不能经此入口重放 |
+| 既有 Git operation reconcile | 外部只读核对并记录证据；不写 Git，不因 FOUND 自动解除 guard | C2 由实际 Task 消费证据，必要的聚合入口先核实职责 |
+| Run resume | C1 无此写入口 | C2 只允许证据充分的任务继续，无 force 绕过 |
 
-新协议 retry 请求使用 `taskIds`、reason 和 Idempotency-Key，返回新 Run ID；不信任 operator 请求字段。旧 `items` 复合范围键在接管后若不能唯一映射任务，必须明确拒绝，不能默默选择同范围的全部步骤。
+普通重试继续消费实际 Item 身份及原计划，不接受三元组拼接键、任意 taskIds 或客户端 operator。Run、Task 和操作账本通过已有身份关联；新增恢复入口不能建立平行的重试执行路径。
 
-UI 在受理后轮询 Run/Task，达到终态、离开页面或取消观察时停止；不再把 HTTP 返回等同于完成。新增“结果未知”“待复核”“仅恢复查询”“继续执行”的区别，解释已有副作用和人工动作依据。导出与页面使用同一后端判定，不在前端另算成功状态。
+C1 页面依据实际 Run 和 Task 事实展示，普通重试排除 UNKNOWN/NEEDS_REVIEW，历史记录只可查询。网络失败保留原请求 key，不能把超时当成未受理。C2 的 202/轮询在终态、路由离开或取消观察时停止，并补充已保存原请求的回执查询：即使当前窗口范围改变，也可取回原 receipt，同时继续拒绝不合法的新执行。
 
-旧协议的查询和导出保留；缺少任务/attempt 的历史 Run 不支持自动恢复。旧失败项重试在接管的动作类型上改为受控复核后创建新计划，保留原记录和来源链接；该变化在切换前明确告知。版本更新与收尾在 S4 完成前不宣称已经获得相同恢复保障。
-
+旧协议不补造任务或自动转写；版本更新与收尾在 S4 完成前不宣称获得同等恢复保障。
 关闭窗口与收尾是两个状态维度。S3-B2 的短事务保存业务 CLOSED 与持久收尾计划；收尾失败不能伪装为全部成功，也不能自动把窗口改回 PUBLISHED。后台调度、恢复与异步返回仍属于后续切片。
 
 关闭入口触发一次仓库级收尾，返回独立 Run 事实；后续异步化沿用这一入口与持久计划，不增加平行的关闭执行路径。
