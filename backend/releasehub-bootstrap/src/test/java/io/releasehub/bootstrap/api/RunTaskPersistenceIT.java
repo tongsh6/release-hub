@@ -1547,15 +1547,20 @@ class RunTaskPersistenceIT {
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"INTENT", "SEND", "UNKNOWN"})
-    void mrMergeUnresolvedHttpFactsAreNeitherTerminalCandidatesNorProjectable(String stage) {
+    void mrMergeLegacyIntentMayBeDiscoveredButUnresolvedFactsCannotBeClaimedOrProjected(String stage) {
         var claim = claimMergedMrTask("MR_REUSED", 40);
         String operationId = beginMergedMrOperation(claim);
-        if (!stage.equals("INTENT")) journal.sending(operationId);
-        if (stage.equals("UNKNOWN")) journal.finish(operationId, GitWriteResult.Outcome.UNKNOWN, "{}", "UNKNOWN");
+        if (!stage.equals("INTENT")) journal.sending(operationId, claim.fence());
+        if (stage.equals("UNKNOWN")) journal.finish(operationId, claim.fence(), GitWriteResult.Outcome.UNKNOWN, "{}", "UNKNOWN");
         expireClaim(claim);
         var before = projectionFacts(claim, operationId);
 
-        assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(claim.runId());
+        if (stage.equals("INTENT")) {
+            assertThat(runs.findTaskCandidateRunIds(null, 1000)).contains(claim.runId());
+        } else {
+            assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(claim.runId());
+        }
+        assertThat(runs.claimNextTask(claim.runId())).isEmpty();
         assertThat(runs.projectNextAppliedTask(claim.runId())).isFalse();
 
         assertThat(projectionFacts(claim, operationId)).isEqualTo(before);
@@ -1822,6 +1827,844 @@ class RunTaskPersistenceIT {
         verifyNoInteractions(gitLab, gitFiles, gitBranches);
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"CREATED,40", "MR_REUSED,64"})
+    void mergeIntentClaimChangesCurrentOwnerButPreservesOriginalReservationAndHistory(String disposition, int shaLength) {
+        var original = claimMergedMrTask(disposition, shaLength);
+        String operationId = beginMergeIntent(original);
+        expireClaim(original);
+        var before = projectionFacts(original, operationId);
+        var taskHistory = new java.util.LinkedHashMap<>(
+                jdbc.queryForMap("select * from run_task where id=?", original.fence().taskId()));
+        taskHistory.keySet().removeAll(Set.of("claim_token", "claim_expires_at"));
+        var opHistory = new java.util.LinkedHashMap<>(
+                jdbc.queryForMap("select * from git_operation where id=?", operationId));
+        opHistory.keySet().removeAll(Set.of("state_version", "updated_at"));
+        long oldVersion = mergeIntentVersion(operationId);
+        assertThat(runs.findTasks(original.runId()).stream().map(RunPort.TaskView::status)).doesNotContain("PENDING");
+
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).contains(original.runId());
+        assertThat(projectionFacts(original, operationId)).isEqualTo(before);
+        Instant earliest = databaseNow();
+        var current = reclaimMergeIntent(original);
+
+        assertThat(current.fence().taskId()).isEqualTo(original.fence().taskId());
+        assertThat(current.fence().claimToken()).isNotEqualTo(original.fence().claimToken());
+        assertThat(current.metadata()).isEqualTo(original.metadata());
+        assertThat(claimExpiry(current)).isBetween(earliest.plusSeconds(3600), databaseNow().plusSeconds(3600));
+        assertThat(jdbc.queryForMap("select * from run_task where id=?", original.fence().taskId()))
+                .containsAllEntriesOf(taskHistory);
+        assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).containsAllEntriesOf(opHistory);
+        assertThat(mergeIntentVersion(operationId)).isGreaterThan(oldVersion);
+        assertThat(projectionGuard(operationId)).isEqualTo(before.get("guard"));
+        assertThat(jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence",
+                operationId)).isEqualTo(before.get("events"));
+        var after = projectionFacts(current, operationId);
+        for (String key : List.of("run", "item", "steps", "metadata", "binding")) {
+            assertThat(after.get(key)).as(key).isEqualTo(before.get(key));
+        }
+
+        long firstTransferVersion = mergeIntentVersion(operationId);
+        expireClaim(current);
+        var again = reclaimMergeIntent(current);
+        assertThat(again.fence().taskId()).isEqualTo(original.fence().taskId());
+        assertThat(again.fence().claimToken()).isNotIn(original.fence().claimToken(), current.fence().claimToken());
+        assertThat(mergeIntentVersion(operationId)).isGreaterThan(firstTransferVersion);
+        assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).containsAllEntriesOf(opHistory);
+        assertThat(projectionGuard(operationId)).isEqualTo(before.get("guard"));
+        assertThat(jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence",
+                operationId)).isEqualTo(before.get("events"));
+        assertThat(jdbc.queryForObject("select count(*) from git_operation where task_id=?", Integer.class,
+                original.fence().taskId())).isEqualTo(1);
+        assertThat(jdbc.queryForMap("select * from run_task where id=?", original.fence().taskId()))
+                .containsAllEntriesOf(taskHistory);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void mergeIntentActualSenderReusesOperationAndCanAcknowledgeOrProjectAppliedResult(boolean projectResult) throws Exception {
+        var original = claimMergedMrTask("MR_REUSED", 64);
+        String operationId = beginMergeIntent(original);
+        String attempt = journal.find(operationId).orElseThrow().events().getFirst().attemptId();
+        expireClaim(original);
+        var current = reclaimMergeIntent(original);
+        var transferred = projectionFacts(current, operationId);
+
+        assertThat(journal.begin(mergeIntentCommand(current, mergeIntentTarget(current)))).isEqualTo(operationId);
+        assertThatThrownBy(() -> mergeIntentSending(operationId, original)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> runs.completeTask(original, step(original, RunItemResult.UNKNOWN),
+                Map.of("git.blockReason", "UNKNOWN"))).isInstanceOf(BusinessException.class);
+        assertThat(projectionFacts(current, operationId)).isEqualTo(transferred);
+
+        mergeIntentSending(operationId, current);
+        var sent = projectionFacts(current, operationId);
+        assertThatThrownBy(() -> mergeIntentFinish(operationId, original, GitWriteResult.Outcome.APPLIED,
+                mergedMrProof(original, null).toString())).isInstanceOf(BusinessException.class);
+        assertThat(projectionFacts(current, operationId)).isEqualTo(sent);
+        mergeIntentFinish(operationId, current, GitWriteResult.Outcome.APPLIED, mergedMrProof(current, null).toString());
+        var detail = journal.find(operationId).orElseThrow();
+        assertThat(detail.events()).hasSize(3).allSatisfy(event -> assertThat(event.attemptId()).isEqualTo(attempt));
+        var sender = json.readTree(detail.events().get(1).evidenceJson());
+        assertThat(sender.path("taskId").asText()).isEqualTo(current.fence().taskId());
+        assertThat(sender.path("claimToken").asText()).isEqualTo(current.fence().claimToken());
+        var appliedOperation = jdbc.queryForMap("select * from git_operation where id=?", operationId);
+        var appliedEvents = jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence",
+                operationId);
+        assertThat(appliedOperation).containsEntry("claim_token", original.fence().claimToken())
+                .containsEntry("session_id", original.fence().claimToken());
+
+        if (projectResult) {
+            expireClaim(current);
+            assertThat(runs.projectNextAppliedTask(current.runId())).isTrue();
+        } else {
+            runs.completeTask(current, step(current, RunItemResult.MERGED), mergedMrResultPatch("MR_REUSED", null));
+        }
+        var completed = runs.findById(current.runId()).orElseThrow();
+        assertThat(completed.getExecutionStatus()).isEqualTo(RunExecutionStatus.DONE);
+        assertThat(completed.getItems().getFirst().getMetadata())
+                .containsEntry("git.sourceSha", "A".repeat(64)).containsEntry("git.mrDisposition", "MR_REUSED")
+                .doesNotContainKeys("git.mergeSha", "git.blockReason", "git.requestId");
+        assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class,
+                current.fence().taskId())).isEqualTo(1);
+        assertThat(projectionGuard(operationId)).containsEntry("session_id", null).containsEntry("operation_id", null);
+        assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).isEqualTo(appliedOperation);
+        assertThat(jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence",
+                operationId)).isEqualTo(appliedEvents);
+        assertThatThrownBy(() -> runs.completeTask(original, step(original, RunItemResult.UNKNOWN),
+                Map.of("git.blockReason", "UNKNOWN"))).isInstanceOf(BusinessException.class);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"sending,STALE", "sending,ABSENT", "finish,STALE", "finish,ABSENT"})
+    void mergeIntentExplicitCallerFenceCannotBorrowTheOriginalOwnersOperation(String action, String callerKind) {
+        var original = claimMergedMrTask("CREATED", 40);
+        String operationId = beginMergeIntent(original);
+        RunPort.TaskClaim caller = callerKind.equals("ABSENT") ? null
+                : new RunPort.TaskClaim(new RunPort.TaskFence(original.fence().taskId(), UUID.randomUUID().toString()),
+                        original.runId(), original.itemId(), original.repo(), original.actionType(),
+                        original.startedAt(), original.operator(), original.metadata());
+        if (action.equals("finish")) mergeIntentSending(operationId, original);
+        var before = projectionFacts(original, operationId);
+
+        if (action.equals("sending")) {
+            assertThatThrownBy(() -> mergeIntentSending(operationId, caller)).isInstanceOf(BusinessException.class);
+        } else {
+            assertThatThrownBy(() -> mergeIntentFinish(operationId, caller, GitWriteResult.Outcome.APPLIED,
+                    mergedMrProof(original, null).toString())).isInstanceOf(BusinessException.class);
+        }
+        assertThat(projectionFacts(original, operationId)).isEqualTo(before);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void mergeIntentClaimCasRejectionRollsBackPreparedVersion() {
+        var original = claimMergedMrTask("CREATED", 40);
+        String operationId = beginMergeIntent(original);
+        expireClaim(original);
+        long originalVersion = mergeIntentVersion(operationId);
+        var before = projectionFacts(original, operationId);
+        var highestVersion = new java.util.concurrent.atomic.AtomicLong(originalVersion);
+        String trigger = "b5_claim_cas_" + UUID.randomUUID().toString().replace("-", "");
+        try {
+            jdbc.execute("create function " + trigger + "() returns trigger language plpgsql "
+                    + "as 'begin return null; end;'");
+            jdbc.execute("create trigger " + trigger + " before update of claim_token on run_task "
+                    + "for each row when (old.id='" + original.fence().taskId()
+                    + "' and new.claim_token is distinct from old.claim_token) execute function " + trigger + "()");
+            org.mockito.Mockito.doAnswer(invocation -> {
+                // The first now() is before prepare; the final startedAt sample sees its transactional version.
+                highestVersion.accumulateAndGet(mergeIntentVersion(operationId), Math::max);
+                return Instant.now();
+            }).when(clock).instant();
+
+            assertThatThrownBy(() -> runs.claimNextTask(original.runId())).isInstanceOf(BusinessException.class);
+
+            assertThat(highestVersion.get()).as("prepare must really increment the version before the rejected CAS")
+                    .isGreaterThan(originalVersion);
+            assertThat(projectionFacts(original, operationId)).isEqualTo(before);
+            verifyNoInteractions(gitLab, gitFiles, gitBranches);
+        } finally {
+            jdbc.execute("drop trigger if exists " + trigger + " on run_task");
+            jdbc.execute("drop function if exists " + trigger + "()");
+        }
+    }
+
+    @Test
+    void mergeIntentClaimRollbackRestoresTokenLeaseVersionAndReservation() {
+        var original = claimMergedMrTask("CREATED", 40);
+        String operationId = beginMergeIntent(original);
+        expireClaim(original);
+        var before = projectionFacts(original, operationId);
+
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            var current = reclaimMergeIntent(original);
+            assertThat(current.fence().claimToken()).isNotEqualTo(original.fence().claimToken());
+            assertThat(mergeIntentVersion(operationId)).isGreaterThan(
+                    ((Number) ((Map<?, ?>) before.get("operation")).get("state_version")).longValue());
+            tx.setRollbackOnly();
+        });
+
+        assertThat(projectionFacts(original, operationId)).isEqualTo(before);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void mergeIntentResultRollbackKeepsSenderFactsAndRollsBackTaskItemRunBindingAndGuard() {
+        var original = claimMergedMrTask("MR_REUSED", 64);
+        String operationId = beginMergeIntent(original);
+        expireClaim(original);
+        var current = reclaimMergeIntent(original);
+        mergeIntentSending(operationId, current);
+        mergeIntentFinish(operationId, current, GitWriteResult.Outcome.APPLIED, mergedMrProof(current, null).toString());
+        var before = projectionFacts(current, operationId);
+
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            var completed = runs.completeTask(current, step(current, RunItemResult.MERGED),
+                    mergedMrResultPatch("MR_REUSED", null));
+            assertThat(completed.getExecutionStatus()).isEqualTo(RunExecutionStatus.DONE);
+            assertThat(completed.getItems().getFirst().getFinalResult()).isEqualTo(RunItemResult.MERGED);
+            assertThat(completed.getItems().getFirst().getMetadata())
+                    .doesNotContainKeys("git.mergeSha", "git.blockReason", "git.requestId");
+            assertThat(runs.findTasks(current.runId()).getLast().status()).isEqualTo("COMPLETED");
+            assertThat(projectionGuard(operationId)).containsEntry("operation_id", null).containsEntry("session_id", null);
+            assertThat(bindings.findByWindowIdAndIterationKey(ReleaseWindowId.of(windowId), IterationKey.of(firstIteration))
+                    .orElseThrow().getLastMergeAt()).isNotNull();
+            tx.setRollbackOnly();
+        });
+
+        assertThat(projectionFacts(current, operationId)).isEqualTo(before);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void mergeIntentPreSendUnknownKeepsUnsentIntentAndIntentPendingReason(boolean afterTransfer) {
+        var original = claimMergedMrTask("CREATED", 40);
+        String operationId = beginMergeIntent(original);
+        RunPort.TaskClaim current = original;
+        if (afterTransfer) {
+            expireClaim(original);
+            current = reclaimMergeIntent(original);
+        }
+        var before = journal.find(operationId).orElseThrow();
+        var reservation = new java.util.LinkedHashMap<>(projectionGuard(operationId));
+        reservation.remove("updated_at");
+
+        var unknown = runs.completeTask(current, step(current, RunItemResult.UNKNOWN), Map.of("git.blockReason", "UNKNOWN"));
+
+        assertThat(unknown.getExecutionStatus()).isEqualTo(RunExecutionStatus.NEEDS_REVIEW);
+        assertThat(runs.findTasks(current.runId()).getLast().status()).isEqualTo("UNKNOWN");
+        assertThat(journal.find(operationId).orElseThrow().operation().state()).isEqualTo("INTENT_RECORDED");
+        assertThat(journal.find(operationId).orElseThrow().events()).isEqualTo(before.events());
+        assertThat(projectionGuard(operationId)).containsAllEntriesOf(reservation).containsEntry("reason", "INTENT_PENDING");
+        expireClaim(current);
+        assertThat(runs.claimNextTask(current.runId())).isEmpty();
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void mergeIntentTransferInvalidatesOldObservationButKeepsHistoricalObservationAndMappingProtection() {
+        var original = claimMergedMrTask("CREATED", 40);
+        var command = mergeIntentCommand(original, mergeIntentTarget(original));
+        settings.saveGitLab(new SettingsPort.SettingsGitLab("https://gitlab.invalid", "isolated-projection-token"));
+        String operationId = journal.begin(command);
+        long oldVersion = mergeIntentVersion(operationId);
+        expireClaim(original);
+        var current = reclaimMergeIntent(original);
+        long newVersion = mergeIntentVersion(operationId);
+        var guard = projectionGuard(operationId);
+        var events = journal.find(operationId).orElseThrow().events();
+
+        assertThatThrownBy(() -> journal.observe(operationId, "reviewer", "before-transfer", oldVersion,
+                io.releasehub.application.gitoperation.GitReadResult.Status.UNAVAILABLE, "{}"))
+                .isInstanceOf(BusinessException.class);
+        assertThat(journal.observation(operationId, "reviewer", "before-transfer")).isEmpty();
+        var observation = journal.observe(operationId, "reviewer", "after-transfer", newVersion,
+                io.releasehub.application.gitoperation.GitReadResult.Status.UNAVAILABLE, "{\"read\":\"unavailable\"}");
+        assertThat(observation.expectedVersion()).isEqualTo(newVersion);
+        assertThat(journal.observation(operationId, "reviewer", "after-transfer")).hasValueSatisfying(saved -> {
+            assertThat(saved.id()).isEqualTo(observation.id());
+            assertThat(saved.expectedVersion()).isEqualTo(newVersion);
+            assertThat(saved.evidenceJson()).isEqualTo(observation.evidenceJson());
+        });
+        assertThat(journal.find(operationId).orElseThrow().events()).isEqualTo(events);
+        assertThat(projectionGuard(operationId)).isEqualTo(guard);
+        assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId))
+                .containsEntry("claim_token", original.fence().claimToken()).containsEntry("session_id", original.fence().claimToken());
+        assertThat(current.fence().claimToken()).isNotEqualTo(original.fence().claimToken());
+
+        String changedProject = command.projectId() + "1";
+        String changedRemote = GitOperationJournalPort.remoteKey("GITLAB", command.baseUrl(), changedProject);
+        var changed = new GitOperationJournalPort.Command(UUID.randomUUID().toString(), command.repoId(),
+                command.repositoryMapping(), changedRemote, command.provider(), command.baseUrl(), changedProject,
+                command.action(), command.targetJson(), mergeIntentHash(changedRemote, mergeIntentTarget(original)),
+                null, command.operator(), UUID.randomUUID().toString(), null);
+        assertThatThrownBy(() -> journal.begin(changed)).isInstanceOf(BusinessException.class);
+        assertThat(jdbc.queryForObject("select count(*) from git_operation where remote_key=?", Integer.class,
+                changedRemote)).isZero();
+        assertThat(projectionGuard(operationId)).isEqualTo(guard);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void mergeIntentOldSendWinsObservedPostgresLockAndItsLateResponseRemainsWritable() throws Exception {
+        var original = claimMergedMrTask("CREATED", 40);
+        String operationId = beginMergeIntent(original);
+        expireClaim(original);
+        var taskBefore = jdbc.queryForMap("select * from run_task where id=?", original.fence().taskId());
+        var sendLocked = new CountDownLatch(1);
+        var releaseSend = new CountDownLatch(1);
+        var claimantStarted = new CountDownLatch(1);
+        var senderThread = new java.util.concurrent.atomic.AtomicReference<Thread>();
+        var senderPid = new java.util.concurrent.atomic.AtomicInteger();
+        var claimantPid = new java.util.concurrent.atomic.AtomicInteger();
+        var pauseOnce = new java.util.concurrent.atomic.AtomicBoolean();
+        org.mockito.Mockito.doAnswer(invocation -> {
+            if (Thread.currentThread() == senderThread.get() && pauseOnce.compareAndSet(false, true)) {
+                senderPid.set(jdbc.queryForObject("select pg_backend_pid()", Integer.class));
+                sendLocked.countDown();
+                awaitMergeIntentLatch(releaseSend);
+            }
+            return Instant.now();
+        }).when(clock).instant();
+
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            try {
+                var sender = pool.submit(() -> {
+                    senderThread.set(Thread.currentThread());
+                    mergeIntentSending(operationId, original);
+                });
+                assertThat(sendLocked.await(5, TimeUnit.SECONDS)).isTrue();
+                var claimant = pool.submit(() -> new TransactionTemplate(transactions).execute(tx -> {
+                    claimantPid.set(jdbc.queryForObject("select pg_backend_pid()", Integer.class));
+                    claimantStarted.countDown();
+                    return runs.claimNextTask(original.runId());
+                }));
+                assertThat(claimantStarted.await(5, TimeUnit.SECONDS)).isTrue();
+                awaitMergeIntentBlockers(claimantPid.get(), Set.of(senderPid.get()));
+                releaseSend.countDown();
+                sender.get(10, TimeUnit.SECONDS);
+                assertThat(claimant.get(10, TimeUnit.SECONDS)).isEmpty();
+            } finally {
+                releaseSend.countDown();
+            }
+        }
+        assertThat(jdbc.queryForMap("select * from run_task where id=?", original.fence().taskId())).isEqualTo(taskBefore);
+        assertThat(journal.find(operationId).orElseThrow().operation().state()).isEqualTo("SEND_STARTED");
+        var sent = projectionFacts(original, operationId);
+        assertThat(runs.claimNextTask(original.runId())).isEmpty();
+        assertThat(projectionFacts(original, operationId)).isEqualTo(sent);
+        mergeIntentFinish(operationId, original, GitWriteResult.Outcome.APPLIED, mergedMrProof(original, null).toString());
+        assertThat(runs.completeTask(original, step(original, RunItemResult.MERGED), mergedMrResultPatch("CREATED", null))
+                .getExecutionStatus()).isEqualTo(RunExecutionStatus.DONE);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void mergeIntentNewOwnerWinsObservedPostgresLockAndOldSenderCannotCommitUnknown() throws Exception {
+        var original = claimMergedMrTask("MR_REUSED", 40);
+        String operationId = beginMergeIntent(original);
+        expireClaim(original);
+        var transferLocked = new CountDownLatch(1);
+        var releaseTransfer = new CountDownLatch(1);
+        var oldStarted = new CountDownLatch(1);
+        var holderPid = new java.util.concurrent.atomic.AtomicInteger();
+        var transferred = new java.util.concurrent.atomic.AtomicReference<RunPort.TaskClaim>();
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            try {
+                var owner = pool.submit(() -> new TransactionTemplate(transactions).execute(tx -> {
+                    holderPid.set(jdbc.queryForObject("select pg_backend_pid()", Integer.class));
+                    var current = reclaimMergeIntent(original);
+                    transferred.set(current);
+                    transferLocked.countDown();
+                    awaitMergeIntentLatch(releaseTransfer);
+                    return current;
+                }));
+                boolean transferReached = transferLocked.await(5, TimeUnit.SECONDS);
+                if (!transferReached && owner.isDone()) {
+                    try {
+                        owner.get(1, TimeUnit.SECONDS);
+                    } catch (java.util.concurrent.ExecutionException failed) {
+                        throw new AssertionError("the original unsent intent must be claimed before testing the losing sender",
+                                failed.getCause());
+                    }
+                }
+                assertThat(transferReached).as("the new owner must hold its actual claim transaction").isTrue();
+                var oldSender = pool.submit(() -> {
+                    oldStarted.countDown();
+                    try {
+                        mergeIntentSending(operationId, original);
+                        return (RuntimeException) null;
+                    } catch (RuntimeException error) {
+                        return error;
+                    }
+                });
+                assertThat(oldStarted.await(5, TimeUnit.SECONDS)).isTrue();
+                int oldPid = awaitMergeIntentWaiter(holderPid.get());
+                awaitMergeIntentBlockers(oldPid, Set.of(holderPid.get()));
+                releaseTransfer.countDown();
+                assertThat(owner.get(10, TimeUnit.SECONDS)).isEqualTo(transferred.get());
+                assertThat(oldSender.get(10, TimeUnit.SECONDS)).isInstanceOf(BusinessException.class);
+            } finally {
+                releaseTransfer.countDown();
+            }
+        }
+        var current = transferred.get();
+        assertThat(current).isNotNull();
+        var beforeUnknown = projectionFacts(current, operationId);
+        assertThatThrownBy(() -> runs.completeTask(original, step(original, RunItemResult.UNKNOWN),
+                Map.of("git.blockReason", "UNKNOWN"))).isInstanceOf(BusinessException.class);
+        assertThat(projectionFacts(current, operationId)).isEqualTo(beforeUnknown);
+        assertThat(runs.findTasks(current.runId()).getLast().status()).isEqualTo("RUNNING");
+        assertThat(journal.find(operationId).orElseThrow().events()).hasSize(1);
+        mergeIntentSending(operationId, current);
+        mergeIntentFinish(operationId, current, GitWriteResult.Outcome.APPLIED, mergedMrProof(current, null).toString());
+        assertThat(runs.completeTask(current, step(current, RunItemResult.MERGED), mergedMrResultPatch("MR_REUSED", null))
+                .getExecutionStatus()).isEqualTo(RunExecutionStatus.DONE);
+        assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class,
+                current.fence().taskId())).isEqualTo(1);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void mergeIntentTwoClaimantsActuallyWaitOnPostgresAndOnlyOneReceivesOwnership() throws Exception {
+        var original = claimMergedMrTask("CREATED", 40);
+        String operationId = beginMergeIntent(original);
+        expireClaim(original);
+        var before = mergeIntentHistory(original, operationId);
+        var locked = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var firstStarted = new CountDownLatch(1);
+        var secondStarted = new CountDownLatch(1);
+        var holderPid = new java.util.concurrent.atomic.AtomicInteger();
+        var firstPid = new java.util.concurrent.atomic.AtomicInteger();
+        var secondPid = new java.util.concurrent.atomic.AtomicInteger();
+        try (var pool = Executors.newFixedThreadPool(3)) {
+            try {
+                var holder = pool.submit(() -> new TransactionTemplate(transactions).execute(tx -> {
+                    holderPid.set(jdbc.queryForObject("select pg_backend_pid()", Integer.class));
+                    jdbc.queryForObject("select id from run where id=? for update", String.class, original.runId());
+                    jdbc.queryForObject("select id from run_task where id=? for update", String.class, original.fence().taskId());
+                    locked.countDown();
+                    awaitMergeIntentLatch(release);
+                    return null;
+                }));
+                assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+                var first = pool.submit(() -> new TransactionTemplate(transactions).execute(tx -> {
+                    firstPid.set(jdbc.queryForObject("select pg_backend_pid()", Integer.class));
+                    firstStarted.countDown();
+                    return runs.claimNextTask(original.runId());
+                }));
+                assertThat(firstStarted.await(5, TimeUnit.SECONDS)).isTrue();
+                awaitMergeIntentBlockers(firstPid.get(), Set.of(holderPid.get()));
+                var second = pool.submit(() -> new TransactionTemplate(transactions).execute(tx -> {
+                    secondPid.set(jdbc.queryForObject("select pg_backend_pid()", Integer.class));
+                    secondStarted.countDown();
+                    return runs.claimNextTask(original.runId());
+                }));
+                assertThat(secondStarted.await(5, TimeUnit.SECONDS)).isTrue();
+                awaitMergeIntentBlockers(secondPid.get(), Set.of(holderPid.get(), firstPid.get()));
+                release.countDown();
+                holder.get(10, TimeUnit.SECONDS);
+                var owners = java.util.stream.Stream.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS))
+                        .flatMap(java.util.Optional::stream).toList();
+                assertThat(owners).hasSize(1);
+                assertThat(owners.getFirst().fence().claimToken()).isNotEqualTo(original.fence().claimToken());
+                assertThat(jdbc.queryForObject("select claim_token from run_task where id=?", String.class,
+                        original.fence().taskId())).isEqualTo(owners.getFirst().fence().claimToken());
+            } finally {
+                release.countDown();
+            }
+        }
+        assertThat(projectionGuard(operationId)).isEqualTo(before.get("guard"));
+        assertThat(jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence",
+                operationId)).isEqualTo(before.get("events"));
+        assertThat(journal.find(operationId).orElseThrow().operation().state()).isEqualTo("INTENT_RECORDED");
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "NOT_EXPIRED", "MISSING_EXPIRY", "MISSING_TOKEN", "MISSING_FIRST_START", "MISSING_ORDER",
+            "CURRENT_STEP", "OWNER_UNKNOWN", "WRONG_PROTOCOL", "WRONG_TASK_TYPE", "NON_MERGE_ACTION",
+            "WRONG_ATTEMPT", "WRONG_SEQUENCE", "WRONG_EVENT_TYPE", "MISSING_INTENT", "EXTRA_ATTEMPT",
+            "HIDDEN_SEND", "FOREIGN_ATTEMPT_SEND", "RESPONSE_WITHOUT_SEND", "SEND_STARTED", "HTTP_UNKNOWN",
+            "WRONG_GUARD_GENERATION", "WRONG_GUARD_SESSION", "WRONG_GUARD_OPERATION", "WRONG_GUARD_REASON",
+            "WRONG_OPERATION_TOKEN", "WRONG_OPERATION_SESSION", "WRONG_OPERATION_RUN", "WRONG_OPERATOR",
+            "CHECKPOINT_PROJECT", "CHECKPOINT_SOURCE", "CHECKPOINT_TARGET", "CHECKPOINT_IID", "CHECKPOINT_SHA",
+            "ALREADY_MERGED_CHECKPOINT"
+    })
+    void mergeIntentRejectsIncompleteOrContradictoryOriginalQualificationWithoutChangingFacts(String contradiction) {
+        var original = claimMergedMrTask("CREATED", 40);
+        String operationId = beginMergeIntent(original);
+        expireClaim(original);
+        int changed = switch (contradiction) {
+            case "NOT_EXPIRED" -> jdbc.update(
+                    "update run_task set claim_expires_at=clock_timestamp()+interval '1 hour' where id=?", original.fence().taskId());
+            case "MISSING_EXPIRY" -> jdbc.update("update run_task set claim_expires_at=null where id=?", original.fence().taskId());
+            case "MISSING_TOKEN" -> jdbc.update("update run_task set claim_token=null where id=?", original.fence().taskId());
+            case "MISSING_FIRST_START" -> jdbc.update("update run_task set started_at=null where id=?", original.fence().taskId());
+            case "MISSING_ORDER" -> jdbc.update("update run_item set executed_order=0 where id=?", original.itemId());
+            case "CURRENT_STEP" -> jdbc.update(
+                    "insert into run_step(run_item_id,action_type,result,start_at,end_at,message,task_id) values (?,?,?,?,?,?,?)",
+                    original.itemId(), "TRY_MERGE", "UNKNOWN", java.sql.Timestamp.from(original.startedAt()),
+                    java.sql.Timestamp.from(original.startedAt()), "isolated existing owner result", original.fence().taskId());
+            case "OWNER_UNKNOWN" -> {
+                runs.completeTask(original, step(original, RunItemResult.UNKNOWN), Map.of("git.blockReason", "UNKNOWN"));
+                yield 1;
+            }
+            case "WRONG_PROTOCOL" -> jdbc.update("update run set execution_version=0 where id=?", original.runId());
+            case "WRONG_TASK_TYPE" -> jdbc.update("update run_task set task_type='UPDATE_VERSION' where id=?", original.fence().taskId());
+            case "NON_MERGE_ACTION" -> jdbc.update("update git_operation set action='CREATE_MR' where id=?", operationId);
+            case "WRONG_ATTEMPT" -> jdbc.update(
+                    "update git_operation_event set attempt_id=? where operation_id=? and event_sequence=0",
+                    UUID.randomUUID().toString(), operationId);
+            case "WRONG_SEQUENCE" -> jdbc.update(
+                    "update git_operation_event set event_sequence=7 where operation_id=? and event_sequence=0", operationId);
+            case "WRONG_EVENT_TYPE" -> jdbc.update(
+                    "update git_operation_event set event_type='SEND_STARTED' where operation_id=? and event_sequence=0", operationId);
+            case "MISSING_INTENT" -> jdbc.update("delete from git_operation_event where operation_id=?", operationId);
+            case "EXTRA_ATTEMPT", "FOREIGN_ATTEMPT_SEND", "RESPONSE_WITHOUT_SEND" -> {
+                String attempt = contradiction.equals("RESPONSE_WITHOUT_SEND")
+                        ? journal.find(operationId).orElseThrow().events().getFirst().attemptId() : UUID.randomUUID().toString();
+                int sequence = contradiction.equals("EXTRA_ATTEMPT") ? 0 : contradiction.equals("FOREIGN_ATTEMPT_SEND") ? 1 : 2;
+                String type = sequence == 0 ? "INTENT_RECORDED" : sequence == 1 ? "SEND_STARTED" : "APPLIED";
+                yield jdbc.update("insert into git_operation_event(id,operation_id,attempt_id,event_sequence,event_type,"
+                                + "occurred_at,evidence_json,reason) values (?,?,?,?,?,clock_timestamp(),?,null)",
+                        UUID.randomUUID().toString(), operationId, attempt, sequence, type, "{}");
+            }
+            case "HIDDEN_SEND", "SEND_STARTED", "HTTP_UNKNOWN" -> {
+                mergeIntentSending(operationId, original);
+                if (contradiction.equals("HTTP_UNKNOWN")) {
+                    mergeIntentFinish(operationId, original, GitWriteResult.Outcome.UNKNOWN, "{}");
+                } else if (contradiction.equals("HIDDEN_SEND")) {
+                    assertThat(jdbc.update("update git_operation set state='INTENT_RECORDED' where id=?", operationId)).isEqualTo(1);
+                    assertThat(jdbc.update("update repo_execution_guard set reason='INTENT_PENDING' where operation_id=?",
+                            operationId)).isEqualTo(1);
+                }
+                yield 1;
+            }
+            case "WRONG_GUARD_GENERATION" -> jdbc.update(
+                    "update repo_execution_guard set generation=generation+1 where operation_id=?", operationId);
+            case "WRONG_GUARD_SESSION" -> jdbc.update(
+                    "update repo_execution_guard set session_id=? where operation_id=?", UUID.randomUUID().toString(), operationId);
+            case "WRONG_GUARD_OPERATION" -> jdbc.update(
+                    "update repo_execution_guard set operation_id=? where operation_id=?", UUID.randomUUID().toString(), operationId);
+            case "WRONG_GUARD_REASON" -> jdbc.update(
+                    "update repo_execution_guard set reason='REQUEST_IN_FLIGHT' where operation_id=?", operationId);
+            case "WRONG_OPERATION_TOKEN" -> jdbc.update(
+                    "update git_operation set claim_token=? where id=?", UUID.randomUUID().toString(), operationId);
+            case "WRONG_OPERATION_SESSION" -> jdbc.update(
+                    "update git_operation set session_id=? where id=?", UUID.randomUUID().toString(), operationId);
+            case "WRONG_OPERATION_RUN" -> jdbc.update(
+                    "update git_operation set run_id=? where id=?", UUID.randomUUID().toString(), operationId);
+            case "WRONG_OPERATOR" -> jdbc.update("update git_operation set operator='another-operator' where id=?", operationId);
+            default -> {
+                String key = switch (contradiction) {
+                    case "CHECKPOINT_PROJECT" -> "git.projectId";
+                    case "CHECKPOINT_SOURCE" -> "git.sourceBranch";
+                    case "CHECKPOINT_TARGET" -> "git.targetBranch";
+                    case "CHECKPOINT_IID" -> "git.mrIid";
+                    case "CHECKPOINT_SHA" -> "git.sourceSha";
+                    case "ALREADY_MERGED_CHECKPOINT" -> "git.mrDisposition";
+                    default -> throw new AssertionError(contradiction);
+                };
+                String value = switch (contradiction) {
+                    case "CHECKPOINT_PROJECT" -> original.metadata().get(key) + "1";
+                    case "CHECKPOINT_SOURCE", "CHECKPOINT_TARGET" -> original.metadata().get(key) + "-changed";
+                    case "CHECKPOINT_IID" -> "12";
+                    case "CHECKPOINT_SHA" -> "b".repeat(40);
+                    case "ALREADY_MERGED_CHECKPOINT" -> "ALREADY_MERGED";
+                    default -> throw new AssertionError(contradiction);
+                };
+                yield jdbc.update("update run_item_metadata set metadata_value=? where run_item_id=? and metadata_key=?",
+                        value, original.itemId(), key);
+            }
+        };
+        assertThat(changed).isEqualTo(1);
+        var before = projectionFacts(original, operationId);
+
+        assertMergeIntentClaimRejected(original.runId());
+
+        assertThat(projectionFacts(original, operationId)).isEqualTo(before);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "LEGACY_SUMMARY", "LEGACY_HASH", "HASH_MISMATCH", "MISSING_METHOD", "WRONG_METHOD", "WRONG_SUFFIX",
+            "MISSING_SHA", "NUMERIC_SHA", "WRONG_SHA", "MISSING_MESSAGE", "NUMERIC_MESSAGE", "CUSTOM_MESSAGE",
+            "MISSING_REMOVE_FLAG", "TEXT_REMOVE_FLAG", "TRUE_REMOVE_FLAG", "UNKNOWN_FIELD", "QUERY", "EMPTY_QUERY"
+    })
+    void mergeIntentRejectsIncompleteTypedRequestsOrNoncanonicalFingerprintsWithoutRepair(String contradiction) {
+        var original = claimMergedMrTask("MR_REUSED", 64);
+        String operationId = beginMergeIntent(original);
+        expireClaim(original);
+        var target = mergeIntentTarget(original);
+        switch (contradiction) {
+            case "LEGACY_SUMMARY" -> {
+                target.remove("merge_commit_message");
+                target.remove("should_remove_source_branch");
+            }
+            case "MISSING_METHOD" -> target.remove("method");
+            case "WRONG_METHOD" -> target.put("method", "POST");
+            case "WRONG_SUFFIX" -> target.put("suffix", "/merge_requests/12/merge");
+            case "MISSING_SHA" -> target.remove("sha");
+            case "NUMERIC_SHA" -> target.put("sha", 123);
+            case "WRONG_SHA" -> target.put("sha", "B".repeat(64));
+            case "MISSING_MESSAGE" -> target.remove("merge_commit_message");
+            case "NUMERIC_MESSAGE" -> target.put("merge_commit_message", 123);
+            case "CUSTOM_MESSAGE" -> target.put("merge_commit_message", "a valid custom message outside this task plan");
+            case "MISSING_REMOVE_FLAG" -> target.remove("should_remove_source_branch");
+            case "TEXT_REMOVE_FLAG" -> target.put("should_remove_source_branch", "false");
+            case "TRUE_REMOVE_FLAG" -> target.put("should_remove_source_branch", true);
+            case "UNKNOWN_FIELD" -> target.put("unrecognized_request_field", "do not discard");
+            case "QUERY" -> target.put("query", "merge_when_pipeline_succeeds=true");
+            case "EMPTY_QUERY" -> target.put("query", "");
+            case "LEGACY_HASH", "HASH_MISMATCH" -> { }
+            default -> throw new AssertionError(contradiction);
+        }
+        String remote = journal.find(operationId).orElseThrow().operation().remoteKey();
+        String fingerprint = Set.of("LEGACY_SUMMARY", "LEGACY_HASH").contains(contradiction)
+                ? GitOperationJournalPort.mappingHash("MERGE_MR", target.toString())
+                : contradiction.equals("HASH_MISMATCH") ? "0".repeat(64) : mergeIntentHash(remote, target);
+        assertThat(jdbc.update("update git_operation set target_json=?,request_hash=? where id=?",
+                target.toString(), fingerprint, operationId)).isEqualTo(1);
+        var before = projectionFacts(original, operationId);
+
+        assertMergeIntentClaimRejected(original.runId());
+
+        assertThat(projectionFacts(original, operationId)).isEqualTo(before);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void mergeIntentInvalidFrontPagesDoNotHideAValidTerminalIntent() {
+        var claims = new java.util.ArrayList<RunPort.TaskClaim>();
+        var operations = new java.util.HashMap<String, String>();
+        for (int index = 0; index < 3; index++) {
+            if (index > 0) fixtures();
+            var claim = claimMergedMrTask("CREATED", 40);
+            operations.put(claim.runId(), beginMergeIntent(claim));
+            expireClaim(claim);
+            claims.add(claim);
+        }
+        claims.sort(java.util.Comparator.comparing(RunPort.TaskClaim::runId));
+        var badFirst = claims.get(0);
+        var badSecond = claims.get(1);
+        var validLast = claims.get(2);
+        assertThat(jdbc.update("update git_operation set request_hash=? where id=?", "0".repeat(64),
+                operations.get(badFirst.runId()))).isEqualTo(1);
+        assertThat(jdbc.update("update repo_execution_guard set generation=generation+1 where operation_id=?",
+                operations.get(badSecond.runId()))).isEqualTo(1);
+        var before = new java.util.HashMap<String, Map<String, Object>>();
+        for (var claim : claims) before.put(claim.runId(), mergeIntentHistory(claim, operations.get(claim.runId())));
+        var candidates = runs.findTaskCandidateRunIds(null, 1000);
+        assertThat(candidates).contains(badFirst.runId(), badSecond.runId(), validLast.runId());
+        int firstIndex = candidates.indexOf(badFirst.runId());
+        String cursor = firstIndex == 0 ? null : candidates.get(firstIndex - 1);
+        var visited = new java.util.ArrayList<String>();
+
+        for (int page = 0; page <= candidates.size(); page++) {
+            var next = runs.findTaskCandidateRunIds(cursor, 1);
+            assertThat(next).hasSize(1);
+            String candidate = next.getFirst();
+            if (cursor != null) assertThat(candidate.compareTo(cursor)).isPositive();
+            cursor = candidate;
+            visited.add(candidate);
+            if (candidate.equals(validLast.runId())) break;
+            if (candidate.equals(badFirst.runId()) || candidate.equals(badSecond.runId())) {
+                assertMergeIntentClaimRejected(candidate);
+            }
+        }
+
+        assertThat(visited).doesNotHaveDuplicates().containsSubsequence(badFirst.runId(), badSecond.runId(), validLast.runId());
+        for (var claim : claims) {
+            assertThat(mergeIntentHistory(claim, operations.get(claim.runId()))).isEqualTo(before.get(claim.runId()));
+        }
+        assertThat(reclaimMergeIntent(validLast).fence().taskId()).isEqualTo(validLast.fence().taskId());
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void mergeIntentRecoveryKeepsSameRepositoryOrderWhileAnotherRepositoryAdvances() {
+        var run = admit(List.of(firstRepo, secondRepo), List.of(firstIteration, secondIteration), true);
+        var original = claimMergedMrTask(run.getId().value(), "CREATED", 40);
+        String operationId = beginMergeIntent(original);
+        var parallel = runs.claimNextTask(original.runId()).orElseThrow();
+        assertThat(parallel.repo()).isNotEqualTo(original.repo());
+        var parallelTask = jdbc.queryForMap("select * from run_task where id=?", parallel.fence().taskId());
+        var later = runs.findById(original.runId()).orElseThrow().getItems().stream()
+                .filter(item -> item.getRepo().equals(original.repo()) && !item.getId().value().equals(original.itemId()))
+                .findFirst().orElseThrow();
+        expireClaim(original);
+
+        var current = reclaimMergeIntent(original);
+
+        assertThat(current.fence().taskId()).isEqualTo(original.fence().taskId());
+        assertThat(jdbc.queryForMap("select * from run_task where id=?", parallel.fence().taskId())).isEqualTo(parallelTask);
+        assertThat(runs.findTasks(original.runId()).stream().filter(task -> task.itemId().equals(later.getId().value())))
+                .allSatisfy(task -> assertThat(task.status()).isEqualTo("PENDING"));
+        assertThat(later.getExecutedOrder()).isZero();
+        mergeIntentSending(operationId, current);
+        mergeIntentFinish(operationId, current, GitWriteResult.Outcome.APPLIED, mergedMrProof(current, null).toString());
+        assertThat(runs.completeTask(current, step(current, RunItemResult.MERGED), mergedMrResultPatch("CREATED", null))
+                .getExecutionStatus()).isEqualTo(RunExecutionStatus.RUNNING);
+        completeMergedMrFixtureTask(parallel, "MR_REUSED", 40);
+        for (int index = 0; index < 16; index++) {
+            var next = runs.claimNextTask(original.runId());
+            if (next.isEmpty()) break;
+            completeMergedMrFixtureTask(next.orElseThrow(), "MR_REUSED", 40);
+        }
+        var completed = runs.findById(original.runId()).orElseThrow();
+        assertThat(completed.getExecutionStatus()).isEqualTo(RunExecutionStatus.DONE);
+        assertThat(completed.getItems()).hasSize(4)
+                .allSatisfy(item -> assertThat(item.getFinalResult()).isEqualTo(RunItemResult.MERGED));
+        for (String repo : List.of(firstRepo, secondRepo)) {
+            var order = completed.getItems().stream().filter(item -> item.getRepo().value().equals(repo))
+                    .collect(java.util.stream.Collectors.toMap(item -> item.getIterationKey().value(), item -> item.getExecutedOrder()));
+            assertThat(order).containsOnlyKeys(firstIteration, secondIteration);
+            assertThat(order.get(firstIteration)).isPositive().isLessThan(order.get(secondIteration));
+        }
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void mergeIntentCannotReclaimAcrossAnUnresolvedEarlierIteration() {
+        var run = admit(List.of(firstRepo), List.of(firstIteration, secondIteration), true);
+        var earlier = claimMergedMrTask(run.getId().value(), "CREATED", 40);
+        completeMergedMrFixtureTask(earlier, "CREATED", 40);
+        var later = claimMergedMrTask(run.getId().value(), "MR_REUSED", 40);
+        String operationId = beginMergeIntent(later);
+        expireClaim(later);
+        assertThat(jdbc.update("update run_task set status='RUNNING',finished_at=null where id=?",
+                earlier.fence().taskId())).isEqualTo(1);
+        var before = projectionFacts(later, operationId);
+
+        assertMergeIntentClaimRejected(later.runId());
+
+        assertThat(projectionFacts(later, operationId)).isEqualTo(before);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    private String beginMergeIntent(RunPort.TaskClaim claim) {
+        settings.saveGitLab(new SettingsPort.SettingsGitLab("https://gitlab.invalid", "isolated-projection-token"));
+        return journal.begin(mergeIntentCommand(claim, mergeIntentTarget(claim)));
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode mergeIntentTarget(RunPort.TaskClaim claim) {
+        return mergedMrTarget(claim)
+                .put("merge_commit_message", "Merge " + claim.metadata().get("plan.featureBranch")
+                        + " into " + claim.metadata().get("plan.releaseBranch"))
+                .put("should_remove_source_branch", false);
+    }
+
+    private GitOperationJournalPort.Command mergeIntentCommand(RunPort.TaskClaim claim,
+            com.fasterxml.jackson.databind.node.ObjectNode target) {
+        String base = "https://gitlab.invalid";
+        String project = claim.metadata().get("git.projectId");
+        String remote = GitOperationJournalPort.remoteKey("GITLAB", base, project);
+        var repository = repositories.findById(claim.repo()).orElseThrow();
+        return new GitOperationJournalPort.Command(UUID.randomUUID().toString(), claim.repo().value(),
+                GitOperationJournalPort.mappingHash("GITLAB", repository.getCloneUrl()), remote, "GITLAB", base, project,
+                "MERGE_MR", target.toString(), mergeIntentHash(remote, target),
+                claim.runId(), claim.operator(), claim.fence().claimToken(), claim.fence());
+    }
+
+    private String mergeIntentHash(String remote, com.fasterxml.jackson.databind.node.ObjectNode target) {
+        // Independent fixture construction: retain supplied JSON types; never repair missing or legacy fields.
+        var body = json.createObjectNode();
+        for (String key : List.of("sha", "merge_commit_message", "should_remove_source_branch")) {
+            if (target.has(key)) body.set(key, target.get(key));
+        }
+        return mergeIntentSha256(target.path("method").asText() + "|" + remote + "|"
+                + target.path("suffix").asText() + "|null|" + mergeIntentSha256(body.toString()) + "|"
+                + target.path("sha").asText());
+    }
+
+    private String mergeIntentSha256(String value) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException error) {
+            throw new IllegalStateException(error);
+        }
+    }
+
+    private RunPort.TaskClaim reclaimMergeIntent(RunPort.TaskClaim original) {
+        var next = runs.claimNextTask(original.runId());
+        assertThat(next).as("a complete expired unsent MERGE intent must yield its original task").isPresent();
+        return next.orElseThrow();
+    }
+
+    private long mergeIntentVersion(String operationId) {
+        return jdbc.queryForObject("select state_version from git_operation where id=?", Long.class, operationId);
+    }
+
+    private Map<String, Object> mergeIntentHistory(RunPort.TaskClaim claim, String operationId) {
+        return Map.of(
+                "task", jdbc.queryForMap("select * from run_task where id=?", claim.fence().taskId()),
+                "operation", jdbc.queryForMap("select * from git_operation where id=?", operationId),
+                "events", jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence", operationId),
+                "guard", projectionGuard(operationId));
+    }
+
+    private void assertMergeIntentClaimRejected(String runId) {
+        try {
+            assertThat(runs.claimNextTask(runId)).as("invalid persisted qualification must not gain ownership").isEmpty();
+        } catch (BusinessException rejected) {
+            // Invalid protocol/identity may reject before the candidate loop; all persisted facts are checked by the caller.
+            assertThat(rejected.getCode()).isNotBlank();
+        }
+    }
+
+    private void mergeIntentSending(String operationId, RunPort.TaskClaim caller) {
+        journal.sending(operationId, caller == null ? null : caller.fence());
+    }
+
+    private void mergeIntentFinish(String operationId, RunPort.TaskClaim caller,
+            GitWriteResult.Outcome outcome, String evidence) {
+        journal.finish(operationId, caller == null ? null : caller.fence(), outcome, evidence,
+                outcome == GitWriteResult.Outcome.UNKNOWN ? "UNKNOWN" : null);
+    }
+
+    private void awaitMergeIntentLatch(CountDownLatch latch) {
+        try {
+            if (!latch.await(15, TimeUnit.SECONDS)) throw new AssertionError("merge intent transaction was not released");
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(error);
+        }
+    }
+
+    private void awaitMergeIntentBlockers(int waiter, Set<Integer> expectedBlockers) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        List<Integer> blockers = List.of();
+        while (System.nanoTime() < deadline) {
+            blockers = jdbc.queryForList("select unnest(pg_blocking_pids(?))", Integer.class, waiter);
+            if (blockers.stream().anyMatch(expectedBlockers::contains)) break;
+            Thread.sleep(10);
+        }
+        assertThat(blockers.stream().anyMatch(expectedBlockers::contains))
+                .as("PostgreSQL must report waiter %s blocked by %s, actual %s", waiter, expectedBlockers, blockers).isTrue();
+        System.out.printf("[merge-intent-pg-lock] waiter=%d blockers=%s expected=%s%n", waiter, blockers, expectedBlockers);
+    }
+
+    private int awaitMergeIntentWaiter(int holder) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        List<Integer> waiters = List.of();
+        while (System.nanoTime() < deadline) {
+            waiters = jdbc.queryForList("select pid from pg_stat_activity where ? = any(pg_blocking_pids(pid))",
+                    Integer.class, holder);
+            if (!waiters.isEmpty()) break;
+            Thread.sleep(10);
+        }
+        assertThat(waiters).as("the old sender must actually wait for the new owner's PostgreSQL transaction").hasSize(1);
+        return waiters.getFirst();
+    }
+
     private RunPort.TaskClaim claimMergedMrTask(String disposition, int shaLength) {
         var ensure = claimMrTask();
         completeMergedMrFixtureTask(ensure, disposition, shaLength);
@@ -1879,8 +2722,8 @@ class RunTaskPersistenceIT {
 
     private String recordAppliedMergedMr(RunPort.TaskClaim claim, String mergeSha) {
         String operationId = beginMergedMrOperation(claim);
-        journal.sending(operationId);
-        journal.finish(operationId, GitWriteResult.Outcome.APPLIED, mergedMrProof(claim, mergeSha).toString(), null);
+        journal.sending(operationId, claim.fence());
+        journal.finish(operationId, claim.fence(), GitWriteResult.Outcome.APPLIED, mergedMrProof(claim, mergeSha).toString(), null);
         return operationId;
     }
 
@@ -1942,9 +2785,9 @@ class RunTaskPersistenceIT {
                 GitOperationJournalPort.remoteKey("GITLAB", baseUrl, projectionProjectId()), "GITLAB", baseUrl,
                 projectionProjectId(), "CREATE_BRANCH", target, GitOperationJournalPort.mappingHash("CREATE_BRANCH", target),
                 claim.runId(), claim.operator(), claim.fence().claimToken(), claim.fence()));
-        journal.sending(operationId);
+        journal.sending(operationId, claim.fence());
         // Case-insensitive SHA identity follows strict SHA validation; branch and sourceRef remain exact.
-        journal.finish(operationId, GitWriteResult.Outcome.APPLIED,
+        journal.finish(operationId, claim.fence(), GitWriteResult.Outcome.APPLIED,
                 branchProof(branch, sha.toUpperCase(java.util.Locale.ROOT)), null);
         return operationId;
     }
@@ -1980,8 +2823,8 @@ class RunTaskPersistenceIT {
                 GitOperationJournalPort.remoteKey("GITLAB", baseUrl, projectionProjectId()), "GITLAB", baseUrl,
                 projectionProjectId(), "CREATE_MR", target, GitOperationJournalPort.mappingHash("CREATE_MR", target),
                 claim.runId(), claim.operator(), claim.fence().claimToken(), claim.fence()));
-        journal.sending(operationId);
-        journal.finish(operationId, GitWriteResult.Outcome.APPLIED, createdMrProof(claim).toString(), null);
+        journal.sending(operationId, claim.fence());
+        journal.finish(operationId, claim.fence(), GitWriteResult.Outcome.APPLIED, createdMrProof(claim).toString(), null);
         return operationId;
     }
 

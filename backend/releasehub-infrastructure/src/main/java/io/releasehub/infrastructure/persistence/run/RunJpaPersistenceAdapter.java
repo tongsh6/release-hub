@@ -235,7 +235,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                           t.task_type='TRY_MERGE'
                           AND NOT EXISTS (SELECT 1 FROM {h-schema}run_step s WHERE s.task_id=t.id)
                           AND EXISTS (SELECT 1 FROM {h-schema}git_operation o WHERE o.task_id=t.id
-                            AND o.action='MERGE_MR' AND o.state='APPLIED')
+                            AND o.action='MERGE_MR' AND o.state IN ('APPLIED', 'INTENT_RECORDED'))
                         ))
                         )))
                 ORDER BY r.id
@@ -318,10 +318,22 @@ public class RunJpaPersistenceAdapter implements RunPort {
             boolean initialClaim = "PENDING".equals(task.getStatus());
             if (initialClaim) {
                 if (task.getClaimToken() != null) throw stale();
-            } else if (item.getExecutedOrder() <= 0 || !recoverableWithoutEvidence(task, databaseTime)) {
+            } else if (item.getExecutedOrder() <= 0 || !expiredRunningClaim(task, databaseTime)) {
                 continue;
             }
             Map<String, String> metadata = taskMetadata(run, item);
+            boolean preparedUnsentMerge = false;
+            if (!initialClaim && !recoverableWithoutEvidence(task, databaseTime)) {
+                if (!"TRY_MERGE".equals(task.getTaskType())) continue;
+                Number steps = (Number) entityManager.createNativeQuery(
+                        "SELECT count(*) FROM {h-schema}run_step WHERE task_id=?1")
+                        .setParameter(1, task.getId()).getSingleResult();
+                if (steps.longValue() != 0) continue;
+                var currentClaim = new TaskClaim(new TaskFence(task.getId(), task.getClaimToken()), runId, item.getId(),
+                        RepoId.of(item.getRepoId()), ActionType.TRY_MERGE, now(), run.getOperator(), metadata);
+                preparedUnsentMerge = journal.prepareUnsentMergeClaim(currentClaim);
+                if (!preparedUnsentMerge) continue;
+            }
             Instant started = now();
             String token = UUID.randomUUID().toString();
             OffsetDateTime expiresAt = databaseTime.plusMillis(claimLeaseMillis).atOffset(ZoneOffset.UTC);
@@ -330,13 +342,16 @@ public class RunJpaPersistenceAdapter implements RunPort {
                         + "WHERE id=?4 AND status='PENDING' AND claim_token IS NULL",
                         token, stamp(started), expiresAt, task.getId()));
             } else {
-                // 期限只提供竞争资格；实际换权以原 token、原期限及无事实约束的单行 CAS 为准。
+                // 原意图已在同一物理事务中锁定并验证；CAS 失败必须回滚其观察版本变更。
+                String evidenceFence = preparedUnsentMerge
+                        ? "NOT EXISTS (SELECT 1 FROM {h-schema}run_step s WHERE s.task_id=t.id)"
+                        : NO_TASK_EVIDENCE;
                 requireOne(update("""
                         UPDATE {h-schema}run_task t SET claim_token=?1, claim_expires_at=?2
                         WHERE t.id=?3 AND t.status='RUNNING' AND t.claim_token=?4
                           AND t.started_at IS NOT NULL AND t.claim_expires_at=?5 AND t.claim_expires_at<=?6
                           AND
-                        """ + NO_TASK_EVIDENCE,
+                        """ + evidenceFence,
                         token, expiresAt, task.getId(), task.getClaimToken(),
                         task.getClaimExpiresAt().atOffset(ZoneOffset.UTC), databaseTime.atOffset(ZoneOffset.UTC)));
             }

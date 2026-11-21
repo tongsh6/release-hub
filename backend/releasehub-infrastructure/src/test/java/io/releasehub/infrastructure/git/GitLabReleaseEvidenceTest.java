@@ -139,7 +139,7 @@ class GitLabReleaseEvidenceTest {
         stubFor(post(urlPathEqualTo(NUMERIC + "/repository/tags")).willReturn(created().withHeader("Content-Type", "application/json")
                 .withBody(tagBody(TAG, OTHER_SHA))));
         assertEquals(GitWriteResult.Outcome.UNKNOWN, adapter.createTag(cloneUrl, "fixture-token", "7", TAG, SHA, "release").outcome());
-        verify(journal).finish(anyString(), eq(GitWriteResult.Outcome.UNKNOWN), anyString(), anyString());
+        verify(journal).finish(anyString(), isNull(), eq(GitWriteResult.Outcome.UNKNOWN), anyString(), anyString());
         verify(journal).completeSession(anyString(), eq(false));
     }
 
@@ -194,7 +194,7 @@ class GitLabReleaseEvidenceTest {
         assertEquals(GitWriteResult.Outcome.UNKNOWN, result.outcome());
         assertNull(result.evidence());
         verify(1, postRequestedFor(urlPathEqualTo(NUMERIC + "/pipeline")));
-        verify(journal).finish(anyString(), eq(GitWriteResult.Outcome.UNKNOWN), anyString(), anyString());
+        verify(journal).finish(anyString(), isNull(), eq(GitWriteResult.Outcome.UNKNOWN), anyString(), anyString());
         verify(journal).completeSession(anyString(), eq(false));
     }
 
@@ -218,7 +218,7 @@ class GitLabReleaseEvidenceTest {
         server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(baseUrl + NUMERIC + "/pipeline?ref=" + TAG))
                 .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withException(new java.net.SocketTimeoutException("lost")));
         assertEquals(GitWriteResult.Outcome.UNKNOWN, adapter.triggerPipeline(cloneUrl, "fixture-token", "7", TAG, SHA).outcome());
-        verify(journal).sending(anyString());
+        verify(journal).sending(anyString(), isNull());
         verify(journal).completeSession(anyString(), eq(false));
         server.verify();
     }

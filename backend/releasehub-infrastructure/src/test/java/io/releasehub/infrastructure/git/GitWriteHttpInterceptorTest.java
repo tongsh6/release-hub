@@ -49,8 +49,264 @@ class GitWriteHttpInterceptorTest {
 
         assertThrows(IOException.class, () -> interceptor.intercept(request, new byte[0],
                 (sent, body) -> new MockClientHttpResponse(responseBody, HttpStatus.CREATED)));
-        verify(journal).finish(anyString(), eq(GitWriteResult.Outcome.UNKNOWN), anyString(), anyString());
+        verify(journal).finish(anyString(),isNull(), eq(GitWriteResult.Outcome.UNKNOWN), anyString(), anyString());
         verify(journal).completeSession(anyString(), eq(false));
+    }
+
+
+    @ParameterizedTest
+    @ValueSource(strings = {"APPLIED", "REJECTED", "INCOMPLETE", "IO"})
+    void mergeIntentUsesTheJournalOperationIdForSendingAndFinish(String outcome) throws Exception {
+        String originalId = "11111111-1111-4111-8111-111111111111";
+        doReturn(originalId).when(journal).begin(any());
+        try (var context = GitOperationContext.withTask(mergeIntentClaim())) {
+            executeMergeIntentOutcome(outcome);
+        }
+
+        var command = org.mockito.ArgumentCaptor.forClass(GitOperationJournalPort.Command.class);
+        verify(journal).begin(command.capture());
+        assertNotEquals(originalId, command.getValue().operationId());
+        assertAll(
+                () -> assertEquals(originalId, singleJournalInvocation("sending").getArguments()[0]),
+                () -> assertEquals(originalId, singleJournalInvocation("finish").getArguments()[0]));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"APPLIED", "REJECTED", "INCOMPLETE", "IO"})
+    void mergeIntentCarriesTheCurrentTaskFenceToSendAndFinish(String outcome) throws Exception {
+        var claim = mergeIntentClaim();
+        try (var context = GitOperationContext.withTask(claim)) {
+            executeMergeIntentOutcome(outcome);
+        }
+
+        var command = org.mockito.ArgumentCaptor.forClass(GitOperationJournalPort.Command.class);
+        verify(journal).begin(command.capture());
+        assertEquals(claim.fence(), command.getValue().taskFence());
+        // Inspect actual public calls so the RED compiles before the explicit-fence signature exists.
+        assertAll(
+                () -> assertTrue(java.util.Arrays.asList(singleJournalInvocation("sending").getArguments())
+                        .contains(claim.fence()), "sending must receive the actual caller fence"),
+                () -> assertTrue(java.util.Arrays.asList(singleJournalInvocation("finish").getArguments())
+                        .contains(claim.fence()), "finish must receive the actual caller fence"));
+    }
+
+    @Test
+    void mergeIntentPersistsTheCompleteTypedRequest() throws Exception {
+        String sha = "a".repeat(40);
+        String message = "Custom merge \"message\" | keep\nthis exact text";
+        var request = mergeIntentRequest(sha, null);
+        byte[] body = mergeIntentBody(sha, message).toString().getBytes(StandardCharsets.UTF_8);
+        try (var response = interceptor.intercept(request, body, (sent, bytes) -> {
+            assertEquals("sensitive-intent-token", sent.getHeaders().getFirst("PRIVATE-TOKEN"));
+            assertNull(sent.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID));
+            assertNull(sent.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_SHA));
+            assertEquals(new ObjectMapper().readTree(body), new ObjectMapper().readTree(bytes));
+            assertNull(sent.getURI().getRawQuery());
+            return mergeIntentResponse("APPLIED", sha);
+        })) {
+            assertEquals(HttpStatus.OK, response.getStatusCode());
+        }
+
+        var command = org.mockito.ArgumentCaptor.forClass(GitOperationJournalPort.Command.class);
+        verify(journal).begin(command.capture());
+        var target = new ObjectMapper().readTree(command.getValue().targetJson());
+        assertEquals("MERGE_MR", command.getValue().action());
+        assertAll(
+                () -> assertTrue(target.path("sha").isTextual()),
+                () -> assertEquals(sha, target.path("sha").textValue()),
+                () -> assertTrue(target.path("merge_commit_message").isTextual()),
+                () -> assertEquals(message, target.path("merge_commit_message").textValue()),
+                () -> assertTrue(target.path("should_remove_source_branch").isBoolean()),
+                () -> assertFalse(target.path("should_remove_source_branch").booleanValue()),
+                () -> assertEquals("PUT", target.path("method").textValue()),
+                () -> assertEquals("/merge_requests/7/merge", target.path("suffix").textValue()),
+                () -> assertFalse(command.getValue().toString().contains("sensitive-intent-token")));
+    }
+
+    @Test
+    void mergeIntentFingerprintIsStableAcrossJsonFieldOrder() throws Exception {
+        String sha = "a".repeat(40);
+        String message = "Merge feature/IT-1 into release/RW-1";
+        var first = mergeIntentBody(sha, message);
+        var reordered = new ObjectMapper().createObjectNode().put("should_remove_source_branch", false)
+                .put("merge_commit_message", message).put("sha", sha);
+        assertNotEquals(first.toString(), reordered.toString());
+        for (var body : java.util.List.of(first, reordered)) {
+            try (var response = interceptor.intercept(mergeIntentRequest(sha, null),
+                    body.toString().getBytes(StandardCharsets.UTF_8), (sent, bytes) -> {
+                        assertEquals(first, new ObjectMapper().readTree(bytes));
+                        return mergeIntentResponse("APPLIED", sha);
+                    })) {
+                assertEquals(HttpStatus.OK, response.getStatusCode());
+            }
+        }
+
+        var commands = org.mockito.ArgumentCaptor.forClass(GitOperationJournalPort.Command.class);
+        verify(journal, times(2)).begin(commands.capture());
+        assertEquals(commands.getAllValues().get(0).requestHash(), commands.getAllValues().get(1).requestHash());
+    }
+
+    @Test
+    void mergeIntentFingerprintDistinguishesDifferentMessages() throws Exception {
+        String sha = "a".repeat(40);
+        for (String message : java.util.List.of("Merge | one\nexact message", "Merge | two\nexact message")) {
+            try (var response = interceptor.intercept(mergeIntentRequest(sha, null),
+                    mergeIntentBody(sha, message).toString().getBytes(StandardCharsets.UTF_8),
+                    (sent, bytes) -> mergeIntentResponse("APPLIED", sha))) {
+                assertEquals(HttpStatus.OK, response.getStatusCode());
+            }
+        }
+
+        var commands = org.mockito.ArgumentCaptor.forClass(GitOperationJournalPort.Command.class);
+        verify(journal, times(2)).begin(commands.capture());
+        assertNotEquals(commands.getAllValues().get(0).requestHash(), commands.getAllValues().get(1).requestHash());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MISSING_SHA", "MISSING_MESSAGE", "MISSING_REMOVE", "MESSAGE_NUMBER", "MESSAGE_NULL",
+            "REMOVE_STRING", "REMOVE_NULL", "REMOVE_TRUE", "SHA_NUMBER", "UNKNOWN_FIELD"})
+    void mergeIntentRejectsIncompleteOrIllTypedRequestsBeforeIntent(String variant) throws Exception {
+        String sha = "SHA_NUMBER".equals(variant) ? "1".repeat(40) : "a".repeat(40);
+        var body = mergeIntentBody(sha, "Merge feature/IT-1 into release/RW-1");
+        switch (variant) {
+            case "MISSING_SHA" -> body.remove("sha");
+            case "MISSING_MESSAGE" -> body.remove("merge_commit_message");
+            case "MISSING_REMOVE" -> body.remove("should_remove_source_branch");
+            case "MESSAGE_NUMBER" -> body.put("merge_commit_message", 7);
+            case "MESSAGE_NULL" -> body.putNull("merge_commit_message");
+            case "REMOVE_STRING" -> body.put("should_remove_source_branch", "false");
+            case "REMOVE_NULL" -> body.putNull("should_remove_source_branch");
+            case "REMOVE_TRUE" -> body.put("should_remove_source_branch", true);
+            case "SHA_NUMBER" -> body.put("sha", new java.math.BigInteger(sha));
+            case "UNKNOWN_FIELD" -> body.put("squash", true);
+            default -> throw new IllegalArgumentException(variant);
+        }
+        var sent = new AtomicInteger();
+        try (var context = GitOperationContext.withTask(mergeIntentClaim())) {
+            var error = assertThrows(BusinessException.class,
+                    () -> interceptor.intercept(mergeIntentRequest(sha, null),
+                            body.toString().getBytes(StandardCharsets.UTF_8), (request, bytes) -> {
+                                sent.incrementAndGet();
+                                return mergeIntentResponse("APPLIED", sha);
+                            }));
+            assertEquals(ErrorCode.GIT_OPERATION_INVALID, error.getErrorCode());
+        }
+        assertEquals(0, sent.get());
+        verifyNoInteractions(journal);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "squash=true"})
+    void mergeIntentRejectsQueriesBeforeIntent(String query) throws Exception {
+        String sha = "a".repeat(40);
+        var request = mergeIntentRequest(sha, query);
+        assertNotNull(request.getURI().getRawQuery());
+        var sent = new AtomicInteger();
+        try (var context = GitOperationContext.withTask(mergeIntentClaim())) {
+            var error = assertThrows(BusinessException.class,
+                    () -> interceptor.intercept(request,
+                            mergeIntentBody(sha, "Merge feature/IT-1 into release/RW-1")
+                                    .toString().getBytes(StandardCharsets.UTF_8),
+                            (outbound, bytes) -> {
+                                sent.incrementAndGet();
+                                return mergeIntentResponse("APPLIED", sha);
+                            }));
+            assertEquals(ErrorCode.GIT_OPERATION_INVALID, error.getErrorCode());
+        }
+        assertEquals(0, sent.get());
+        verifyNoInteractions(journal);
+    }
+
+    @Test
+    void mergeIntentDoesNotWriteOrFinishWhenSendingIsRefused() throws Exception {
+        doThrow(new IllegalStateException("sender lost its current claim")).when(journal)
+                .sending(anyString(), eq(mergeIntentClaim().fence()));
+        var sent = new AtomicInteger();
+        try (var context = GitOperationContext.withTask(mergeIntentClaim())) {
+            assertThrows(IllegalStateException.class,
+                    () -> interceptor.intercept(mergeIntentRequest("a".repeat(40), null),
+                            mergeIntentBody("a".repeat(40), "Merge feature/IT-1 into release/RW-1")
+                                    .toString().getBytes(StandardCharsets.UTF_8),
+                            (request, bytes) -> {
+                                sent.incrementAndGet();
+                                return mergeIntentResponse("APPLIED", "a".repeat(40));
+                            }));
+        }
+        assertEquals(0, sent.get());
+        assertTrue(mockingDetails(journal).getInvocations().stream()
+                .noneMatch(call -> call.getMethod().getName().equals("finish")));
+    }
+
+    private io.releasehub.application.run.RunPort.TaskClaim mergeIntentClaim() {
+        var fence = new io.releasehub.application.run.RunPort.TaskFence(
+                "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333");
+        return new io.releasehub.application.run.RunPort.TaskClaim(fence, "run-intent", "item-intent",
+                io.releasehub.domain.repo.RepoId.of("repo"), io.releasehub.domain.run.ActionType.TRY_MERGE,
+                java.time.Instant.parse("2026-11-21T00:00:00Z"), "tester", java.util.Map.of(
+                        "git.projectId", "17", "git.mrIid", "7",
+                        "git.mrUrl", "https://gitlab.invalid/acme/repo/-/merge_requests/7",
+                        "git.sourceBranch", "feature/IT-1", "git.targetBranch", "release/RW-1",
+                        "git.sourceSha", "a".repeat(40), "git.mrDisposition", "CREATED",
+                        "plan.featureBranch", "feature/IT-1", "plan.releaseBranch", "release/RW-1"));
+    }
+
+    private MockClientHttpRequest mergeIntentRequest(String sha, String query) {
+        var endpoint = new GitRemoteIdentityResolver.Endpoint("GITLAB", "https://gitlab.invalid", "acme/repo",
+                "https://gitlab.invalid/api/v4/projects/17", "/merge_requests/7/merge");
+        when(identities.resolve(any(), any())).thenReturn(new GitRemoteIdentityResolver.Identity(
+                "repo", "mapping", "a".repeat(64), "GITLAB", "https://gitlab.invalid", "17", endpoint));
+        var request = new MockClientHttpRequest(HttpMethod.PUT, URI.create(
+                endpoint.projectEndpoint() + endpoint.suffix() + (query == null ? "" : "?" + query)));
+        request.getHeaders().set(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID, "17");
+        request.getHeaders().set(GitRemoteIdentityResolver.EXPECTED_SHA, sha);
+        request.getHeaders().set("PRIVATE-TOKEN", "sensitive-intent-token");
+        return request;
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode mergeIntentBody(String sha, String message) {
+        return new ObjectMapper().createObjectNode().put("sha", sha).put("merge_commit_message", message)
+                .put("should_remove_source_branch", false);
+    }
+
+    private MockClientHttpResponse mergeIntentResponse(String outcome, String sha) throws IOException {
+        if ("IO".equals(outcome)) throw new IOException("response lost after dispatch");
+        if ("REJECTED".equals(outcome)) return new MockClientHttpResponse(
+                "{\"message\":\"Permission denied\"}".getBytes(StandardCharsets.UTF_8), HttpStatus.FORBIDDEN);
+        if ("INCOMPLETE".equals(outcome)) return new MockClientHttpResponse(
+                "{\"iid\":7}".getBytes(StandardCharsets.UTF_8), HttpStatus.OK);
+        var body = new ObjectMapper().createObjectNode().put("iid", 7).put("project_id", 17)
+                .put("source_project_id", 17).put("target_project_id", 17)
+                .put("source_branch", "feature/IT-1").put("target_branch", "release/RW-1")
+                .put("sha", sha).put("state", "merged").put("merge_commit_sha", "b".repeat(40))
+                .put("web_url", "https://gitlab.invalid/acme/repo/-/merge_requests/7");
+        return new MockClientHttpResponse(body.toString().getBytes(StandardCharsets.UTF_8), HttpStatus.OK);
+    }
+
+    private void executeMergeIntentOutcome(String outcome) throws Exception {
+        String sha = "a".repeat(40);
+        var request = mergeIntentRequest(sha, null);
+        byte[] body = mergeIntentBody(sha, "Merge feature/IT-1 into release/RW-1")
+                .toString().getBytes(StandardCharsets.UTF_8);
+        var sent = new AtomicInteger();
+        org.springframework.http.client.ClientHttpRequestExecution execution = (outbound, bytes) -> {
+            sent.incrementAndGet();
+            return mergeIntentResponse(outcome, sha);
+        };
+        if ("IO".equals(outcome) || "INCOMPLETE".equals(outcome)) {
+            assertThrows(IOException.class, () -> interceptor.intercept(request, body, execution));
+        } else {
+            try (var response = interceptor.intercept(request, body, execution)) {
+                assertEquals("REJECTED".equals(outcome) ? HttpStatus.FORBIDDEN : HttpStatus.OK, response.getStatusCode());
+            }
+        }
+        assertEquals(1, sent.get());
+    }
+
+    private org.mockito.invocation.Invocation singleJournalInvocation(String method) {
+        var calls = mockingDetails(journal).getInvocations().stream()
+                .filter(call -> call.getMethod().getName().equals(method)).toList();
+        assertEquals(1, calls.size(), method + " must have exactly one call");
+        return calls.getFirst();
     }
 
     private MockClientHttpRequest request(){
@@ -172,7 +428,7 @@ class GitWriteHttpInterceptorTest {
         assertEquals(0,sent.get());
     }
     @Test void shouldSendNothingWhenSendMarkerCommitFails() {
-        doThrow(new IllegalStateException("模拟发送标记失败")).when(journal).sending(anyString());var sent=new AtomicInteger();
+        doThrow(new IllegalStateException("模拟发送标记失败")).when(journal).sending(anyString(),isNull());var sent=new AtomicInteger();
         assertThrows(IllegalStateException.class,()->interceptor.intercept(request(),new byte[0],(r,b)->{sent.incrementAndGet();return new MockClientHttpResponse(new byte[0],HttpStatus.CREATED);}));
         assertEquals(0,sent.get());
     }
@@ -180,7 +436,7 @@ class GitWriteHttpInterceptorTest {
         var sent=new AtomicInteger();
         assertThrows(IOException.class,()->interceptor.intercept(request(),new byte[0],(r,b)->{sent.incrementAndGet();throw new IOException("含敏感信息的远端错误");}));
         assertEquals(1,sent.get());
-        verify(journal).finish(anyString(),eq(GitWriteResult.Outcome.UNKNOWN),eq("{}"),eq("RESPONSE_UNCONFIRMED"));
+        verify(journal).finish(anyString(),isNull(),eq(GitWriteResult.Outcome.UNKNOWN),eq("{}"),eq("RESPONSE_UNCONFIRMED"));
     }
     @Test void shouldCorrelateRequestWithoutPersistingTokenOrBodyContent() throws Exception {
         var request=request();request.getHeaders().set("PRIVATE-TOKEN","sensitive-fixture");
@@ -200,14 +456,14 @@ class GitWriteHttpInterceptorTest {
         assertFalse(captor.getValue().toString().contains("private title"));
         assertEquals("a".repeat(40),new ObjectMapper().readTree(captor.getValue().targetJson()).path("sha").asText());
         var evidence=org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(journal).finish(anyString(),eq(GitWriteResult.Outcome.APPLIED),evidence.capture(),isNull());
+        verify(journal).finish(anyString(),isNull(),eq(GitWriteResult.Outcome.APPLIED),evidence.capture(),isNull());
         assertEquals(17,new ObjectMapper().readTree(evidence.getValue()).path("iid").asInt());
         assertFalse(evidence.getValue().contains("sensitive-fixture"));
         assertFalse(evidence.getValue().contains("private title"));
     }
     @Test void shouldKeepMissingRemoteIdUnknown() {
         assertThrows(IOException.class,()->interceptor.intercept(request(),new byte[0],(r,b)->new MockClientHttpResponse("{}".getBytes(StandardCharsets.UTF_8),HttpStatus.CREATED)));
-        verify(journal).finish(anyString(),eq(GitWriteResult.Outcome.UNKNOWN),anyString(),eq("RESPONSE_UNCONFIRMED"));
+        verify(journal).finish(anyString(),isNull(),eq(GitWriteResult.Outcome.UNKNOWN),anyString(),eq("RESPONSE_UNCONFIRMED"));
     }
     @Test void shouldKeepMismatchedBranchEvidenceUnknown() throws Exception {
         var endpoint=new GitRemoteIdentityResolver.Endpoint("GITLAB","https://gitlab.invalid","acme/repo","https://gitlab.invalid/api/v4/projects/17","/repository/branches");
@@ -217,7 +473,7 @@ class GitWriteHttpInterceptorTest {
         byte[] input="{\"branch\":\"feature\",\"ref\":\"main\"}".getBytes(StandardCharsets.UTF_8);
         assertThrows(IOException.class,()->interceptor.intercept(request,input,(r,b)->new MockClientHttpResponse(
                 ("{\"name\":\"feature\",\"commit\":{\"id\":\""+"b".repeat(40)+"\"}}").getBytes(StandardCharsets.UTF_8),HttpStatus.CREATED)));
-        verify(journal).finish(anyString(),eq(GitWriteResult.Outcome.UNKNOWN),anyString(),eq("RESPONSE_UNCONFIRMED"));
+        verify(journal).finish(anyString(),isNull(),eq(GitWriteResult.Outcome.UNKNOWN),anyString(),eq("RESPONSE_UNCONFIRMED"));
     }
     @Test void shouldRejectFileChangedAfterContentWasRead() throws Exception {
         String originalRevision = "a".repeat(40);
@@ -318,11 +574,11 @@ class GitWriteHttpInterceptorTest {
         assertFalse(observedBody.get().contains("sensitive"));
         assertFalse(observedBody.get().contains("private-debug"));
         var evidence = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(journal).finish(anyString(), eq(GitWriteResult.Outcome.REJECTED), evidence.capture(), eq(expectedReason));
+        verify(journal).finish(anyString(),isNull(), eq(GitWriteResult.Outcome.REJECTED), evidence.capture(), eq(expectedReason));
         assertEquals(expectedReason, new ObjectMapper().readTree(evidence.getValue()).path("rejectionReason").asText());
         assertFalse(evidence.getValue().contains("sensitive"));
         assertFalse(evidence.getValue().contains("private-debug"));
-        verify(journal, times(1)).sending(anyString());
+        verify(journal, times(1)).sending(anyString(),isNull());
         server.verify();
     }
 
@@ -332,9 +588,10 @@ class GitWriteHttpInterceptorTest {
         var request=new MockClientHttpRequest(HttpMethod.PUT,URI.create(endpoint.projectEndpoint()+endpoint.suffix()));
         request.getHeaders().set(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID,"17");
         request.getHeaders().set(GitRemoteIdentityResolver.EXPECTED_SHA,"a".repeat(40));
-        byte[] body=("{\"sha\":\""+"a".repeat(40)+"\"}").getBytes(StandardCharsets.UTF_8);
+        byte[] body=mergeIntentBody("a".repeat(40),"Merge feature/IT-1 into release/RW-1")
+                .toString().getBytes(StandardCharsets.UTF_8);
         assertThrows(IOException.class,()->interceptor.intercept(request,body,(r,b)->new MockClientHttpResponse(
                 "{\"iid\":7,\"state\":\"opened\"}".getBytes(StandardCharsets.UTF_8),HttpStatus.OK)));
-        verify(journal).finish(anyString(),eq(GitWriteResult.Outcome.UNKNOWN),anyString(),eq("RESPONSE_UNCONFIRMED"));
+        verify(journal).finish(anyString(),isNull(),eq(GitWriteResult.Outcome.UNKNOWN),anyString(),eq("RESPONSE_UNCONFIRMED"));
     }
 }

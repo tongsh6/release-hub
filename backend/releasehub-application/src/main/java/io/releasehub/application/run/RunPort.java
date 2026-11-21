@@ -23,11 +23,11 @@ public interface RunPort {
 
     /** 加入受理事务，按冻结 Item 范围建立固定四动作；预览不调用。 */
     void createTasks(Run run);
-    /** 有界发现当前协议的 PENDING、无证据到期领取及末尾已确认合并候选；锁内另核执行资格。 */
+    /** 有界发现当前协议的 PENDING、无证据到期领取及末尾 MERGE 的 INTENT/APPLIED 候选；锁内另核完整资格。 */
     List<String> findTaskCandidateRunIds(String afterId, int limit);
     /** 在结果事务内仅补一个已确认的分支创建、MR 创建或合并结果；不访问 Git、不换 token 或期限。 */
     boolean projectNextAppliedTask(String runId);
-    /** 锁内领取一个可执行任务；仅无 operation/Step 的完整到期领取可更换 token，既有写入不重派。 */
+    /** 锁内领取一个任务；无事实或具备完整未发送 MERGE 证明的到期领取可换 token，SEND 及未知结果不重派。 */
     Optional<TaskClaim> claimNextTask(String runId);
     /** 短事务内定向保存事实、投影、绑定和 guard 确认；不保存传入的整个 Run。 */
     Run completeTask(TaskClaim claim, RunStep step, Map<String, String> metadataUpdates);

@@ -54,6 +54,21 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         long changedIdentity=em.createQuery("select count(o) from GitOperationEntity o where o.repoId=:repo and o.remoteKey<>:remote and exists (select g.remoteKey from RepoExecutionGuardEntity g where g.remoteKey=o.remoteKey and g.sessionId=o.sessionId)",Long.class)
                 .setParameter("repo",c.repoId()).setParameter("remote",c.remoteKey()).getSingleResult();
         if(changedIdentity>0)throw blocked();
+        if (c.taskFence() != null && "MERGE_MR".equals(c.action())) {
+            var originals = taskOperations(c.taskFence().taskId());
+            if (!originals.isEmpty()) {
+                if (originals.size() != 1) throw blocked();
+                var original = originals.getFirst();
+                if (!c.remoteKey().equals(original.getRemoteKey())) throw stale();
+                em.refresh(original, LockModeType.PESSIMISTIC_WRITE);
+                var task = em.find(RunTaskJpaEntity.class, c.taskFence().taskId());
+                var item = em.find(RunItemJpaEntity.class, task.getTargetId());
+                if (!validUnsentMerge(task, item, original)) throw blocked();
+                if (!Objects.equals(c.requestHash(), original.getRequestHash())
+                        || !Objects.equals(objectJson(c.targetJson()), objectJson(original.getTargetJson()))) throw stale();
+                return original.getId();
+            }
+        }
         var existing = em.find(GitOperationEntity.class, c.operationId());
         if (existing != null) {
             if (!existing.getRequestHash().equals(c.requestHash()) || !existing.getOperator().equals(c.operator())
@@ -87,17 +102,23 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         em.flush(); return op.getId();
     }
 
-    @Override public void sending(String id) {
-        var op = operationForUpdate(id, true); var guard = ownGuard(op);
-        if (!"INTENT_RECORDED".equals(op.getState())) throw stale();
+    @Override public void sending(String id, RunPort.TaskFence fence) {
+        var op = operationForUpdate(id, fence); var guard = ownGuard(op);
+        if (!"INTENT_RECORDED".equals(op.getState()) || !onlyIntentEvent(op)
+                || !"INTENT_PENDING".equals(guard.getReason())) throw stale();
+        String sender = fence == null ? "{}" : JSON.createObjectNode()
+                .put("taskId", fence.taskId()).put("claimToken", fence.claimToken()).toString();
         op.setState("SEND_STARTED"); op.setUpdatedAt(now());
         guard.setReason("REQUEST_IN_FLIGHT"); guard.setUpdatedAt(now());
-        event(op, 1, "SEND_STARTED", "{}", null); em.flush();
+        event(op, 1, "SEND_STARTED", sender, null); em.flush();
     }
 
-    @Override public void finish(String id, GitWriteResult.Outcome outcome, String evidence, String reason) {
-        var op = operationForUpdate(id, true); var guard = ownGuard(op);
-        if (!"SEND_STARTED".equals(op.getState())) throw stale();
+    @Override public void finish(String id, RunPort.TaskFence fence,
+                                 GitWriteResult.Outcome outcome, String evidence, String reason) {
+        if (outcome == null) throw invalid();
+        var op = operationForUpdate(id, fence); var guard = ownGuard(op);
+        if (!"SEND_STARTED".equals(op.getState())
+                || op.getTaskId() != null && "MERGE_MR".equals(op.getAction()) && !sentBy(op, fence)) throw stale();
         op.setState(outcome.name()); op.setReason(reason); op.setUpdatedAt(now());
         guard.setReason(outcome == GitWriteResult.Outcome.UNKNOWN ? "REMOTE_RESULT_UNKNOWN" : null);
         guard.setUpdatedAt(now()); event(op, 2, outcome.name(), evidence, reason); em.flush();
@@ -129,6 +150,27 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         em.flush();
     }
 
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean prepareUnsentMergeClaim(RunPort.TaskClaim claim) {
+        if (claim == null || claim.actionType() != ActionType.TRY_MERGE) return false;
+        var task = lockTask(claim.fence(), true);
+        var run = em.find(RunJpaEntity.class, task.getRunId());
+        var item = em.find(RunItemJpaEntity.class, task.getTargetId());
+        if (item == null || !task.getRunId().equals(claim.runId()) || !item.getId().equals(claim.itemId())
+                || !item.getRepoId().equals(claim.repo().value()) || !run.getOperator().equals(claim.operator())) return false;
+        var operations = taskOperations(task.getId());
+        if (operations.size() != 1) return false;
+        var op = operations.getFirst();
+        lock(op.getRemoteKey());
+        em.refresh(op, LockModeType.PESSIMISTIC_WRITE);
+        if (!validUnsentMerge(task, item, op)) return false;
+        // Increment immediately in the caller's physical transaction, before its final Task CAS and clear().
+        em.lock(op, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+        em.flush();
+        return true;
+    }
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -232,8 +274,9 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         if (!"APPLIED".equals(op.getState()) || !action.equals(op.getAction())
                 || !"GITLAB".equals(op.getProvider()) || !claim.runId().equals(op.getRunId())
                 || !claim.repo().value().equals(op.getRepoId()) || !claim.operator().equals(op.getOperator())
-                || !claim.fence().claimToken().equals(op.getClaimToken())
-                || !claim.fence().claimToken().equals(op.getSessionId())
+                || !historicalOwner(op)
+                || ("MERGE_MR".equals(action) ? !sentBy(op, claim.fence())
+                    : !claim.fence().claimToken().equals(op.getClaimToken()))
                 || op.getProjectId() == null || !op.getProjectId().matches("[1-9][0-9]*")
                 || op.getBaseUrl() == null || op.getBaseUrl().isBlank()
                 || !GitOperationJournalPort.configuredBaseUrl(op.getBaseUrl()).equals(op.getBaseUrl())
@@ -268,15 +311,18 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         if (operations.isEmpty()) return;
         if (operations.size() != 1) throw stale();
         var op = operations.get(0);
-        if (!fence.claimToken().equals(op.getClaimToken()) || !fence.claimToken().equals(op.getSessionId())
-                || !task.getRunId().equals(op.getRunId())) throw stale();
         lock(op.getRemoteKey());
         em.refresh(op, LockModeType.PESSIMISTIC_WRITE);
+        if (!taskOperationIdentity(task, op) || !historicalOwner(op)
+                || ("MERGE_MR".equals(op.getAction())
+                    ? "INTENT_RECORDED".equals(op.getState()) ? !onlyIntentEvent(op) : !sentBy(op, fence)
+                    : !fence.claimToken().equals(op.getClaimToken()))) throw stale();
         var guard = ownGuard(op);
         boolean unresolved = List.of("INTENT_RECORDED", "SEND_STARTED", "UNKNOWN", "NEEDS_REVIEW").contains(op.getState());
         if (unresolved) {
             if (result != RunItemResult.UNKNOWN) throw stale();
-            guard.setReason("REMOTE_RESULT_UNKNOWN");
+            guard.setReason("MERGE_MR".equals(op.getAction()) && "INTENT_RECORDED".equals(op.getState())
+                    ? "INTENT_PENDING" : "REMOTE_RESULT_UNKNOWN");
         } else if ("APPLIED".equals(op.getState()) && result == RunItemResult.UNKNOWN) {
             op.setState("NEEDS_REVIEW");
             op.setReason("LOCAL_RESULT_UNCONFIRMED");
@@ -331,7 +377,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
             if (prior.get().expectedVersion()!=expected) throw stale();
             return prior.get();
         }
-        var op=operationForUpdate(id, false); if (op.getVersion()!=expected) throw stale();
+        var op=operationForObservation(id); if (op.getVersion()!=expected) throw stale();
         var row=new GitOperationObservationEntity(); row.setId(UUID.randomUUID().toString()); row.setOperationId(id);
         row.setOperator(operator); row.setKey(key); row.setExpectedVersion(expected); row.setStatus(status.name());
         row.setEvidenceJson(evidence); row.setObservedAt(now()); em.persist(row);
@@ -354,33 +400,171 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
     private Optional<RepoExecutionGuardEntity> matchingGuard(GitOperationEntity op) {
         lock(op.getRemoteKey());
         var guard = em.find(RepoExecutionGuardEntity.class, op.getRemoteKey(), LockModeType.PESSIMISTIC_WRITE);
-        if (guard == null || !op.getSessionId().equals(guard.getSessionId())
+        if (guard != null) em.refresh(guard, LockModeType.PESSIMISTIC_WRITE);
+        if (guard == null || !Objects.equals(op.getSessionId(), guard.getSessionId())
                 || op.getGeneration() != guard.getGeneration() || !op.getId().equals(guard.getOperationId())) {
             return Optional.empty();
         }
         return Optional.of(guard);
     }
-    private GitOperationEntity operationForUpdate(String id, boolean requireRunning) {
-        var op=em.find(GitOperationEntity.class,id);
-        if(op==null) throw BusinessException.of(ErrorCode.RESOURCE_NOT_FOUND,id);
-        if (op.getTaskId() != null) lockTask(new RunPort.TaskFence(op.getTaskId(), op.getClaimToken()), requireRunning);
-        lock(op.getRemoteKey()); em.refresh(op,LockModeType.PESSIMISTIC_WRITE); return op;
+    private GitOperationEntity operationForUpdate(String id, RunPort.TaskFence fence) {
+        var op = em.find(GitOperationEntity.class, id);
+        if (op == null) throw BusinessException.of(ErrorCode.RESOURCE_NOT_FOUND, id);
+        RunTaskJpaEntity task = null;
+        if (op.getTaskId() != null) {
+            if (fence == null || !op.getTaskId().equals(fence.taskId())) throw stale();
+            task = lockTask(fence, true);
+        } else if (fence != null) throw stale();
+        lock(op.getRemoteKey());
+        em.refresh(op, LockModeType.PESSIMISTIC_WRITE);
+        if (task != null && (!taskOperationIdentity(task, op) || !historicalOwner(op)
+                || !"MERGE_MR".equals(op.getAction()) && !fence.claimToken().equals(op.getClaimToken()))) throw stale();
+        return op;
+    }
+
+    private GitOperationEntity operationForObservation(String id) {
+        var op = em.find(GitOperationEntity.class, id);
+        if (op == null) throw BusinessException.of(ErrorCode.RESOURCE_NOT_FOUND, id);
+        var task = op.getTaskId() == null ? null : lockTaskOwner(op.getTaskId(), false);
+        lock(op.getRemoteKey());
+        em.refresh(op, LockModeType.PESSIMISTIC_WRITE);
+        if (task != null && (!taskOperationIdentity(task, op) || !historicalOwner(op))) throw stale();
+        return op;
     }
 
     private RunTaskJpaEntity lockTask(RunPort.TaskFence fence, boolean requireRunning) {
-        if (fence == null || fence.taskId() == null || fence.claimToken() == null) throw stale();
+        if (fence == null || fence.taskId() == null || fence.claimToken() == null
+                || fence.claimToken().isBlank()) throw stale();
+        var task = lockTaskOwner(fence.taskId(), requireRunning);
+        if (!fence.claimToken().equals(task.getClaimToken())) throw stale();
+        return task;
+    }
+
+    private RunTaskJpaEntity lockTaskOwner(String taskId, boolean requireRunning) {
         String runId = em.createQuery("select t.runId from RunTaskJpaEntity t where t.id=:id", String.class)
-                .setParameter("id", fence.taskId()).getResultStream().findFirst().orElseThrow(this::stale);
+                .setParameter("id", taskId).getResultStream().findFirst().orElseThrow(this::stale);
         var run = em.find(RunJpaEntity.class, runId, LockModeType.PESSIMISTIC_WRITE);
-        var task = em.find(RunTaskJpaEntity.class, fence.taskId(), LockModeType.PESSIMISTIC_WRITE);
+        var task = em.find(RunTaskJpaEntity.class, taskId, LockModeType.PESSIMISTIC_WRITE);
+        if (run != null) em.refresh(run, LockModeType.PESSIMISTIC_WRITE);
+        if (task != null) em.refresh(task, LockModeType.PESSIMISTIC_WRITE);
         if (run == null || task == null || !runId.equals(task.getRunId())
                 || !"WINDOW_ORCHESTRATION".equals(run.getRunType())
                 || !"RUN_ITEM".equals(task.getTargetType())
-                || !fence.claimToken().equals(task.getClaimToken())
                 || !Integer.valueOf(io.releasehub.domain.run.Run.ORCHESTRATION_PROTOCOL_VERSION).equals(run.getExecutionVersion())
                 || requireRunning && (!"RUNNING".equals(task.getStatus())
                 || !java.util.Set.of("RUNNING", "NEEDS_REVIEW").contains(run.getExecutionStatus()))) throw stale();
         return task;
+    }
+
+    private List<GitOperationEntity> taskOperations(String taskId) {
+        return em.createQuery("select o from GitOperationEntity o where o.taskId=:task", GitOperationEntity.class)
+                .setParameter("task", taskId).getResultList();
+    }
+
+    private boolean historicalOwner(GitOperationEntity op) {
+        return op.getClaimToken() != null && !op.getClaimToken().isBlank()
+                && op.getClaimToken().equals(op.getSessionId());
+    }
+
+    private boolean taskOperationIdentity(RunTaskJpaEntity task, GitOperationEntity op) {
+        var run = em.find(RunJpaEntity.class, task.getRunId());
+        var item = em.find(RunItemJpaEntity.class, task.getTargetId());
+        String action = switch (task.getTaskType()) {
+            case "ENSURE_FEATURE", "ENSURE_RELEASE" -> "CREATE_BRANCH";
+            case "ENSURE_MR" -> "CREATE_MR";
+            case "TRY_MERGE" -> "MERGE_MR";
+            default -> "";
+        };
+        return item != null && task.getId().equals(op.getTaskId()) && task.getRunId().equals(op.getRunId())
+                && task.getRunId().equals(item.getRun().getId()) && item.getRepoId().equals(op.getRepoId())
+                && run.getOperator().equals(op.getOperator()) && action.equals(op.getAction());
+    }
+
+    private boolean validUnsentMerge(RunTaskJpaEntity task, RunItemJpaEntity item, GitOperationEntity op) {
+        if (item == null || !"TRY_MERGE".equals(task.getTaskType()) || !taskOperationIdentity(task, op)
+                || task.getStartedAt() == null || task.getClaimToken() == null || task.getClaimExpiresAt() == null
+                || task.getFinishedAt() != null || item.getExecutedOrder() <= 0 || !historicalOwner(op)
+                || !"INTENT_RECORDED".equals(op.getState()) || op.getReason() != null
+                || !"GITLAB".equals(op.getProvider()) || !"GITLAB".equals(item.getMetadata().get("plan.gitProvider"))
+                || op.getProjectId() == null || !op.getProjectId().matches("[1-9][0-9]*")
+                || op.getBaseUrl() == null || op.getBaseUrl().isBlank()
+                || !GitOperationJournalPort.configuredBaseUrl(op.getBaseUrl()).equals(op.getBaseUrl())
+                || !GitOperationJournalPort.remoteKey(op.getProvider(), op.getBaseUrl(), op.getProjectId()).equals(op.getRemoteKey())
+                || !consistentProject(task.getRunId(), item.getRepoId(), op.getProjectId(), op.getRemoteKey())
+                || !onlyIntentEvent(op)) return false;
+        Number steps = (Number) em.createNativeQuery(
+                        "select count(*) from {h-schema}run_step where task_id=?1")
+                .setParameter(1, task.getId()).getSingleResult();
+        if (steps.longValue() != 0 || !completeMergeRequest(op, item.getMetadata())) return false;
+        var guard = matchingGuard(op);
+        return guard.isPresent() && "INTENT_PENDING".equals(guard.get().getReason());
+    }
+
+    private boolean completeMergeRequest(GitOperationEntity op, java.util.Map<String, String> metadata) {
+        MrEvidence checkpoint;
+        try { checkpoint = RunPort.mrCheckpoint(metadata); }
+        catch (IllegalArgumentException error) { return false; }
+        if (!GitMergeWorkflow.isValidCheckpoint(checkpoint)
+                || !java.util.Set.of(MrDisposition.CREATED, MrDisposition.MR_REUSED).contains(checkpoint.disposition())
+                || !op.getProjectId().equals(checkpoint.projectId())
+                || !Objects.equals(metadata.get("plan.featureBranch"), checkpoint.sourceBranch())
+                || !Objects.equals(metadata.get("plan.releaseBranch"), checkpoint.targetBranch())) return false;
+        JsonNode target = objectJson(op.getTargetJson());
+        if (target == null || target.size() != 5 || !matches(target, "method", "PUT")
+                || !matches(target, "suffix", "/merge_requests/" + checkpoint.iid() + "/merge")
+                || !matches(target, "sha", checkpoint.sourceSha())
+                || !matches(target, "merge_commit_message",
+                    "Merge " + checkpoint.sourceBranch() + " into " + checkpoint.targetBranch())) return false;
+        var body = JSON.createObjectNode();
+        for (String key : List.of("sha", "merge_commit_message", "should_remove_source_branch")) {
+            if (target.has(key)) body.set(key, target.get(key));
+        }
+        String fingerprint = GitLabMergeRequestAdapter.mergeRequestHash(op.getRemoteKey(), target.path("suffix").textValue(), body);
+        return fingerprint != null && fingerprint.equals(op.getRequestHash());
+    }
+
+    private List<GitOperationEventEntity> operationEvents(GitOperationEntity op) {
+        return em.createQuery("select e from GitOperationEventEntity e where e.operationId=:operation order by e.sequence",
+                        GitOperationEventEntity.class)
+                .setParameter("operation", op.getId()).getResultList();
+    }
+
+    private boolean intentEvent(GitOperationEntity op, GitOperationEventEntity event) {
+        JsonNode evidence = objectJson(event.getEvidenceJson());
+        return op.getAttemptId() != null && !op.getAttemptId().isBlank()
+                && op.getAttemptId().equals(event.getAttemptId()) && event.getSequence() == 0
+                && "INTENT_RECORDED".equals(event.getType()) && event.getReason() == null
+                && evidence != null && evidence.isEmpty();
+    }
+
+    private boolean onlyIntentEvent(GitOperationEntity op) {
+        var events = operationEvents(op);
+        return events.size() == 1 && intentEvent(op, events.getFirst());
+    }
+
+    private boolean sentBy(GitOperationEntity op, RunPort.TaskFence fence) {
+        if (fence == null || !Objects.equals(op.getTaskId(), fence.taskId())) return false;
+        var events = operationEvents(op);
+        int count = switch (op.getState()) {
+            case "SEND_STARTED" -> 2;
+            case "APPLIED", "REJECTED", "UNKNOWN" -> 3;
+            case "NEEDS_REVIEW" -> 4;
+            default -> 0;
+        };
+        if (events.size() != count || count < 2 || !intentEvent(op, events.getFirst())) return false;
+        for (int index = 0; index < events.size(); index++) {
+            var event = events.get(index);
+            if (event.getSequence() != index || !op.getAttemptId().equals(event.getAttemptId())) return false;
+        }
+        var send = events.get(1);
+        if (!"SEND_STARTED".equals(send.getType()) || send.getReason() != null) return false;
+        JsonNode sender = objectJson(send.getEvidenceJson());
+        if (sender == null || sender.size() != 2 || !matches(sender, "taskId", fence.taskId())
+                || !matches(sender, "claimToken", fence.claimToken())) return false;
+        if (count == 2) return true;
+        return ("NEEDS_REVIEW".equals(op.getState())
+                ? "APPLIED".equals(events.get(2).getType()) && "LOCAL_RESULT_UNCONFIRMED".equals(events.get(3).getType())
+                : op.getState().equals(events.get(2).getType()));
     }
 
     private void validateTaskCommand(Command command) {

@@ -352,6 +352,307 @@ class RunTaskProcessKillIT {
         }
     }
 
+    @ParameterizedTest(name = "crashAgainAfterApplied={0}")
+    @ValueSource(booleans = {false, true})
+    @Timeout(240)
+    void mergeIntentRestartUsesOriginalOperationAndCurrentSender(boolean crashAgainAfterApplied) throws Exception {
+        GitLabHttpFixture server = new GitLabHttpFixture();
+        Process first = null;
+        Process resumed = null;
+        Process projected = null;
+        try (var db = new PostgreSQLContainer<>("postgres:18.1")
+                .withDatabaseName("merge_intent_restart").withUsername("process_test").withPassword("isolated-process-db")) {
+            db.start();
+            server.start();
+            routes(server);
+            String root = "/api/v4/projects/" + PROJECT_ID;
+            String windowId = UUID.randomUUID().toString();
+            String repoId = UUID.randomUUID().toString();
+            Path marker = temporary.resolve("merge-intent-checkpoint.txt");
+            Path receipt = temporary.resolve("merge-intent-receipt.txt");
+            Path firstLog = temporary.resolve("merge-intent-first.log");
+            first = launch("first-intent-merge", db, server, windowId, repoId, marker, receipt, firstLog);
+            awaitCheckpoint(first, marker, firstLog);
+
+            JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                    db.getJdbcUrl(), db.getUsername(), db.getPassword()));
+            String runId = Files.readString(marker).trim();
+            var before = tasks(jdbc, runId);
+            var originalTask = before.getLast();
+            String taskId = originalTask.get("id").toString();
+            var originalMetadata = metadata(jdbc, runId);
+            var originalSteps = jdbc.queryForList("select s.* from run_step s join run_task t on t.id=s.task_id "
+                    + "where t.run_id=? order by t.task_order", runId);
+            var originalOperation = jdbc.queryForMap("select * from git_operation where task_id=?", taskId);
+            String operationId = originalOperation.get("id").toString();
+            var originalEvents = mergeEvents(jdbc, operationId);
+            var originalGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?",
+                    originalOperation.get("remote_key"));
+            int executedOrder = jdbc.queryForObject("select executed_order from run_item where run_id=?", Integer.class, runId);
+            assertThat(before).extracting(row -> row.get("status"))
+                    .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "RUNNING");
+            assertThat(originalSteps).hasSize(3);
+            assertThat(executedOrder).isPositive();
+            assertThat(originalTask.get("claim_token")).isNotNull();
+            assertThat(originalTask.get("started_at")).isNotNull();
+            assertThat(originalTask.get("claim_expires_at")).isNotNull();
+            assertThat(originalOperation).containsEntry("state", "INTENT_RECORDED")
+                    .containsEntry("action", "MERGE_MR").containsEntry("claim_token", originalTask.get("claim_token"))
+                    .containsEntry("session_id", originalTask.get("claim_token"));
+            assertThat(originalEvents).singleElement().satisfies(event -> assertThat(event)
+                    .containsEntry("event_type", "INTENT_RECORDED").containsEntry("event_sequence", 0)
+                    .containsEntry("attempt_id", originalOperation.get("attempt_id")));
+            assertThat(originalGuard).containsEntry("operation_id", operationId)
+                    .containsEntry("session_id", originalTask.get("claim_token")).containsEntry("reason", "INTENT_PENDING");
+            assertThat(originalMetadata).containsEntry("git.mrIid", "7").containsEntry("git.sourceSha", SOURCE_SHA)
+                    .containsEntry("git.mrDisposition", "CREATED").doesNotContainKey("git.mergeSha");
+            server.verify("POST", root + "/merge_requests", 1);
+            server.verify("PUT", root + "/merge_requests/7/merge", 0);
+            assertThat(server.writeCount()).isEqualTo(1);
+
+            long firstPid = first.pid();
+            first.destroyForcibly();
+            assertThat(first.waitFor(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(first.exitValue()).isEqualTo(137);
+            Path resumedLog = temporary.resolve("merge-intent-resumed.log");
+            Instant resultProcessingStarted = Instant.now();
+            resumed = launch(crashAgainAfterApplied ? "resume-intent-applied-merge" : "resume",
+                    db, server, windowId, repoId, marker, receipt, resumedLog);
+            System.out.printf("PROCESS_MERGE_INTENT_CHECKPOINT run=%s task=%s operation=%s attempt=%s killedPid=%d "
+                            + "exit=%d resumedPid=%d events=%d noPendingAtKill=true crashAgain=%s%n",
+                    runId, taskId, operationId, originalOperation.get("attempt_id"), firstPid, first.exitValue(),
+                    resumed.pid(), originalEvents.size(), crashAgainAfterApplied);
+
+            int projectionRequests = -1;
+            if (crashAgainAfterApplied) {
+                Path appliedMarker = marker.resolveSibling("resumed-merge-applied.txt");
+                awaitCheckpoint(resumed, appliedMarker, resumedLog);
+                assertThat(Files.readString(appliedMarker).trim()).isEqualTo(runId);
+                var appliedTask = tasks(jdbc, runId).getLast();
+                var appliedOperation = jdbc.queryForMap("select * from git_operation where task_id=?", taskId);
+                var appliedEvents = mergeEvents(jdbc, operationId);
+                var appliedGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?",
+                        originalOperation.get("remote_key"));
+                assertThat(appliedTask).containsEntry("status", "RUNNING");
+                assertThat(appliedTask.get("claim_token")).isNotEqualTo(originalTask.get("claim_token"));
+                assertThat(appliedOperation).containsEntry("state", "APPLIED");
+                assertThat(operationProvenance(appliedOperation)).isEqualTo(operationProvenance(originalOperation));
+                assertThat(appliedGuard).containsEntry("session_id", originalGuard.get("session_id"))
+                        .containsEntry("operation_id", operationId).containsEntry("generation", originalGuard.get("generation"))
+                        .containsEntry("reason", null);
+                assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class, taskId)).isZero();
+                assertSenderEvidence(appliedEvents, originalOperation, taskId, appliedTask.get("claim_token").toString());
+                server.verify("PUT", root + "/merge_requests/7/merge", 1);
+                long resumedPid = resumed.pid();
+                resumed.destroyForcibly();
+                assertThat(resumed.waitFor(10, TimeUnit.SECONDS)).isTrue();
+                assertThat(resumed.exitValue()).isEqualTo(137);
+                projectionRequests = server.requests.size();
+                server.reply("GET", root + "/merge_requests/7", 404, "{}");
+                Path projectedLog = temporary.resolve("merge-intent-projected.log");
+                resultProcessingStarted = Instant.now();
+                projected = launch("resume-applied-merge", db, server, windowId, repoId, marker, receipt, projectedLog);
+                System.out.printf("PROCESS_MERGE_INTENT_APPLIED_CHECKPOINT run=%s task=%s operation=%s killedPid=%d "
+                                + "exit=%d resumedPid=%d senderChanged=true mergePut=1 events=%d%n",
+                        runId, taskId, operationId, resumedPid, resumed.exitValue(), projected.pid(), appliedEvents.size());
+                Path projectedMarker = marker.resolveSibling("projection-committed.txt");
+                awaitCheckpoint(projected, projectedMarker, projectedLog);
+                assertThat(Files.readString(projectedMarker).trim()).isEqualTo(runId);
+                assertThat(server.requests).hasSize(projectionRequests);
+                var projectedTask = tasks(jdbc, runId).getLast();
+                for (String field : List.of("id", "task_type", "claim_token", "started_at", "claim_expires_at")) {
+                    assertThat(projectedTask.get(field)).as("projection preserves current task %s", field)
+                            .isEqualTo(appliedTask.get(field));
+                }
+                assertThat(jdbc.queryForMap("select * from git_operation where task_id=?", taskId)).isEqualTo(appliedOperation);
+                assertThat(mergeEvents(jdbc, operationId)).isEqualTo(appliedEvents);
+                Files.writeString(marker.resolveSibling("projection-release.txt"), "continue");
+                assertThat(projected.waitFor(55, TimeUnit.SECONDS))
+                        .withFailMessage("Projection JVM did not finish: %s", tail(projectedLog)).isTrue();
+                assertThat(projected.exitValue()).withFailMessage("Projection JVM failed: %s", tail(projectedLog)).isZero();
+                assertThat(server.requests).hasSize(projectionRequests);
+            } else {
+                assertThat(resumed.waitFor(55, TimeUnit.SECONDS))
+                        .withFailMessage("Intent resume JVM did not finish: %s", tail(resumedLog)).isTrue();
+                assertThat(resumed.exitValue()).withFailMessage("Intent resume JVM failed: %s", tail(resumedLog)).isZero();
+            }
+
+            assertThat(Files.readString(receipt).trim()).isEqualTo(runId);
+            var after = tasks(jdbc, runId);
+            var currentTask = after.getLast();
+            assertThat(after).extracting(row -> row.get("status"))
+                    .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED");
+            assertThat(after.subList(0, 3)).isEqualTo(before.subList(0, 3));
+            for (String field : List.of("id", "task_type", "started_at")) {
+                assertThat(currentTask.get(field)).as("resume preserves original task %s", field).isEqualTo(originalTask.get(field));
+            }
+            assertThat(currentTask.get("claim_token")).isNotEqualTo(originalTask.get("claim_token"));
+            assertThat(currentTask.get("claim_expires_at")).isNotEqualTo(originalTask.get("claim_expires_at"));
+            assertThat(jdbc.queryForObject("select executed_order from run_item where run_id=?", Integer.class, runId))
+                    .isEqualTo(executedOrder);
+            var finalOperation = jdbc.queryForMap("select * from git_operation where task_id=?", taskId);
+            assertThat(operationProvenance(finalOperation)).isEqualTo(operationProvenance(originalOperation));
+            assertThat(finalOperation).containsEntry("state", "APPLIED");
+            assertThat(jdbc.queryForObject("select count(*) from git_operation where run_id=?", Integer.class, runId)).isEqualTo(2);
+            var finalEvents = mergeEvents(jdbc, operationId);
+            assertThat(finalEvents.getFirst()).isEqualTo(originalEvents.getFirst());
+            assertSenderEvidence(finalEvents, originalOperation, taskId, currentTask.get("claim_token").toString());
+            var finalSteps = jdbc.queryForList("select s.* from run_step s join run_task t on t.id=s.task_id "
+                    + "where t.run_id=? order by t.task_order", runId);
+            assertThat(finalSteps).hasSize(4);
+            assertThat(finalSteps.subList(0, 3)).isEqualTo(originalSteps);
+            assertThat(finalSteps.getLast()).containsEntry("task_id", taskId).containsEntry("result", "MERGED");
+            var expectedMetadata = new java.util.LinkedHashMap<>(originalMetadata);
+            expectedMetadata.put("git.mergeSha", "c".repeat(40));
+            expectedMetadata.remove("git.blockReason");
+            expectedMetadata.remove("git.requestId");
+            assertThat(metadata(jdbc, runId)).isEqualTo(expectedMetadata);
+            assertThat(jdbc.queryForObject("select final_result from run_item where run_id=?", String.class, runId)).isEqualTo("MERGED");
+            assertThat(jdbc.queryForObject("select execution_status from run where id=?", String.class, runId)).isEqualTo("DONE");
+            assertThat(jdbc.queryForObject("select count(*) from run", Integer.class)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select last_merge_at from window_iteration where window_id=? and iteration_key=?",
+                    java.sql.Timestamp.class, windowId, ITERATION).toInstant()).isAfterOrEqualTo(resultProcessingStarted);
+            var finalGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?",
+                    originalOperation.get("remote_key"));
+            assertThat(finalGuard).containsEntry("generation", originalGuard.get("generation"))
+                    .containsEntry("session_id", null).containsEntry("operation_id", null).containsEntry("reason", null);
+            var frozenRequest = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(originalOperation.get("target_json").toString());
+            String message = "Merge " + SOURCE + " into " + TARGET;
+            assertThat(frozenRequest.path("sha").isTextual()).isTrue();
+            assertThat(frozenRequest.path("sha").textValue()).isEqualTo(SOURCE_SHA);
+            assertThat(frozenRequest.path("merge_commit_message").isTextual()).isTrue();
+            assertThat(frozenRequest.path("merge_commit_message").textValue()).isEqualTo(message);
+            assertThat(frozenRequest.path("should_remove_source_branch").isBoolean()).isTrue();
+            assertThat(frozenRequest.path("should_remove_source_branch").booleanValue()).isFalse();
+            var sentBody = server.body("PUT", root + "/merge_requests/7/merge");
+            assertThat(sentBody.size()).isEqualTo(3);
+            assertThat(sentBody.path("sha")).isEqualTo(frozenRequest.path("sha"));
+            assertThat(sentBody.path("merge_commit_message")).isEqualTo(frozenRequest.path("merge_commit_message"));
+            assertThat(sentBody.path("should_remove_source_branch")).isEqualTo(frozenRequest.path("should_remove_source_branch"));
+            server.verify("POST", root + "/repository/branches", 0);
+            server.verify("POST", root + "/merge_requests", 1);
+            server.verify("PUT", root + "/merge_requests/7/merge", 1);
+            assertThat(server.writeCount()).isEqualTo(2);
+            assertThat(server.requests).noneMatch(request -> request.internalHeaders());
+            System.out.printf("PROCESS_MERGE_INTENT_RESUME run=%s task=%s operation=%s attempt=%s killedPid=%d "
+                            + "exit=%d resumedPid=%d projectionPid=%d senderChanged=true originalProvenance=true "
+                            + "mrPost=1 mergePut=1 mergeEvents=%d secondCrash=%s projectionHttp=%s%n",
+                    runId, taskId, operationId, originalOperation.get("attempt_id"), firstPid, first.exitValue(),
+                    resumed.pid(), projected == null ? -1 : projected.pid(), finalEvents.size(), crashAgainAfterApplied,
+                    projectionRequests < 0 ? "not-applicable" : "0");
+        } finally {
+            stopOwnedProcess(first);
+            stopOwnedProcess(resumed);
+            stopOwnedProcess(projected);
+            server.stop();
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    @Timeout(180)
+    void mergeSendRestartDoesNotReplayCommittedSendBeforeHttp() throws Exception {
+        GitLabHttpFixture server = new GitLabHttpFixture();
+        Process first = null;
+        Process restarted = null;
+        try (var db = new PostgreSQLContainer<>("postgres:18.1")
+                .withDatabaseName("merge_sent_restart").withUsername("process_test").withPassword("isolated-process-db")) {
+            db.start();
+            server.start();
+            routes(server);
+            String root = "/api/v4/projects/" + PROJECT_ID;
+            String windowId = UUID.randomUUID().toString();
+            String repoId = UUID.randomUUID().toString();
+            Path marker = temporary.resolve("merge-sent-checkpoint.txt");
+            Path receipt = temporary.resolve("merge-sent-receipt.txt");
+            Path firstLog = temporary.resolve("merge-sent-first.log");
+            first = launch("first-sent-merge", db, server, windowId, repoId, marker, receipt, firstLog);
+            awaitCheckpoint(first, marker, firstLog);
+            JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                    db.getJdbcUrl(), db.getUsername(), db.getPassword()));
+            String runId = Files.readString(marker).trim();
+            var before = tasks(jdbc, runId);
+            String taskId = before.getLast().get("id").toString();
+            var originalMetadata = metadata(jdbc, runId);
+            var originalOperation = jdbc.queryForMap("select * from git_operation where task_id=?", taskId);
+            String operationId = originalOperation.get("id").toString();
+            var originalEvents = mergeEvents(jdbc, operationId);
+            var originalGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?",
+                    originalOperation.get("remote_key"));
+            var originalSteps = jdbc.queryForList("select s.* from run_step s join run_task t on t.id=s.task_id "
+                    + "where t.run_id=? order by t.task_order", runId);
+            assertThat(before).extracting(row -> row.get("status"))
+                    .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "RUNNING");
+            assertThat(originalOperation).containsEntry("state", "SEND_STARTED").containsEntry("action", "MERGE_MR");
+            assertThat(originalEvents).extracting(row -> row.get("event_type")).containsExactly("INTENT_RECORDED", "SEND_STARTED");
+            assertThat(originalGuard).containsEntry("session_id", before.getLast().get("claim_token"))
+                    .containsEntry("operation_id", operationId).containsEntry("reason", "REQUEST_IN_FLIGHT");
+            assertThat(originalSteps).hasSize(3);
+            server.verify("POST", root + "/merge_requests", 1);
+            server.verify("PUT", root + "/merge_requests/7/merge", 0);
+            long killedPid = first.pid();
+            first.destroyForcibly();
+            assertThat(first.waitFor(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(first.exitValue()).isEqualTo(137);
+            int requestsBeforeRestart = server.requests.size();
+            Path restartedLog = temporary.resolve("merge-sent-restarted.log");
+            restarted = launch("resume-sent-merge", db, server, windowId, repoId, marker, receipt, restartedLog);
+            System.out.printf("PROCESS_MERGE_SEND_CHECKPOINT run=%s task=%s operation=%s attempt=%s killedPid=%d "
+                            + "exit=%d resumedPid=%d mergePut=0 noPendingAtKill=true%n",
+                    runId, taskId, operationId, originalOperation.get("attempt_id"), killedPid, first.exitValue(), restarted.pid());
+            assertThat(restarted.waitFor(55, TimeUnit.SECONDS))
+                    .withFailMessage("Sent observation JVM did not finish: %s", tail(restartedLog)).isTrue();
+            assertThat(restarted.exitValue()).withFailMessage("Sent observation JVM failed: %s", tail(restartedLog)).isZero();
+            int completedScans = Integer.parseInt(Files.readString(marker.resolveSibling("sent-completed-scans.txt")).trim());
+            assertThat(completedScans).isGreaterThanOrEqualTo(3);
+            assertThat(Files.readString(receipt).trim()).isEqualTo(runId);
+            assertThat(tasks(jdbc, runId)).isEqualTo(before);
+            assertThat(metadata(jdbc, runId)).isEqualTo(originalMetadata);
+            assertThat(jdbc.queryForMap("select * from git_operation where task_id=?", taskId)).isEqualTo(originalOperation);
+            assertThat(mergeEvents(jdbc, operationId)).isEqualTo(originalEvents);
+            assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?",
+                    originalOperation.get("remote_key"))).isEqualTo(originalGuard);
+            assertThat(jdbc.queryForList("select s.* from run_step s join run_task t on t.id=s.task_id "
+                    + "where t.run_id=? order by t.task_order", runId)).isEqualTo(originalSteps);
+            assertThat(jdbc.queryForObject("select execution_status from run where id=?", String.class, runId)).isEqualTo("RUNNING");
+            assertThat(jdbc.queryForObject("select count(*) from run", Integer.class)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select last_merge_at from window_iteration where window_id=? and iteration_key=?",
+                    java.sql.Timestamp.class, windowId, ITERATION)).isNull();
+            assertThat(server.requests).hasSize(requestsBeforeRestart);
+            server.verify("PUT", root + "/merge_requests/7/merge", 0);
+            assertThat(server.writeCount()).isEqualTo(1);
+            System.out.printf("PROCESS_MERGE_SEND_NO_REPLAY run=%s task=%s operation=%s killedPid=%d exit=%d resumedPid=%d "
+                            + "completedScansAfterExpiry=%d httpAfterRestart=0 mergePut=0 preservedTask=true preservedEvents=%d%n",
+                    runId, taskId, operationId, killedPid, first.exitValue(), restarted.pid(), completedScans, originalEvents.size());
+        } finally {
+            stopOwnedProcess(first);
+            stopOwnedProcess(restarted);
+            server.stop();
+        }
+    }
+
+    private static List<Map<String, Object>> mergeEvents(JdbcTemplate jdbc, String operationId) {
+        return jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence", operationId);
+    }
+
+    private static Map<String, Object> operationProvenance(Map<String, Object> operation) {
+        var historical = new java.util.LinkedHashMap<>(operation);
+        for (String current : List.of("state", "state_version", "reason", "updated_at")) historical.remove(current);
+        return historical;
+    }
+
+    private static void assertSenderEvidence(List<Map<String, Object>> events, Map<String, Object> originalOperation,
+                                             String taskId, String claimToken) throws Exception {
+        assertThat(events).hasSize(3);
+        assertThat(events).extracting(row -> row.get("event_type")).containsExactly("INTENT_RECORDED", "SEND_STARTED", "APPLIED");
+        assertThat(events).allSatisfy(event -> assertThat(event.get("attempt_id")).isEqualTo(originalOperation.get("attempt_id")));
+        var sender = new com.fasterxml.jackson.databind.ObjectMapper().readTree(events.get(1).get("evidence_json").toString());
+        assertThat(sender.path("taskId").isTextual()).isTrue();
+        assertThat(sender.path("taskId").textValue()).isEqualTo(taskId);
+        assertThat(sender.path("claimToken").isTextual()).isTrue();
+        assertThat(sender.path("claimToken").textValue()).isEqualTo(claimToken);
+    }
+
     private Process launch(String mode, PostgreSQLContainer<?> db, GitLabHttpFixture server,
                            String windowId, String repoId, Path marker, Path receipt, Path log) throws Exception {
         String classpath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
@@ -423,24 +724,56 @@ class RunTaskProcessKillIT {
 
     /** 显式注册的测试配置；装饰已初始化的事务代理，不替换默认 worker 或执行器。 */
     public static final class CheckpointConfiguration {
+        private static final java.util.concurrent.atomic.AtomicInteger COMPLETED_SCANS =
+                new java.util.concurrent.atomic.AtomicInteger();
+
         @Bean
         static BeanPostProcessor checkpointPause(Environment environment) {
             boolean pauseAfterMr = environment.getProperty("releasehub.fixture.pause-after-mr", Boolean.class, false);
             boolean pauseAfterClaim = environment.getProperty("releasehub.fixture.pause-after-claim", Boolean.class, false);
             String completionAction = environment.getProperty("releasehub.fixture.pause-before-completion", "");
             boolean pauseAfterProjection = environment.getProperty("releasehub.fixture.pause-after-projection", Boolean.class, false);
+            boolean observeScans = environment.getProperty("releasehub.fixture.observe-scans", Boolean.class, false);
+            String journalPoint = environment.getProperty("releasehub.fixture.pause-after-merge-journal", "");
             Path marker = Path.of(environment.getRequiredProperty("releasehub.fixture.checkpoint-file"));
+            Path completionMarker = Path.of(environment.getProperty(
+                    "releasehub.fixture.completion-checkpoint-file", marker.toString()));
             return new BeanPostProcessor() {
                 @Override
                 public Object postProcessAfterInitialization(Object bean, String beanName) {
-                    if (!(pauseAfterMr || pauseAfterClaim || !completionAction.isBlank() || pauseAfterProjection)
+                    if (!journalPoint.isBlank() && bean instanceof GitOperationJournalPort originalJournal) {
+                        return Proxy.newProxyInstance(GitOperationJournalPort.class.getClassLoader(),
+                                new Class<?>[]{GitOperationJournalPort.class}, (proxy, method, arguments) -> {
+                                    Object result;
+                                    try { result = method.invoke(originalJournal, arguments); }
+                                    catch (InvocationTargetException error) { throw error.getCause(); }
+                                    String pausedRunId = null;
+                                    if ("INTENT_RECORDED".equals(journalPoint) && method.getName().equals("begin")
+                                            && arguments[0] instanceof GitOperationJournalPort.Command command
+                                            && command.taskFence() != null && "MERGE_MR".equals(command.action())) {
+                                        pausedRunId = command.runId();
+                                    }
+                                    if ("SEND_STARTED".equals(journalPoint) && method.getName().equals("sending")) {
+                                        var operation = originalJournal.find((String) arguments[0]).orElseThrow().operation();
+                                        if ("MERGE_MR".equals(operation.action())) pausedRunId = operation.runId();
+                                    }
+                                    if (pausedRunId != null) {
+                                        // The actual Journal transaction has returned; only the next caller instruction is paused.
+                                        Files.writeString(marker, pausedRunId);
+                                        new CountDownLatch(1).await();
+                                        throw new IllegalStateException("Committed merge journal pause unexpectedly ended");
+                                    }
+                                    return result;
+                                });
+                    }
+                    if (!(pauseAfterMr || pauseAfterClaim || !completionAction.isBlank() || pauseAfterProjection || observeScans)
                             || !(bean instanceof RunPort original)) return bean;
                     return Proxy.newProxyInstance(RunPort.class.getClassLoader(), new Class<?>[]{RunPort.class},
                             (proxy, method, arguments) -> {
                                 if (method.getName().equals("completeTask")
                                         && arguments[0] instanceof RunPort.TaskClaim task
                                         && task.actionType().name().equals(completionAction)) {
-                                    Files.writeString(marker, task.runId());
+                                    Files.writeString(completionMarker, task.runId());
                                     new CountDownLatch(1).await();
                                     throw new IllegalStateException("Applied action pause unexpectedly ended");
                                 }
@@ -458,6 +791,9 @@ class RunTaskProcessKillIT {
                                 Object result;
                                 try { result = method.invoke(original, arguments); }
                                 catch (InvocationTargetException error) { throw error.getCause(); }
+                                if (observeScans && method.getName().equals("findTaskCandidateRunIds")) {
+                                    COMPLETED_SCANS.incrementAndGet();
+                                }
                                 if (pauseAfterClaim && method.getName().equals("claimNextTask")
                                         && result instanceof java.util.Optional<?> claimed
                                         && claimed.orElse(null) instanceof RunPort.TaskClaim task
@@ -488,8 +824,12 @@ class RunTaskProcessKillIT {
             boolean mrProjectionResume = "resume-applied-mr".equals(args[0]);
             boolean appliedMergeBeforeCrash = "first-applied-merge".equals(args[0]);
             boolean mergeProjectionResume = "resume-applied-merge".equals(args[0]);
+            boolean intentMergeBeforeCrash = "first-intent-merge".equals(args[0]);
+            boolean sentMergeBeforeCrash = "first-sent-merge".equals(args[0]);
+            boolean intentThenAppliedCrash = "resume-intent-applied-merge".equals(args[0]);
+            boolean sentMergeResume = "resume-sent-merge".equals(args[0]);
             boolean first = "first".equals(args[0]) || claimedBeforeCrash || appliedBranchBeforeCrash
-                    || appliedMrBeforeCrash || appliedMergeBeforeCrash;
+                    || appliedMrBeforeCrash || appliedMergeBeforeCrash || intentMergeBeforeCrash || sentMergeBeforeCrash;
             Path marker = Path.of(args[1]);
             Path receipt = Path.of(args[2]);
             try (ConfigurableApplicationContext context = new SpringApplicationBuilder(
@@ -498,10 +838,14 @@ class RunTaskProcessKillIT {
                             "--releasehub.run.worker.enabled=true", "--releasehub.run.worker.parallelism=1",
                             "--releasehub.run.worker.queue-capacity=0", "--releasehub.run.worker.scan-delay-ms=25",
                             "--releasehub.run.worker.claim-lease-ms=2000",
-                            "--releasehub.fixture.pause-after-mr=" + (first && !claimedBeforeCrash && !appliedBranchBeforeCrash && !appliedMrBeforeCrash && !appliedMergeBeforeCrash),
+                            "--releasehub.fixture.pause-after-mr=" + (first && !claimedBeforeCrash && !appliedBranchBeforeCrash && !appliedMrBeforeCrash && !appliedMergeBeforeCrash && !intentMergeBeforeCrash && !sentMergeBeforeCrash),
                             "--releasehub.fixture.pause-after-claim=" + claimedBeforeCrash,
-                            "--releasehub.fixture.pause-before-completion=" + (appliedBranchBeforeCrash ? "ENSURE_FEATURE" : appliedMrBeforeCrash ? "ENSURE_MR" : appliedMergeBeforeCrash ? "TRY_MERGE" : ""),
+                            "--releasehub.fixture.pause-before-completion=" + (appliedBranchBeforeCrash ? "ENSURE_FEATURE" : appliedMrBeforeCrash ? "ENSURE_MR" : appliedMergeBeforeCrash || intentThenAppliedCrash ? "TRY_MERGE" : ""),
                             "--releasehub.fixture.pause-after-projection=" + (branchProjectionResume || mrProjectionResume || mergeProjectionResume),
+                            "--releasehub.fixture.pause-after-merge-journal=" + (intentMergeBeforeCrash ? "INTENT_RECORDED" : sentMergeBeforeCrash ? "SEND_STARTED" : ""),
+                            "--releasehub.fixture.observe-scans=" + sentMergeResume,
+                            "--releasehub.fixture.completion-checkpoint-file=" + (intentThenAppliedCrash
+                                    ? marker.resolveSibling("resumed-merge-applied.txt") : marker),
                             "--releasehub.fixture.checkpoint-file=" + marker,
                             "--spring.datasource.url=" + environment("RH_C2_DB_URL"),
                             "--spring.datasource.username=" + environment("RH_C2_DB_USER"),
@@ -519,6 +863,10 @@ class RunTaskProcessKillIT {
                 // 重启由生产扫描继续原任务；只读等待，不重发受理或手动领取。
                 String originalRunId = Files.readString(marker).trim();
                 RunPort runs = context.getBean(RunPort.class);
+                if (sentMergeResume) {
+                    observeCommittedSend(context, runs, originalRunId, marker, receipt);
+                    return;
+                }
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(35);
                 while (runs.findById(originalRunId).orElseThrow().getExecutionStatus() != RunExecutionStatus.DONE) {
                     if (System.nanoTime() >= deadline) throw new IllegalStateException(
@@ -535,6 +883,29 @@ class RunTaskProcessKillIT {
                 assertThat(run.getId().value()).isEqualTo(originalRunId);
                 Files.writeString(receipt, run.getId().value());
             }
+        }
+
+        private static void observeCommittedSend(ConfigurableApplicationContext context, RunPort runs,
+                                                  String runId, Path marker, Path receipt) throws Exception {
+            String taskId = runs.findTasks(runId).stream().filter(task -> task.actionType() == ActionType.TRY_MERGE)
+                    .findFirst().orElseThrow().taskId();
+            JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (!Boolean.TRUE.equals(jdbc.queryForObject(
+                    "select claim_expires_at <= clock_timestamp() from run_task where id=?", Boolean.class, taskId))) {
+                if (System.nanoTime() >= deadline) throw new IllegalStateException("Original sent lease did not expire");
+                Thread.sleep(25);
+            }
+            int before = CheckpointConfiguration.COMPLETED_SCANS.get();
+            while (CheckpointConfiguration.COMPLETED_SCANS.get() - before < 3) {
+                if (System.nanoTime() >= deadline) throw new IllegalStateException("Default scanner did not complete three scans");
+                Thread.sleep(25);
+            }
+            int completed = CheckpointConfiguration.COMPLETED_SCANS.get() - before;
+            assertThat(runs.findTasks(runId).stream().filter(task -> task.taskId().equals(taskId))
+                    .findFirst().orElseThrow().status()).isEqualTo("RUNNING");
+            Files.writeString(marker.resolveSibling("sent-completed-scans.txt"), Integer.toString(completed));
+            Files.writeString(receipt, runId);
         }
 
         private static void fixtures(ConfigurableApplicationContext context, String windowId, String repoId) {

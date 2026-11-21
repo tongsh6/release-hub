@@ -2,6 +2,7 @@ package io.releasehub.infrastructure.git;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import io.releasehub.application.gitoperation.GitMergeRequestPort;
 import io.releasehub.application.gitoperation.GitReadResult;
@@ -95,9 +96,11 @@ public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
 
     @Override public GitWriteResult<MergeRequest> merge(String id, String sourceSha, String message) {
         if (!validSha(sourceSha)) return GitWriteResult.rejected("SOURCE_REVISION_REQUIRED");
-        return write(writeEndpoint + "/" + encode(id) + "/merge", HttpMethod.PUT,
-                Map.of("merge_commit_message", message == null ? "" : message, "sha", sourceSha,
-                        "should_remove_source_branch", false), true, sourceSha, id);
+        var body = new java.util.LinkedHashMap<String, Object>();
+        body.put("sha", sourceSha);
+        body.put("merge_commit_message", message);
+        body.put("should_remove_source_branch", false);
+        return write(writeEndpoint + "/" + encode(id) + "/merge", HttpMethod.PUT, body, true, sourceSha, id);
     }
 
     private GitWriteResult<MergeRequest> write(String uri, HttpMethod method, Map<String, ?> body,
@@ -106,7 +109,12 @@ public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
             var writeHeaders = headers();
             writeHeaders.set(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID, projectId);
             writeHeaders.set(GitRemoteIdentityResolver.EXPECTED_SHA, sourceSha);
-            var response = http.exchange(URI.create(uri), method, new HttpEntity<>(body, writeHeaders),
+            Object outbound = body;
+            if (merging) {
+                outbound = canonicalMergeRequest(ERROR_JSON.valueToTree(body));
+                if (outbound == null) return GitWriteResult.rejected("MERGE_REQUEST_INVALID");
+            }
+            var response = http.exchange(URI.create(uri), method, new HttpEntity<>(outbound, writeHeaders),
                     new ParameterizedTypeReference<Map<String, Object>>() {});
             if (!merging) {
                 var confirmed = confirmedCreatedMr(response.getStatusCode().value(), ERROR_JSON.valueToTree(response.getBody()),
@@ -125,6 +133,29 @@ public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
         } catch (RestClientException e) {
             return GitWriteResult.unknown("RESPONSE_UNCONFIRMED");
         }
+    }
+
+    /** 原 MERGE 请求只包含这三个有类型字段；不从缺失值补造发送意图。 */
+    public static ObjectNode canonicalMergeRequest(JsonNode body) {
+        if (body == null || !body.isObject() || body.size() != 3
+                || !body.path("sha").isTextual() || !validSha(body.path("sha").textValue())
+                || !body.path("merge_commit_message").isTextual()
+                || !body.path("should_remove_source_branch").isBoolean()
+                || body.path("should_remove_source_branch").booleanValue()) return null;
+        return ERROR_JSON.createObjectNode().put("sha", body.path("sha").textValue())
+                .put("merge_commit_message", body.path("merge_commit_message").textValue())
+                .put("should_remove_source_branch", false);
+    }
+
+    /** 固定无 query 的 MERGE 封套；正常发送和原意图恢复使用同一紧凑 UTF-8 正文。 */
+    public static String mergeRequestHash(String remoteKey, String suffix, JsonNode body) {
+        ObjectNode canonical = canonicalMergeRequest(body);
+        if (canonical == null || remoteKey == null || remoteKey.isBlank() || suffix == null || suffix.isBlank()) {
+            return null;
+        }
+        byte[] bytes = canonical.toString().getBytes(StandardCharsets.UTF_8);
+        return GitRemoteIdentityResolver.hash("PUT|" + remoteKey + "|" + suffix + "|null|"
+                + GitRemoteIdentityResolver.hash(bytes) + "|" + canonical.path("sha").textValue());
     }
 
     /** CREATE 的成功证明与合并就绪状态分开；三个消费者共用同一原始响应判定。 */

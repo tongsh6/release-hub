@@ -72,7 +72,7 @@ class GitSafetyBeanDecoratorTest {
         var result = adapter.mergeBranch(CLONE, "token", SOURCE, TARGET, "merge");
 
         assertEquals(MergeStatus.UNKNOWN, result.status());
-        verify(journal).finish(anyString(), eq(GitWriteResult.Outcome.APPLIED), anyString(), isNull());
+        verify(journal).finish(anyString(), isNull(), eq(GitWriteResult.Outcome.APPLIED), anyString(), isNull());
         verify(journal).completeSession(anyString(), eq(false));
         verify(journal, never()).completeSession(anyString(), eq(true));
         server.verify();
@@ -96,7 +96,7 @@ class GitSafetyBeanDecoratorTest {
 
         assertEquals(MergeStatus.BLOCKED, result.status());
         assertEquals(GitBranchPort.MergeBlockReason.APPROVAL_REQUIRED, result.mrEvidence().blockReason());
-        verify(journal).finish(anyString(), eq(GitWriteResult.Outcome.APPLIED), anyString(), isNull());
+        verify(journal).finish(anyString(), isNull(), eq(GitWriteResult.Outcome.APPLIED), anyString(), isNull());
         verify(journal).completeSession(anyString(), eq(true));
         verify(journal, never()).completeSession(anyString(), eq(false));
         server.verify();
@@ -124,7 +124,7 @@ class GitSafetyBeanDecoratorTest {
         var result = adapter.triggerPipeline(CLONE, "token", "17", "v1", SHA);
 
         assertEquals(GitWriteResult.Outcome.UNKNOWN, result.outcome());
-        verify(journal).finish(anyString(), eq(GitWriteResult.Outcome.APPLIED), anyString(), isNull());
+        verify(journal).finish(anyString(), isNull(), eq(GitWriteResult.Outcome.APPLIED), anyString(), isNull());
         verify(journal).completeSession(anyString(), eq(false));
         verify(journal, never()).completeSession(anyString(), eq(true));
         server.verify();
@@ -139,7 +139,7 @@ class GitSafetyBeanDecoratorTest {
 
         assertEquals(GitWriteResult.Outcome.REJECTED, result.outcome());
         assertEquals("HTTP_403", result.reason());
-        verify(journal).finish(anyString(), eq(GitWriteResult.Outcome.REJECTED), anyString(), isNull());
+        verify(journal).finish(anyString(), isNull(), eq(GitWriteResult.Outcome.REJECTED), anyString(), isNull());
         verify(journal).completeSession(anyString(), eq(true));
         verify(journal, never()).completeSession(anyString(), eq(false));
         server.verify();

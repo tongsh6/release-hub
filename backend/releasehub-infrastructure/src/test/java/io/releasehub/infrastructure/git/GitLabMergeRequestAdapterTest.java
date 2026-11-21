@@ -460,6 +460,40 @@ class GitLabMergeRequestAdapterTest {
         assertEquals("release/OTHER", result.evidence().targetBranch());
     }
 
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "Custom merge \"message\" | keep\nthis exact text"})
+    void mergeIntentProducerKeepsTheOriginalTypedRequest(String message) throws Exception {
+        server.expect(requestTo(WRITE_ENDPOINT + "/17/merge")).andExpect(method(HttpMethod.PUT))
+                .andExpect(request -> {
+                    assertNull(request.getURI().getRawQuery());
+                    assertEquals("7", request.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID));
+                    assertEquals(SHA, request.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_SHA));
+                    var body = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                            ((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString());
+                    assertEquals(3, body.size());
+                    assertAll(
+                            () -> assertTrue(body.path("sha").isTextual()),
+                            () -> assertEquals(SHA, body.path("sha").textValue()),
+                            () -> assertTrue(body.path("merge_commit_message").isTextual()),
+                            () -> assertEquals(message, body.path("merge_commit_message").textValue()),
+                            () -> assertTrue(body.path("should_remove_source_branch").isBoolean()),
+                            () -> assertFalse(body.path("should_remove_source_branch").booleanValue()));
+                })
+                .andRespond(withSuccess(mergedMr().toString(), MediaType.APPLICATION_JSON));
+
+        assertEquals(GitWriteResult.Outcome.APPLIED, adapter.merge("17", SHA, message).outcome());
+        server.verify();
+    }
+
+    @Test
+    void mergeIntentProducerRejectsMissingMessageBeforeHttp() {
+        var result = adapter.merge("17", SHA, null);
+        assertEquals(GitWriteResult.Outcome.REJECTED, result.outcome());
+        assertEquals("MERGE_REQUEST_INVALID", result.reason());
+        server.verify();
+    }
+
     private static com.fasterxml.jackson.databind.node.ObjectNode mergedMr() throws Exception {
         return createdMr("mergeable").put("state", "merged").put("merge_commit_sha", "b".repeat(40));
     }
