@@ -103,9 +103,6 @@ class WindowRunApiTest {
                 .get("data").get("key").asText();
         clearInvocations(git);
         String releaseBranch = "release/" + windowKey;
-        when(git.mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + it1Key), eq(releaseBranch), anyString()))
-                .thenReturn(GitBranchPort.MergeResult.conflict("Fixture conflict").withEvidence(
-                        evidence("feature/" + it1Key, releaseBranch, "11")));
 
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/attach")
                 .header("Authorization", "Bearer " + token)
@@ -120,11 +117,19 @@ class WindowRunApiTest {
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/plan")
+        MvcResult planned = mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/plan")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data").isArray());
+            .andExpect(jsonPath("$.data").isArray()).andReturn();
+        JsonNode plannedItems = objectMapper.readTree(planned.getResponse().getContentAsString()).path("data");
+        assertThat(plannedItems).hasSize(2);
+        // 同批 attachAt 相同；执行顺序以权威计划的稳定 tie-break 为准。
+        String firstIteration = plannedItems.get(0).path("iterationKey").asText();
+        String secondIteration = plannedItems.get(1).path("iterationKey").asText();
+        when(git.mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + firstIteration), eq(releaseBranch), anyString()))
+                .thenReturn(GitBranchPort.MergeResult.conflict("Fixture conflict").withEvidence(
+                        evidence("feature/" + firstIteration, releaseBranch, "11")));
 
         String orchestrationRequest = objectMapper.writeValueAsString(Map.of(
                 "repoIds", java.util.List.of(repo1.id()), "iterationKeys", java.util.List.of(), "failFast", true));
@@ -164,10 +169,12 @@ class WindowRunApiTest {
         assertThat(exportJson.path("operator").asText()).isEqualTo("admin");
         assertThat(exportJson.path("status").asText()).isEqualTo("FAILED");
         assertThat(exportJson.path("items")).hasSize(2);
+        assertThat(exportJson.path("items").get(0).path("iterationKey").asText()).isEqualTo(firstIteration);
+        assertThat(exportJson.path("items").get(1).path("iterationKey").asText()).isEqualTo(secondIteration);
         assertThat(exportJson.path("items").get(0).path("finalResult").asText()).isEqualTo("MERGE_BLOCKED");
         assertThat(exportJson.path("items").get(1).path("finalResult").asText()).isEqualTo("SKIPPED_DUE_TO_BLOCK");
         assertThat(exportJson.path("items").get(0).path("metadata").path("git.blockReason").asText()).isEqualTo("CONFLICT");
-        verify(git, never()).mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + it2Key), anyString(), anyString());
+        verify(git, never()).mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + secondIteration), anyString(), anyString());
 
         MvcResult windowReport = mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/report.json")
                 .header("Authorization", "Bearer " + token))
@@ -186,7 +193,7 @@ class WindowRunApiTest {
             .andExpect(status().isOk())
             .andReturn();
         String csv = windowReportCsv.getResponse().getContentAsString();
-        assertThat(csv).contains("windowId,windowKey,runId,runType,runStatus,repo,iterationKey,finalResult,stepType,stepResult,stepStart,stepEnd,message");
+        assertThat(csv).contains("windowId,windowKey,runId,runType,runStatus,repo,iterationKey,participatingIterationKeys,referencePolicy,finalResult,stepType,stepResult,stepStart,stepEnd,message");
         assertThat(csv).contains(windowId, windowKey, runId);
 
         MvcResult windowReportMarkdown = mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/report.md")
@@ -222,7 +229,7 @@ class WindowRunApiTest {
         String skippedItemId = exportJson.path("items").get(1).path("id").asText();
         assertThat(firstItemId).isNotBlank();
         assertThat(skippedItemId).isNotBlank();
-        String legacyTriple = windowKey + "::" + repo1.id() + "::" + it1Key;
+        String legacyTriple = windowKey + "::" + repo1.id() + "::" + firstIteration;
         for (String invalidSelection : java.util.List.of(legacyTriple, skippedItemId)) {
             mockMvc.perform(post("/api/v1/runs/" + runId + "/retry")
                             .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
@@ -230,10 +237,10 @@ class WindowRunApiTest {
                     .andExpect(status().isBadRequest());
         }
 
-        when(git.mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + it1Key), eq(releaseBranch), anyString()))
-                .thenReturn(GitBranchPort.MergeResult.success().withEvidence(evidence("feature/" + it1Key, releaseBranch, "11")));
-        when(git.mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + it2Key), eq(releaseBranch), anyString()))
-                .thenReturn(GitBranchPort.MergeResult.success().withEvidence(evidence("feature/" + it2Key, releaseBranch, "12")));
+        when(git.mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + firstIteration), eq(releaseBranch), anyString()))
+                .thenReturn(GitBranchPort.MergeResult.success().withEvidence(evidence("feature/" + firstIteration, releaseBranch, "11")));
+        when(git.mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + secondIteration), eq(releaseBranch), anyString()))
+                .thenReturn(GitBranchPort.MergeResult.success().withEvidence(evidence("feature/" + secondIteration, releaseBranch, "12")));
         MvcResult retry = mockMvc.perform(post("/api/v1/runs/" + runId + "/retry")
                         .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("items", java.util.List.of(firstItemId, skippedItemId)))))
@@ -247,12 +254,15 @@ class WindowRunApiTest {
         assertThat(retryJson.path("status").asText()).isEqualTo("DONE");
         assertThat(retryJson.path("operator").asText()).isEqualTo("admin");
         assertThat(retryJson.path("items")).hasSize(2);
+        assertThat(retryJson.path("items").get(0).path("iterationKey").asText()).isEqualTo(firstIteration);
+        assertThat(retryJson.path("items").get(1).path("iterationKey").asText()).isEqualTo(secondIteration);
         assertThat(retryJson.path("items").get(0).path("metadata").path("retry.sourceItemId").asText()).isEqualTo(firstItemId);
         assertThat(retryJson.path("items").get(1).path("metadata").path("retry.sourceItemId").asText()).isEqualTo(skippedItemId);
         assertThat(retryJson.path("items").get(0).path("executedOrder").asInt()).isEqualTo(1);
         assertThat(retryJson.path("items").get(1).path("executedOrder").asInt()).isEqualTo(2);
-        verify(git, times(2)).mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + it1Key), eq(releaseBranch), anyString());
-        verify(git).mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + it2Key), eq(releaseBranch), anyString());    }
+        verify(git, times(2)).mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + firstIteration), eq(releaseBranch), anyString());
+        verify(git, times(1)).mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + secondIteration), eq(releaseBranch), anyString());
+    }
 
     private Map<String, byte[]> readZipEntries(byte[] zipBytes) throws IOException {
         Map<String, byte[]> entries = new LinkedHashMap<>();

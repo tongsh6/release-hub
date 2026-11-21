@@ -140,6 +140,11 @@ class GroupGetByCodeTest {
         }
 
         @Override
+        public Optional<ReleaseWindow> findByIdForUpdate(ReleaseWindowId id) {
+            throw new UnsupportedOperationException("This test fixture does not execute window mutations");
+        }
+
+        @Override
         public List<ReleaseWindow> findAll() {
             return List.of();
         }

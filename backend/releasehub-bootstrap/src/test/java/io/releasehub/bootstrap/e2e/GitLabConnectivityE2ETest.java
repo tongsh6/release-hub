@@ -77,7 +77,7 @@ class GitLabConnectivityE2ETest extends AbstractGitLabE2ETest {
         String iterKey = createIterationWithRepo(token, groupCode, repoId);
         String windowId = createReleaseWindow(token, groupCode);
 
-        // Attach iteration to window → triggers GitLab branch creation
+        // Attach only saves configuration; explicit Orchestrate below performs GitLab writes.
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/attach")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -98,11 +98,21 @@ class GitLabConnectivityE2ETest extends AbstractGitLabE2ETest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PUBLISHED"));
 
-        // Close → triggers cleanup (archive, tag, merge to main, CI trigger)
-        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/unfreeze")
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        var orchestration = mockMvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
+                        .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("repoIds", List.of(repoId),
+                                "iterationKeys", List.of(iterKey), "failFast", true))))
+                .andExpect(status().isOk()).andReturn();
+        String runId = objectMapper.readTree(orchestration.getResponse().getContentAsString()).path("data").asText();
+        mockMvc.perform(get("/api/v1/runs/{id}", runId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("DONE"));
+
+        // Close merges release to default, tags only from the saved plan, retains refs, and leaves CI off.
+        var cleanup = E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, windowId, false);
+        assertThat(cleanup.path("status").asText()).isEqualTo("DONE");
+        assertThat(cleanup.path("items").get(0).path("metadata").path("cleanup.referencePolicy").asText()).isEqualTo("RETAIN");
 
         System.out.println("Full lifecycle completed with real GitLab repo: " + cloneUrl);
     }

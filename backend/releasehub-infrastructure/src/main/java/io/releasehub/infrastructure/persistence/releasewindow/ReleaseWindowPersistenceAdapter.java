@@ -48,6 +48,12 @@ public class ReleaseWindowPersistenceAdapter implements ReleaseWindowPort {
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public Optional<ReleaseWindow> findByIdForUpdate(ReleaseWindowId id) {
+        return jpaRepository.findByIdForUpdate(id.value()).map(this::toDomain);
+    }
+
+    @Override
     public List<ReleaseWindow> findAll() {
         return jpaRepository.findAll().stream()
                             .map(this::toDomain)

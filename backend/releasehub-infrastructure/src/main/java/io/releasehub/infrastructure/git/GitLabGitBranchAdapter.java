@@ -1,5 +1,9 @@
 package io.releasehub.infrastructure.git;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import io.releasehub.application.gitoperation.GitReadResult;
+import io.releasehub.application.gitoperation.GitWriteResult;
+
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.ErrorCode;
@@ -35,9 +39,11 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     private static final long MERGE_READINESS_POLL_MILLIS = 250L;
 
     private RestTemplate restTemplate;
+    private final GitRemoteIdentityResolver identities;
 
-    public GitLabGitBranchAdapter(RestTemplateBuilder builder) {
+    public GitLabGitBranchAdapter(RestTemplateBuilder builder, GitRemoteIdentityResolver identities) {
         this.restTemplate = GitHttpClients.create(builder);
+        this.identities = identities;
     }
 
     void setRestTemplate(RestTemplate restTemplate) {
@@ -114,23 +120,67 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     }
 
     @Override
-    public boolean createTag(String repoCloneUrl, String token, String tagName, String ref, String message) {
+    public GitReadResult<TagEvidence> readTag(String repoCloneUrl, String token, String expectedProjectId, String tagName) {
+        requireProjectRef(expectedProjectId, tagName);
+        RepoRef repoRef = parseRepoRef(repoCloneUrl);
+        String endpoint = repoRef.baseUrl + "/api/v4/projects/" + repoRef.encodedPath
+                + "/repository/tags/" + urlEncode(tagName);
+        GitRemoteIdentityResolver.Identity identity;
+        try {
+            identity = identities.resolve(uri(endpoint), expectedHeaders(token, expectedProjectId, null));
+        } catch (BusinessException e) {
+            return GitReadResult.unavailable();
+        }
+        // A namespace lookup failure is not a missing tag. Read the confirmed numeric project only.
+        try {
+            var response = restTemplate.exchange(uri(identity.baseUrl() + "/api/v4/projects/" + identity.projectId()
+                    + "/repository/tags/" + urlEncode(tagName)), HttpMethod.GET,
+                    new HttpEntity<>(headers(token)), JsonNode.class);
+            JsonNode body = response.getBody();
+            if (!response.getStatusCode().is2xxSuccessful() || body == null
+                    || !body.path("name").isTextual() || body.path("name").asText().isBlank()
+                    || !validSha(body.path("commit").path("id").asText())) {
+                return new GitReadResult<>(GitReadResult.Status.INCOMPLETE, null);
+            }
+            if (!tagName.equals(body.path("name").asText())) {
+                return new GitReadResult<>(GitReadResult.Status.MISMATCH, null);
+            }
+            return GitReadResult.found(new TagEvidence(identity.projectId(), tagName, body.path("commit").path("id").asText()));
+        } catch (HttpClientErrorException.NotFound e) {
+            return new GitReadResult<>(GitReadResult.Status.NOT_FOUND, null);
+        } catch (HttpClientErrorException e) {
+            return new GitReadResult<>(e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403
+                    ? GitReadResult.Status.FORBIDDEN : GitReadResult.Status.UNAVAILABLE, null);
+        } catch (RestClientException e) {
+            return GitReadResult.unavailable();
+        }
+    }
+
+    @Override
+    public GitWriteResult<TagEvidence> createTag(String repoCloneUrl, String token, String expectedProjectId,
+                                                String tagName, String targetSha, String message) {
+        requireProjectRef(expectedProjectId, tagName);
+        if (!validSha(targetSha)) throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
         try {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);
-            String endpoint = String.format("%s/api/v4/projects/%s/repository/tags", repoRef.baseUrl, repoRef.encodedPath);
+            String endpoint = repoRef.baseUrl + "/api/v4/projects/" + repoRef.encodedPath + "/repository/tags";
             Map<String, String> body = new HashMap<>();
             body.put("tag_name", tagName);
-            body.put("ref", ref);
+            body.put("ref", targetSha);
             body.put("message", message == null ? "" : message);
-            var response = restTemplate.exchange(uri(endpoint), HttpMethod.POST, new HttpEntity<>(body, headers(token)),
-                    new ParameterizedTypeReference<Map<String, Object>>() {});
-            confirmedRefSha(response, tagName, ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN);
-            return true;
+            var response = restTemplate.exchange(uri(endpoint), HttpMethod.POST,
+                    new HttpEntity<>(body, expectedHeaders(token, expectedProjectId, null)), JsonNode.class);
+            JsonNode node = response.getBody();
+            if (!response.getStatusCode().is2xxSuccessful() || node == null
+                    || !tagName.equals(node.path("name").asText())
+                    || !targetSha.equals(node.path("commit").path("id").asText())) {
+                return GitWriteResult.unknown("TAG_RESPONSE_UNCONFIRMED");
+            }
+            return GitWriteResult.applied(new TagEvidence(expectedProjectId, tagName, node.path("commit").path("id").asText()));
         } catch (HttpClientErrorException e) {
-            if (e.getStatusCode().value() == 408) throw BusinessException.of(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN);
-            return false;
+            return writeRejection(e);
         } catch (RestClientException e) {
-            throw BusinessException.of(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN);
+            return GitWriteResult.unknown("RESPONSE_UNCONFIRMED");
         }
     }
 
@@ -150,28 +200,68 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     }
 
     @Override
-    public String triggerPipeline(String repoCloneUrl, String token, String ref) {
+    public GitWriteResult<PipelineEvidence> triggerPipeline(String repoCloneUrl, String token, String expectedProjectId,
+                                                            String ref, String expectedSha) {
+        requireProjectRef(expectedProjectId, ref);
+        if (!validSha(expectedSha)) throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
         try {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);
-            String endpoint = String.format("%s/api/v4/projects/%s/pipeline?ref=%s",
-                    repoRef.baseUrl, repoRef.encodedPath, urlEncode(ref));
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                    uri(endpoint), HttpMethod.POST,
-                    new HttpEntity<>(headers(token)),
-                    new ParameterizedTypeReference<>() {});
-            Map<String, Object> responseBody = response.getBody();
-            if (response.getStatusCode().is2xxSuccessful() && responseBody != null) {
-                Object id = responseBody.get("id");
-                return id != null ? String.valueOf(id) : null;
-            }
-            return null;
+            String endpoint = repoRef.baseUrl + "/api/v4/projects/" + repoRef.encodedPath + "/pipeline?ref=" + urlEncode(ref);
+            var response = restTemplate.exchange(uri(endpoint), HttpMethod.POST,
+                    new HttpEntity<>(expectedHeaders(token, expectedProjectId, expectedSha)), JsonNode.class);
+            PipelineEvidence evidence = pipelineEvidence(response.getBody(), expectedProjectId, ref, expectedSha);
+            return response.getStatusCode().is2xxSuccessful() && evidence != null
+                    ? GitWriteResult.applied(evidence) : GitWriteResult.unknown("PIPELINE_RESPONSE_UNCONFIRMED");
         } catch (HttpClientErrorException e) {
-            log.warn("Failed to trigger pipeline for ref '{}': {}", ref, e.getResponseBodyAsString());
-            return null;
-        } catch (Exception e) {
-            log.error("Error triggering pipeline for ref '{}': {}", ref, e.getMessage(), e);
-            return null;
+            return writeRejection(e);
+        } catch (RestClientException e) {
+            return GitWriteResult.unknown("RESPONSE_UNCONFIRMED");
         }
+    }
+
+    /** Same allowlisted evidence check is used by the HTTP journal and the application-facing adapter. */
+    static PipelineEvidence pipelineEvidence(JsonNode body, String expectedProjectId, String ref, String expectedSha) {
+        if (!GitRemoteIdentityResolver.validProjectId(expectedProjectId) || ref == null || ref.isBlank() || !validSha(expectedSha)
+                || body == null || !body.path("project_id").isIntegralNumber() || !body.path("id").isIntegralNumber()
+                || !GitRemoteIdentityResolver.validProjectId(body.path("id").asText())
+                || !expectedProjectId.equals(body.path("project_id").asText())
+                || !body.path("ref").isTextual() || !ref.equals(body.path("ref").asText())
+                || !validSha(body.path("sha").asText()) || !expectedSha.equals(body.path("sha").asText())
+                || !body.path("web_url").isTextual() || !validEvidenceUrl(body.path("web_url").asText())) return null;
+        return new PipelineEvidence(expectedProjectId, body.path("id").asText(), ref,
+                body.path("sha").asText(), body.path("web_url").asText());
+    }
+
+    static boolean validSha(String sha) {
+        return sha != null && sha.matches("(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})");
+    }
+
+    private static boolean validEvidenceUrl(String url) {
+        try {
+            URI parsed = URI.create(url);
+            return ("https".equals(parsed.getScheme()) || "http".equals(parsed.getScheme())) && parsed.getHost() != null
+                    && parsed.getUserInfo() == null && parsed.getQuery() == null && parsed.getFragment() == null
+                    && !parsed.getPath().isBlank();
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private static void requireProjectRef(String expectedProjectId, String ref) {
+        if (!GitRemoteIdentityResolver.validProjectId(expectedProjectId) || ref == null || ref.isBlank())
+            throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
+    }
+
+    private HttpHeaders expectedHeaders(String token, String expectedProjectId, String expectedSha) {
+        HttpHeaders headers = headers(token);
+        headers.set(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID, expectedProjectId);
+        if (expectedSha != null) headers.set(GitRemoteIdentityResolver.EXPECTED_SHA, expectedSha);
+        return headers;
+    }
+
+    private static <T> GitWriteResult<T> writeRejection(HttpClientErrorException error) {
+        return error.getStatusCode().value() == 408 ? GitWriteResult.unknown("HTTP_408")
+                : GitWriteResult.rejected("HTTP_" + error.getStatusCode().value());
     }
 
     @Override

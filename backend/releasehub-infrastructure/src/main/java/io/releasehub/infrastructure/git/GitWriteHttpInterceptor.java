@@ -35,7 +35,10 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
     }
     @Override public ClientHttpResponse intercept(HttpRequest request,byte[] body,ClientHttpRequestExecution execution) throws IOException {
         if(request.getMethod()==HttpMethod.GET || request.getMethod()==HttpMethod.HEAD) {
-            return execution.execute(request,body);
+            HttpHeaders headers=GitRemoteIdentityResolver.externalHeaders(request.getHeaders());
+            return execution.execute(new HttpRequestWrapper(request) {
+                @Override public HttpHeaders getHeaders(){return headers;}
+            },body);
         }
         if(!enabled) throw BusinessException.of(ErrorCode.GIT_WRITE_BLOCKED);
         try(var scope=sessions.open()) {
@@ -50,6 +53,12 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
     private ClientHttpResponse write(HttpRequest request,byte[] original,ClientHttpRequestExecution execution,String session) throws IOException {
         var identity=identities.resolve(request.getURI(),request.getHeaders());
         String suffix=identity.endpoint().suffix();String action=action(request.getMethod(),suffix);
+        String expectedProjectId=request.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID);
+        String expectedSha=request.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_SHA);
+        if(Set.of("CREATE_TAG","TRIGGER_PIPELINE").contains(action)
+                &&!GitRemoteIdentityResolver.validProjectId(expectedProjectId))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
+        if(expectedProjectId!=null&&!expectedProjectId.equals(identity.projectId()))throw BusinessException.of(ErrorCode.GIT_IDENTITY_UNAVAILABLE);
+        if(action.equals("TRIGGER_PIPELINE")&&!GitLabGitBranchAdapter.validSha(expectedSha))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
         // 当前 Provider 删除分支 API 没有已验证的原子 SHA 前置条件；不把一次读取误当 CAS。
         if(action.equals("DELETE_BRANCH"))throw BusinessException.of(ErrorCode.GIT_WRITE_BLOCKED);
         String rawQuery=request.getURI().getRawQuery();
@@ -60,9 +69,11 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
         ObjectNode target=json.createObjectNode();
         if(action.equals("CREATE_BRANCH")||action.equals("CREATE_TAG")) {
             String ref=input.path("ref").asText();
+            if(action.equals("CREATE_TAG")&&!GitLabGitBranchAdapter.validSha(ref))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
             var commit=identities.metadata(identity,"/repository/commits/"+java.net.URLEncoder.encode(ref,java.nio.charset.StandardCharsets.UTF_8),null,request.getHeaders());
             String sha=commit.path("id").asText();
-            if(!sha.matches("[0-9a-fA-F]{40,64}"))throw BusinessException.of(ErrorCode.GIT_IDENTITY_UNAVAILABLE);
+            if(!GitLabGitBranchAdapter.validSha(sha)
+                    ||action.equals("CREATE_TAG")&&!ref.equals(sha))throw BusinessException.of(ErrorCode.GIT_IDENTITY_UNAVAILABLE);
             target.put("sourceRef",ref);input.put("ref",sha);
         }
         if(action.equals("UPDATE_FILE")) {
@@ -92,12 +103,14 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
                 if(parts.length==2&&Set.of("ref","branch").contains(parts[0]))target.put(parts[0],GitRemoteIdentityResolver.decode(parts[1]));
             }
         }
-        String requestHash=GitRemoteIdentityResolver.hash(request.getMethod()+"|"+identity.remoteKey()+"|"+suffix+"|"+GitRemoteIdentityResolver.hash(body));
+        if(action.equals("TRIGGER_PIPELINE"))target.put("sha",expectedSha);
+        String requestHash=GitRemoteIdentityResolver.hash(request.getMethod()+"|"+identity.remoteKey()+"|"+suffix+"|"
+                +(rawQuery==null?"":rawQuery)+"|"+GitRemoteIdentityResolver.hash(body)+"|"+target.path("sha").asText());
         var auth=SecurityContextHolder.getContext().getAuthentication();String operator=auth==null?"system":auth.getName();
         journal.begin(new GitOperationJournalPort.Command(id,identity.repoId(),identity.repositoryMapping(),identity.remoteKey(),identity.provider(),identity.baseUrl(),identity.projectId(),
                 action,json.writeValueAsString(target),requestHash,GitOperationContext.runId(),operator,session));
         journal.sending(id);
-        HttpHeaders headers=new HttpHeaders();headers.putAll(request.getHeaders());headers.setContentLength(body.length);
+        HttpHeaders headers=GitRemoteIdentityResolver.externalHeaders(request.getHeaders());headers.setContentLength(body.length);
         HttpRequest wrapped=new HttpRequestWrapper(request) {
             @Override public URI getURI(){return dispatchUri;}
             @Override public HttpHeaders getHeaders(){return headers;}
@@ -128,6 +141,11 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
                 : status>=400&&status<500&&status!=408?GitWriteResult.Outcome.REJECTED:GitWriteResult.Outcome.UNKNOWN;
         if(outcome==GitWriteResult.Outcome.APPLIED && (parsed==null || action.equals("CREATE_MR")&&!evidence.has("iid")
                 ||action.equals("CREATE_PR")&&!evidence.has("number")||action.equals("TRIGGER_PIPELINE")&&!evidence.has("id")))outcome=GitWriteResult.Outcome.UNKNOWN;
+        if(outcome==GitWriteResult.Outcome.APPLIED&&action.equals("TRIGGER_PIPELINE")) {
+            var pipeline=GitLabGitBranchAdapter.pipelineEvidence(parsed,identity.projectId(),target.path("ref").asText(),expectedSha);
+            if(pipeline==null)outcome=GitWriteResult.Outcome.UNKNOWN;
+            else {evidence.put("projectId",pipeline.projectId());evidence.put("url",pipeline.url());}
+        }
         if(outcome==GitWriteResult.Outcome.APPLIED&&(action.equals("CREATE_BRANCH")||action.equals("CREATE_TAG"))) {
             String name=target.path(action.equals("CREATE_BRANCH")?"branch":"tag_name").asText();
             if(!name.equals(evidence.path("name").asText())||!target.path("ref").asText().equals(evidence.path("commitSha").asText())) {

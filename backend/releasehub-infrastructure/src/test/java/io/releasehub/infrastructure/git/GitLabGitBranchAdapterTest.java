@@ -3,6 +3,7 @@ package io.releasehub.infrastructure.git;
 import com.github.tomakehurst.wiremock.junit5.WireMockRuntimeInfo;
 import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import io.releasehub.application.port.out.GitBranchPort;
+import io.releasehub.application.gitoperation.GitWriteResult;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.ErrorCode;
 import io.releasehub.domain.repo.GitProvider;
@@ -24,7 +25,7 @@ class GitLabGitBranchAdapterTest {
     private static final String SHA = "a".repeat(40);
     private static final String MERGE_SHA = "b".repeat(40);
     private final GitLabGitBranchAdapter adapter = new GitLabGitBranchAdapter(
-            new org.springframework.boot.web.client.RestTemplateBuilder());
+            new org.springframework.boot.web.client.RestTemplateBuilder(), org.mockito.Mockito.mock(GitRemoteIdentityResolver.class));
 
     @BeforeEach void injectRestTemplate() {
         var client = java.net.http.HttpClient.newBuilder().version(java.net.http.HttpClient.Version.HTTP_1_1).build();
@@ -80,8 +81,29 @@ class GitLabGitBranchAdapterTest {
 
     @Test void shouldExposeUncertainTagWriteAsTypedUnknown(WireMockRuntimeInfo wm) {
         stubFor(post(urlPathEqualTo(ENC + "/repository/tags")).willReturn(aResponse().withStatus(503)));
-        var error = assertThrows(BusinessException.class, () -> adapter.createTag(repo(wm), "token", "v1", SOURCE, "tag"));
-        assertEquals(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN, error.getErrorCode());
+        var result = adapter.createTag(repo(wm), "token", "7", "v1", SHA, "tag");
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, result.outcome());
+    }
+
+    @Test void shouldNotAcceptTagResponseAtDifferentCommit(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/repository/tags")).willReturn(created()
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"name\":\"v1\",\"commit\":{\"id\":\"" + MERGE_SHA + "\"}}")));
+        var result = adapter.createTag(repo(wm), "token", "7", "v1", SHA, "tag");
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, result.outcome());
+    }
+
+    @Test void shouldNotCollapseUncertainPipelineIntoAbsentConfiguration(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/pipeline")).willReturn(aResponse().withStatus(503)));
+        var result = adapter.triggerPipeline(repo(wm), "token", "7", "v1", SHA);
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, result.outcome());
+    }
+
+    @Test void shouldNotAcceptPipelineIdWithoutProjectRefAndCommitEvidence(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/pipeline")).willReturn(created()
+                .withHeader("Content-Type", "application/json").withBody("{\"id\":321}")));
+        var result = adapter.triggerPipeline(repo(wm), "token", "7", "v1", SHA);
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, result.outcome());
     }
 
     @Test void shouldExposeUncertainDeleteAsTypedUnknown(WireMockRuntimeInfo wm) {

@@ -34,6 +34,25 @@ class GitWriteHttpInterceptorTest {
         when(journal.begin(any())).thenAnswer(i->((GitOperationJournalPort.Command)i.getArgument(0)).operationId());
         interceptor=new GitWriteHttpInterceptor(properties,new GitSafetySessions(journal),journal,identities,new ObjectMapper(),manager);
     }
+    @Test void shouldNotReleasePipelineGuardBeforeConsumerRejectsDifferentShaText() throws Exception {
+        var endpoint = new GitRemoteIdentityResolver.Endpoint("GITLAB", "https://gitlab.invalid", "acme/repo",
+                "https://gitlab.invalid/api/v4/projects/acme%2Frepo", "/pipeline");
+        when(identities.resolve(any(), any())).thenReturn(new GitRemoteIdentityResolver.Identity(
+                "repo", "mapping", "a".repeat(64), "GITLAB", "https://gitlab.invalid", "17", endpoint));
+        var request = new MockClientHttpRequest(HttpMethod.POST, URI.create(endpoint.projectEndpoint() + "/pipeline?ref=v1"));
+        request.getHeaders().set("X-ReleaseHub-Expected-Project-Id", "17");
+        request.getHeaders().set("X-ReleaseHub-Expected-Commit-Sha", "a".repeat(40));
+        byte[] responseBody = ("""
+                {"id":321,"project_id":17,"ref":"v1","sha":"%s",
+                 "web_url":"https://gitlab.invalid/acme/repo/-/pipelines/321"}
+                """).formatted("A".repeat(40)).getBytes(StandardCharsets.UTF_8);
+
+        assertThrows(IOException.class, () -> interceptor.intercept(request, new byte[0],
+                (sent, body) -> new MockClientHttpResponse(responseBody, HttpStatus.CREATED)));
+        verify(journal).finish(anyString(), eq(GitWriteResult.Outcome.UNKNOWN), anyString(), anyString());
+        verify(journal).completeSession(anyString(), eq(false));
+    }
+
     private MockClientHttpRequest request(){return new MockClientHttpRequest(HttpMethod.POST,URI.create("https://gitlab.invalid/api/v4/projects/acme%2Frepo/merge_requests"));}
     @ParameterizedTest
     @ValueSource(strings = {"POST", "PUT", "PATCH", "DELETE"})
@@ -84,6 +103,8 @@ class GitWriteHttpInterceptorTest {
                 URI.create(endpoint.projectEndpoint() + endpoint.suffix() + "?" + query));
         original.getHeaders().set("PRIVATE-TOKEN", "sensitive-token-fixture");
         original.getHeaders().set("X-Correlation-ID", "correlation-fixture");
+        original.getHeaders().set(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID, "17");
+        original.getHeaders().set(GitRemoteIdentityResolver.EXPECTED_SHA, "a".repeat(40));
         byte[] input = "{\"variables\":[{\"key\":\"MODE\",\"value\":\"release\"}]}".getBytes(StandardCharsets.UTF_8);
         var dispatched = new java.util.concurrent.atomic.AtomicReference<org.springframework.http.HttpRequest>();
         var sentBody = new java.util.concurrent.atomic.AtomicReference<byte[]>();
@@ -91,7 +112,10 @@ class GitWriteHttpInterceptorTest {
         try (var response = interceptor.intercept(original, input, (request, body) -> {
             dispatched.set(request);
             sentBody.set(body);
-            return new MockClientHttpResponse("{\"id\":9}".getBytes(StandardCharsets.UTF_8), HttpStatus.CREATED);
+            return new MockClientHttpResponse(("""
+                    {"id":9,"project_id":17,"ref":"release/RW 1","sha":"%s",
+                     "web_url":"https://gitlab.invalid/gitlab/acme/repo/-/pipelines/9"}
+                    """).formatted("a".repeat(40)).getBytes(StandardCharsets.UTF_8), HttpStatus.CREATED);
         })) {
             assertEquals(HttpStatus.CREATED, response.getStatusCode());
         }
@@ -101,6 +125,8 @@ class GitWriteHttpInterceptorTest {
         assertEquals(HttpMethod.POST, dispatched.get().getMethod());
         assertEquals("sensitive-token-fixture", dispatched.get().getHeaders().getFirst("PRIVATE-TOKEN"));
         assertEquals("correlation-fixture", dispatched.get().getHeaders().getFirst("X-Correlation-ID"));
+        assertNull(dispatched.get().getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID));
+        assertNull(dispatched.get().getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_SHA));
         assertEquals(new ObjectMapper().readTree(input), new ObjectMapper().readTree(sentBody.get()));
         assertEquals(sentBody.get().length, dispatched.get().getHeaders().getContentLength());
     }

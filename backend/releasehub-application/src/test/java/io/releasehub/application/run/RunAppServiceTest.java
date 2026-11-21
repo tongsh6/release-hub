@@ -1,20 +1,16 @@
 package io.releasehub.application.run;
 
 import io.releasehub.application.conflict.ConflictDetectionAppService;
-import io.releasehub.application.iteration.IterationPort;
-import io.releasehub.application.iteration.IterationRepoPort;
-import io.releasehub.application.iteration.IterationRepoVersionInfo;
+import io.releasehub.application.gitoperation.GitReadResult;
+import io.releasehub.application.gitoperation.GitWriteResult;
+import io.releasehub.domain.run.RunExecutionStatus;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
-import io.releasehub.application.version.VersionDeriverUseCase;
 import io.releasehub.application.version.VersionUpdateAppService;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.domain.conflict.ConflictReport;
-import io.releasehub.domain.iteration.Iteration;
-import io.releasehub.domain.iteration.IterationKey;
-import io.releasehub.domain.iteration.IterationStatus;
 import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
@@ -30,9 +26,7 @@ import io.releasehub.domain.run.RunType;
 import io.releasehub.domain.version.BuildTool;
 import io.releasehub.application.version.VersionUpdateRequest;
 import io.releasehub.application.version.VersionUpdateResult;
-import io.releasehub.domain.window.WindowIteration;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InOrder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -44,7 +38,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -52,9 +45,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -64,14 +57,11 @@ class RunAppServiceTest {
     @Mock private RunPort runPort;
     @Mock private ReleaseWindowPort releaseWindowPort;
     @Mock private WindowIterationPort windowIterationPort;
-    @Mock private IterationPort iterationPort;
-    @Mock private IterationRepoPort iterationRepoPort;
     @Mock private CodeRepositoryPort codeRepositoryPort;
     @Mock private GitBranchAdapterFactory gitBranchAdapterFactory;
     @Mock private GitBranchPort gitBranchPort;
     @Mock private VersionUpdateAppService versionUpdateAppService;
     @Mock private ConflictDetectionAppService conflictDetectionAppService;
-    @Mock private VersionDeriverUseCase versionDeriverUseCase;
     @Mock private io.releasehub.application.settings.SettingsPort settingsPort;
     @Mock private java.time.Clock clock;
     @Mock private io.releasehub.application.run.plan.RunPlanAppService runPlanAppService;
@@ -83,60 +73,68 @@ class RunAppServiceTest {
     private final String windowId = "window-1";
     private final String windowKey = "RW-1";
     private final String repoId = "repo-1";
-    private final String iterationKey = "ITER-1";
     private final String releaseBranch = "release/RW-1";
-    private final String featureBranch = "feature/ITER-1";
 
     @BeforeEach
     void setUp() {
-        service = new RunAppService(runPort, releaseWindowPort, windowIterationPort, iterationPort,
-                iterationRepoPort, codeRepositoryPort, gitBranchAdapterFactory, versionUpdateAppService,
-                conflictDetectionAppService, versionDeriverUseCase, settingsPort, clock, runPlanAppService, branchRuleUseCase);
+        service = new RunAppService(runPort, releaseWindowPort, windowIterationPort,
+                codeRepositoryPort, gitBranchAdapterFactory, versionUpdateAppService,
+                conflictDetectionAppService, settingsPort, clock, runPlanAppService, branchRuleUseCase);
         lenient().when(clock.instant()).thenReturn(now);
         lenient().when(clock.getZone()).thenReturn(java.time.ZoneId.of("UTC"));
         lenient().when(settingsPort.getNaming()).thenReturn(Optional.empty());
     }
 
-    private void setupCleanupRun() {
-        ReleaseWindow rw = ReleaseWindow.rehydrate(
-                ReleaseWindowId.of(windowId), windowKey, "Release 1.0", "",
-                now, "G001", ReleaseWindowStatus.CLOSED, now, now, false, now);
-        when(releaseWindowPort.findById(ReleaseWindowId.of(windowId))).thenReturn(Optional.of(rw));
+    private static final String SOURCE_SHA = "a".repeat(40);
+    private static final String MERGE_SHA = "b".repeat(40);
+    private static final String TAG = "v1.2.0";
+    private static final String PROJECT = "17";
 
-        Iteration iteration = Iteration.rehydrate(
-                IterationKey.of(iterationKey), "Iteration 1", "", null, "G001",
-                Set.of(RepoId.of(repoId)), IterationStatus.ACTIVE, now, now);
-        when(iterationPort.findByKey(IterationKey.of(iterationKey))).thenReturn(Optional.of(iteration));
-
-        WindowIteration wi = WindowIteration.rehydrate(
-                io.releasehub.domain.window.WindowIterationId.generate(
-                        ReleaseWindowId.of(windowId), IterationKey.of(iterationKey)),
-                ReleaseWindowId.of(windowId), IterationKey.of(iterationKey),
-                now, releaseBranch, true, now, now, now);
-        when(windowIterationPort.listByWindow(ReleaseWindowId.of(windowId))).thenReturn(List.of(wi));
-
-        CodeRepository repo = CodeRepository.rehydrate(
-                RepoId.of(repoId), "Test Repo", "https://gitlab.com/test/repo.git",
+    private CodeRepository repository(String id) {
+        return CodeRepository.rehydrate(RepoId.of(id), "Test Repo", "https://gitlab.com/test/" + id + ".git",
                 "main", "G001", RepoType.SERVICE, GitProvider.GITLAB, "token", false,
                 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
-        when(codeRepositoryPort.findById(RepoId.of(repoId))).thenReturn(Optional.of(repo));
-        when(gitBranchAdapterFactory.getAdapter(GitProvider.GITLAB)).thenReturn(gitBranchPort);
-        when(iterationRepoPort.getVersionInfo(iterationKey, repoId)).thenReturn(Optional.of(
-                IterationRepoVersionInfo.builder()
-                        .repoId(repoId)
-                        .featureBranch(featureBranch)
-                        .devVersion("1.2.0-SNAPSHOT")
-                        .build()));
-        when(versionDeriverUseCase.deriveTargetVersion("1.2.0-SNAPSHOT")).thenReturn("1.2.0");
-        when(gitBranchPort.getBranchStatus(any(), any(), eq(featureBranch)))
-                .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
-        when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch)))
-                .thenReturn(GitBranchPort.BranchStatus.present("def456"));
-        when(gitBranchPort.archiveBranch(any(), any(), eq(featureBranch), eq("released"))).thenReturn(true);
-        when(gitBranchPort.archiveBranch(any(), any(), eq(releaseBranch), eq("released"))).thenReturn(true);
-        when(gitBranchPort.mergeBranch(any(), any(), eq(releaseBranch), eq("main"), any()))
-                .thenReturn(GitBranchPort.MergeResult.success());
-        when(gitBranchPort.createTag(any(), any(), eq("v1.2.0"), eq("main"), eq("Release v1.2.0"))).thenReturn(true);
+    }
+
+    private RunItem cleanupItem(String id, int order, boolean ci, String tag) {
+        RunItem item = RunItem.createForRepository(windowKey, RepoId.of(id), order, now);
+        item.putMetadata("plan.windowId", windowId);
+        item.putMetadata("plan.cloneUrl", repository(id).getCloneUrl());
+        item.putMetadata("plan.gitProvider", "GITLAB");
+        item.putMetadata("plan.releaseBranch", releaseBranch);
+        item.putMetadata("plan.defaultBranch", "main");
+        item.putMetadata("plan.tagName", tag);
+        item.putMetadata("plan.triggerCi", Boolean.toString(ci));
+        item.putMetadata("plan.ciRef", ci ? tag : null);
+        item.putMetadata("plan.participatingIterationKeys", "[\"ITER-1\",\"ITER-2\"]");
+        return item;
+    }
+
+    private GitBranchPort.MergeResult confirmedMerge() {
+        return GitBranchPort.MergeResult.success().withEvidence(new GitBranchPort.MrEvidence(PROJECT,
+                releaseBranch, "main", "7", "https://gitlab.com/test/repo/-/merge_requests/7",
+                SOURCE_SHA, MERGE_SHA, GitBranchPort.MrDisposition.CREATED, null));
+    }
+
+    private Run setupCleanupRun(boolean ci) {
+        Run run = Run.start(RunType.WINDOW_CLEANUP, "system", now);
+        run.addItem(cleanupItem(repoId, 1, ci, TAG));
+        when(runPlanAppService.admitCleanup(windowId, "system", ci))
+                .thenReturn(new io.releasehub.application.run.plan.RunPlanAppService.CleanupAdmission(run, true));
+        lenient().when(codeRepositoryPort.findById(RepoId.of(repoId))).thenReturn(Optional.of(repository(repoId)));
+        lenient().when(gitBranchAdapterFactory.getAdapter(GitProvider.GITLAB)).thenReturn(gitBranchPort);
+        lenient().when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch)))
+                .thenReturn(GitBranchPort.BranchStatus.present(SOURCE_SHA));
+        lenient().when(gitBranchPort.mergeBranch(any(), any(), eq(releaseBranch), eq("main"), any()))
+                .thenReturn(confirmedMerge());
+        lenient().when(gitBranchPort.readTag(any(), any(), eq(PROJECT), eq(TAG)))
+                .thenReturn(new GitReadResult<>(GitReadResult.Status.NOT_FOUND, null));
+        lenient().when(gitBranchPort.createTag(any(), any(), eq(PROJECT), eq(TAG), eq(MERGE_SHA), any()))
+                .thenReturn(GitWriteResult.applied(new GitBranchPort.TagEvidence(PROJECT, TAG, MERGE_SHA)));
+        lenient().when(gitBranchPort.triggerPipeline(any(), any(), eq(PROJECT), eq(TAG), eq(MERGE_SHA)))
+                .thenReturn(GitWriteResult.applied(new GitBranchPort.PipelineEvidence(PROJECT, "101", TAG,
+                        MERGE_SHA, "https://gitlab.com/test/repo/-/pipelines/101")));
+        return run;
     }
 
     @Nested
@@ -186,7 +184,7 @@ class RunAppServiceTest {
             Instant previousStartedAt = now.minusSeconds(60);
             Run previous = Run.start(RunType.VERSION_UPDATE, "tester", previousStartedAt);
 
-            RunItem successItem = RunItem.create(windowKey, RepoId.of("repo-success"), IterationKey.of("VERSION_UPDATE"), 1, previousStartedAt);
+            RunItem successItem = RunItem.createForRepository(windowKey, RepoId.of("repo-success"), 1, previousStartedAt);
             successItem.putMetadata("versionUpdate.buildTool", BuildTool.MAVEN.name());
             successItem.putMetadata("versionUpdate.branchName", releaseBranch);
             successItem.putMetadata("versionUpdate.repoPath", "/tmp/success");
@@ -195,7 +193,7 @@ class RunAppServiceTest {
             successItem.finishWith(RunItemResult.VERSION_UPDATE_SUCCESS, previousStartedAt);
             previous.addItem(successItem);
 
-            RunItem failedItem = RunItem.create(windowKey, RepoId.of(repoId), IterationKey.of("VERSION_UPDATE"), 2, previousStartedAt);
+            RunItem failedItem = RunItem.createForRepository(windowKey, RepoId.of(repoId), 2, previousStartedAt);
             failedItem.putMetadata("versionUpdate.buildTool", BuildTool.MAVEN.name());
             failedItem.putMetadata("versionUpdate.branchName", releaseBranch);
             failedItem.putMetadata("versionUpdate.repoPath", "/tmp/repo");
@@ -239,70 +237,196 @@ class RunAppServiceTest {
     }
 
     @Nested
-    @DisplayName("executeCleanup CI 触发")
+    @DisplayName("窗口仓库收尾")
     class CleanupCi {
-
         @Test
-        @DisplayName("CI 未配置时记录 CI_NOT_CONFIGURED 且最终结果不伪装为 SUCCESS")
-        void shouldRecordCiNotConfiguredWhenPipelineTriggerReturnsNull() {
-            setupCleanupRun();
-            when(gitBranchPort.triggerPipeline(any(), any(), eq(releaseBranch))).thenReturn(null);
-
-            Run result = service.executeCleanup(windowId, "system");
-
-            RunItem item = result.getItems().get(0);
-            assertThat(item.getFinalResult()).isEqualTo(RunItemResult.CI_NOT_CONFIGURED);
-            assertThat(item.getSteps()).anySatisfy(step -> {
-                assertThat(step.actionType()).isEqualTo(ActionType.TRIGGER_CI);
-                assertThat(step.result()).isEqualTo(RunItemResult.CI_NOT_CONFIGURED);
-                assertThat(step.message()).contains("CI not configured");
-            });
-            verify(gitBranchPort).triggerPipeline(any(), any(), eq(releaseBranch));
-            verify(runPort).save(any(Run.class));
+        void shouldRetainBranchesAndSkipUnselectedCi() {
+            setupCleanupRun(false);
+            Run result = service.executeCleanup(windowId, "system", false);
+            RunItem item = result.getItems().getFirst();
+            assertThat(result.getExecutionStatus()).isEqualTo(RunExecutionStatus.DONE);
+            assertThat(item.getIterationKey()).isNull();
+            assertThat(item.getMetadata()).containsEntry("cleanup.referencePolicy", "RETAIN");
+            assertThat(item.getSteps()).extracting(step -> step.actionType())
+                    .containsExactly(ActionType.MERGE_TO_MASTER, ActionType.CREATE_TAG, ActionType.TRIGGER_CI);
+            assertThat(item.getSteps().getLast().result()).isEqualTo(RunItemResult.SKIPPED);
+            verify(gitBranchPort).createTag(any(), any(), eq(PROJECT), eq(TAG), eq(MERGE_SHA), any());
+            verify(gitBranchPort, never()).getBranchStatus(any(), any(), eq("main"));
+            verify(gitBranchPort, never()).triggerPipeline(any(), any(), any(), any(), any());
+            verify(gitBranchPort, never()).archiveBranch(any(), any(), any(), any());
+            verify(gitBranchPort, never()).deleteBranch(any(), any(), any());
+            verifyNoInteractions(windowIterationPort);
         }
 
         @Test
-        @DisplayName("CI 已配置时触发 pipeline 并保留 pipeline id")
-        void shouldRecordTriggeredPipelineWhenProviderReturnsPipelineId() {
-            setupCleanupRun();
-            when(gitBranchPort.triggerPipeline(any(), any(), eq(releaseBranch))).thenReturn("pipeline-42");
-
-            Run result = service.executeCleanup(windowId, "system");
-
-            RunItem item = result.getItems().get(0);
-            assertThat(item.getFinalResult()).isEqualTo(RunItemResult.SUCCESS);
-            assertThat(item.getSteps()).anySatisfy(step -> {
-                assertThat(step.actionType()).isEqualTo(ActionType.TRIGGER_CI);
-                assertThat(step.result()).isEqualTo(RunItemResult.CI_TRIGGERED);
-                assertThat(step.message()).contains("pipeline-42", releaseBranch);
-            });
-            verify(gitBranchPort).triggerPipeline(any(), any(), eq(releaseBranch));
-            verify(runPort).save(any(Run.class));
+        void shouldStopDependentWritesAfterRejectedTag() {
+            setupCleanupRun(true);
+            when(gitBranchPort.createTag(any(), any(), any(), any(), any(), any()))
+                    .thenReturn(GitWriteResult.rejected("PERMISSION_DENIED"));
+            Run result = service.executeCleanup(windowId, "system", true);
+            assertThat(result.getItems().getFirst().getFinalResult()).isEqualTo(RunItemResult.FAILED);
+            assertThat(result.getExecutionStatus()).isEqualTo(RunExecutionStatus.FAILED);
+            assertThat(result.getItems().getFirst().getSteps().getLast().result()).isEqualTo(RunItemResult.SKIPPED_DUE_TO_BLOCK);
+            verify(gitBranchPort, never()).triggerPipeline(any(), any(), any(), any(), any());
+            verify(gitBranchPort, never()).archiveBranch(any(), any(), any(), any());
         }
 
         @Test
-        @DisplayName("关闭收尾在 tag 与 CI 之后归档 feature 和 release 分支")
-        void shouldArchiveFeatureAndReleaseBranchesAfterTagAndCi() {
-            setupCleanupRun();
-            when(gitBranchPort.triggerPipeline(any(), any(), eq(releaseBranch))).thenReturn("pipeline-42");
+        void shouldPreserveUnknownTagAndForbidOrdinaryRetry() {
+            setupCleanupRun(true);
+            when(gitBranchPort.createTag(any(), any(), any(), any(), any(), any()))
+                    .thenReturn(GitWriteResult.unknown("RESPONSE_UNCONFIRMED"));
+            Run result = service.executeCleanup(windowId, "system", true);
+            assertThat(result.getExecutionStatus()).isEqualTo(RunExecutionStatus.NEEDS_REVIEW);
+            assertThat(result.getItems().getFirst().getFinalResult()).isEqualTo(RunItemResult.UNKNOWN);
+            verify(gitBranchPort, never()).triggerPipeline(any(), any(), any(), any(), any());
+            verify(gitBranchPort, times(1)).readTag(any(), any(), any(), any());
+            when(runPort.findById(result.getId().value())).thenReturn(Optional.of(result));
+            assertThatThrownBy(() -> service.retry(result.getId().value(), List.of(result.getItems().getFirst().getId().value()), "retryer"))
+                    .isInstanceOf(io.releasehub.common.exception.BusinessException.class);
+            verify(runPlanAppService, never()).admitRetry(any(), any(), any());
+        }
 
-            Run result = service.executeCleanup(windowId, "system");
+        @Test
+        void shouldPreserveUnknownMergeAndSkipTagAndCi() {
+            setupCleanupRun(true);
+            when(gitBranchPort.mergeBranch(any(), any(), any(), any(), any()))
+                    .thenReturn(GitBranchPort.MergeResult.unknown("MERGE_UNCONFIRMED").withEvidence(confirmedMerge().mrEvidence()));
+            Run result = service.executeCleanup(windowId, "system", true);
+            assertThat(result.getExecutionStatus()).isEqualTo(RunExecutionStatus.NEEDS_REVIEW);
+            assertThat(result.getItems().getFirst().getMetadata()).containsEntry("git.mrIid", "7");
+            verify(gitBranchPort, never()).readTag(any(), any(), any(), any());
+            verify(gitBranchPort, never()).createTag(any(), any(), any(), any(), any(), any());
+            verify(gitBranchPort, never()).triggerPipeline(any(), any(), any(), any(), any());
+        }
 
-            RunItem item = result.getItems().get(0);
-            assertThat(item.getFinalResult()).isEqualTo(RunItemResult.SUCCESS);
-            assertThat(item.getSteps())
-                    .filteredOn(step -> step.actionType() == ActionType.ARCHIVE_BRANCH)
-                    .hasSize(2)
-                    .anySatisfy(step -> assertThat(step.message()).contains("Archived feature branch: " + featureBranch))
-                    .anySatisfy(step -> assertThat(step.message()).contains("Archived release branch: " + releaseBranch));
+        @Test
+        void shouldKeepApprovalBlockEvidence() {
+            setupCleanupRun(true);
+            when(gitBranchPort.mergeBranch(any(), any(), any(), any(), any()))
+                    .thenReturn(GitBranchPort.MergeResult.blocked(GitBranchPort.MergeBlockReason.APPROVAL_REQUIRED, "Approval required")
+                            .withEvidence(confirmedMerge().mrEvidence()));
+            Run result = service.executeCleanup(windowId, "system", true);
+            assertThat(result.getItems().getFirst().getFinalResult()).isEqualTo(RunItemResult.MERGE_BLOCKED);
+            assertThat(result.getItems().getFirst().getMetadata()).containsEntry("git.blockReason", "APPROVAL_REQUIRED");
+            verify(gitBranchPort, never()).createTag(any(), any(), any(), any(), any(), any());
+        }
 
-            InOrder order = inOrder(gitBranchPort);
-            order.verify(gitBranchPort).mergeBranch(any(), any(), eq(releaseBranch), eq("main"), any());
-            order.verify(gitBranchPort).createTag(any(), any(), eq("v1.2.0"), eq("main"), eq("Release v1.2.0"));
-            order.verify(gitBranchPort).triggerPipeline(any(), any(), eq(releaseBranch));
-            order.verify(gitBranchPort).archiveBranch(any(), any(), eq(featureBranch), eq("released"));
-            order.verify(gitBranchPort).archiveBranch(any(), any(), eq(releaseBranch), eq("released"));
-            verify(runPort).save(any(Run.class));
+        @Test
+        void shouldRejectMissingReleaseWithoutPublishingDefaultBranch() {
+            setupCleanupRun(true);
+            when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch))).thenReturn(GitBranchPort.BranchStatus.missing());
+            Run result = service.executeCleanup(windowId, "system", true);
+            assertThat(result.getExecutionStatus()).isEqualTo(RunExecutionStatus.FAILED);
+            verify(gitBranchPort, never()).mergeBranch(any(), any(), any(), any(), any());
+            verify(gitBranchPort, never()).createTag(any(), any(), any(), any(), any(), any());
+            verify(gitBranchPort, never()).triggerPipeline(any(), any(), any(), any(), any());
+        }
+
+        @Test
+        void shouldReuseExactTagAndRecordConfirmedPipelineEvidence() {
+            setupCleanupRun(true);
+            when(gitBranchPort.readTag(any(), any(), any(), any()))
+                    .thenReturn(GitReadResult.found(new GitBranchPort.TagEvidence(PROJECT, TAG, MERGE_SHA)));
+            Run result = service.executeCleanup(windowId, "system", true);
+            assertThat(result.getExecutionStatus()).isEqualTo(RunExecutionStatus.DONE);
+            RunItem item = result.getItems().getFirst();
+            assertThat(item.getSteps().get(1).result()).isEqualTo(RunItemResult.ALREADY_EXISTS);
+            assertThat(item.getMetadata()).containsEntry("git.pipelineId", "101")
+                    .containsEntry("git.pipelineSha", MERGE_SHA).containsEntry("git.pipelineRef", TAG);
+            verify(gitBranchPort, never()).createTag(any(), any(), any(), any(), any(), any());
+            verify(gitBranchPort).triggerPipeline(any(), any(), eq(PROJECT), eq(TAG), eq(MERGE_SHA));
+        }
+
+        @Test
+        void shouldBlockTagPointingElsewhereWithoutOverwritingIt() {
+            setupCleanupRun(true);
+            when(gitBranchPort.readTag(any(), any(), any(), any()))
+                    .thenReturn(GitReadResult.found(new GitBranchPort.TagEvidence(PROJECT, TAG, "c".repeat(40))));
+            Run result = service.executeCleanup(windowId, "system", true);
+            assertThat(result.getExecutionStatus()).isEqualTo(RunExecutionStatus.FAILED);
+            verify(gitBranchPort, never()).createTag(any(), any(), any(), any(), any(), any());
+            verify(gitBranchPort, never()).triggerPipeline(any(), any(), any(), any(), any());
+        }
+
+        @Test
+        void shouldReuseConcurrentExactTagAfterRejectionWithoutPostingTwice() {
+            setupCleanupRun(true);
+            when(gitBranchPort.readTag(any(), any(), any(), any()))
+                    .thenReturn(new GitReadResult<>(GitReadResult.Status.NOT_FOUND, null))
+                    .thenReturn(GitReadResult.found(new GitBranchPort.TagEvidence(PROJECT, TAG, MERGE_SHA)));
+            when(gitBranchPort.createTag(any(), any(), any(), any(), any(), any()))
+                    .thenReturn(GitWriteResult.rejected("HTTP_400"));
+            Run result = service.executeCleanup(windowId, "system", true);
+            assertThat(result.getExecutionStatus()).isEqualTo(RunExecutionStatus.DONE);
+            verify(gitBranchPort, times(1)).createTag(any(), any(), any(), any(), any(), any());
+            verify(gitBranchPort, times(1)).triggerPipeline(any(), any(), any(), any(), any());
+        }
+
+        @Test
+        void shouldNotInterpretUnknownPipelineAsNotConfigured() {
+            setupCleanupRun(true);
+            when(gitBranchPort.triggerPipeline(any(), any(), any(), any(), any()))
+                    .thenReturn(GitWriteResult.unknown("RESPONSE_UNCONFIRMED"));
+            Run result = service.executeCleanup(windowId, "system", true);
+            assertThat(result.getExecutionStatus()).isEqualTo(RunExecutionStatus.NEEDS_REVIEW);
+            assertThat(result.getItems().getFirst().getSteps().getLast().result()).isEqualTo(RunItemResult.UNKNOWN);
+            verify(gitBranchPort, times(1)).triggerPipeline(any(), any(), any(), any(), any());
+            verify(gitBranchPort, never()).archiveBranch(any(), any(), any(), any());
+        }
+
+        @Test
+        void shouldReturnExistingAdmissionWithoutAnotherExecution() {
+            Run admitted = setupCleanupRun(false);
+            when(runPlanAppService.admitCleanup(windowId, "system", false))
+                    .thenReturn(new io.releasehub.application.run.plan.RunPlanAppService.CleanupAdmission(admitted, false));
+            assertThat(service.executeCleanup(windowId, "system", false)).isSameAs(admitted);
+            verifyNoInteractions(gitBranchPort, codeRepositoryPort, gitBranchAdapterFactory, runPort);
+        }
+
+        @Test
+        void shouldStopAfterLocalCheckpointFailureFollowingConfirmedMerge() {
+            Run admitted = setupCleanupRun(true);
+            var saves = new java.util.concurrent.atomic.AtomicInteger();
+            org.mockito.Mockito.doAnswer(invocation -> {
+                if (saves.incrementAndGet() == 2) throw new IllegalStateException("checkpoint failed");
+                return null;
+            }).when(runPort).save(any());
+            assertThatThrownBy(() -> service.executeCleanup(windowId, "system", true))
+                    .isInstanceOf(IllegalStateException.class).hasMessage("checkpoint failed");
+            assertThat(admitted.getExecutionStatus()).isEqualTo(RunExecutionStatus.RUNNING);
+            verify(gitBranchPort, times(1)).mergeBranch(any(), any(), any(), any(), any());
+            verify(gitBranchPort, never()).readTag(any(), any(), any(), any());
+            verify(gitBranchPort, never()).createTag(any(), any(), any(), any(), any(), any());
+            verify(gitBranchPort, never()).triggerPipeline(any(), any(), any(), any(), any());
+        }
+
+        @Test
+        void shouldNotGuessMergeCommitForTagFromCurrentDefaultTip() {
+            setupCleanupRun(true);
+            when(gitBranchPort.mergeBranch(any(), any(), any(), any(), any()))
+                    .thenReturn(GitBranchPort.MergeResult.success().withEvidence(new GitBranchPort.MrEvidence(PROJECT,
+                            releaseBranch, "main", null, null, SOURCE_SHA, null,
+                            GitBranchPort.MrDisposition.ALREADY_MERGED, null)));
+            Run result = service.executeCleanup(windowId, "system", true);
+            assertThat(result.getExecutionStatus()).isEqualTo(RunExecutionStatus.FAILED);
+            assertThat(result.getItems().getFirst().getSteps().get(1).message()).contains("合并提交 SHA");
+            verify(gitBranchPort, never()).getBranchStatus(any(), any(), eq("main"));
+            verify(gitBranchPort, never()).createTag(any(), any(), any(), any(), any(), any());
+        }
+
+        @Test
+        void shouldContinueAnotherRepositoryAfterConfirmedTagFailure() {
+            Run admitted = setupCleanupRun(false);
+            admitted.addItem(cleanupItem("repo-2", 2, false, TAG));
+            when(codeRepositoryPort.findById(RepoId.of("repo-2"))).thenReturn(Optional.of(repository("repo-2")));
+            when(gitBranchPort.createTag(eq(repository(repoId).getCloneUrl()), any(), any(), any(), any(), any()))
+                    .thenReturn(GitWriteResult.rejected("PERMISSION_DENIED"));
+            Run result = service.executeCleanup(windowId, "system", false);
+            assertThat(result.getExecutionStatus()).isEqualTo(RunExecutionStatus.PARTIAL_FAILED);
+            assertThat(result.getItems()).extracting(RunItem::getFinalResult)
+                    .containsExactly(RunItemResult.FAILED, RunItemResult.SUCCESS);
+            verify(gitBranchPort).createTag(eq(repository("repo-2").getCloneUrl()), any(), any(), any(), eq(MERGE_SHA), any());
         }
     }
 }

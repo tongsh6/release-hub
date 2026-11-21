@@ -159,13 +159,13 @@ class Slice3_Release_Orchestration_E2ETest extends AbstractGitLabE2ETest {
 
     @Test
     @Order(10)
-    @DisplayName("[Tester] 验证 branch-status 显示 MERGED")
-    void qa_verifyBranchStatusMerged() throws Exception {
+    @DisplayName("[Tester] 验证 branch-status 仅展示分支事实")
+    void qa_verifyBranchStatusRefs() throws Exception {
         mockMvc.perform(get("/api/v1/release-windows/" + window1Id + "/branch-status")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.repos.length()").value(greaterThanOrEqualTo(1)))
-                .andExpect(jsonPath("$.data.repos[0].releaseBranch.mergeStatus").value("MERGED"));
+                .andExpect(jsonPath("$.data.repos[0].releaseBranch.mergeStatus").doesNotExist());
     }
 
     // ─────────── Scenario 8: QA 验证 Run 记录已创建 (close creates cleanup run) ───────────
@@ -175,15 +175,15 @@ class Slice3_Release_Orchestration_E2ETest extends AbstractGitLabE2ETest {
     @DisplayName("[Tester] 验证 Run 记录已创建（close 触发收尾 Run）")
     void qa_verifyRunRecordCreated() throws Exception {
         // 关闭窗口触发 cleanup，创建 Run 记录
-        mockMvc.perform(post("/api/v1/release-windows/" + window1Id + "/close")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+        mockMvc.perform(post("/api/v1/release-windows/" + window1Id + "/unfreeze")
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        JsonNode cleanup = E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, window1Id, false);
 
-        // 用 windowName 过滤（RunItem.windowKey 实际存储的是 window name）
+        // 按窗口稳定 key 和独立收尾类型读取，避免混入集成 Run。
         MvcResult runResult = mockMvc.perform(get("/api/v1/runs/paged")
                         .header("Authorization", "Bearer " + token)
-                        .param("windowKey", window1Name)
+                        .param("windowKey", getWindowKey(token, window1Id))
+                        .param("runType", "WINDOW_CLEANUP")
                         .param("page", "1")
                         .param("size", "10"))
                 .andExpect(status().isOk())
@@ -196,11 +196,10 @@ class Slice3_Release_Orchestration_E2ETest extends AbstractGitLabE2ETest {
                 .isGreaterThanOrEqualTo(1);
 
         // 验证 RunItem 和 RunStep 内容
-        String runId = findRunIdByWindowName(token, window1Name);
-        // 收尾流程应有 6 个 ActionType: CLOSE_ITERATION → UPDATE_VERSION → ARCHIVE_BRANCH
-        // → MERGE_TO_MASTER → CREATE_TAG → TRIGGER_CI
-        verifyRunItems(runId, 1, java.util.List.of("CLOSE_ITERATION", "UPDATE_VERSION", "ARCHIVE_BRANCH",
-                "MERGE_TO_MASTER", "CREATE_TAG", "TRIGGER_CI"));
+        String runId = cleanup.path("id").asText();
+        assertThat(runs).hasSize(1);
+        assertThat(runs.get(0).path("id").asText()).isEqualTo(runId);
+        verifyRunItems(runId, 1, java.util.List.of("MERGE_TO_MASTER", "CREATE_TAG", "TRIGGER_CI"));
     }
 
     // ─────────── Scenario 9: RM 多迭代多仓库 ───────────
@@ -257,15 +256,16 @@ class Slice3_Release_Orchestration_E2ETest extends AbstractGitLabE2ETest {
                 .andExpect(jsonPath("$.data.status").value("PUBLISHED"));
 
         // 关闭窗口触发 cleanup，创建 Run 记录
-        mockMvc.perform(post("/api/v1/release-windows/" + window2Id + "/close")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+        mockMvc.perform(post("/api/v1/release-windows/" + window2Id + "/unfreeze")
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        JsonNode cleanup = E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, window2Id, false);
+        assertThat(cleanup.path("items")).hasSize(2);
 
-        // 验证 Run 存在（2 个迭代 × 各自的仓库，cleanup 会为每个迭代+仓库创建 RunItem）
+        // 收尾按仓库并集执行，每仓库一个 Item，参与迭代保存在计划中。
         MvcResult runsResult = mockMvc.perform(get("/api/v1/runs/paged")
                         .header("Authorization", "Bearer " + token)
-                        .param("windowKey", window2Name)
+                        .param("windowKey", getWindowKey(token, window2Id))
+                        .param("runType", "WINDOW_CLEANUP")
                         .param("page", "1")
                         .param("size", "10"))
                 .andExpect(status().isOk())
@@ -288,7 +288,7 @@ class Slice3_Release_Orchestration_E2ETest extends AbstractGitLabE2ETest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("CLOSED"))
-                .andExpect(jsonPath("$.data.frozen").value(true))
+                .andExpect(jsonPath("$.data.frozen").value(false))
                 .andExpect(jsonPath("$.data.publishedAt").isNotEmpty());
     }
 

@@ -113,7 +113,7 @@ public class RunController {
                     item.getId().value(),
                     item.getWindowKey(),
                     item.getRepo().value(),
-                    item.getIterationKey().value(),
+                    item.getIterationKey() == null ? null : item.getIterationKey().value(),
                     item.getFinalResult() != null ? item.getFinalResult().name() : null,
                     item.getPlannedOrder(),
                     item.getExecutedOrder(),

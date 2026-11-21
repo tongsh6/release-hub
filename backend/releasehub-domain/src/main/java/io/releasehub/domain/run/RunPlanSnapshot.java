@@ -11,9 +11,11 @@ public record RunPlanSnapshot(String windowKey, String groupCode, String windowS
 
     public record Item(String itemId, int plannedOrder, String repoId, String repoName, String iterationKey,
                        String gitProvider, String defaultBranch, String featureBranch, String featureBranchMode, String releaseBranch,
-                       String baseVersion, String devVersion, String targetVersion, List<String> steps) {
+                       String baseVersion, String devVersion, String targetVersion, List<String> steps,
+                       List<String> participatingIterationKeys, String tagName, boolean triggerCi, String ciRef) {
         public Item {
             steps = List.copyOf(steps);
+            participatingIterationKeys = participatingIterationKeys == null ? List.of() : List.copyOf(participatingIterationKeys);
         }
     }
 }

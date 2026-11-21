@@ -21,6 +21,8 @@ import java.util.Locale;
 /** 以远端稳定 ID 合并别名；既有 clone URL 的字符串规范化不作为并发锁身份。 */
 @Component
 public class GitRemoteIdentityResolver {
+    static final String EXPECTED_PROJECT_ID = "X-ReleaseHub-Expected-Project-Id";
+    static final String EXPECTED_SHA = "X-ReleaseHub-Expected-Commit-Sha";
     private final CodeRepositoryPort repos;
     private final io.releasehub.application.settings.SettingsPort settings;
     private final RestTemplate readHttp;
@@ -32,6 +34,8 @@ public class GitRemoteIdentityResolver {
     public record Identity(String repoId,String repositoryMapping,String remoteKey,String provider,String baseUrl,String projectId,Endpoint endpoint) {}
 
     public Identity resolve(URI uri,HttpHeaders headers) {
+        String expectedProjectId=headers.getFirst(EXPECTED_PROJECT_ID);
+        if(expectedProjectId!=null&&!validProjectId(expectedProjectId))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
         Endpoint endpoint=parse(uri);
         if(!endpoint.provider().equals("GITLAB"))throw BusinessException.of(ErrorCode.GIT_PROVIDER_UNSUPPORTED);
         String configured=settings.getGitLab().map(s->io.releasehub.application.gitoperation.GitOperationJournalPort.configuredBaseUrl(s.baseUrl())).orElse("");
@@ -48,9 +52,10 @@ public class GitRemoteIdentityResolver {
         CodeRepository repo=matches.get(0);
         try {
             JsonNode body=readHttp.exchange(URI.create(endpoint.projectEndpoint()),HttpMethod.GET,
-                    new HttpEntity<>(headers),JsonNode.class).getBody();
-            if(body==null || !body.path("id").isIntegralNumber())throw unavailable();
+                    new HttpEntity<>(externalHeaders(headers)),JsonNode.class).getBody();
+            if(body==null || !body.path("id").isIntegralNumber() || !validProjectId(body.path("id").asText()))throw unavailable();
             String id=body.path("id").asText();
+            if(expectedProjectId!=null&&!expectedProjectId.equals(id))throw unavailable();
             return new Identity(repo.getId().value(),io.releasehub.application.gitoperation.GitOperationJournalPort.mappingHash(repo.getGitProvider().name(),repo.getCloneUrl()),io.releasehub.application.gitoperation.GitOperationJournalPort.remoteKey(endpoint.provider(),endpoint.baseUrl(),id),
                     endpoint.provider(),endpoint.baseUrl(),id,endpoint);
         } catch(BusinessException e){throw e;}catch(RuntimeException e){throw unavailable();}
@@ -79,9 +84,15 @@ public class GitRemoteIdentityResolver {
         try {
             String endpoint=identity.baseUrl()+"/api/v4/projects/"+identity.projectId()+suffix
                     +(ref==null?"":"?ref="+java.net.URLEncoder.encode(ref,StandardCharsets.UTF_8));
-            JsonNode node=readHttp.exchange(URI.create(endpoint),HttpMethod.GET,new HttpEntity<>(headers),JsonNode.class).getBody();
+            JsonNode node=readHttp.exchange(URI.create(endpoint),HttpMethod.GET,new HttpEntity<>(externalHeaders(headers)),JsonNode.class).getBody();
             if(node==null)throw unavailable();return node;
         }catch(RuntimeException e){throw unavailable();}
+    }
+    static boolean validProjectId(String value) { return value!=null&&value.matches("[1-9][0-9]*"); }
+    static HttpHeaders externalHeaders(HttpHeaders headers) {
+        HttpHeaders result=new HttpHeaders();result.putAll(headers);
+        result.remove(EXPECTED_PROJECT_ID);result.remove(EXPECTED_SHA);
+        return result;
     }
     public static String hash(String value){return hash(value.getBytes(StandardCharsets.UTF_8));}
     public static String hash(byte[] value) {

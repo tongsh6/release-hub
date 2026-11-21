@@ -266,11 +266,15 @@ class GitWriteSafetyIT {
 
     @Test void shouldPinPipelineToVerifiedProjectWithoutReencodingQuery() {
         String ref="release/evidence+gate";
-        SERVER.reply("POST",canonicalEndpoint+"/pipeline",201,"{\"id\":321}");
-        SERVER.reply("POST",endpoint+"/pipeline",201,"{\"id\":321}");
+        SERVER.reply("POST",canonicalEndpoint+"/pipeline",201,pipeline(ref,sha));
+        SERVER.reply("POST",endpoint+"/pipeline",201,pipeline(ref,sha));
 
-        assertThat(factory.getAdapter(GitProvider.GITLAB).triggerPipeline(repo.getCloneUrl(),"fixture-token",ref))
-                .isEqualTo("321");
+        var result=factory.getAdapter(GitProvider.GITLAB).triggerPipeline(repo.getCloneUrl(),"fixture-token",String.valueOf(project),ref,sha);
+        assertThat(result.outcome()).isEqualTo(GitWriteResult.Outcome.APPLIED);
+        assertThat(result.evidence().id()).isEqualTo("321");
+        assertThat(result.evidence().projectId()).isEqualTo(String.valueOf(project));
+        assertThat(result.evidence().sha()).isEqualTo(sha);
+        assertThat(SERVER.requests).noneMatch(FixtureServer.Request::internalHeaders);
         SERVER.verify("GET",endpoint,1);
         SERVER.verify("POST",canonicalEndpoint+"/pipeline",1);
         assertThat(SERVER.query("POST",canonicalEndpoint+"/pipeline")).isEqualTo("ref=release%2Fevidence%2Bgate");
@@ -283,9 +287,47 @@ class GitWriteSafetyIT {
         assertThat(operation.targetJson()).contains("\"ref\":\"release/evidence+gate\"");
     }
 
+    @Test void shouldPinTagToConfirmedProjectAndCommitWithoutLeakingInternalHeaders() {
+        String tag="v1.1.0";
+        String response="{\"name\":\""+tag+"\",\"commit\":{\"id\":\""+sha+"\"}}";
+        SERVER.reply("GET",canonicalEndpoint+"/repository/commits/"+sha,200,"{\"id\":\""+sha+"\"}");
+        SERVER.reply("POST",canonicalEndpoint+"/repository/tags",201,response);
+        SERVER.reply("GET",canonicalEndpoint+"/repository/tags/"+tag,200,response);
+        var adapter=factory.getAdapter(GitProvider.GITLAB);
+        var created=adapter.createTag(repo.getCloneUrl(),"fixture-token",String.valueOf(project),tag,sha,"fixture tag");
+        assertThat(created.outcome()).isEqualTo(GitWriteResult.Outcome.APPLIED);
+        assertThat(created.evidence()).isEqualTo(new GitBranchPort.TagEvidence(String.valueOf(project),tag,sha));
+        var observed=adapter.readTag(repo.getCloneUrl(),"fixture-token",String.valueOf(project),tag);
+        assertThat(observed.status()).isEqualTo(GitReadResult.Status.FOUND);
+        assertThat(observed.evidence()).isEqualTo(created.evidence());
+        SERVER.verify("POST",canonicalEndpoint+"/repository/tags",1);
+        assertThat(SERVER.body("POST",canonicalEndpoint+"/repository/tags").path("ref").asText()).isEqualTo(sha);
+        assertThat(SERVER.writeCount()).isEqualTo(1);
+        assertNoNamespaceWrites();
+        assertThat(SERVER.requests).noneMatch(FixtureServer.Request::internalHeaders);
+        assertThat(journal.list(repo.getId().value(),0,20)).hasSize(1)
+                .allMatch(operation->operation.state().equals("APPLIED")&&!operation.blocked());
+    }
+
+    @Test void shouldKeepPipelineWithMismatchedShaBlockedBeforeAnyFurtherWrite() {
+        SERVER.reply("POST",canonicalEndpoint+"/pipeline",201,pipeline("main","d".repeat(40)));
+        var result=factory.getAdapter(GitProvider.GITLAB).triggerPipeline(
+                repo.getCloneUrl(),"fixture-token",String.valueOf(project),"main",sha);
+        assertThat(result.outcome()).isEqualTo(GitWriteResult.Outcome.UNKNOWN);
+        assertThat(journal.list(repo.getId().value(),0,20)).hasSize(1)
+                .allMatch(operation->operation.state().equals("UNKNOWN")&&operation.blocked());
+        branchSuccess();
+        assertThatThrownBy(this::write).isInstanceOf(BusinessException.class);
+        assertThat(SERVER.writeCount()).isEqualTo(1);
+        SERVER.verify("POST",canonicalEndpoint+"/pipeline",1);
+        assertNoNamespaceWrites();
+        assertThat(SERVER.requests).noneMatch(FixtureServer.Request::internalHeaders);
+    }
+
     @Test void shouldKeepPipelineWithoutResponseIdBlocked() {
         SERVER.reply("POST",canonicalEndpoint+"/pipeline",201,"{}");
-        assertThat(factory.getAdapter(GitProvider.GITLAB).triggerPipeline(repo.getCloneUrl(),"fixture-token","main")).isNull();
+        assertThat(factory.getAdapter(GitProvider.GITLAB).triggerPipeline(repo.getCloneUrl(),"fixture-token",String.valueOf(project),"main",sha).outcome())
+                .isEqualTo(GitWriteResult.Outcome.UNKNOWN);
         var op=journal.list(repo.getId().value(),0,20).get(0);
         assertThat(op.action()).isEqualTo("TRIGGER_PIPELINE");assertThat(op.state()).isEqualTo("UNKNOWN");assertThat(op.blocked()).isTrue();
         assertThatThrownBy(this::write).isInstanceOf(BusinessException.class);
@@ -342,6 +384,10 @@ class GitWriteSafetyIT {
         SERVER.reply("GET",endpoint+"/repository/branches/feature",200,
                 "{\"name\":\"feature\",\"commit\":{\"id\":\""+sha+"\"}}");
     }
+    private String pipeline(String ref,String commitSha) {
+        return "{\"project_id\":"+project+",\"id\":321,\"ref\":\""+ref+"\",\"sha\":\""+commitSha
+                +"\",\"web_url\":\""+SERVER.baseUrl()+"/acme/project/-/pipelines/321\"}";
+    }
     private String mergeRequest(String state) {
         return "{\"iid\":7,\"project_id\":"+project+",\"source_project_id\":"+project+",\"target_project_id\":"+project
                 +",\"source_branch\":\"feature\",\"target_branch\":\"main\",\"state\":\""+state
@@ -351,7 +397,7 @@ class GitWriteSafetyIT {
     /** 使用 JDK 自带 HTTP fixture，避免为 bootstrap 新增测试依赖。 */
     private static final class FixtureServer {
         private record Response(int status,String body) {}
-        private record Request(String method,String path,String query,String body) {}
+        private record Request(String method,String path,String query,String body,boolean internalHeaders) {}
         private final java.util.Map<String,Response> responses=new java.util.concurrent.ConcurrentHashMap<>();
         private final java.util.List<Request> requests=new java.util.concurrent.CopyOnWriteArrayList<>();
         private final com.sun.net.httpserver.HttpServer server;
@@ -360,7 +406,9 @@ class GitWriteSafetyIT {
                 server=com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
                 server.createContext("/",exchange->{
                     String method=exchange.getRequestMethod();String path=exchange.getRequestURI().getRawPath();
-                    requests.add(new Request(method,path,exchange.getRequestURI().getRawQuery(),new String(exchange.getRequestBody().readAllBytes(),StandardCharsets.UTF_8)));
+                    boolean internalHeaders=exchange.getRequestHeaders().keySet().stream()
+                            .anyMatch(name->name.toLowerCase(java.util.Locale.ROOT).startsWith("x-releasehub-expected-"));
+                    requests.add(new Request(method,path,exchange.getRequestURI().getRawQuery(),new String(exchange.getRequestBody().readAllBytes(),StandardCharsets.UTF_8),internalHeaders));
                     Response response=responses.getOrDefault(method+" "+path,new Response(404,"{}"));
                     byte[] body=response.body().getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders().set("Content-Type","application/json");

@@ -76,7 +76,9 @@ public class GitSafetyBeanDecorator implements BeanPostProcessor {
                     try {
                         Object result=invocation.proceed();
                         if(result instanceof GitBranchPort.MergeResult merge
-                                && merge.status()==io.releasehub.domain.run.MergeStatus.UNKNOWN)scope.failed();
+                                && merge.status()==io.releasehub.domain.run.MergeStatus.UNKNOWN
+                                || result instanceof io.releasehub.application.gitoperation.GitWriteResult<?> write
+                                && write.outcome()==io.releasehub.application.gitoperation.GitWriteResult.Outcome.UNKNOWN)scope.failed();
                         return result;
                     }catch(Throwable failure){scope.failed();throw failure;}
                 }

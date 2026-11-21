@@ -98,9 +98,11 @@ public record ReleaseWindowReportView(
             int plannedOrder,
             int executedOrder,
             String finalResult,
+            Map<String, String> metadata,
             List<StepReport> steps
     ) {
         public ItemReport {
+            metadata = Map.copyOf(metadata);
             steps = List.copyOf(steps);
         }
 
@@ -112,6 +114,7 @@ public record ReleaseWindowReportView(
                     item.getPlannedOrder(),
                     item.getExecutedOrder(),
                     item.getFinalResult() == null ? null : item.getFinalResult().name(),
+                    item.getMetadata(),
                     item.getSteps().stream().map(StepReport::from).toList()
             );
         }

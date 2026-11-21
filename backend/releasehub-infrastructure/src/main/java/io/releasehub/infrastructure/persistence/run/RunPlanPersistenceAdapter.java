@@ -47,6 +47,22 @@ public class RunPlanPersistenceAdapter implements RunPlanPort {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<SavedRunPlan> findCleanupByWindowId(String windowId) {
+        var matches = repository.findCleanupByWindowId(windowId);
+        if (matches.size() > 1) {
+            throw io.releasehub.common.exception.BusinessException.of(io.releasehub.common.exception.ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        }
+        return matches.isEmpty() ? Optional.empty() : Optional.of(map(matches.get(0)));
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean hasUnresolvedExecutionByWindowId(String windowId) {
+        return repository.countUnresolvedExecutionsByWindowId(windowId) > 0;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public void save(SavedRunPlan plan) {
         String snapshot;
         try {

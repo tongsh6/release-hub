@@ -36,6 +36,7 @@ class Slice4_Post_Release_Cleanup_E2ETest extends AbstractGitLabE2ETest {
     private String iterKey;
     private String windowId;
     private String windowName;
+    private String cleanupRunId;
 
     @BeforeAll
     void setUp() throws Exception {
@@ -95,8 +96,10 @@ class Slice4_Post_Release_Cleanup_E2ETest extends AbstractGitLabE2ETest {
     void rm_closeWindow() throws Exception {
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
                         .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/unfreeze")
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        cleanupRunId = E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, windowId, false).path("id").asText();
     }
 
     // ─────────── Scenario 3: QA 验证收尾 Run ───────────
@@ -105,10 +108,11 @@ class Slice4_Post_Release_Cleanup_E2ETest extends AbstractGitLabE2ETest {
     @Order(3)
     @DisplayName("[Tester] 验证 Run 记录包含收尾步骤")
     void qa_verifyRunRecordWithCleanupSteps() throws Exception {
-        // 用 windowName 过滤（RunItem.windowKey 实际存储 window name）
+        // 按稳定 windowKey 与独立收尾类型读取本次 Run。
         MvcResult runResult = mockMvc.perform(get("/api/v1/runs/paged")
                         .header("Authorization", "Bearer " + token)
-                        .param("windowKey", windowName)
+                        .param("windowKey", getWindowKey(token, windowId))
+                        .param("runType", "WINDOW_CLEANUP")
                         .param("page", "1")
                         .param("size", "10"))
                 .andExpect(status().isOk())
@@ -116,14 +120,16 @@ class Slice4_Post_Release_Cleanup_E2ETest extends AbstractGitLabE2ETest {
                 .andReturn();
 
         JsonNode runs = objectMapper.readTree(runResult.getResponse().getContentAsString()).get("data");
-        assertThat(runs.size())
-                .withFailMessage("关闭后应至少存在 1 个 Run 记录")
-                .isGreaterThanOrEqualTo(1);
+        assertThat(runs).hasSize(1);
+        assertThat(runs.get(0).path("id").asText()).isEqualTo(cleanupRunId);
 
         // 验证收尾 RunStep 序列
-        String runId = findRunIdByWindowName(token, windowName);
-        verifyRunItems(runId, 1, List.of("CLOSE_ITERATION", "UPDATE_VERSION", "ARCHIVE_BRANCH",
-                "MERGE_TO_MASTER", "CREATE_TAG", "TRIGGER_CI"));
+        verifyRunItems(cleanupRunId, 1, List.of("MERGE_TO_MASTER", "CREATE_TAG", "TRIGGER_CI"));
+        var item = runPort.findById(cleanupRunId).orElseThrow().getItems().getFirst();
+        assertThat(item.getIterationKey()).isNull();
+        assertThat(item.getMetadata()).containsEntry("cleanup.referencePolicy", "RETAIN")
+                .containsEntry("plan.triggerCi", "false");
+        assertThat(item.getSteps().getLast().result().name()).isEqualTo("SKIPPED");
     }
 
     // ─────────── Scenario 4: RM 关闭已关闭窗口幂等 ───────────
@@ -132,10 +138,8 @@ class Slice4_Post_Release_Cleanup_E2ETest extends AbstractGitLabE2ETest {
     @Order(4)
     @DisplayName("[Release Manager] 关闭已关闭窗口（幂等）")
     void rm_closeAlreadyClosedIdempotent() throws Exception {
-        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+        assertThat(E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, windowId, false).path("id").asText())
+                .isEqualTo(cleanupRunId);
     }
 
     // ─────────── Scenario 5: QA Dashboard Stats ───────────

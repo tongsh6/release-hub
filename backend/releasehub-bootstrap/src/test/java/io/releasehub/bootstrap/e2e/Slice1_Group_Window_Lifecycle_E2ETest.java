@@ -57,6 +57,7 @@ class Slice1_Group_Window_Lifecycle_E2ETest extends AbstractGitLabE2ETest {
 
     // ── 发布窗口 ──
     private String windowId;
+    private String cleanupRunId;
 
     @BeforeAll
     void setUp() throws Exception {
@@ -198,7 +199,8 @@ class Slice1_Group_Window_Lifecycle_E2ETest extends AbstractGitLabE2ETest {
     @DisplayName("[Release Manager] 重新冻结后发布")
     void refreezeAndPublish() throws Exception {
         // 先给窗口挂一个迭代（publish 前置条件）
-        String iterKey = createIteration(token, leafGroupCode);
+        String repoId = createRepo(token, leafGroupCode);
+        String iterKey = createIterationWithRepo(token, leafGroupCode, repoId);
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/attach")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -276,19 +278,16 @@ class Slice1_Group_Window_Lifecycle_E2ETest extends AbstractGitLabE2ETest {
     @Order(12)
     @DisplayName("[Release Manager] 关闭已发布的窗口")
     void closePublishedWindow() throws Exception {
-        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/unfreeze")
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        cleanupRunId = E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, windowId, false).path("id").asText();
     }
 
     @Test
     @Order(13)
     @DisplayName("[Release Manager] 关闭已关闭窗口 — 幂等")
     void closeAlreadyClosedWindowIsIdempotent() throws Exception {
-        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+        org.assertj.core.api.Assertions.assertThat(E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, windowId, false).path("id").asText())
+                .isEqualTo(cleanupRunId);
     }
 }

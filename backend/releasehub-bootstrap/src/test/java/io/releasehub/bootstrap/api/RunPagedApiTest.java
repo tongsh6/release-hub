@@ -207,9 +207,65 @@ class RunPagedApiTest {
     }
 
     @Test
-    void appliesV37OnTheIsolatedH2Database() {
-        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where version = '37' and success = true",
-                Integer.class)).isEqualTo(1);
+    void repositoryVersionRunHasNoFabricatedIterationInDetailsOrLogs() throws Exception {
+        Instant now = Instant.now();
+        Run run = Run.start(RunType.VERSION_UPDATE, operator, now);
+        RunItem item = RunItem.createForRepository("WK-VERSION-" + UUID.randomUUID(), RepoId.of("repo-version"), 1, now);
+        item.setExecutedOrder(1);
+        item.addStep(new RunStep(ActionType.UPDATE_VERSION, RunItemResult.VERSION_UPDATE_SUCCESS, now, now.plusSeconds(1), "Persisted version fixture"));
+        item.finishWith(RunItemResult.VERSION_UPDATE_SUCCESS, now.plusSeconds(1));
+        run.addItem(item);
+        run.finish(now.plusSeconds(2));
+        runPort.save(run);
+
+        var detailResponse = mockMvc.perform(get("/api/v1/version-ops/runs/{id}", run.getId().value())
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk()).andReturn();
+        JsonNode detail = objectMapper.readTree(detailResponse.getResponse().getContentAsString()).path("data");
+        assertThat(detail.path("status").asText()).isEqualTo("DONE");
+        assertThat(detail.path("items")).hasSize(1);
+        assertThat(detail.path("items").get(0).path("iterationKey").isNull()).isTrue();
+        assertThat(detail.path("items").get(0).path("repoId").asText()).isEqualTo("repo-version");
+        var logsResponse = mockMvc.perform(get("/api/v1/version-ops/runs/{id}/logs", run.getId().value())
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk()).andReturn();
+        JsonNode lines = objectMapper.readTree(logsResponse.getResponse().getContentAsString()).path("data").path("lines");
+        assertThat(lines).isNotEmpty();
+        assertThat(lines.toString()).contains("repo-version", "Persisted version fixture").doesNotContain("Iteration:");
+        assertThat(runPort.findById(run.getId().value()).orElseThrow().getItems().getFirst().getIterationKey()).isNull();
+    }
+
+    @Test
+    void documentsRepositoryScopeAndOptionalCleanupValuesAsNullable() throws Exception {
+        var response = mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode document = objectMapper.readTree(response.getResponse().getContentAsString());
+        assertThat(document.path("openapi").asText()).startsWith("3.1.");
+        JsonNode schemas = document.path("components").path("schemas");
+        for (String schema : List.of("RunItemView", "ItemView", "ItemReport")) {
+            assertThat(schemas.path(schema).path("properties").path("iterationKey").path("type"))
+                    .as(schema + ".iterationKey permits real repository-scoped null")
+                    .containsExactlyInAnyOrder(objectMapper.getNodeFactory().textNode("string"), objectMapper.getNodeFactory().textNode("null"));
+        }
+        JsonNode snapshotItem = schemas.path("Item").path("properties");
+        for (String field : List.of("iterationKey", "featureBranch", "featureBranchMode",
+                "baseVersion", "devVersion", "targetVersion", "tagName", "ciRef")) {
+            assertThat(snapshotItem.path(field).path("type"))
+                    .as("Snapshot.Item." + field + " permits absent cleanup values")
+                    .containsExactlyInAnyOrder(objectMapper.getNodeFactory().textNode("string"), objectMapper.getNodeFactory().textNode("null"));
+        }
+        assertThat(schemas.path("RunView").path("properties").path("finishedAt").path("type"))
+                .containsExactlyInAnyOrder(objectMapper.getNodeFactory().textNode("string"), objectMapper.getNodeFactory().textNode("null"));
+        JsonNode close = document.path("paths").path("/api/v1/release-windows/{id}/close").path("post");
+        assertThat(close.path("requestBody").path("required").asBoolean()).isFalse();
+        assertThat(schemas.path("CloseRequest").path("properties").path("triggerCi").path("type").asText()).isEqualTo("boolean");
+        assertThat(schemas.path("CloseRequest").path("properties").has("operator")).isFalse();
+        assertThat(close.path("responses").path("200").path("content").path("*/*").path("schema").path("$ref").asText())
+                .isEqualTo("#/components/schemas/ApiResponseRunView");
+    }
+
+    @Test
+    void appliesV37AndV38OnTheIsolatedH2Database() {
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where version in ('37', '38') and success = true",
+                Integer.class)).isEqualTo(2);
     }
 
     private JsonNode page(String statusFilter, String windowKey, String groupCode, int page, int size) throws Exception {
@@ -236,7 +292,8 @@ class RunPagedApiTest {
         RunItem item = run.getItems().getFirst();
         var planned = new RunPlanSnapshot.Item(item.getId().value(), item.getPlannedOrder(), item.getRepo().value(),
                 "Persisted repository", item.getIterationKey().value(), "GITLAB", "main", "feature/fixture", "AUTO",
-                "release/fixture", null, null, null, List.of("ENSURE_FEATURE", "ENSURE_RELEASE", "ENSURE_MR", "TRY_MERGE"));
+                "release/fixture", null, null, null, List.of("ENSURE_FEATURE", "ENSURE_RELEASE", "ENSURE_MR", "TRY_MERGE"),
+                List.of(item.getIterationKey().value()), null, false, null);
         var snapshot = new RunPlanSnapshot(item.getWindowKey(), "G001", "DRAFT", false, true, List.of(planned));
         new TransactionTemplate(transactions).executeWithoutResult(tx -> runPlanPort.save(new SavedRunPlan(
                 run.getId().value(), "window-" + run.getId().value(), run.getOperator(), UUID.randomUUID().toString(),

@@ -142,6 +142,11 @@ class GroupAppServiceTest {
         }
 
         @Override
+        public Optional<io.releasehub.domain.releasewindow.ReleaseWindow> findByIdForUpdate(io.releasehub.domain.releasewindow.ReleaseWindowId id) {
+            throw new UnsupportedOperationException("This test fixture does not execute window mutations");
+        }
+
+        @Override
         public List<io.releasehub.domain.releasewindow.ReleaseWindow> findAll() {
             return List.of();
         }

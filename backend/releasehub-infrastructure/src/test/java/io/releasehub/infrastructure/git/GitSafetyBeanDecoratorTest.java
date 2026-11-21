@@ -30,16 +30,16 @@ class GitSafetyBeanDecoratorTest {
     private final GitOperationJournalPort journal = mock(GitOperationJournalPort.class);
     private MockRestServiceServer server;
     private GitBranchPort adapter;
+    private GitLabGitBranchAdapter target;
 
     @BeforeEach void setup() {
         var properties = new GitSafetyProperties();
         properties.setEnabled(true);
         var sessions = new GitSafetySessions(journal);
         var identities = mock(GitRemoteIdentityResolver.class);
-        var endpoint = new GitRemoteIdentityResolver.Endpoint("GITLAB", "https://gitlab.test",
-                "acme/repo", PROJECT, "/merge_requests");
-        when(identities.resolve(any(), any())).thenReturn(new GitRemoteIdentityResolver.Identity(
-                "repo", "mapping", "b".repeat(64), "GITLAB", "https://gitlab.test", "17", endpoint));
+        when(identities.resolve(any(), any())).thenAnswer(invocation -> new GitRemoteIdentityResolver.Identity(
+                "repo", "mapping", "b".repeat(64), "GITLAB", "https://gitlab.test", "17",
+                GitRemoteIdentityResolver.parse(invocation.getArgument(0))));
         when(journal.begin(any())).thenAnswer(invocation ->
                 ((GitOperationJournalPort.Command) invocation.getArgument(0)).operationId());
         var transactions = mock(PlatformTransactionManager.class);
@@ -48,7 +48,7 @@ class GitSafetyBeanDecoratorTest {
         http.getInterceptors().add(new GitWriteHttpInterceptor(properties, sessions, journal,
                 identities, new ObjectMapper(), transactions));
         server = MockRestServiceServer.bindTo(http).build();
-        var target = new GitLabGitBranchAdapter(new RestTemplateBuilder());
+        target = spy(new GitLabGitBranchAdapter(new RestTemplateBuilder(), identities));
         target.setRestTemplate(http);
         var decorator = new GitSafetyBeanDecorator(provider(properties), provider(sessions), provider(journal),
                 provider(mock(CodeRepositoryPort.class)), provider(transactions));
@@ -104,6 +104,56 @@ class GitSafetyBeanDecoratorTest {
         assertEquals(MergeStatus.UNKNOWN, result.status());
         verifyNoInteractions(journal);
         server.verify();
+    }
+
+    @Test void shouldKeepAppliedHttpGuardWhenTypedWriteNormallyReturnsUnknown() {
+        server.expect(requestTo("https://gitlab.test/api/v4/projects/17/pipeline?ref=v1"))
+                .andRespond(withSuccess(pipelineBody(), MediaType.APPLICATION_JSON));
+        doAnswer(invocation -> {
+            invocation.callRealMethod();
+            return GitWriteResult.unknown("PIPELINE_RESPONSE_UNCONFIRMED");
+        }).when(target).triggerPipeline(CLONE, "token", "17", "v1", SHA);
+
+        var result = adapter.triggerPipeline(CLONE, "token", "17", "v1", SHA);
+
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, result.outcome());
+        verify(journal).finish(anyString(), eq(GitWriteResult.Outcome.APPLIED), anyString(), isNull());
+        verify(journal).completeSession(anyString(), eq(false));
+        verify(journal, never()).completeSession(anyString(), eq(true));
+        server.verify();
+    }
+
+    @Test void shouldReleaseConfirmedRejectedTypedWrite() {
+        server.expect(requestTo("https://gitlab.test/api/v4/projects/17/pipeline?ref=v1"))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.FORBIDDEN)
+                        .contentType(MediaType.APPLICATION_JSON).body("{\"message\":\"sensitive fixture\"}"));
+
+        var result = adapter.triggerPipeline(CLONE, "token", "17", "v1", SHA);
+
+        assertEquals(GitWriteResult.Outcome.REJECTED, result.outcome());
+        assertEquals("HTTP_403", result.reason());
+        verify(journal).finish(anyString(), eq(GitWriteResult.Outcome.REJECTED), anyString(), isNull());
+        verify(journal).completeSession(anyString(), eq(true));
+        verify(journal, never()).completeSession(anyString(), eq(false));
+        server.verify();
+    }
+
+    @Test void shouldNotCreateGuardForTypedUnknownWithoutDispatch() {
+        doReturn(GitWriteResult.unknown("NOT_DISPATCHED")).when(target)
+                .triggerPipeline(CLONE, "token", "17", "v1", SHA);
+
+        assertEquals(GitWriteResult.Outcome.UNKNOWN,
+                adapter.triggerPipeline(CLONE, "token", "17", "v1", SHA).outcome());
+
+        verifyNoInteractions(journal);
+        server.verify();
+    }
+
+    private static String pipelineBody() {
+        return """
+                {"id":321,"project_id":17,"ref":"v1","sha":"%s",
+                 "web_url":"https://gitlab.test/acme/repo/-/pipelines/321"}
+                """.formatted(SHA);
     }
 
     private void sourceRead() {

@@ -148,10 +148,9 @@ class ReleaseFlowE2ETest extends AbstractE2ETest {
     @Test
     @Order(10)
     void step10_close() throws Exception {
-        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/unfreeze")
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, windowId, false);
     }
 
     @Test

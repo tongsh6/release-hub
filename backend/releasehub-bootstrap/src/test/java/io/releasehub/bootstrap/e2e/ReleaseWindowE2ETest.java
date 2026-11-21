@@ -102,10 +102,16 @@ class ReleaseWindowE2ETest extends AbstractE2ETest {
 
     @Test
     void close() throws Exception {
-        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("CLOSED"));
+        String closingWindow = createReleaseWindow(token, groupCode);
+        String repoId = createRepo(token, groupCode);
+        String closingIteration = E2ETestFixtures.createIterationWithRepo(mockMvc, objectMapper, token, groupCode, repoId);
+        mockMvc.perform(post("/api/v1/release-windows/{id}/attach", closingWindow)
+                        .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("iterationKeys", List.of(closingIteration)))))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/release-windows/{id}/publish", closingWindow)
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, closingWindow, false);
     }
 
     @Test
@@ -123,7 +129,8 @@ class ReleaseWindowE2ETest extends AbstractE2ETest {
     void freezeClosedWindowFails() throws Exception {
         // B4 regression: freeze on CLOSED window → RW_009
         String freshWinId = createReleaseWindow(token, groupCode);
-        String freshIterKey = createIteration(token, groupCode);
+        String freshRepoId = createRepo(token, groupCode);
+        String freshIterKey = E2ETestFixtures.createIterationWithRepo(mockMvc, objectMapper, token, groupCode, freshRepoId);
 
         mockMvc.perform(post("/api/v1/release-windows/" + freshWinId + "/attach")
                         .header("Authorization", "Bearer " + token)
@@ -137,9 +144,7 @@ class ReleaseWindowE2ETest extends AbstractE2ETest {
                         .content("{}"))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/release-windows/" + freshWinId + "/close")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk());
+        E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, freshWinId, false);
 
         // Now freeze the CLOSED window → should fail
         mockMvc.perform(post("/api/v1/release-windows/" + freshWinId + "/freeze")

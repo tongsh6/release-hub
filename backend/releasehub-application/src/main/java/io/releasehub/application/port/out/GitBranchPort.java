@@ -1,5 +1,8 @@
 package io.releasehub.application.port.out;
 
+import io.releasehub.application.gitoperation.GitReadResult;
+import io.releasehub.application.gitoperation.GitWriteResult;
+
 import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.run.MergeStatus;
 
@@ -15,7 +18,15 @@ public interface GitBranchPort {
 
     MergeResult mergeBranch(String repoCloneUrl, String token, String sourceBranch, String targetBranch, String commitMessage);
 
-    boolean createTag(String repoCloneUrl, String token, String tagName, String ref, String message);
+    /** Only a confirmed numeric project identity and full commit SHA may authorize a release tag. */
+    GitReadResult<TagEvidence> readTag(String repoCloneUrl, String token, String expectedProjectId, String tagName);
+
+    GitWriteResult<TagEvidence> createTag(String repoCloneUrl, String token, String expectedProjectId,
+                                         String tagName, String targetSha, String message);
+
+    record TagEvidence(String projectId, String tagName, String commitSha) {}
+
+    record PipelineEvidence(String projectId, String id, String ref, String sha, String url) {}
 
     BranchStatus getBranchStatus(String repoCloneUrl, String token, String branchName);
 
@@ -133,9 +144,12 @@ public interface GitBranchPort {
      * @param repoCloneUrl 仓库克隆地址
      * @param token Git 访问令牌
      * @param ref 分支名或标签名
-     * @return 流水线 ID，失败返回 null
+     * @param expectedProjectId 本次已确认的远端项目 ID
+     * @param expectedSha 本次发布的确切提交；结果不符时保持 UNKNOWN，不可自动重放
+     * @return 确认创建、明确拒绝或结果未决，以及完整流水线证据
      */
-    String triggerPipeline(String repoCloneUrl, String token, String ref);
+    GitWriteResult<PipelineEvidence> triggerPipeline(String repoCloneUrl, String token, String expectedProjectId,
+                                                     String ref, String expectedSha);
 
     /**
      * 列出仓库中匹配前缀的分支名。

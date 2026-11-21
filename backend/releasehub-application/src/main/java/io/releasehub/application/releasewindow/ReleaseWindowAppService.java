@@ -91,7 +91,7 @@ public class ReleaseWindowAppService {
     @Transactional
     public void delete(String id) {
         ReleaseWindowId windowId = ReleaseWindowId.of(id);
-        ReleaseWindow rw = releaseWindowPort.findById(windowId)
+        ReleaseWindow rw = releaseWindowPort.findByIdForUpdate(windowId)
                                             .orElseThrow(() -> NotFoundException.releaseWindow(id));
         if (rw.getStatus() != ReleaseWindowStatus.DRAFT) {
             throw BusinessException.rwDeleteBlocked(id);
@@ -216,7 +216,7 @@ public class ReleaseWindowAppService {
 
     @Transactional
     public ReleaseWindowView publish(String id) {
-        ReleaseWindow rw = findById(id);
+        ReleaseWindow rw = findByIdForUpdate(id);
 
         // 验证关联迭代
         List<WindowIteration> iterations = windowIterationPort.listByWindow(ReleaseWindowId.of(id));
@@ -236,9 +236,14 @@ public class ReleaseWindowAppService {
                                 .orElseThrow(() -> NotFoundException.releaseWindow(id));
     }
 
+    private ReleaseWindow findByIdForUpdate(String id) {
+        return releaseWindowPort.findByIdForUpdate(ReleaseWindowId.of(id))
+                                .orElseThrow(() -> NotFoundException.releaseWindow(id));
+    }
+
     @Transactional
     public ReleaseWindowView freeze(String id) {
-        ReleaseWindow rw = findById(id);
+        ReleaseWindow rw = findByIdForUpdate(id);
         rw.freeze(Instant.now(clock));
         releaseWindowPort.save(rw);
         return ReleaseWindowView.from(rw);
@@ -246,27 +251,15 @@ public class ReleaseWindowAppService {
 
     @Transactional
     public ReleaseWindowView unfreeze(String id) {
-        ReleaseWindow rw = findById(id);
+        ReleaseWindow rw = findByIdForUpdate(id);
         rw.unfreeze(Instant.now(clock));
         releaseWindowPort.save(rw);
         return ReleaseWindowView.from(rw);
     }
 
-    @Transactional
-    public ReleaseWindowView close(String id, String operator) {
-        ReleaseWindow rw = findById(id);
-        rw.close(Instant.now(clock));
-        releaseWindowPort.save(rw);
-
-        try {
-            Run run = runAppService.executeCleanup(id, operator);
-            log.info("Cleanup run {} completed for closing window {}", run.getId().value(), id);
-        } catch (Exception e) {
-            log.error("Failed to execute cleanup for closing window {}: {}", id, e.getMessage());
-            // 关闭成功但收尾任务失败时，不回滚关闭状态
-        }
-
-        return ReleaseWindowView.from(rw);
+    /** 关闭状态与收尾意图由受理事务一起提交，远端执行不占用窗口事务。 */
+    public Run close(String id, String operator, boolean triggerCi) {
+        return runAppService.executeCleanup(id, operator, triggerCi);
     }
 
     /**

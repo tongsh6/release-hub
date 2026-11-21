@@ -56,7 +56,7 @@ class ErrorHandlingE2ETest extends AbstractE2ETest {
     /**
      * RW_009：对已 CLOSED 的发布窗口执行冻结操作，应返回 400 + RW_009
      * <p>
-     * 状态机路径：DRAFT → freeze → DRAFT(frozen) → publish → PUBLISHED → close → CLOSED → freeze ✗
+     * 状态机路径：DRAFT → freeze → DRAFT(frozen) → publish → PUBLISHED → unfreeze → close → CLOSED → freeze ✗
      */
     @Test
     void should_reject_freeze_on_closed_release_window() throws Exception {
@@ -65,7 +65,8 @@ class ErrorHandlingE2ETest extends AbstractE2ETest {
 
         // 创建发布窗口并关联迭代（publish 前需有迭代）
         String windowId = createReleaseWindow(token, groupCode);
-        String iterKey = createIteration(token, groupCode);
+        String repoId = createRepo(token, groupCode);
+        String iterKey = E2ETestFixtures.createIterationWithRepo(mockMvc, objectMapper, token, groupCode, repoId);
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/attach")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -85,9 +86,9 @@ class ErrorHandlingE2ETest extends AbstractE2ETest {
                         .content("{}"))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/unfreeze")
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, windowId, false);
 
         // 对 CLOSED 窗口再次冻结，期望 RW_009（无效状态）
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/freeze")

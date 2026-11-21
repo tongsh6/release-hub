@@ -123,7 +123,7 @@ class AttachAppServiceTest {
     void frozenWindowRejectsAttachBeforeChangingBindings() {
         ReleaseWindow window = window(ReleaseWindowStatus.DRAFT);
         window.freeze(now);
-        when(releaseWindowPort.findById(windowId)).thenReturn(Optional.of(window));
+        when(releaseWindowPort.findByIdForUpdate(windowId)).thenReturn(Optional.of(window));
 
         assertThatThrownBy(() -> service.attach(windowId.value(), List.of("ITER-1")))
                 .isInstanceOf(BusinessException.class)
@@ -135,7 +135,7 @@ class AttachAppServiceTest {
     void frozenWindowRejectsDetachBeforeChangingBindings() {
         ReleaseWindow window = window(ReleaseWindowStatus.DRAFT);
         window.freeze(now);
-        when(releaseWindowPort.findById(windowId)).thenReturn(Optional.of(window));
+        when(releaseWindowPort.findByIdForUpdate(windowId)).thenReturn(Optional.of(window));
 
         assertThatThrownBy(() -> service.detach(windowId.value(), "ITER-1"))
                 .isInstanceOf(BusinessException.class)
@@ -146,7 +146,7 @@ class AttachAppServiceTest {
     @Test
     void publishedAndClosedWindowsRejectAttachAndDetach() {
         for (ReleaseWindowStatus status : List.of(ReleaseWindowStatus.PUBLISHED, ReleaseWindowStatus.CLOSED)) {
-            when(releaseWindowPort.findById(windowId)).thenReturn(Optional.of(window(status)));
+            when(releaseWindowPort.findByIdForUpdate(windowId)).thenReturn(Optional.of(window(status)));
             assertThatThrownBy(() -> service.attach(windowId.value(), List.of("ITER-1")))
                     .isInstanceOf(BusinessException.class)
                     .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("RW_009"));
@@ -157,8 +157,19 @@ class AttachAppServiceTest {
         verifyNoInteractions(windowIterationPort, iterationPort);
     }
 
+    @Test
+    void detachUsesTheSameWindowLockAsCleanupAdmission() {
+        allowDraftWindow();
+
+        service.detach(windowId.value(), "ITER-1");
+
+        var order = org.mockito.Mockito.inOrder(releaseWindowPort, windowIterationPort);
+        order.verify(releaseWindowPort).findByIdForUpdate(windowId);
+        order.verify(windowIterationPort).detach(windowId, IterationKey.of("ITER-1"));
+    }
+
     private void allowDraftWindow() {
-        when(releaseWindowPort.findById(windowId)).thenReturn(Optional.of(window(ReleaseWindowStatus.DRAFT)));
+        when(releaseWindowPort.findByIdForUpdate(windowId)).thenReturn(Optional.of(window(ReleaseWindowStatus.DRAFT)));
     }
 
     private ReleaseWindow window(ReleaseWindowStatus status) {

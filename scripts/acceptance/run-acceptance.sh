@@ -2445,24 +2445,30 @@ SA16_WINDOW_KEY=$(curl -s "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID" -H "
 if [ -z "$SA16_WINDOW_ID" ] || [ -z "$SA16_WINDOW_KEY" ]; then
     no "SA-016 无可用窗口用于关闭验收"
 else
-    CLOSE_RESULT=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID/close" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
+    CLOSE_RESULT=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID/close" -H "$AUTH" -H "Content-Type: application/json" -d '{"triggerCi":false}')
     CLOSE_SUCCESS=$(echo "$CLOSE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success','?'))" 2>/dev/null)
+    CLOSE_RUN_ID=$(echo "$CLOSE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('id',''))" 2>/dev/null)
     CLOSE_STATUS=$(echo "$CLOSE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('status',''))" 2>/dev/null)
-    if [ "$CLOSE_SUCCESS" = "True" ] && [ "$CLOSE_STATUS" = "CLOSED" ]; then
-        ok "SA-016 关闭窗口成功 → CLOSED"
+    WINDOW_AFTER_CLOSE=$(curl -s "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('status',''))" 2>/dev/null)
+    if [ "$CLOSE_SUCCESS" = "True" ] && [ -n "$CLOSE_RUN_ID" ] && [ "$WINDOW_AFTER_CLOSE" = "CLOSED" ]; then
+        ok "SA-016 关闭已受理，窗口 CLOSED，收尾 Run=$CLOSE_RUN_ID status=$CLOSE_STATUS"
     else
-        no "SA-016 关闭窗口失败: $CLOSE_RESULT"
+        no "SA-016 关闭受理失败: $CLOSE_RESULT"
+    fi
+    if [ "$CLOSE_STATUS" = "DONE" ]; then
+        ok "SA-016 收尾 Run 所有仓库完成，CI 默认为关闭"
+    else
+        no "SA-016 收尾未完成，不以 HTTP 200 代替 Git 成功: status=$CLOSE_STATUS run=$CLOSE_RUN_ID"
     fi
 
-    IDEMPOTENT_CLOSE_RESULT=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID/close" -H "$AUTH" -H "Content-Type: application/json" -d '{}')
+    IDEMPOTENT_CLOSE_RESULT=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID/close" -H "$AUTH" -H "Content-Type: application/json" -d '{"triggerCi":false}')
     IDEMPOTENT_CLOSE_SUCCESS=$(echo "$IDEMPOTENT_CLOSE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success','?'))" 2>/dev/null)
-    IDEMPOTENT_CLOSE_STATUS=$(echo "$IDEMPOTENT_CLOSE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('status',''))" 2>/dev/null)
-    if [ "$IDEMPOTENT_CLOSE_SUCCESS" = "True" ] && [ "$IDEMPOTENT_CLOSE_STATUS" = "CLOSED" ]; then
-        ok "SA-016 重复关闭保持幂等 → CLOSED"
+    IDEMPOTENT_CLOSE_ID=$(echo "$IDEMPOTENT_CLOSE_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('id',''))" 2>/dev/null)
+    if [ "$IDEMPOTENT_CLOSE_SUCCESS" = "True" ] && [ -n "$CLOSE_RUN_ID" ] && [ "$IDEMPOTENT_CLOSE_ID" = "$CLOSE_RUN_ID" ]; then
+        ok "SA-016 重复关闭返回原收尾 Run，不产生新执行: $CLOSE_RUN_ID"
     else
-        no "SA-016 重复关闭未保持幂等: $IDEMPOTENT_CLOSE_RESULT"
+        no "SA-016 重复关闭未保持原 Run: $IDEMPOTENT_CLOSE_RESULT"
     fi
-
     POST_CLOSE_ATTACH=$(curl -s -X POST "$BACKEND/api/v1/release-windows/$SA16_WINDOW_ID/attach" -H "$AUTH" -H "Content-Type: application/json" \
         -d "{\"iterationKeys\":[\"$ITER_KEY\"]}" 2>/dev/null)
     POST_CLOSE_ATTACH_CODE=$(echo "$POST_CLOSE_ATTACH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('code',''))" 2>/dev/null)
@@ -2481,74 +2487,82 @@ else
         no "SA-016 关闭后版本更新未被正确拒绝: $POST_CLOSE_VU"
     fi
 
-    CLEANUP_RUNS=$(curl -s "$BACKEND/api/v1/runs/paged?size=10&runType=WINDOW_ORCHESTRATION&windowKey=$SA16_WINDOW_KEY" -H "$AUTH")
-    CLEANUP_EVIDENCE=$(echo "$CLEANUP_RUNS" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-runs=d.get('data',[])
-cleanup=[]
-for r in runs:
-    actions=set()
-    for item in r.get('items',[]):
-        for s in item.get('steps',[]):
-            actions.add(s.get('actionType'))
-    if {'ARCHIVE_BRANCH','MERGE_TO_MASTER','CREATE_TAG','TRIGGER_CI'} & actions:
-        cleanup.append((r.get('id'), r.get('status'), len(r.get('items',[])), sorted(actions)))
-if cleanup:
-    rid,status,items,actions=cleanup[0]
-    print(f'FOUND id={rid} status={status} items={items} actions={actions}')
-else:
-    print('NOT_FOUND')
-" 2>/dev/null)
+    CLEANUP_RUNS=$(curl -s "$BACKEND/api/v1/runs/paged?size=10&runType=WINDOW_CLEANUP&windowKey=$SA16_WINDOW_KEY" -H "$AUTH")
+    CLEANUP_EVIDENCE=$(echo "$CLEANUP_RUNS" | EXPECT_RUN="$CLOSE_RUN_ID" python3 -c '
+import os,sys,json
+runs=json.load(sys.stdin).get("data",[])
+expected=os.environ["EXPECT_RUN"]
+assert len(runs)==1 and runs[0].get("id")==expected, "expected exactly the returned cleanup Run"
+items=runs[0].get("items",[])
+assert items, "cleanup items missing"
+for item in items:
+    assert item.get("iterationKey") is None, "cleanup scope must be repository"
+    metadata=item.get("metadata",{})
+    participants=json.loads(metadata.get("plan.participatingIterationKeys","null"))
+    assert isinstance(participants,list) and participants and all(isinstance(key,str) and key for key in participants), "missing saved participating iterations"
+    assert metadata.get("cleanup.referencePolicy")=="RETAIN", "retained reference policy missing"
+    assert metadata.get("plan.triggerCi")=="false", "CI was not selected"
+    steps=item.get("steps",[])
+    assert [step.get("actionType") for step in steps]==["MERGE_TO_MASTER","CREATE_TAG","TRIGGER_CI"], "cleanup step contract differs"
+    assert steps[-1].get("result")=="SKIPPED", "unselected CI must be skipped"
+print("FOUND id="+expected+" repositories="+str(len(items))+" ci=SKIPPED refs=RETAIN")
+' 2>/dev/null)
     if echo "$CLEANUP_EVIDENCE" | grep -q '^FOUND'; then
-        ok "SA-016 收尾 Run 可见: $CLEANUP_EVIDENCE"
+        ok "SA-016 仓库级收尾事实与快照一致: $CLEANUP_EVIDENCE"
     else
-        no "SA-016 未找到收尾 Run: $CLEANUP_EVIDENCE"
+        no "SA-016 收尾 Run 范围、步骤或幂等证据不完整: $CLEANUP_EVIDENCE"
     fi
 
-    if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ]; then
+    if [ "$GITLAB_READY" = "true" ] && [ -n "$GITLAB_PAT" ] && [ "$CLOSE_STATUS" = "DONE" ]; then
         SA16_REPO_URL=$(curl -s "$BACKEND/api/v1/repositories/$VU_REPO_ID" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('cloneUrl',''))" 2>/dev/null)
-        SA16_ITER_KEY="${CLEAN_ITER_KEY:-$ITER_KEY}"
-        SA16_FEATURE_BRANCH="${CLEAN_BRANCH:-feature/$SA16_ITER_KEY}"
-        SA16_RELEASE_BRANCH="release/$SA16_WINDOW_KEY"
-        SA16_FEATURE_ARCHIVE="archive/released/${SA16_FEATURE_BRANCH//\//-}"
-        SA16_RELEASE_ARCHIVE="archive/released/${SA16_RELEASE_BRANCH//\//-}"
-        SA16_TARGET_VERSION=$(curl -s "$BACKEND/api/v1/iterations/$SA16_ITER_KEY/repos/$VU_REPO_ID/version-info" -H "$AUTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('targetVersion',''))" 2>/dev/null)
-        SA16_TAG="v$SA16_TARGET_VERSION"
-
-        if [ -n "$SA16_REPO_URL" ] && [ -n "$SA16_ITER_KEY" ] && [ -n "$SA16_TARGET_VERSION" ]; then
-            SA16_MERGE_COMMIT=$(verify_gitlab_commit "$SA16_REPO_URL" "main" "Merge $SA16_RELEASE_BRANCH into main")
-            SA16_TAG_STATE=$(gitlab_tag_state "$SA16_REPO_URL" "$SA16_TAG")
-            SA16_FEATURE_AFTER=$(gitlab_branch_state "$SA16_REPO_URL" "$SA16_FEATURE_BRANCH")
-            SA16_FEATURE_ARCHIVE_AFTER=$(gitlab_branch_state "$SA16_REPO_URL" "$SA16_FEATURE_ARCHIVE")
+        # Ref/Tag/项目身份必须来自本次 Run 的保存证据，不能从实时迭代配置重新推算。
+        SA16_SAVED=$(echo "$CLOSE_RESULT" | EXPECT_REPO="$VU_REPO_ID" python3 -c '
+import os,sys,json,re
+items=json.load(sys.stdin).get("data",{}).get("items",[])
+item=next(item for item in items if item.get("repoId")==os.environ["EXPECT_REPO"])
+m=item.get("metadata",{})
+values=[m.get(key,"") for key in ["git.projectId","git.mrIid","git.sourceBranch","git.targetBranch","git.sourceSha","git.mergeSha","plan.tagName"]]
+assert values[0].isdigit() and values[1].isdigit() and all(values[:6]), "MR evidence missing"
+assert all(re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}",sha) for sha in values[4:6]), "invalid SHA evidence"
+print("|".join(values))
+' 2>/dev/null)
+        IFS='|' read -r SA16_PROJECT SA16_MR SA16_RELEASE_BRANCH SA16_TARGET_BRANCH SA16_SOURCE_SHA SA16_MERGE_SHA SA16_TAG <<< "$SA16_SAVED"
+        if [ -n "$SA16_PROJECT" ] && [ -n "$SA16_MR" ]; then
+            SA16_REMOTE_MR=$(curl -s "$GITLAB/api/v4/projects/$SA16_PROJECT/merge_requests/$SA16_MR" -H "PRIVATE-TOKEN: $GITLAB_PAT")
+            SA16_MR_MATCH=$(echo "$SA16_REMOTE_MR" | EXPECT_PROJECT="$SA16_PROJECT" EXPECT_IID="$SA16_MR" EXPECT_SOURCE="$SA16_RELEASE_BRANCH" EXPECT_TARGET="$SA16_TARGET_BRANCH" EXPECT_SOURCE_SHA="$SA16_SOURCE_SHA" EXPECT_MERGE_SHA="$SA16_MERGE_SHA" python3 -c '
+import os,sys,json
+m=json.load(sys.stdin)
+valid=(str(m.get("project_id"))==os.environ["EXPECT_PROJECT"] and str(m.get("iid"))==os.environ["EXPECT_IID"]
+       and m.get("state")=="merged" and m.get("source_branch")==os.environ["EXPECT_SOURCE"]
+       and m.get("target_branch")==os.environ["EXPECT_TARGET"] and m.get("sha")==os.environ["EXPECT_SOURCE_SHA"]
+       and m.get("merge_commit_sha")==os.environ["EXPECT_MERGE_SHA"])
+print("MATCH" if valid else "MISMATCH")
+' 2>/dev/null)
+            [ "$SA16_MR_MATCH" = "MATCH" ] \
+                && ok "SA-016 真实 GitLab MR 身份、refs、source/merge SHA 与 Run 一致" \
+                || no "SA-016 真实 GitLab MR 证据不匹配: $SA16_MR_MATCH"
             SA16_RELEASE_AFTER=$(gitlab_branch_state "$SA16_REPO_URL" "$SA16_RELEASE_BRANCH")
-            SA16_RELEASE_ARCHIVE_AFTER=$(gitlab_branch_state "$SA16_REPO_URL" "$SA16_RELEASE_ARCHIVE")
-
-            if [ "$SA16_MERGE_COMMIT" = "FOUND" ]; then
-                ok "SA-016 真实 GitLab merge to main 证据: $SA16_RELEASE_BRANCH -> main"
+            [ "$SA16_RELEASE_AFTER" = "FOUND" ] \
+                && ok "SA-016 release 分支保留: $SA16_RELEASE_BRANCH" \
+                || no "SA-016 release 保留状态异常: $SA16_RELEASE_AFTER"
+            if [ -n "$SA16_TAG" ]; then
+                SA16_ENCODED_TAG=$(echo "$SA16_TAG" | gitlab_encode)
+                SA16_TAG_MATCH=$(curl -s "$GITLAB/api/v4/projects/$SA16_PROJECT/repository/tags/$SA16_ENCODED_TAG" -H "PRIVATE-TOKEN: $GITLAB_PAT" | EXPECT_TAG="$SA16_TAG" EXPECT_SHA="$SA16_MERGE_SHA" python3 -c '
+import os,sys,json
+tag=json.load(sys.stdin)
+print("MATCH" if tag.get("name")==os.environ["EXPECT_TAG"] and tag.get("commit",{}).get("id")==os.environ["EXPECT_SHA"] else "MISMATCH")
+' 2>/dev/null)
+                [ "$SA16_TAG_MATCH" = "MATCH" ] \
+                    && ok "SA-016 真实 GitLab Tag 指向已确认 merge SHA: $SA16_TAG" \
+                    || no "SA-016 真实 GitLab Tag 证据不匹配: $SA16_TAG_MATCH"
             else
-                no "SA-016 未发现 release 合并到 main 的真实 GitLab commit: $SA16_MERGE_COMMIT"
-            fi
-            if [ "$SA16_TAG_STATE" = "FOUND" ]; then
-                ok "SA-016 真实 GitLab tag 证据: $SA16_TAG"
-            else
-                no "SA-016 未发现真实 GitLab tag $SA16_TAG: $SA16_TAG_STATE"
-            fi
-            if [ "$SA16_FEATURE_AFTER" = "NOT_FOUND" ] && [ "$SA16_FEATURE_ARCHIVE_AFTER" = "FOUND" ]; then
-                ok "SA-016 feature 分支关闭后归档: $SA16_FEATURE_BRANCH -> $SA16_FEATURE_ARCHIVE"
-            else
-                no "SA-016 feature 分支归档状态异常: active=$SA16_FEATURE_AFTER archive=$SA16_FEATURE_ARCHIVE_AFTER"
-            fi
-            if [ "$SA16_RELEASE_AFTER" = "NOT_FOUND" ] && [ "$SA16_RELEASE_ARCHIVE_AFTER" = "FOUND" ]; then
-                ok "SA-016 release 分支关闭后归档: $SA16_RELEASE_BRANCH -> $SA16_RELEASE_ARCHIVE"
-            else
-                no "SA-016 release 分支归档状态异常: active=$SA16_RELEASE_AFTER archive=$SA16_RELEASE_ARCHIVE_AFTER"
+                info "SA-016 快照未配置 Tag，CREATE_TAG 必须显示 SKIPPED"
             fi
         else
-            no "SA-016 真实 GitLab 收尾证据缺少上下文: repo=$SA16_REPO_URL iteration=$SA16_ITER_KEY target=$SA16_TARGET_VERSION"
+            no "SA-016 收尾缺少保存的完整 GitLab MR 证据"
         fi
     else
-        skip "SA-016 真实 GitLab tag/merge/archive 证据跳过：GitLab 或 PAT 不可用"
+        skip "SA-016 远端只读证据检查跳过：GitLab/PAT 不可用或收尾 Run 尚未 DONE"
     fi
 fi
 

@@ -60,7 +60,7 @@ public class VersionOpsController {
                     for (RunItem item : run.getItems()) {
                         lines.add("[INFO] --- " + item.getWindowKey() +
                                 " | Repo: " + item.getRepo().value() +
-                                " | Iteration: " + item.getIterationKey().value());
+                                (item.getIterationKey() == null ? "" : " | Iteration: " + item.getIterationKey().value()));
                         for (RunStep step : item.getSteps()) {
                             String level = step.result().isFailure() ||
                                     step.result() == io.releasehub.domain.run.RunItemResult.UNKNOWN ? "ERROR" : "INFO";
@@ -149,7 +149,7 @@ public class VersionOpsController {
             return new ItemView(
                     item.getWindowKey(),
                     item.getRepo().value(),
-                    item.getIterationKey().value(),
+                    item.getIterationKey() == null ? null : item.getIterationKey().value(),
                     item.getFinalResult() != null ? item.getFinalResult().name() : null,
                     item.getSteps().stream().map(StepView::from).toList()
             );

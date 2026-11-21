@@ -68,8 +68,12 @@ public class GitRemoteEvidenceAdapter implements GitOperationEvidencePort {
                 if(ref==null)return result(GitReadResult.Status.INCOMPLETE,json.createObjectNode());
                 String sha=ref.path("commit").path("id").asText();var evidence=summary(ref);evidence.put("commitSha",sha);
                 String expected=target.path("ref").asText();
-                if(!expected.matches("[0-9a-fA-F]{40,64}"))return result(GitReadResult.Status.INCOMPLETE,evidence);
-                return result(expected.equals(sha)?GitReadResult.Status.FOUND:GitReadResult.Status.MISMATCH,evidence);
+                if(!GitLabGitBranchAdapter.validSha(expected))return result(GitReadResult.Status.INCOMPLETE,evidence);
+                boolean tag=op.action().equals("CREATE_TAG");
+                if(tag&&(name.isBlank()||!ref.path("name").isTextual()||ref.path("name").asText().isBlank()))
+                    return result(GitReadResult.Status.INCOMPLETE,evidence);
+                boolean matches=expected.equals(sha)&&(!tag||name.equals(ref.path("name").asText()));
+                return result(matches?GitReadResult.Status.FOUND:GitReadResult.Status.MISMATCH,evidence);
             }
             if(op.action().equals("UPDATE_FILE")) {
                 JsonNode file=get(project+suffix+"?ref="+encode(target.path("branch").asText()),headers).getBody();
@@ -85,7 +89,12 @@ public class GitRemoteEvidenceAdapter implements GitOperationEvidencePort {
                 JsonNode pipeline=get(project+"/pipelines/"+encode(id),headers).getBody();
                 if(pipeline==null)return result(GitReadResult.Status.INCOMPLETE,json.createObjectNode());
                 var evidence=summary(pipeline);evidence.put("status",pipeline.path("status").asText());
-                return result(target.path("ref").asText().equals(pipeline.path("ref").asText())?GitReadResult.Status.FOUND:GitReadResult.Status.MISMATCH,evidence);
+                String expectedSha=target.path("sha").asText();
+                if(!GitLabGitBranchAdapter.validSha(expectedSha))return result(GitReadResult.Status.INCOMPLETE,evidence);
+                var confirmed=GitLabGitBranchAdapter.pipelineEvidence(pipeline,op.projectId(),target.path("ref").asText(),expectedSha);
+                if(confirmed==null||!id.equals(confirmed.id()))return result(GitReadResult.Status.MISMATCH,evidence);
+                evidence.put("projectId",confirmed.projectId());evidence.put("url",confirmed.url());
+                return result(GitReadResult.Status.FOUND,evidence);
             }
             return result(GitReadResult.Status.UNSUPPORTED,json.createObjectNode());
         }catch(HttpClientErrorException e) {

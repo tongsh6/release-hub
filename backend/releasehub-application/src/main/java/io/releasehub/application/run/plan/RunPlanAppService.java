@@ -15,6 +15,7 @@ import io.releasehub.common.exception.ErrorCode;
 import io.releasehub.common.exception.NotFoundException;
 import io.releasehub.domain.iteration.BranchCreationMode;
 import io.releasehub.domain.iteration.Iteration;
+import io.releasehub.domain.releasewindow.ReleaseWindow;
 import io.releasehub.domain.releasewindow.ReleaseWindowId;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.releasehub.domain.repo.CodeRepository;
@@ -42,6 +43,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class RunPlanAppService {
     private static final List<String> STEPS = List.of("ENSURE_FEATURE", "ENSURE_RELEASE", "ENSURE_MR", "TRY_MERGE");
+    private static final List<String> CLEANUP_STEPS = List.of("MERGE_TO_MASTER", "CREATE_TAG", "TRIGGER_CI");
     private final RunPlanPort plans;
     private final RunPort runs;
     private final ReleaseWindowPort windows;
@@ -51,6 +53,7 @@ public class RunPlanAppService {
     private final CodeRepositoryPort repositories;
     private final SettingsPort settings;
     private final Clock clock;
+    private final io.releasehub.application.version.VersionDeriverUseCase versionDeriver;
 
     @Transactional
     public SavedRunPlan create(String windowId, List<String> repoIds, List<String> iterationKeys,
@@ -79,10 +82,177 @@ public class RunPlanAppService {
         List<String> repos = normalize(repoIds);
         List<String> selectedIterations = normalize(iterationKeys);
         if (repos.isEmpty()) throw invalid("请至少选择一个仓库");
-        Prepared prepared = prepare(windowId, repos, selectedIterations, failFast, operator, true, false);
+        Prepared prepared = prepare(lockWindow(windowId), repos, selectedIterations, failFast, operator, true, false);
         save(prepared, windowId, "execute:" + prepared.run().getId().value(),
                 requestHash(windowId, repos, selectedIterations, failFast));
         return prepared.run();
+    }
+
+    /** 关闭受理返回已有或首次创建的仓库级 Run；执行器只消费首次受理。 */
+    @Transactional
+    public CleanupAdmission admitCleanup(String windowId, String operator, boolean triggerCi) {
+        validateIdentity(windowId, operator);
+        var window = lockWindow(windowId);
+        var existing = plans.findCleanupByWindowId(windowId);
+        if (existing.isPresent()) {
+            return existingCleanup(existing.get(), windowId, window.getWindowKey(), triggerCi);
+        }
+        if (plans.hasUnresolvedExecutionByWindowId(windowId))
+            throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        if (window.getStatus() != ReleaseWindowStatus.PUBLISHED || window.isFrozen())
+            throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+
+        // 复用同一窗口快照的完整引用校验、命名与挂载顺序，再聚合为每仓库一项。
+        Prepared source = prepare(window, List.of(), List.of(), true, operator, false, true);
+        if (source.snapshot().items().isEmpty()) throw invalid("窗口没有可收尾的仓库");
+        Map<String, List<RunPlanSnapshot.Item>> byRepository = new LinkedHashMap<>();
+        Map<String, RunItem> sourceItems = new HashMap<>();
+        source.run().getItems().forEach(item -> sourceItems.put(item.getId().value(), item));
+        source.snapshot().items().forEach(item ->
+                byRepository.computeIfAbsent(item.repoId(), ignored -> new ArrayList<>()).add(item));
+        Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+        Run run = Run.start(RunType.WINDOW_CLEANUP, operator, now);
+        List<RunPlanSnapshot.Item> items = new ArrayList<>();
+        Set<String> remoteMappings = new HashSet<>();
+        for (var entry : byRepository.entrySet()) {
+            var participants = entry.getValue();
+            var planned = participants.get(0);
+            var original = sourceItems.get(planned.itemId());
+            String cloneUrl = original.getMetadata().get("plan.cloneUrl");
+            if (!remoteMappings.add(CloneUrl.parse(cloneUrl).canonicalKey()))
+                throw invalid("多个仓库指向同一远端，不能重复收尾");
+            validateCleanupRef(planned.defaultBranch(), "默认分支");
+            validateCleanupRef(planned.releaseBranch(), "release 分支");
+            if (planned.defaultBranch().equals(planned.releaseBranch()))
+                throw invalid("收尾 release 与默认目标分支不能相同");
+            String targetVersion = cleanupTargetVersion(participants);
+            String tagName = targetVersion == null ? null : "v" + targetVersion;
+            if (tagName != null) validateCleanupRef(tagName, "Tag");
+            if (triggerCi && tagName == null)
+                throw invalid("触发 CI 需要所有参与迭代一致的明确版本和稳定 Tag");
+            String ciRef = triggerCi ? tagName : null;
+            List<String> keys = participants.stream().map(RunPlanSnapshot.Item::iterationKey).toList();
+            RunItem item = RunItem.createForRepository(window.getWindowKey(), RepoId.of(entry.getKey()), items.size() + 1, now);
+            for (String field : List.of("plan.windowId", "plan.releaseBranch", "plan.defaultBranch", "plan.cloneUrl", "plan.gitProvider"))
+                item.putMetadata(field, original.getMetadata().get(field));
+            item.putMetadata("plan.failFast", "true");
+            item.putMetadata("plan.participatingIterationKeys", iterationKeysJson(keys));
+            item.putMetadata("plan.tagName", tagName);
+            item.putMetadata("plan.triggerCi", Boolean.toString(triggerCi));
+            item.putMetadata("plan.ciRef", ciRef);
+            run.addItem(item);
+            items.add(new RunPlanSnapshot.Item(item.getId().value(), item.getPlannedOrder(), planned.repoId(), planned.repoName(),
+                    null, planned.gitProvider(), planned.defaultBranch(), null, null, planned.releaseBranch(),
+                    null, null, targetVersion, CLEANUP_STEPS, keys, tagName, triggerCi, ciRef));
+        }
+        var snapshot = new RunPlanSnapshot(window.getWindowKey(), window.getGroupCode(), window.getStatus().name(),
+                window.isFrozen(), true, items);
+        save(new Prepared(run, snapshot), windowId, "cleanup:" + run.getId().value(), cleanupRequestHash(windowId, triggerCi));
+        window.close(now);
+        windows.save(window);
+        return new CleanupAdmission(run, true);
+    }
+
+    /** 向唯一调用方移交本次受理的可变聚合；服务不缓存 Run，HTTP 层只输出 RunView。 */
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(value = "EI_EXPOSE_REP",
+            justification = "Run 是调用内新建或重建的聚合，服务不保留其引用；返回可变对象供执行器推进是显式契约")
+    public record CleanupAdmission(Run run, boolean created) {}
+
+    private CleanupAdmission existingCleanup(SavedRunPlan saved, String windowId, String windowKey, boolean triggerCi) {
+        Run run = runs.findById(saved.runId()).orElseThrow(() -> BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE));
+        RunPlanSnapshot snapshot = saved.snapshot();
+        if (!Objects.equals(saved.windowId(), windowId) || !Objects.equals(snapshot.windowKey(), windowKey)
+                || run.getRunType() != RunType.WINDOW_CLEANUP || run.getExecutionStatus() == RunExecutionStatus.PLANNED
+                || !Objects.equals(run.getId().value(), saved.runId()) || !Objects.equals(run.getOperator(), saved.operator())
+                || snapshot.items().isEmpty() || snapshot.items().size() != run.getItems().size()
+                || !Objects.equals(saved.planHash(), planHash(run, snapshot)))
+            throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        if (!Objects.equals(saved.requestHash(), cleanupRequestHash(windowId, triggerCi)))
+            throw BusinessException.of(ErrorCode.RUN_PLAN_KEY_CONFLICT);
+        Map<String, RunItem> runItems = new HashMap<>();
+        for (RunItem item : run.getItems()) {
+            if (runItems.putIfAbsent(item.getId().value(), item) != null)
+                throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        }
+        Set<String> repos = new HashSet<>();
+        Set<String> ids = new HashSet<>();
+        for (var planned : snapshot.items()) {
+            RunItem item = runItems.get(planned.itemId());
+            if (item == null || item.getIterationKey() != null || planned.iterationKey() != null
+                    || !repos.add(planned.repoId()) || !ids.add(planned.itemId())
+                    || !Objects.equals(item.getRepo().value(), planned.repoId())
+                    || !Objects.equals(item.getWindowKey(), windowKey)
+                    || item.getPlannedOrder() != planned.plannedOrder()
+                    || planned.participatingIterationKeys().isEmpty()
+                    || planned.participatingIterationKeys().stream().anyMatch(key -> key == null || key.isBlank())
+                    || new HashSet<>(planned.participatingIterationKeys()).size() != planned.participatingIterationKeys().size()
+                    || planned.triggerCi() != triggerCi
+                    || !Objects.equals(planned.ciRef(), triggerCi ? planned.tagName() : null)
+                    || (triggerCi && (planned.tagName() == null || planned.tagName().isBlank())))
+                throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+            Map<String, String> metadata = item.getMetadata();
+            if (!Objects.equals(metadata.get("plan.windowId"), windowId)
+                    || !Objects.equals(metadata.get("plan.releaseBranch"), planned.releaseBranch())
+                    || !Objects.equals(metadata.get("plan.defaultBranch"), planned.defaultBranch())
+                    || !Objects.equals(metadata.get("plan.gitProvider"), planned.gitProvider())
+                    || !GitProvider.GITLAB.name().equals(planned.gitProvider())
+                    || metadata.get("plan.cloneUrl") == null
+                    || !Objects.equals(metadata.get("plan.participatingIterationKeys"), iterationKeysJson(planned.participatingIterationKeys()))
+                    || !Objects.equals(metadata.get("plan.tagName"), planned.tagName())
+                    || !Objects.equals(metadata.get("plan.triggerCi"), Boolean.toString(planned.triggerCi()))
+                    || !Objects.equals(metadata.get("plan.ciRef"), planned.ciRef()))
+                throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        }
+        return new CleanupAdmission(run, false);
+    }
+
+    private String cleanupTargetVersion(List<RunPlanSnapshot.Item> participants) {
+        Set<String> candidates = new HashSet<>();
+        boolean missing = false;
+        for (var item : participants) {
+            String target = nonBlank(item.targetVersion());
+            String dev = nonBlank(item.devVersion());
+            String derived = dev == null ? null : nonBlank(versionDeriver.deriveTargetVersion(dev));
+            if (target != null && derived != null && !target.equals(derived))
+                throw invalid("迭代的目标版本与开发版本派生结果不一致: " + item.iterationKey());
+            String resolved = target == null ? derived : target;
+            if (resolved == null) missing = true;
+            else candidates.add(resolved);
+        }
+        if (candidates.size() > 1) throw invalid("同一仓库的参与迭代存在不同发布目标版本");
+        return missing || candidates.isEmpty() ? null : candidates.iterator().next();
+    }
+
+    private String nonBlank(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    private void validateCleanupRef(String ref, String label) {
+        if (ref == null || ref.isBlank() || ref.equals("@") || ref.startsWith("/") || ref.startsWith("-")
+                || ref.endsWith("/") || ref.endsWith(".") || ref.contains("..") || ref.contains("@{") || ref.contains("//")
+                || ref.chars().anyMatch(ch -> ch <= 32 || ch == 127 || "~^:?*[\\".indexOf(ch) >= 0)
+                || Arrays.stream(ref.split("/", -1)).anyMatch(part -> part.startsWith(".") || part.endsWith(".lock")))
+            throw invalid(label + "格式无效");
+    }
+
+    private String cleanupRequestHash(String windowId, boolean triggerCi) {
+        return PlanFingerprint.of(List.of("WINDOW_CLEANUP_V1", windowId, Boolean.toString(triggerCi)));
+    }
+
+    /** metadata 使用 JSON 数组；键来自既有领域输入，必须转义而不能用逗号拼接。 */
+    private String iterationKeysJson(List<String> keys) {
+        List<String> encoded = new ArrayList<>();
+        for (String key : keys) {
+            StringBuilder value = new StringBuilder("\"");
+            for (int index = 0; index < key.length(); index++) {
+                char ch = key.charAt(index);
+                if (ch == '\\' || ch == '"') value.append('\\').append(ch);
+                else if (ch < 32) value.append(String.format(Locale.ROOT, "\\u%04x", (int) ch));
+                else value.append(ch);
+            }
+            encoded.add(value.append('"').toString());
+        }
+        return "[" + String.join(",", encoded) + "]";
     }
 
     /** 重试复制源快照的精确 Item 集合，不从当前仓库和迭代重新计算交叉范围。 */
@@ -104,8 +274,7 @@ public class RunPlanAppService {
                 .sorted(Comparator.comparingInt(RunPlanSnapshot.Item::plannedOrder)).toList();
         if (selected.size() != selectedIds.size()) throw invalid("所选 Item 不属于源 Run 计划");
 
-        var window = windows.findById(ReleaseWindowId.of(source.windowId()))
-                .orElseThrow(() -> NotFoundException.releaseWindow(source.windowId()));
+        var window = lockWindow(source.windowId());
         if (window.getStatus() == ReleaseWindowStatus.CLOSED || window.isFrozen()) throw invalid("已关闭或冻结窗口不能重试");
         if (!Objects.equals(window.getWindowKey(), snapshot.windowKey())
                 || !Objects.equals(window.getGroupCode(), snapshot.groupCode())) throw invalid("窗口范围已变更，不能重解释原计划");
@@ -163,7 +332,8 @@ public class RunPlanAppService {
             run.addItem(item);
             retryItems.add(new RunPlanSnapshot.Item(item.getId().value(), item.getPlannedOrder(), planned.repoId(), planned.repoName(),
                     planned.iterationKey(), planned.gitProvider(), planned.defaultBranch(), planned.featureBranch(), planned.featureBranchMode(), planned.releaseBranch(),
-                    planned.baseVersion(), planned.devVersion(), planned.targetVersion(), planned.steps()));
+                    planned.baseVersion(), planned.devVersion(), planned.targetVersion(), planned.steps(),
+                    planned.participatingIterationKeys(), planned.tagName(), planned.triggerCi(), planned.ciRef()));
         }
         var retrySnapshot = new RunPlanSnapshot(snapshot.windowKey(), snapshot.groupCode(), window.getStatus().name(),
                 window.isFrozen(), snapshot.failFast(), retryItems);
@@ -192,10 +362,21 @@ public class RunPlanAppService {
         return prepare(windowId, List.of(), List.of(), true, "preview", false, true).snapshot();
     }
 
+    private ReleaseWindow lockWindow(String windowId) {
+        return windows.findByIdForUpdate(ReleaseWindowId.of(windowId))
+                .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
+    }
+
     private Prepared prepare(String windowId, List<String> selectedRepos, List<String> selectedIterations,
                              boolean failFast, String operator, boolean execute, boolean windowView) {
         var window = windows.findById(ReleaseWindowId.of(windowId))
                 .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
+        return prepare(window, selectedRepos, selectedIterations, failFast, operator, execute, windowView);
+    }
+
+    private Prepared prepare(ReleaseWindow window, List<String> selectedRepos, List<String> selectedIterations,
+                             boolean failFast, String operator, boolean execute, boolean windowView) {
+        String windowId = window.getId().value();
         if (window.getGroupCode() == null || window.getGroupCode().isBlank()) throw invalid("窗口缺少分组信息");
         if (!windowView && window.getStatus() == ReleaseWindowStatus.CLOSED) throw invalid("已关闭窗口不能创建新计划");
         if (execute && window.isFrozen()) throw invalid("已冻结窗口不能执行编排");
@@ -272,7 +453,7 @@ public class RunPlanAppService {
                 items.add(new RunPlanSnapshot.Item(item.getId().value(), item.getPlannedOrder(), repoId.value(), repo.getName(), key,
                         repo.getGitProvider().name(), repo.getDefaultBranch(), feature, featureMode.name(), release,
                         version == null ? null : version.getBaseVersion(), version == null ? null : version.getDevVersion(),
-                        version == null ? null : version.getTargetVersion(), STEPS));
+                        version == null ? null : version.getTargetVersion(), STEPS, List.of(key), null, false, null));
             }
             if (before == items.size()) throw invalid("所选仓库不属于所选窗口迭代");
         }
@@ -307,21 +488,30 @@ public class RunPlanAppService {
     private SavedRunPlan save(Prepared prepared, String windowId, String key, String requestHash) {
         Run run = prepared.run();
         RunPlanSnapshot snapshot = prepared.snapshot();
-        List<String> content = new ArrayList<>(Arrays.asList("LOCAL_PREVIEW_V1", snapshot.windowKey(), snapshot.groupCode(),
+        var saved = new SavedRunPlan(run.getId().value(), windowId, run.getOperator(), key, requestHash,
+                planHash(run, snapshot), run.getStartedAt(), snapshot);
+        runs.save(run);
+        plans.save(saved);
+        return saved;
+    }
+
+    private String planHash(Run run, RunPlanSnapshot snapshot) {
+        List<String> content = new ArrayList<>(Arrays.asList("RUN_PLAN_V2", run.getRunType().name(), snapshot.windowKey(), snapshot.groupCode(),
                 snapshot.windowStatus(), Boolean.toString(snapshot.frozen()), Boolean.toString(snapshot.failFast())));
         for (var item : snapshot.items()) {
             content.addAll(Arrays.asList(Integer.toString(item.plannedOrder()), item.repoId(), item.repoName(), item.iterationKey(),
                     item.gitProvider(), item.defaultBranch(), item.featureBranch(), item.featureBranchMode(), item.releaseBranch(),
-                    item.baseVersion(), item.devVersion(), item.targetVersion()));
+                    item.baseVersion(), item.devVersion(), item.targetVersion(), item.tagName(), Boolean.toString(item.triggerCi()), item.ciRef(),
+                    Integer.toString(item.participatingIterationKeys().size())));
+            content.addAll(item.participatingIterationKeys());
+            content.add(Integer.toString(item.steps().size()));
             content.addAll(item.steps());
         }
         // 地址也参与指纹，但公开快照不暴露凭据或连接地址。
-        run.getItems().forEach(item -> content.add(item.getMetadata().get("plan.cloneUrl")));
-        var saved = new SavedRunPlan(run.getId().value(), windowId, run.getOperator(), key, requestHash,
-                PlanFingerprint.of(content), run.getStartedAt(), snapshot);
-        runs.save(run);
-        plans.save(saved);
-        return saved;
+        Map<String, String> cloneUrls = new HashMap<>();
+        run.getItems().forEach(item -> cloneUrls.put(item.getId().value(), item.getMetadata().get("plan.cloneUrl")));
+        snapshot.items().forEach(item -> content.add(cloneUrls.get(item.itemId())));
+        return PlanFingerprint.of(content);
     }
 
     @Transactional(readOnly = true)

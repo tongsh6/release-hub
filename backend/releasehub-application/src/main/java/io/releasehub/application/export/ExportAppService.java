@@ -23,14 +23,17 @@ public class ExportAppService {
     public String exportCsv(String runId) {
         Run run = runPort.findById(runId).orElseThrow();
         StringJoiner joiner = new StringJoiner("\n");
-        joiner.add("runId,windowKey,repo,iterationKey,plannedOrder,executedOrder,stepType,stepResult,stepStart,stepEnd,message,finalResult");
+        joiner.add("runId,runType,windowKey,repo,iterationKey,participatingIterationKeys,referencePolicy,plannedOrder,executedOrder,stepType,stepResult,stepStart,stepEnd,message,finalResult");
         for (RunItem item : run.getItems()) {
             for (RunStep step : item.getSteps()) {
                 joiner.add(csvRow(List.of(
                         run.getId().value(),
+                        run.getRunType().name(),
                         item.getWindowKey(),
                         item.getRepo().value(),
                         item.getIterationKey() == null ? "" : item.getIterationKey().value(),
+                        valueOrEmpty(item.getMetadata().get("plan.participatingIterationKeys")),
+                        valueOrEmpty(item.getMetadata().get("cleanup.referencePolicy")),
                         String.valueOf(item.getPlannedOrder()),
                         String.valueOf(item.getExecutedOrder()),
                         step.actionType().name(),
@@ -55,7 +58,7 @@ public class ExportAppService {
     public String exportReleaseWindowCsv(String windowId) {
         ReleaseWindowReportView report = exportReleaseWindowReport(windowId);
         StringJoiner joiner = new StringJoiner("\n");
-        joiner.add("windowId,windowKey,runId,runType,runStatus,repo,iterationKey,finalResult,stepType,stepResult,stepStart,stepEnd,message");
+        joiner.add("windowId,windowKey,runId,runType,runStatus,repo,iterationKey,participatingIterationKeys,referencePolicy,finalResult,stepType,stepResult,stepStart,stepEnd,message");
         for (ReleaseWindowReportView.RunReport run : report.runs()) {
             for (ReleaseWindowReportView.ItemReport item : run.items()) {
                 if (item.steps().isEmpty()) {
@@ -67,6 +70,8 @@ public class ExportAppService {
                             run.status(),
                             valueOrEmpty(item.repo()),
                             valueOrEmpty(item.iterationKey()),
+                            valueOrEmpty(item.metadata().get("plan.participatingIterationKeys")),
+                            valueOrEmpty(item.metadata().get("cleanup.referencePolicy")),
                             valueOrEmpty(item.finalResult()),
                             "",
                             "",
@@ -85,6 +90,8 @@ public class ExportAppService {
                             run.status(),
                             valueOrEmpty(item.repo()),
                             valueOrEmpty(item.iterationKey()),
+                            valueOrEmpty(item.metadata().get("plan.participatingIterationKeys")),
+                            valueOrEmpty(item.metadata().get("cleanup.referencePolicy")),
                             valueOrEmpty(item.finalResult()),
                             step.actionType(),
                             step.result(),
@@ -137,15 +144,15 @@ public class ExportAppService {
                     .append(markdownCell(run.operator())).append(" | ")
                     .append(markdownCell(run.startedAt())).append(" | ")
                     .append(markdownCell(run.finishedAt())).append(" |\n\n");
-            markdown.append("| Repo | Iteration | Planned | Executed | Final Result | Step | Step Result | Message |\n");
-            markdown.append("| --- | --- | ---: | ---: | --- | --- | --- | --- |\n");
+            markdown.append("| Repo | Scope / Iteration | Participating Iterations | Reference Policy | Planned | Executed | Final Result | Step | Step Result | Message |\n");
+            markdown.append("| --- | --- | --- | --- | ---: | ---: | --- | --- | --- | --- |\n");
             for (ReleaseWindowReportView.ItemReport item : run.items()) {
                 if (item.steps().isEmpty()) {
-                    appendMarkdownItemRow(markdown, item, null);
+                    appendMarkdownItemRow(markdown, run.runType(), item, null);
                     continue;
                 }
                 for (ReleaseWindowReportView.StepReport step : item.steps()) {
-                    appendMarkdownItemRow(markdown, item, step);
+                    appendMarkdownItemRow(markdown, run.runType(), item, step);
                 }
             }
         }
@@ -161,11 +168,14 @@ public class ExportAppService {
     }
 
     private void appendMarkdownItemRow(StringBuilder markdown,
+                                       String runType,
                                        ReleaseWindowReportView.ItemReport item,
                                        ReleaseWindowReportView.StepReport step) {
         markdown.append("| ")
                 .append(markdownCell(item.repo())).append(" | ")
-                .append(markdownCell(item.iterationKey())).append(" | ")
+                .append(markdownCell("WINDOW_CLEANUP".equals(runType) ? "Repository cleanup" : item.iterationKey())).append(" | ")
+                .append(markdownCell(item.metadata().get("plan.participatingIterationKeys"))).append(" | ")
+                .append(markdownCell(item.metadata().get("cleanup.referencePolicy"))).append(" | ")
                 .append(item.plannedOrder()).append(" | ")
                 .append(item.executedOrder()).append(" | ")
                 .append(markdownCell(item.finalResult())).append(" | ")

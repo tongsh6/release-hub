@@ -65,8 +65,9 @@ class RunPlanAppServiceTest {
     @BeforeEach
     void setUp() {
         service = new RunPlanAppService(plans, runs, windows, bindings, iterations, versions,
-                repositories, settings, Clock.fixed(now, ZoneOffset.UTC));
+                repositories, settings, Clock.fixed(now, ZoneOffset.UTC), new io.releasehub.application.version.VersionDeriver());
         when(windows.findById(windowId)).thenReturn(Optional.of(window(ReleaseWindowStatus.DRAFT, false)));
+        when(windows.findByIdForUpdate(any())).thenAnswer(call -> windows.findById(call.getArgument(0)));
         when(bindings.listByWindow(windowId)).thenReturn(List.of(binding("ITER-B"), binding("ITER-A")));
         for (String key : List.of("ITER-A", "ITER-B")) {
             when(iterations.findByKey(IterationKey.of(key))).thenReturn(Optional.of(Iteration.rehydrate(
@@ -480,7 +481,8 @@ class RunPlanAppServiceTest {
         var githubItems = originalSnapshot.items().stream().map(item -> item.repoId().equals("repo-a")
                 ? new RunPlanSnapshot.Item(item.itemId(), item.plannedOrder(), item.repoId(), item.repoName(), item.iterationKey(),
                         "GITHUB", item.defaultBranch(), item.featureBranch(), item.featureBranchMode(), item.releaseBranch(),
-                        item.baseVersion(), item.devVersion(), item.targetVersion(), item.steps()) : item).toList();
+                        item.baseVersion(), item.devVersion(), item.targetVersion(), item.steps(),
+                        item.participatingIterationKeys(), item.tagName(), item.triggerCi(), item.ciRef()) : item).toList();
         var githubSnapshot = new RunPlanSnapshot(originalSnapshot.windowKey(), originalSnapshot.groupCode(),
                 originalSnapshot.windowStatus(), originalSnapshot.frozen(), originalSnapshot.failFast(), githubItems);
         when(plans.findByRunId(previous.getId().value())).thenReturn(Optional.of(new SavedRunPlan(

@@ -3,6 +3,8 @@ package io.releasehub.infrastructure.git;
 import com.github.tomakehurst.wiremock.junit5.WireMockRuntimeInfo;
 import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import io.releasehub.application.port.out.GitBranchPort;
+import io.releasehub.application.gitoperation.GitReadResult;
+import io.releasehub.application.gitoperation.GitWriteResult;
 import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.run.MergeStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,6 +78,13 @@ class GitHubGitBranchAdapterTest {
         var result = probe(wm);
         assertFalse(result.canMerge());
         assertEquals(GitBranchPort.MergeabilityFailure.UNKNOWN, result.failure());
+        verifyNoWrites();
+    }
+
+    @Test void shouldRejectUnsupportedReleaseEvidenceWithoutGitHubWrites(WireMockRuntimeInfo wm) {
+        assertEquals(GitReadResult.Status.UNSUPPORTED, adapter.readTag(repo(wm), "token", "7", "v1").status());
+        assertEquals(GitWriteResult.Outcome.REJECTED, adapter.createTag(repo(wm), "token", "7", "v1", SHA, "tag").outcome());
+        assertEquals(GitWriteResult.Outcome.REJECTED, adapter.triggerPipeline(repo(wm), "token", "7", "v1", SHA).outcome());
         verifyNoWrites();
     }
 

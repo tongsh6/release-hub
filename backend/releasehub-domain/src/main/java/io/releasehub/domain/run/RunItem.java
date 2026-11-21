@@ -47,13 +47,19 @@ public class RunItem extends BaseEntity<RunItemId> {
     }
 
     public static RunItem create(String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, Instant now) {
-        RunItemId id = RunItemId.generate(windowKey, repo, iterationKey);
+        java.util.Objects.requireNonNull(repo, "repo");
+        java.util.Objects.requireNonNull(iterationKey, "iterationKey");
+        RunItemId id = RunItemId.generate();
         return new RunItem(id, windowKey, repo, iterationKey, plannedOrder, now);
     }
 
-    public static RunItem createRetry(String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, String sourceRunId, Instant now) {
-        // 来源由 metadata 记录，不能再拼接到主键中。
-        return create(windowKey, repo, iterationKey, plannedOrder, now);
+    /** 窗口仓库执行项不伪造迭代标识。 */
+    public static RunItem createForRepository(String windowKey, RepoId repo, int plannedOrder, Instant now) {
+        java.util.Objects.requireNonNull(repo, "repo");
+        if (windowKey == null || windowKey.isBlank()) {
+            throw io.releasehub.common.exception.ValidationException.invalidParameter("windowKey");
+        }
+        return new RunItem(RunItemId.generate(), windowKey, repo, null, plannedOrder, now);
     }
 
     public static RunItem rehydrate(RunItemId id, String windowKey, RepoId repo, IterationKey iterationKey, int plannedOrder, int executedOrder, RunItemResult finalResult, List<RunStep> steps, Instant createdAt, Instant updatedAt, long version) {

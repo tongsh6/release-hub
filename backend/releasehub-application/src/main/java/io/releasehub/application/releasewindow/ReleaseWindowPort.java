@@ -16,6 +16,9 @@ public interface ReleaseWindowPort {
 
     Optional<ReleaseWindow> findById(ReleaseWindowId id);
 
+    /** 当前事务内锁定窗口，串行化关闭受理和绑定配置变更。 */
+    Optional<ReleaseWindow> findByIdForUpdate(ReleaseWindowId id);
+
     List<ReleaseWindow> findAll();
 
     PageResult<ReleaseWindow> findPaged(String name, ReleaseWindowStatus status, int page, int size);

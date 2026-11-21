@@ -3,8 +3,6 @@ package io.releasehub.domain.run;
 import io.releasehub.common.exception.ErrorCode;
 import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.base.EntityId;
-import io.releasehub.domain.iteration.IterationKey;
-import io.releasehub.domain.repo.RepoId;
 import java.util.UUID;
 
 /**
@@ -30,9 +28,7 @@ public record RunItemId(String value) implements EntityId {
     /**
      * 为每个执行项分配独立标识。
      */
-    public static RunItemId generate(String windowKey, RepoId repoId, IterationKey iterationKey) {
-        java.util.Objects.requireNonNull(repoId);
-        java.util.Objects.requireNonNull(iterationKey);
+    public static RunItemId generate() {
         return new RunItemId(UUID.randomUUID().toString());
     }
 }

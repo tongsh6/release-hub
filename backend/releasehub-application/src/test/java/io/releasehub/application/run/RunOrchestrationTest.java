@@ -62,12 +62,13 @@ class RunOrchestrationTest {
     void setUp() {
         var planner = new io.releasehub.application.run.plan.RunPlanAppService(
                 mock(io.releasehub.application.run.plan.RunPlanPort.class), runs, windows, bindings,
-                iterations, versions, repos, settings, clock);
-        service = new RunAppService(runs, windows, bindings, iterations, versions, repos, adapters,
-                mock(VersionUpdateAppService.class), conflicts, mock(VersionDeriverUseCase.class), settings, clock, planner, rules);
+                iterations, versions, repos, settings, clock, mock(VersionDeriverUseCase.class));
+        service = new RunAppService(runs, windows, bindings, repos, adapters,
+                mock(VersionUpdateAppService.class), conflicts, settings, clock, planner, rules);
         when(rules.isCompliant(anyString(), anyString(), anyString())).thenReturn(true);
         when(settings.getNaming()).thenReturn(Optional.empty());
         when(windows.findById(ReleaseWindowId.of(WINDOW))).thenReturn(Optional.of(window(false)));
+        when(windows.findByIdForUpdate(any())).thenAnswer(invocation -> windows.findById(invocation.getArgument(0)));
         when(conflicts.getLatestReport(WINDOW)).thenReturn(Optional.of(ConflictReport.empty(WINDOW)));
         when(bindings.listByWindow(ReleaseWindowId.of(WINDOW))).thenReturn(List.of(binding("I2", 2), binding("I1", 1)));
         when(iterations.findByKey(IterationKey.of("I1"))).thenReturn(Optional.of(iteration("I1", Set.of("r1", "r2"))));

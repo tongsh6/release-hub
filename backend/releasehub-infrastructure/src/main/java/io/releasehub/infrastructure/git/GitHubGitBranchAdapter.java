@@ -1,5 +1,8 @@
 package io.releasehub.infrastructure.git;
 
+import io.releasehub.application.gitoperation.GitReadResult;
+import io.releasehub.application.gitoperation.GitWriteResult;
+
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.common.exception.ValidationException;
 import io.releasehub.domain.repo.GitProvider;
@@ -119,27 +122,14 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     }
 
     @Override
-    public boolean createTag(String repoCloneUrl, String token, String tagName, String refName, String message) {
-        try {
-            RepoRef ref = parseRepoRef(repoCloneUrl);
-            String branchEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/branches/%s", ref.owner, ref.repo, urlEncode(refName));
-            ResponseEntity<Map<String, Object>> branchResponse = restTemplate.exchange(branchEndpoint, HttpMethod.GET, new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
-            Map<String, Object> branchBody = branchResponse.getBody();
-            if (!branchResponse.getStatusCode().is2xxSuccessful() || branchBody == null) {
-                return false;
-            }
-            Object commitObj = branchBody.get("commit");
-            if (!(commitObj instanceof Map<?, ?> commitMap) || commitMap.get("sha") == null) {
-                return false;
-            }
-            String sha = String.valueOf(commitMap.get("sha"));
-            String createRefEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/git/refs", ref.owner, ref.repo);
-            Map<String, String> body = Map.of("ref", "refs/tags/" + tagName, "sha", sha);
-            ResponseEntity<Map<String, Object>> created = restTemplate.exchange(createRefEndpoint, HttpMethod.POST, new HttpEntity<>(body, headers(token)), new ParameterizedTypeReference<>() {});
-            return created.getStatusCode().is2xxSuccessful();
-        } catch (HttpClientErrorException e) {
-            return false;
-        }
+    public GitReadResult<TagEvidence> readTag(String repoCloneUrl, String token, String expectedProjectId, String tagName) {
+        return new GitReadResult<>(GitReadResult.Status.UNSUPPORTED, null);
+    }
+
+    @Override
+    public GitWriteResult<TagEvidence> createTag(String repoCloneUrl, String token, String expectedProjectId,
+                                                String tagName, String targetSha, String message) {
+        return GitWriteResult.rejected("PROVIDER_UNSUPPORTED");
     }
 
     @Override
@@ -186,33 +176,9 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     }
 
     @Override
-    public String triggerPipeline(String repoCloneUrl, String token, String ref) {
-        try {
-            RepoRef rp = parseRepoRef(repoCloneUrl);
-            String endpoint = String.format(rp.apiBaseUrl + "/repos/%s/%s/dispatches",
-                    rp.owner, rp.repo);
-            Map<String, Object> body = new HashMap<>();
-            body.put("event_type", "releasehub-release");
-            Map<String, String> clientPayload = new HashMap<>();
-            clientPayload.put("ref", ref);
-            body.put("client_payload", clientPayload);
-
-            restTemplate.exchange(endpoint, HttpMethod.POST,
-                    new HttpEntity<>(body, headers(token)),
-                    new ParameterizedTypeReference<Map<String, Object>>() {});
-
-            log.info("GitHub repository_dispatch triggered for ref '{}' on {}/{}", ref, rp.owner, rp.repo);
-            return "dispatch:" + rp.owner + "/" + rp.repo + ":" + ref;
-        } catch (HttpClientErrorException.NotFound e) {
-            log.info("GitHub pipeline trigger not configured: no repository_dispatch receiver found. Add a workflow with repository_dispatch[releasehub-release] trigger.");
-            return null;
-        } catch (HttpClientErrorException e) {
-            log.warn("Failed to trigger GitHub pipeline for ref '{}': {}", ref, e.getResponseBodyAsString());
-            return null;
-        } catch (Exception e) {
-            log.error("Error triggering GitHub pipeline for ref '{}': {}", ref, e.getMessage(), e);
-            return null;
-        }
+    public GitWriteResult<PipelineEvidence> triggerPipeline(String repoCloneUrl, String token, String expectedProjectId,
+                                                            String ref, String expectedSha) {
+        return GitWriteResult.rejected("PROVIDER_UNSUPPORTED");
     }
 
     @Override

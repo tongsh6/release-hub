@@ -32,6 +32,95 @@ class GitRemoteEvidenceAdapterTest {
         server.expect(requestTo("https://gitlab.invalid/api/v4/projects/acme%2Frepo")).andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("{\"id\":17}",MediaType.APPLICATION_JSON));
     }
+    private static final String RELEASE_SHA = "a".repeat(40);
+
+    private GitOperationJournalPort.Detail releaseDetail(String action, String target, String eventEvidence) {
+        var op = new GitOperationJournalPort.Operation("operation-release", "repo", "remote", "GITLAB",
+                "https://gitlab.invalid", "17", action, target, null, "tester", "UNKNOWN", 2,
+                Instant.EPOCH, Instant.EPOCH, "RESPONSE_UNCONFIRMED", true);
+        var events = eventEvidence == null ? List.<GitOperationJournalPort.Event>of()
+                : List.of(new GitOperationJournalPort.Event("attempt", 1, "HTTP_OBSERVED", Instant.EPOCH, eventEvidence, null));
+        return new GitOperationJournalPort.Detail(op, events, List.of(), false);
+    }
+    private GitOperationJournalPort.Detail pipelineDetail() {
+        return releaseDetail("TRIGGER_PIPELINE", "{\"ref\":\"v1\",\"sha\":\"" + RELEASE_SHA + "\"}", "{\"id\":321}");
+    }
+    private static String pipelineBody() {
+        return """
+                {"id":321,"project_id":17,"ref":"v1","sha":"%s",
+                 "web_url":"https://gitlab.invalid/acme/repo/-/pipelines/321","status":"success"}
+                """.formatted(RELEASE_SHA);
+    }
+    private void pipelineRead(String body) {
+        server.expect(requestTo("https://gitlab.invalid/api/v4/projects/17/pipelines/321"))
+                .andExpect(method(HttpMethod.GET)).andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+    }
+
+    @Test void shouldConfirmPipelineOnlyWithFullMatchingEvidence() throws Exception {
+        pipelineRead(pipelineBody());
+        var result = adapter.read(pipelineDetail());
+        assertEquals(GitReadResult.Status.FOUND, result.status());
+        assertEquals(RELEASE_SHA, new ObjectMapper().readTree(result.evidence()).path("sha").asText());
+        server.verify();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.MethodSource("invalidPipelineBodies")
+    void shouldNotConfirmPipelineFromMatchingRefAlone(String body) {
+        pipelineRead(body);
+        assertNotEquals(GitReadResult.Status.FOUND, adapter.read(pipelineDetail()).status());
+        server.verify();
+    }
+
+    private static java.util.stream.Stream<String> invalidPipelineBodies() throws Exception {
+        var json = new ObjectMapper();var cases = new java.util.ArrayList<String>();
+        for (String field : List.of("id", "project_id", "sha", "web_url")) {
+            var node = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(pipelineBody());
+            node.remove(field);cases.add(node.toString());
+        }
+        for (var entry : java.util.Map.of("id", "999", "project_id", "18", "sha", "b".repeat(40),
+                "web_url", "not-an-absolute-url").entrySet()) {
+            var node = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(pipelineBody());
+            if (entry.getKey().equals("id") || entry.getKey().equals("project_id")) node.put(entry.getKey(), Integer.parseInt(entry.getValue()));
+            else node.put(entry.getKey(), entry.getValue());
+            cases.add(node.toString());
+        }
+        return cases.stream();
+    }
+
+    @Test void shouldNotConfirmPipelineWithoutRecordedExpectedSha() {
+        pipelineRead(pipelineBody());
+        var oldIntent = releaseDetail("TRIGGER_PIPELINE", "{\"ref\":\"v1\"}", "{\"id\":321}");
+        assertEquals(GitReadResult.Status.INCOMPLETE, adapter.read(oldIntent).status());
+        server.verify();
+    }
+
+    @Test void shouldNotSearchForPipelineWhenNoRemoteIdWasObserved() {
+        var unknown = releaseDetail("TRIGGER_PIPELINE", "{\"ref\":\"v1\",\"sha\":\"" + RELEASE_SHA + "\"}", null);
+        assertEquals(GitReadResult.Status.UNSUPPORTED, adapter.read(unknown).status());
+        server.verify();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"other", ""})
+    void shouldNotConfirmTagAtExpectedShaWithDifferentName(String name) {
+        server.expect(requestTo("https://gitlab.invalid/api/v4/projects/17/repository/tags/v1"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("{\"name\":\"" + name + "\",\"commit\":{\"id\":\"" + RELEASE_SHA + "\"}}", MediaType.APPLICATION_JSON));
+        var intent = releaseDetail("CREATE_TAG", "{\"tag_name\":\"v1\",\"ref\":\"" + RELEASE_SHA + "\"}", null);
+        assertNotEquals(GitReadResult.Status.FOUND, adapter.read(intent).status());
+        server.verify();
+    }
+
+    @Test void shouldConfirmOnlyExactTagNameAndSha() {
+        server.expect(requestTo("https://gitlab.invalid/api/v4/projects/17/repository/tags/v1"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("{\"name\":\"v1\",\"commit\":{\"id\":\"" + RELEASE_SHA + "\"}}", MediaType.APPLICATION_JSON));
+        var intent = releaseDetail("CREATE_TAG", "{\"tag_name\":\"v1\",\"ref\":\"" + RELEASE_SHA + "\"}", null);
+        assertEquals(GitReadResult.Status.FOUND, adapter.read(intent).status());
+        server.verify();
+    }
+
     private GitOperationJournalPort.Detail detail() {
         var op=new GitOperationJournalPort.Operation("operation-1","repo","remote","GITLAB","https://gitlab.invalid","17","CREATE_MR",
                 "{\"source_branch\":\"feature\",\"target_branch\":\"main\"}",null,"tester","UNKNOWN",2,Instant.EPOCH,Instant.EPOCH,"RESPONSE_LOST",true);

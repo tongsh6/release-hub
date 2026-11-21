@@ -30,7 +30,7 @@ public class AttachAppService {
 
     @Transactional
     public List<WindowIteration> attach(String windowId, List<String> iterationKeys) {
-        ReleaseWindow releaseWindow = findWindow(windowId);
+        ReleaseWindow releaseWindow = findWindowForUpdate(windowId);
         ensureWindowCanChangeIterations(releaseWindow);
         List<Iteration> iterations = iterationKeys.stream()
                 .map(IterationKey::of)
@@ -50,7 +50,7 @@ public class AttachAppService {
 
     @Transactional
     public void detach(String windowId, String iterationKey) {
-        ReleaseWindow releaseWindow = findWindow(windowId);
+        ReleaseWindow releaseWindow = findWindowForUpdate(windowId);
         ensureWindowCanChangeIterations(releaseWindow);
         windowIterationPort.detach(releaseWindow.getId(), IterationKey.of(iterationKey));
     }
@@ -65,6 +65,11 @@ public class AttachAppService {
     public PageResult<WindowIteration> listPaged(String windowId, int page, int size) {
         ReleaseWindow releaseWindow = findWindow(windowId);
         return windowIterationPort.listByWindowPaged(releaseWindow.getId(), page, size);
+    }
+
+    private ReleaseWindow findWindowForUpdate(String windowId) {
+        return releaseWindowPort.findByIdForUpdate(ReleaseWindowId.of(windowId))
+                .orElseThrow(() -> NotFoundException.releaseWindow(windowId));
     }
 
     private ReleaseWindow findWindow(String windowId) {

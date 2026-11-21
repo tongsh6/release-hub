@@ -171,7 +171,7 @@ class ReleaseWindowAppServiceTest {
         void shouldFailPublishWhenNoIterations() {
             Instant now = Instant.now();
             ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
-            when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
+            when(releaseWindowPort.findByIdForUpdate(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
             when(windowIterationPort.listByWindow(ReleaseWindowId.of("window-1"))).thenReturn(List.of());
 
             assertThatThrownBy(() -> releaseWindowAppService.publish("window-1"))
@@ -184,7 +184,7 @@ class ReleaseWindowAppServiceTest {
         void shouldPublishWithoutTriggeringRun() {
             Instant now = Instant.now();
             ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
-            when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
+            when(releaseWindowPort.findByIdForUpdate(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
             when(windowIterationPort.listByWindow(ReleaseWindowId.of("window-1")))
                     .thenReturn(List.of(WindowIteration.attach(ReleaseWindowId.of("window-1"), IterationKey.of("ITER-1"), now, now)));
 
@@ -205,7 +205,7 @@ class ReleaseWindowAppServiceTest {
         void shouldDeleteEmptyDraftWindow() {
             Instant now = Instant.now();
             ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
-            when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
+            when(releaseWindowPort.findByIdForUpdate(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
             when(windowIterationPort.listByWindow(ReleaseWindowId.of("window-1"))).thenReturn(List.of());
 
             releaseWindowAppService.delete("window-1");
@@ -218,7 +218,7 @@ class ReleaseWindowAppServiceTest {
         void shouldRejectDeleteWhenDraftHasIterations() {
             Instant now = Instant.now();
             ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
-            when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
+            when(releaseWindowPort.findByIdForUpdate(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
             when(windowIterationPort.listByWindow(ReleaseWindowId.of("window-1")))
                     .thenReturn(List.of(WindowIteration.attach(ReleaseWindowId.of("window-1"), IterationKey.of("ITER-1"), now, now)));
 
@@ -234,7 +234,7 @@ class ReleaseWindowAppServiceTest {
             Instant now = Instant.now();
             ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
             window.publish(now);
-            when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
+            when(releaseWindowPort.findByIdForUpdate(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
 
             assertThatThrownBy(() -> releaseWindowAppService.delete("window-1"))
                     .isInstanceOf(BusinessException.class)
@@ -244,40 +244,44 @@ class ReleaseWindowAppServiceTest {
         }
     }
 
+    @Test
+    @DisplayName("冻结与解冻读取锁内最新状态，不能用旧的已发布状态覆盖关闭")
+    void freezeAndUnfreezeCannotOverwriteConcurrentClose() {
+        Instant now = Instant.now();
+        ReleaseWindow closed = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
+        closed.publish(now);
+        closed.close(now);
+        when(releaseWindowPort.findByIdForUpdate(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(closed));
+
+        assertThatThrownBy(() -> releaseWindowAppService.freeze("window-1")).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> releaseWindowAppService.unfreeze("window-1")).isInstanceOf(BusinessException.class);
+
+        verify(releaseWindowPort, never()).findById(any());
+        verify(releaseWindowPort, never()).save(any());
+        assertThat(closed.getStatus()).isEqualTo(ReleaseWindowStatus.CLOSED);
+    }
+
     @Nested
     @DisplayName("close 方法")
     class CloseTests {
         @Test
-        @DisplayName("成功后触发收尾编排任务")
-        void shouldCloseAndTriggerRun() {
-            Instant now = Instant.now();
-            ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
-            window.publish(now);
-            when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
-            Run run = Run.start(RunType.VERSION_UPDATE, "system", now);
-            when(runAppService.executeCleanup(eq("window-1"), eq("system"))).thenReturn(run);
-
-            ReleaseWindowView view = releaseWindowAppService.close("window-1", "system");
-
-            verify(releaseWindowPort).save(any(ReleaseWindow.class));
-            verify(runAppService).executeCleanup(eq("window-1"), eq("system"));
-            assertThat(view.getStatus()).isEqualTo("CLOSED");
+        @DisplayName("关闭返回真实收尾Run，配置状态由同一受理事务负责")
+        void shouldReturnCleanupRunFromAtomicAdmission() {
+            Run run = Run.start(RunType.WINDOW_CLEANUP, "system", Instant.now());
+            when(runAppService.executeCleanup("window-1", "system", true)).thenReturn(run);
+            assertThat(releaseWindowAppService.close("window-1", "system", true)).isSameAs(run);
+            verify(runAppService).executeCleanup("window-1", "system", true);
+            verifyNoInteractions(releaseWindowPort);
         }
 
         @Test
-        @DisplayName("收尾任务创建失败时不回滚关闭状态")
-        void shouldNotRollbackCloseWhenRunCreationFails() {
-            Instant now = Instant.now();
-            ReleaseWindow window = ReleaseWindow.createDraft("RW-1", "Window", null, now, "G001", now);
-            window.publish(now);
-            when(releaseWindowPort.findById(ReleaseWindowId.of("window-1"))).thenReturn(Optional.of(window));
-            when(runAppService.executeCleanup(eq("window-1"), eq("system")))
-                    .thenThrow(new RuntimeException("boom"));
-
-            ReleaseWindowView view = releaseWindowAppService.close("window-1", "system");
-
-            verify(releaseWindowPort).save(any(ReleaseWindow.class));
-            assertThat(view.getStatus()).isEqualTo("CLOSED");
+        @DisplayName("受理或执行失败不能吞掉异常伪装关闭成功")
+        void shouldPropagateAdmissionFailureWithoutIndependentWindowSave() {
+            when(runAppService.executeCleanup("window-1", "system", false))
+                    .thenThrow(new IllegalStateException("admission failed"));
+            assertThatThrownBy(() -> releaseWindowAppService.close("window-1", "system", false))
+                    .isInstanceOf(IllegalStateException.class).hasMessage("admission failed");
+            verifyNoInteractions(releaseWindowPort);
         }
     }
 
@@ -295,7 +299,7 @@ class ReleaseWindowAppServiceTest {
             String repoId = "repo-1";
 
             var item = new RunPlanSnapshot.Item("item-1", 1, repoId, "my-repo", iterKey, "GITLAB", "main",
-                    "feature/" + iterKey, "AUTO", "release/" + windowKey, null, null, null, List.of());
+                    "feature/" + iterKey, "AUTO", "release/" + windowKey, null, null, null, List.of(), List.of(iterKey), null, false, null);
             when(planAppService.getSnapshotByWindow(windowId)).thenReturn(new RunPlanSnapshot(
                     windowKey, "G001", "PUBLISHED", false, true, List.of(item)));
 

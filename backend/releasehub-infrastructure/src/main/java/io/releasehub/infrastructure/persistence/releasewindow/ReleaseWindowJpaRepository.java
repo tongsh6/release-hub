@@ -14,6 +14,10 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public interface ReleaseWindowJpaRepository extends JpaRepository<ReleaseWindowJpaEntity, String> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM ReleaseWindowJpaEntity r WHERE r.id = :id")
+    java.util.Optional<ReleaseWindowJpaEntity> findByIdForUpdate(@Param("id") String id);
+
     Page<ReleaseWindowJpaEntity> findByNameContainingIgnoreCase(String name, Pageable pageable);
 
     Page<ReleaseWindowJpaEntity> findByStatus(String status, Pageable pageable);

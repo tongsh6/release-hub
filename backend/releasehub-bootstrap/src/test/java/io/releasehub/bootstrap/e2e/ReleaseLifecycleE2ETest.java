@@ -81,22 +81,19 @@ class ReleaseLifecycleE2ETest extends AbstractE2ETest {
                     .andExpect(jsonPath("$.data.status").value("PUBLISHED"))
                     .andExpect(jsonPath("$.data.publishedAt").isNotEmpty());
 
-            // Step 7a: 验证 branch-status 显示 merge 成功
+            // Publish 只保存配置；分支存在性不能代表已合并，也不会隐式创建 Run。
             mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/branch-status")
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.repos.length()").value(1))
-                    .andExpect(jsonPath("$.data.repos[0].releaseBranch.mergeStatus").value("MERGED"));
-
-            // Step 7b: 验证 publish 创建了 Run
-            assertRunExists(token, windowKey);
-
-            // Step 8: 关闭
-            mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
+                    .andExpect(jsonPath("$.data.repos[0].releaseBranch.mergeStatus").doesNotExist());
+            mockMvc.perform(get("/api/v1/runs/paged").param("windowKey", windowKey)
                             .header("Authorization", "Bearer " + token))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.status").value("CLOSED"));
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.page.total").value(0));
 
+            mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/unfreeze")
+                            .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+            E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, windowId, false);
+            assertRunExists(token, windowKey);
             // Step 9: 验证 Dashboard 统计数据
             mockMvc.perform(get("/api/v1/dashboard/stats")
                             .header("Authorization", "Bearer " + token))
@@ -171,18 +168,12 @@ class ReleaseLifecycleE2ETest extends AbstractE2ETest {
                             .content("{}"))
                     .andExpect(status().isOk());
 
-            // 第一次关闭
-            mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
-                            .header("Authorization", "Bearer " + token))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.status").value("CLOSED"));
-
-            // 第二次关闭 — 幂等
-            mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/close")
-                            .header("Authorization", "Bearer " + token))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.status").value("CLOSED"));
-        }
+            mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/unfreeze")
+                            .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+            JsonNode first = E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, windowId, false);
+            JsonNode second = E2ETestFixtures.closeAndReadRun(mockMvc, objectMapper, token, windowId, false);
+            assertThat(second.path("id").asText()).isEqualTo(first.path("id").asText());
+            assertThat(second.path("status")).isEqualTo(first.path("status"));        }
     }
 
     // ─── 辅助方法 ───
@@ -211,11 +202,9 @@ class ReleaseLifecycleE2ETest extends AbstractE2ETest {
                 .andExpect(status().isOk())
                 .andReturn();
         JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
-        if (data.has("key") && !data.get("key").isNull()) {
-            return data.get("key").asText();
-        }
-        // Fallback: 部分旧版本 API 可能没有 key 字段
-        return windowId;
+        String key = data.path("windowKey").asText();
+        assertThat(key).isNotBlank();
+        return key;
     }
 
     /**

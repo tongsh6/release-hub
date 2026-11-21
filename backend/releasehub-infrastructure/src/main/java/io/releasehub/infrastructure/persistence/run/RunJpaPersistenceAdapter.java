@@ -133,7 +133,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 RunItemId.of(entity.getId()),
                 entity.getWindowKey(),
                 RepoId.of(entity.getRepoId()),
-                IterationKey.of(entity.getIterationKey()),
+                entity.getIterationKey() == null ? null : IterationKey.of(entity.getIterationKey()),
                 entity.getPlannedOrder(),
                 entity.getExecutedOrder(),
                 entity.getFinalResult() != null ? RunItemResult.valueOf(entity.getFinalResult()) : null,
@@ -165,7 +165,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                                                         itemEntity.setRun(entity); // Set parent reference
                                                         itemEntity.setWindowKey(item.getWindowKey());
                                                         itemEntity.setRepoId(item.getRepo().value());
-                                                        itemEntity.setIterationKey(item.getIterationKey().value());
+                                                        itemEntity.setIterationKey(item.getIterationKey() == null ? null : item.getIterationKey().value());
                                                         itemEntity.setPlannedOrder(item.getPlannedOrder());
                                                         itemEntity.setExecutedOrder(item.getExecutedOrder());
                                                         if (item.getFinalResult() != null) {

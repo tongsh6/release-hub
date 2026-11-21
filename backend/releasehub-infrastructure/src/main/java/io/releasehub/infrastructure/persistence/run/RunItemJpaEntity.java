@@ -39,7 +39,7 @@ public class RunItemJpaEntity {
     private String windowKey;
     @Column(name = "repo_id", nullable = false)
     private String repoId;
-    @Column(name = "iteration_key", nullable = false)
+    @Column(name = "iteration_key")
     private String iterationKey;
     @Column(name = "planned_order", nullable = false)
     private int plannedOrder;

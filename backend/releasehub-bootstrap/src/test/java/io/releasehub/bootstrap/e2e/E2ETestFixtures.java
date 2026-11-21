@@ -135,6 +135,33 @@ public final class E2ETestFixtures {
                 .get("data").get("id").asText();
     }
 
+    /**
+     * 验证关闭已受理及真实 Run 身份；调用方必须另行断言 Git 成功，HTTP 200 不代表收尾 DONE。
+     */
+    public static JsonNode closeAndReadRun(MockMvc mockMvc, ObjectMapper objectMapper,
+                                           String token, String windowId, boolean triggerCi) throws Exception {
+        MvcResult response = mockMvc.perform(post("/api/v1/release-windows/{id}/close", windowId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("triggerCi", triggerCi))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.runType").value("WINDOW_CLEANUP"))
+                .andExpect(jsonPath("$.data.id").isNotEmpty()).andReturn();
+        JsonNode run = objectMapper.readTree(response.getResponse().getContentAsString()).path("data");
+        org.assertj.core.api.Assertions.assertThat(run.path("status").asText())
+                .isIn("RUNNING", "DONE", "PARTIAL_FAILED", "FAILED", "NEEDS_REVIEW");
+        org.assertj.core.api.Assertions.assertThat(run.path("items")).isNotEmpty();
+        for (JsonNode item : run.path("items")) {
+            org.assertj.core.api.Assertions.assertThat(item.path("iterationKey").isNull()).isTrue();
+            org.assertj.core.api.Assertions.assertThat(item.path("metadata").path("plan.triggerCi").asText())
+                    .isEqualTo(Boolean.toString(triggerCi));
+        }
+        mockMvc.perform(get("/api/v1/release-windows/{id}", windowId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("CLOSED"));
+        return run;
+    }
+
     public static String getWindowKey(MockMvc mockMvc, ObjectMapper objectMapper,
                                        String token, String windowId) throws Exception {
         var result = mockMvc.perform(get("/api/v1/release-windows/" + windowId)
@@ -142,9 +169,8 @@ public final class E2ETestFixtures {
                 .andExpect(status().isOk())
                 .andReturn();
         JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
-        if (data.has("key") && !data.get("key").isNull()) {
-            return data.get("key").asText();
-        }
-        return windowId;
+        String key = data.path("windowKey").asText();
+        org.assertj.core.api.Assertions.assertThat(key).isNotBlank();
+        return key;
     }
 }

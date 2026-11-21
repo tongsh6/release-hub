@@ -9,6 +9,7 @@ import io.releasehub.common.response.ApiPageResponse;
 import io.releasehub.common.response.ApiResponse;
 import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.releasehub.interfaces.security.SecurityUtils;
+import io.releasehub.interfaces.api.run.RunController;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -110,10 +111,13 @@ public class ReleaseWindowController {
 
     @PostMapping("/{id}/close")
     @Operation(summary = "Close release window")
-    public ApiResponse<ReleaseWindowView> close(@PathVariable("id") String id) {
-        ReleaseWindowView view = appService.close(id, SecurityUtils.getCurrentUsername());
-        return ApiResponse.success(view);
+    public ApiResponse<RunController.RunView> close(@PathVariable("id") String id,
+            @RequestBody(required = false) CloseRequest request) {
+        var run = appService.close(id, SecurityUtils.getCurrentUsername(), request != null && request.triggerCi());
+        return ApiResponse.success(RunController.RunView.from(run));
     }
+
+    public record CloseRequest(boolean triggerCi) {}
 
     @GetMapping("/{id}/branch-status")
     @Operation(summary = "Get branch status for all repos in the release window")
