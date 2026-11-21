@@ -27,7 +27,11 @@ import java.time.Instant;
 @PactFolder("../../frontend/pacts")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-@TestPropertySource(properties = "security.pact-verification=true")
+@TestPropertySource(properties = {
+        "security.pact-verification=true",
+        // 独立库只包含契约 Given 数据，避免其他 API 测试的可空字段污染列表契约。
+        "spring.datasource.url=jdbc:h2:mem:pact-verification;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1"
+})
 class AllPactIT {
 
     @LocalServerPort

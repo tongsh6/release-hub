@@ -3,6 +3,7 @@ package io.releasehub.infrastructure.gitlab;
 import com.github.tomakehurst.wiremock.junit5.WireMockRuntimeInfo;
 import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import io.releasehub.application.settings.SettingsPort;
+import io.releasehub.application.port.out.GitLabFilePort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -52,15 +53,25 @@ class RealGitLabFileAdapterTest {
         stubFor(get(urlPathEqualTo(ENC + "/repository/files/pom.xml"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
                         .withBody("""
-                                {"file_name":"pom.xml","file_path":"pom.xml","content":"%s","encoding":"base64"}
+                                {"file_name":"pom.xml","file_path":"pom.xml","content":"%s","encoding":"base64","last_commit_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
                                 """.formatted(base64Content))));
 
-        Optional<String> result = adapter.readFile(
+        Optional<GitLabFilePort.FileSnapshot> result = adapter.readFile(
                 "http://localhost:" + wm.getHttpPort() + "/acme/releasehub.git",
                 "main", "pom.xml");
 
         assertTrue(result.isPresent());
-        assertTrue(result.get().contains("<version>1.2.3</version>"));
+        assertTrue(result.get().content().contains("<version>1.2.3</version>"));
+    }
+
+    @Test
+    void shouldNotReturnWritableSnapshotWithoutRevision(WireMockRuntimeInfo wm) {
+        configureBaseUrl(wm);
+        stubFor(get(urlPathEqualTo(ENC + "/repository/files/pom.xml"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
+                        .withBody("{\"content\":\"content\",\"encoding\":\"text\"}")));
+        assertTrue(adapter.readFile("http://localhost:" + wm.getHttpPort() + "/acme/releasehub.git",
+                "main", "pom.xml").isEmpty());
     }
 
     @Test
@@ -70,7 +81,7 @@ class RealGitLabFileAdapterTest {
         stubFor(get(urlPathEqualTo(ENC + "/repository/files/missing.xml"))
                 .willReturn(aResponse().withStatus(404)));
 
-        Optional<String> result = adapter.readFile(
+        Optional<GitLabFilePort.FileSnapshot> result = adapter.readFile(
                 "http://localhost:" + wm.getHttpPort() + "/acme/releasehub.git",
                 "main", "missing.xml");
 
@@ -84,7 +95,7 @@ class RealGitLabFileAdapterTest {
         stubFor(get(urlPathEqualTo(ENC + "/repository/files/secret.json"))
                 .willReturn(aResponse().withStatus(403)));
 
-        Optional<String> result = adapter.readFile(
+        Optional<GitLabFilePort.FileSnapshot> result = adapter.readFile(
                 "http://localhost:" + wm.getHttpPort() + "/acme/releasehub.git",
                 "main", "secret.json");
 
@@ -100,15 +111,15 @@ class RealGitLabFileAdapterTest {
         stubFor(get(urlPathEqualTo(ENC + "/repository/files/gradle.properties"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
                         .withBody("""
-                                {"file_name":"gradle.properties","file_path":"gradle.properties","content":"%s","encoding":"base64"}
+                                {"file_name":"gradle.properties","file_path":"gradle.properties","content":"%s","encoding":"base64","last_commit_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
                                 """.formatted(base64Content))));
 
-        Optional<String> result = adapter.readFile(
+        Optional<GitLabFilePort.FileSnapshot> result = adapter.readFile(
                 "http://localhost:" + wm.getHttpPort() + "/acme/releasehub.git",
                 "develop", "gradle.properties");
 
         assertTrue(result.isPresent());
-        assertTrue(result.get().contains("version=2.0.0-SNAPSHOT"));
+        assertTrue(result.get().content().contains("version=2.0.0-SNAPSHOT"));
     }
 
     @Test
@@ -145,10 +156,10 @@ class RealGitLabFileAdapterTest {
         stubFor(get(urlPathEqualTo(ENC + "/repository/files/gradle.properties"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
                         .withBody("""
-                                {"file_name":"gradle.properties","file_path":"gradle.properties","content":"%s","encoding":"base64"}
+                                {"file_name":"gradle.properties","file_path":"gradle.properties","content":"%s","encoding":"base64","last_commit_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
                                 """.formatted(base64Content))));
 
-        Optional<String> result = adapter.readFile(
+        Optional<GitLabFilePort.FileSnapshot> result = adapter.readFile(
                 "http://localhost:" + wm.getHttpPort() + "/acme/releasehub.git",
                 "main", "gradle.properties");
 
@@ -163,7 +174,7 @@ class RealGitLabFileAdapterTest {
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
                         .withBody("null")));
 
-        Optional<String> result = adapter.readFile(
+        Optional<GitLabFilePort.FileSnapshot> result = adapter.readFile(
                 "http://localhost:" + wm.getHttpPort() + "/acme/releasehub.git",
                 "main", "pom.xml");
 

@@ -37,10 +37,15 @@ import java.util.regex.Pattern;
 public class RealGitLabFileAdapter implements GitLabFilePort {
 
     private final SettingsPort settingsPort;
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate = io.releasehub.infrastructure.git.GitHttpClients.create(new org.springframework.boot.web.client.RestTemplateBuilder());
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void installWriteSafety(io.releasehub.infrastructure.git.GitWriteHttpInterceptor interceptor) {
+        restTemplate.getInterceptors().add(interceptor);
+    }
 
     @Override
-    public Optional<String> readFile(String repoCloneUrl, String branch, String filePath) {
+    public Optional<FileSnapshot> readFile(String repoCloneUrl, String branch, String filePath) {
         final RepoRef ref = parseRepoRef(repoCloneUrl);
         final String token = getToken();
 
@@ -66,6 +71,7 @@ public class RealGitLabFileAdapter implements GitLabFilePort {
 
             String content = (String) body.get("content");
             String encoding = (String) body.get("encoding");
+            String lastCommitId = (String) body.get("last_commit_id");
 
             if (content == null) {
                 return Optional.empty();
@@ -74,10 +80,10 @@ public class RealGitLabFileAdapter implements GitLabFilePort {
             if ("base64".equals(encoding)) {
                 String decoded = new String(Base64.getDecoder().decode(
                         content.replaceAll("\\s", "")), StandardCharsets.UTF_8);
-                return Optional.of(decoded);
+                return Optional.of(new FileSnapshot(decoded, lastCommitId));
             }
 
-            return Optional.of(content);
+            return Optional.of(new FileSnapshot(content, lastCommitId));
 
         } catch (HttpClientErrorException.NotFound e) {
             log.debug("File not found: {} in repo {} branch {}", filePath, repoCloneUrl, branch);
@@ -124,7 +130,7 @@ public class RealGitLabFileAdapter implements GitLabFilePort {
     }
 
     @Override
-    public boolean updateFile(String repoCloneUrl, String branch, String filePath, String content, String commitMessage) {
+    public boolean updateFile(String repoCloneUrl, String branch, String filePath, FileSnapshot expected, String content, String commitMessage) {
         final RepoRef ref = parseRepoRef(repoCloneUrl);
         final String token = getToken();
 
@@ -140,7 +146,8 @@ public class RealGitLabFileAdapter implements GitLabFilePort {
             Map<String, String> body = Map.of(
                     "branch", branch,
                     "content", content,
-                    "commit_message", commitMessage
+                    "commit_message", commitMessage,
+                    "last_commit_id", java.util.Objects.requireNonNull(expected, "expected file snapshot").lastCommitId()
             );
 
             restTemplate.exchange(uri, HttpMethod.PUT, new HttpEntity<>(body, headers), Void.class);

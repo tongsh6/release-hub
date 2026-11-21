@@ -14,50 +14,44 @@ import java.util.concurrent.ConcurrentHashMap;
 @ConditionalOnProperty(name = "releasehub.gitlab.in-memory-file-adapter", havingValue = "true")
 public class InMemoryGitLabFileAdapter implements GitLabFilePort {
     
-    private final Map<String, String> files = new ConcurrentHashMap<>();
-    
+    private final Map<String, FileSnapshot> files = new ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicLong revisions = new java.util.concurrent.atomic.AtomicLong();
+
     @Override
-    public Optional<String> readFile(String repoCloneUrl, String branch, String filePath) {
+    public Optional<FileSnapshot> readFile(String repoCloneUrl, String branch, String filePath) {
         String key = buildKey(repoCloneUrl, branch, filePath);
-        String content = files.get(key);
-        
-        if (content != null) {
-            log.debug("In-memory read file: {} - found", key);
-            return Optional.of(content);
-        }
-        
         if ("pom.xml".equals(filePath)) {
-            log.debug("In-memory read file: {} - returning default pom.xml", key);
-            return Optional.of(generateDefaultPom(repoCloneUrl));
+            return Optional.of(files.computeIfAbsent(key, ignored -> snapshot(generateDefaultPom(repoCloneUrl))));
         }
-        
-        log.debug("In-memory read file: {} - not found", key);
-        return Optional.empty();
-    }
-    
-    @Override
-    public boolean fileExists(String repoCloneUrl, String branch, String filePath) {
-        String key = buildKey(repoCloneUrl, branch, filePath);
-        if (files.containsKey(key)) {
-            return true;
-        }
-        return "pom.xml".equals(filePath);
+        return Optional.ofNullable(files.get(key));
     }
 
     @Override
-    public boolean updateFile(String repoCloneUrl, String branch, String filePath, String content, String commitMessage) {
-        String key = buildKey(repoCloneUrl, branch, filePath);
-        files.put(key, content);
-        log.info("In-memory update file: {} - success, commitMessage: {}", key, commitMessage);
-        return true;
+    public boolean fileExists(String repoCloneUrl, String branch, String filePath) {
+        return files.containsKey(buildKey(repoCloneUrl, branch, filePath)) || "pom.xml".equals(filePath);
     }
-    
-    /**
-     * 设置文件内容。
-     */
-    public void setFile(String repoCloneUrl, String branch, String filePath, String content) {
+
+    @Override
+    public boolean updateFile(String repoCloneUrl, String branch, String filePath,
+                              FileSnapshot expected, String content, String commitMessage) {
+        java.util.Objects.requireNonNull(expected, "expected file snapshot");
         String key = buildKey(repoCloneUrl, branch, filePath);
-        files.put(key, content);
+        var updated = new java.util.concurrent.atomic.AtomicBoolean();
+        files.compute(key, (ignored, current) -> {
+            if (current == null || !current.lastCommitId().equals(expected.lastCommitId())) return current;
+            updated.set(true);
+            return snapshot(content);
+        });
+        return updated.get();
+    }
+
+    /** 设置 fixture 内容，同时推进 revision，以覆盖同内容的并发提交。 */
+    public void setFile(String repoCloneUrl, String branch, String filePath, String content) {
+        files.put(buildKey(repoCloneUrl, branch, filePath), snapshot(content));
+    }
+
+    private FileSnapshot snapshot(String content) {
+        return new FileSnapshot(content, "%040x".formatted(revisions.incrementAndGet()));
     }
     
     public void clearFiles() {

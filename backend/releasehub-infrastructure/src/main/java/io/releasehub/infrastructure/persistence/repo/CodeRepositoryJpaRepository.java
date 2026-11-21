@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.Collection;
 
 public interface CodeRepositoryJpaRepository extends JpaRepository<CodeRepositoryJpaEntity, String> {
+    java.util.List<CodeRepositoryJpaEntity> findByCloneUrlInAndGitProvider(Collection<String> urls, String provider);
     void deleteById(String id);
 
     Page<CodeRepositoryJpaEntity> findByNameContainingIgnoreCaseOrCloneUrlContainingIgnoreCase(String name, String cloneUrl, Pageable pageable);

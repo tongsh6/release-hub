@@ -18,6 +18,10 @@ public interface CodeRepositoryPort {
 
     List<CodeRepository> findAll();
 
+    default List<CodeRepository> findByCloneUrls(Set<String> urls, io.releasehub.domain.repo.GitProvider provider) {
+        return findAll().stream().filter(repo -> repo.getGitProvider() == provider && urls.contains(repo.getCloneUrl())).toList();
+    }
+
     void deleteById(RepoId id);
 
     List<CodeRepository> search(String keyword);

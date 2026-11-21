@@ -19,17 +19,52 @@ public interface GitBranchPort {
 
     BranchStatus getBranchStatus(String repoCloneUrl, String token, String branchName);
 
-    record MergeResult(MergeStatus status, String detail) {
+    enum MrDisposition { CREATED, MR_REUSED, ALREADY_MERGED }
+
+    enum MergeBlockReason {
+        CONFLICT, PIPELINE_PENDING, PIPELINE_FAILED, APPROVAL_REQUIRED,
+        PROTECTED_BRANCH, PERMISSION_DENIED, UNKNOWN
+    }
+
+    record MrEvidence(String projectId, String sourceBranch, String targetBranch,
+                      String iid, String url, String sourceSha, String mergeSha,
+                      MrDisposition disposition, MergeBlockReason blockReason) {
+        public MrEvidence withBlockReason(MergeBlockReason reason) {
+            return new MrEvidence(projectId, sourceBranch, targetBranch, iid, url, sourceSha, mergeSha,
+                    disposition, reason);
+        }
+    }
+
+    /** remoteRequestId 仅表示远端 HTTP 请求 ID；未获得该证据时保持 null，MR 编号独立存于 mrEvidence.iid。 */
+    record MergeResult(MergeStatus status, String detail, String remoteRequestId, MrEvidence mrEvidence) {
         public static MergeResult success() {
-            return new MergeResult(MergeStatus.SUCCESS, null);
+            return new MergeResult(MergeStatus.SUCCESS, null, null, null);
         }
 
         public static MergeResult conflict(String detail) {
-            return new MergeResult(MergeStatus.CONFLICT, detail);
+            return blocked(MergeBlockReason.CONFLICT, detail);
+        }
+
+        public static MergeResult blocked(MergeBlockReason reason, String detail) {
+            return new MergeResult(reason == MergeBlockReason.CONFLICT ? MergeStatus.CONFLICT : MergeStatus.BLOCKED,
+                    detail, null, new MrEvidence(null, null, null, null, null, null, null, null, reason));
         }
 
         public static MergeResult failed(String detail) {
-            return new MergeResult(MergeStatus.FAILED, detail);
+            return new MergeResult(MergeStatus.FAILED, detail, null, null);
+        }
+
+        public static MergeResult unknown(String detail) {
+            return new MergeResult(MergeStatus.UNKNOWN, detail, null,
+                    new MrEvidence(null, null, null, null, null, null, null, null, MergeBlockReason.UNKNOWN));
+        }
+
+        public MergeResult withEvidence(MrEvidence evidence) {
+            if (evidence == null) return this;
+            if (mrEvidence != null && mrEvidence.blockReason() != null) {
+                evidence = evidence.withBlockReason(mrEvidence.blockReason());
+            }
+            return new MergeResult(status, detail, remoteRequestId, evidence);
         }
     }
 

@@ -1,38 +1,30 @@
 package io.releasehub.application.port.out;
 
+import java.util.Objects;
 import java.util.Optional;
 
-/**
- * GitLab 文件读取端口
- */
+/** GitLab 文件读取与基于原始 revision 的条件写入端口。 */
 public interface GitLabFilePort {
-    
-    /**
-     * 从 GitLab 仓库读取文件内容
-     * @param repoCloneUrl 仓库克隆地址
-     * @param branch 分支名
-     * @param filePath 文件路径
-     * @return 文件内容，如果文件不存在则返回空
-     */
-    Optional<String> readFile(String repoCloneUrl, String branch, String filePath);
-    
-    /**
-     * 检查文件是否存在
-     * @param repoCloneUrl 仓库克隆地址
-     * @param branch 分支名
-     * @param filePath 文件路径
-     * @return 是否存在
-     */
+
+    /** 内容与读取该内容时的 revision 必须来自同一份远端响应。 */
+    record FileSnapshot(String content, String lastCommitId) {
+        public FileSnapshot {
+            Objects.requireNonNull(content, "content");
+            if (lastCommitId == null || !lastCommitId.matches("[0-9a-fA-F]{40,64}")) {
+                throw new IllegalArgumentException("A file snapshot requires its original commit revision");
+            }
+        }
+    }
+
+    /** 读取文件内容和原始 revision；文件不存在时返回空。 */
+    Optional<FileSnapshot> readFile(String repoCloneUrl, String branch, String filePath);
+
     boolean fileExists(String repoCloneUrl, String branch, String filePath);
 
     /**
-     * 更新 GitLab 仓库中的文件内容
-     * @param repoCloneUrl 仓库克隆地址
-     * @param branch 分支名
-     * @param filePath 文件路径
-     * @param content 新内容
-     * @param commitMessage 提交信息
-     * @return 是否成功
+     * 仅在文件仍处于生成新内容所依据的 revision 时更新。
+     * 禁止重新读取最新 revision 后替换 expected，从而覆盖并发修改。
      */
-    boolean updateFile(String repoCloneUrl, String branch, String filePath, String content, String commitMessage);
+    boolean updateFile(String repoCloneUrl, String branch, String filePath,
+                       FileSnapshot expected, String content, String commitMessage);
 }

@@ -29,7 +29,7 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     private RestTemplate restTemplate;
 
     public GitHubGitBranchAdapter(RestTemplateBuilder builder) {
-        this.restTemplate = builder.build();
+        this.restTemplate = GitHttpClients.create(builder);
     }
 
     void setRestTemplate(RestTemplate restTemplate) {
@@ -47,6 +47,11 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
             return "https://api.github.com";
         }
         return scheme + "://" + host;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void installWriteSafety(io.releasehub.infrastructure.git.GitWriteHttpInterceptor interceptor) {
+        restTemplate.getInterceptors().add(interceptor);
     }
 
     @Override
@@ -107,7 +112,9 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
         } catch (HttpClientErrorException.Conflict e) {
             return MergeResult.conflict(e.getResponseBodyAsString());
         } catch (HttpClientErrorException e) {
-            return MergeResult.failed(e.getResponseBodyAsString());
+            return e.getStatusCode().value() == 408 ? MergeResult.unknown("HTTP_408") : MergeResult.failed("HTTP_" + e.getStatusCode().value());
+        } catch (org.springframework.web.client.RestClientException e) {
+            return MergeResult.unknown("RESPONSE_UNCONFIRMED");
         }
     }
 
@@ -137,59 +144,12 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
 
     @Override
     public MergeabilityResult checkMergeability(String repoCloneUrl, String token, String sourceBranch, String targetBranch) {
-        try {
-            RepoRef ref = parseRepoRef(repoCloneUrl);
-
-            // Create a temporary PR to check mergeability
-            String prEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/pulls",
-                    ref.owner, ref.repo);
-            Map<String, String> prBody = new HashMap<>();
-            prBody.put("title", "[ReleaseHub] merge check: " + sourceBranch + " → " + targetBranch);
-            prBody.put("head", sourceBranch);
-            prBody.put("base", targetBranch);
-
-            ResponseEntity<Map<String, Object>> prResponse = restTemplate.exchange(
-                    prEndpoint, HttpMethod.POST,
-                    new HttpEntity<>(prBody, headers(token)),
-                    new ParameterizedTypeReference<>() {});
-
-            Map<String, Object> pr = prResponse.getBody();
-            if (!prResponse.getStatusCode().is2xxSuccessful() || pr == null) {
-                return MergeabilityResult.error("failed to create pull request");
-            }
-
-            Object numberValue = pr.get("number");
-            if (!(numberValue instanceof Number numberValueAsNumber)) {
-                return MergeabilityResult.error("pull request response missing number");
-            }
-            int number = numberValueAsNumber.intValue();
-
-            // Close the temporary PR
-            String closeEndpoint = String.format(ref.apiBaseUrl + "/repos/%s/%s/pulls/%d",
-                    ref.owner, ref.repo, number);
-            Map<String, String> closeBody = Map.of("state", "closed");
-            restTemplate.exchange(closeEndpoint, HttpMethod.PATCH,
-                    new HttpEntity<>(closeBody, headers(token)),
-                    new ParameterizedTypeReference<>() {});
-
-            // Check mergeable field (may be null if GitHub hasn't computed it yet)
-            Boolean mergeable = (Boolean) pr.get("mergeable");
-            if (Boolean.FALSE.equals(mergeable)) {
-                return MergeabilityResult.conflict("merge conflict detected");
-            }
-            return MergeabilityResult.mergeable();
-        } catch (HttpClientErrorException e) {
-            String body = e.getResponseBodyAsString();
-            if (e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403) {
-                return MergeabilityResult.permissionDenied(body);
-            }
-            if (e.getStatusCode().value() == 422 || e.getStatusCode().value() == 404) {
-                return MergeabilityResult.conflict("branch not found or no commits in common: " + body);
-            }
-            return MergeabilityResult.error(body);
-        } catch (Exception e) {
-            return MergeabilityResult.unavailable(e.getMessage());
-        }
+        RepoRef ref = parseRepoRef(repoCloneUrl);
+        var client = new GitHubMergeRequestAdapter(restTemplate,
+                ref.apiBaseUrl + "/repos/" + ref.owner + "/" + ref.repo + "/pulls", token);
+        return new io.releasehub.application.gitoperation.GitMergeWorkflow(client, 8, () -> {
+            try { Thread.sleep(250); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }).probe(sourceBranch, targetBranch);
     }
 
     @Override

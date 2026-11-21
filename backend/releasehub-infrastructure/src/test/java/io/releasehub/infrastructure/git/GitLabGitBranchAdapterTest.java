@@ -3,288 +3,305 @@ package io.releasehub.infrastructure.git;
 import com.github.tomakehurst.wiremock.junit5.WireMockRuntimeInfo;
 import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import io.releasehub.application.port.out.GitBranchPort;
+import io.releasehub.common.exception.BusinessException;
+import io.releasehub.common.exception.ErrorCode;
 import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.run.MergeStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.web.client.RestTemplate;
-
 import java.util.List;
-
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-import static com.github.tomakehurst.wiremock.client.WireMock.get;
-import static com.github.tomakehurst.wiremock.client.WireMock.post;
-import static com.github.tomakehurst.wiremock.client.WireMock.put;
-import static com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor;
-import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.verify;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 @WireMockTest(httpPort = 0)
 class GitLabGitBranchAdapterTest {
-
+    private static final String ENC = "/api/v4/projects/acme%2Freleasehub";
+    private static final String SOURCE = "feature/ITER-1";
+    private static final String TARGET = "release/RW-1";
+    private static final String SHA = "a".repeat(40);
+    private static final String MERGE_SHA = "b".repeat(40);
     private final GitLabGitBranchAdapter adapter = new GitLabGitBranchAdapter(
             new org.springframework.boot.web.client.RestTemplateBuilder());
 
-    /**
-     * Adapter 通过 {@code uri(...)} 把 endpoint 包装为 URI，避免 RestTemplate 二次编码。
-     * 单次 encode：{@code /} → {@code %2F}。WireMock 收到正确的单编码路径。
-     */
-    private static final String ENC = "/api/v4/projects/acme%2Freleasehub";
-
-    @BeforeEach
-    void injectRestTemplate() {
-        java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
-                .version(java.net.http.HttpClient.Version.HTTP_1_1).build();
-        adapter.setRestTemplate(new RestTemplate(
-                new org.springframework.http.client.JdkClientHttpRequestFactory(httpClient)));
+    @BeforeEach void injectRestTemplate() {
+        var client = java.net.http.HttpClient.newBuilder().version(java.net.http.HttpClient.Version.HTTP_1_1).build();
+        adapter.setRestTemplate(new RestTemplate(new org.springframework.http.client.JdkClientHttpRequestFactory(client)));
+        stubFor(get(urlPathEqualTo(ENC)).willReturn(okJson("{\"id\":7}")));
+        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/feature%2FITER-1"))
+                .willReturn(okJson("{\"name\":\"feature/ITER-1\",\"commit\":{\"id\":\"" + SHA + "\"}}")));
+        stubFor(get(urlPathEqualTo(ENC + "/merge_requests"))
+                .withQueryParam("state", equalTo("opened")).willReturn(okJson("[]")));
+        stubFor(get(urlPathEqualTo(ENC + "/merge_requests"))
+                .withQueryParam("state", equalTo("merged")).willReturn(okJson("[]")));
+        stubFor(get(urlPathEqualTo(ENC + "/repository/commits/" + SHA + "/refs")).willReturn(okJson("[]")));
     }
 
-    private static String baseUrl(WireMockRuntimeInfo wm) {
-        return "http://localhost:" + wm.getHttpPort();
-    }
-
-    @Test
-    void shouldSupportGitLabProvider() {
+    @Test void shouldSupportGitLabProvider() {
         assertTrue(adapter.supports(GitProvider.GITLAB));
         assertFalse(adapter.supports(GitProvider.GITHUB));
     }
 
-    @Test
-    void shouldCreateBranchSuccessfully(WireMockRuntimeInfo wm) {
+    @Test void shouldNotDeleteSourceWhenArchiveCreationFails(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/repository/branches")).willReturn(aResponse().withStatus(403)));
+        assertFalse(adapter.archiveBranch(repo(wm), "token", SOURCE, "released"));
+        verify(0, deleteRequestedFor(anyUrl()));
+    }
+
+    @Test void shouldCreateBranchOnlyWithConfirmedResponse(WireMockRuntimeInfo wm) {
         stubFor(post(urlPathEqualTo(ENC + "/repository/branches"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
-                        .withBody("{}")));
-
-        assertTrue(adapter.createBranch(baseUrl(wm) + "/acme/releasehub.git", "token", "release/RW-1", "main"));
+                .willReturn(created().withHeader("Content-Type", "application/json")
+                        .withBody("{\"name\":\"release/RW-1\",\"commit\":{\"id\":\"" + SHA + "\"}}")));
+        assertTrue(adapter.createBranch(repo(wm), "token", TARGET, "main"));
     }
 
-    @Test
-    void shouldMergeSuccessfully(WireMockRuntimeInfo wm) {
-        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
-                        .withBody("{\"iid\":101}")));
-        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/101/merge"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{}")));
+    @ParameterizedTest @ValueSource(ints = {408, 500, 503})
+    void shouldExposeUncertainBranchWriteAsTypedUnknown(int status, WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/repository/branches")).willReturn(aResponse().withStatus(status)));
+        var error = assertThrows(BusinessException.class, () -> adapter.createBranch(repo(wm), "token", SOURCE, "main"));
+        assertEquals(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN, error.getErrorCode());
+        verify(1, postRequestedFor(urlPathEqualTo(ENC + "/repository/branches")));
+    }
 
-        GitBranchPort.MergeResult result = adapter.mergeBranch(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
+    @Test void shouldExposeLostBranchResponseAsTypedUnknown(WireMockRuntimeInfo wm) {
+        var http = new RestTemplate();
+        var server = org.springframework.test.web.client.MockRestServiceServer.bindTo(http).build();
+        adapter.setRestTemplate(http);
+        server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo(
+                        "http://localhost:" + wm.getHttpPort() + ENC + "/repository/branches"))
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withException(
+                        new java.net.SocketTimeoutException("response lost")));
+        var error = assertThrows(BusinessException.class, () -> adapter.createBranch(repo(wm), "token", SOURCE, "main"));
+        assertEquals(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN, error.getErrorCode());
+        server.verify();
+    }
 
+    @Test void shouldExposeUncertainTagWriteAsTypedUnknown(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/repository/tags")).willReturn(aResponse().withStatus(503)));
+        var error = assertThrows(BusinessException.class, () -> adapter.createTag(repo(wm), "token", "v1", SOURCE, "tag"));
+        assertEquals(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN, error.getErrorCode());
+    }
+
+    @Test void shouldExposeUncertainDeleteAsTypedUnknown(WireMockRuntimeInfo wm) {
+        stubFor(delete(urlPathEqualTo(ENC + "/repository/branches/feature%2FITER-1")).willReturn(aResponse().withStatus(408)));
+        var error = assertThrows(BusinessException.class, () -> adapter.deleteBranch(repo(wm), "token", SOURCE));
+        assertEquals(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN, error.getErrorCode());
+    }
+
+    @Test void shouldExposeIncompleteBranchResponseAsTypedUnknown(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/repository/branches")).willReturn(created()
+                .withHeader("Content-Type", "application/json").withBody("{}")));
+        var error = assertThrows(BusinessException.class, () -> adapter.createBranch(repo(wm), "token", SOURCE, "main"));
+        assertEquals(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN, error.getErrorCode());
+    }
+
+    @Test void shouldPreserveTypedUnknownWhenArchiveCreationCannotBeConfirmed(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/repository/branches")).willReturn(aResponse().withStatus(503)));
+        var error = assertThrows(BusinessException.class, () -> adapter.archiveBranch(repo(wm), "token", SOURCE, "released"));
+        assertEquals(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN, error.getErrorCode());
+        verify(0, deleteRequestedFor(anyUrl()));
+    }
+
+    @Test void shouldMergeSuccessfullyWithExactSourceSha(WireMockRuntimeInfo wm) {
+        createMr(101, "mergeable");
+        mergeMr(101);
+        var result = merge(wm);
         assertEquals(MergeStatus.SUCCESS, result.status());
+        assertEquals(GitBranchPort.MrDisposition.CREATED, result.mrEvidence().disposition());
+        assertEquals("7", result.mrEvidence().projectId());
+        assertEquals(MERGE_SHA, result.mrEvidence().mergeSha());
+        verify(putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/101/merge"))
+                .withRequestBody(matchingJsonPath("$.sha", equalTo(SHA)))
+                .withRequestBody(matchingJsonPath("$.should_remove_source_branch", equalTo("false"))));
     }
 
-    @Test
-    void shouldReturnConflictWhenMergeFailed(WireMockRuntimeInfo wm) {
-        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(400)
-                        .withBody("{\"message\":\"cannot be merged due to conflict\"}")));
+    @Test void shouldReuseOpenedMrAndNeverCreateAnother(WireMockRuntimeInfo wm) {
+        openedMr(101, "mergeable");
+        mergeMr(101);
+        var result = merge(wm);
+        assertEquals(MergeStatus.SUCCESS, result.status());
+        assertEquals(GitBranchPort.MrDisposition.MR_REUSED, result.mrEvidence().disposition());
+        assertEquals("101", result.mrEvidence().iid());
+        verify(0, postRequestedFor(urlPathEqualTo(ENC + "/merge_requests")));
+        verify(1, putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/101/merge")));
+    }
 
-        GitBranchPort.MergeResult result = adapter.mergeBranch(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
-
+    @Test void shouldKeepConflictedMrOpen(WireMockRuntimeInfo wm) {
+        createMr(101, "conflict");
+        var result = merge(wm);
         assertEquals(MergeStatus.CONFLICT, result.status());
+        assertEquals(GitBranchPort.MergeBlockReason.CONFLICT, result.mrEvidence().blockReason());
+        verify(0, putRequestedFor(anyUrl()));
     }
 
-    @Test
-    void shouldTreatNoCommitsBetweenBranchesAsSuccessfulMerge(WireMockRuntimeInfo wm) {
-        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(400)
-                        .withBody("{\"message\":[\"No commits between feature/ITER-1 and release/RW-1\"]}")));
+    @Test void shouldNotTreatNoCommitsMessageAsSuccessfulMerge(WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/merge_requests")).willReturn(aResponse().withStatus(400)
+                .withBody("{\"message\":[\"No commits between feature/ITER-1 and release/RW-1\"]}")));
+        assertEquals(MergeStatus.UNKNOWN, merge(wm).status());
+        verify(0, putRequestedFor(anyUrl()));
+    }
 
-        GitBranchPort.MergeResult result = adapter.mergeBranch(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
-
+    @Test void shouldSkipEmptyMrOnlyWithConfirmedContainment(WireMockRuntimeInfo wm) {
+        stubFor(get(urlPathEqualTo(ENC + "/repository/commits/" + SHA + "/refs"))
+                .willReturn(okJson("[{\"type\":\"branch\",\"name\":\"release/RW-1\"}]")));
+        var result = merge(wm);
         assertEquals(MergeStatus.SUCCESS, result.status());
+        assertEquals(GitBranchPort.MrDisposition.ALREADY_MERGED, result.mrEvidence().disposition());
+        verifyNoWrites();
     }
 
-    @Test
-    void shouldWaitForGitLabMergeRequestReadinessBeforeMerging(WireMockRuntimeInfo wm) {
-        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
-                        .withBody("{\"iid\":102,\"merge_status\":\"unchecked\"}")));
-        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/102"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{\"iid\":102,\"merge_status\":\"can_be_merged\"}")));
-        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/102/merge"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{}")));
-
-        GitBranchPort.MergeResult result = adapter.mergeBranch(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
-
-        assertEquals(MergeStatus.SUCCESS, result.status());
+    @Test void shouldWaitForReadinessBeforeMerging(WireMockRuntimeInfo wm) {
+        createMr(102, "checking");
+        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/102")).willReturn(okJson(mr(102, "opened", "mergeable"))));
+        mergeMr(102);
+        assertEquals(MergeStatus.SUCCESS, merge(wm).status());
+        verify(1, getRequestedFor(urlPathEqualTo(ENC + "/merge_requests/102")));
+        verify(1, postRequestedFor(urlPathEqualTo(ENC + "/merge_requests")));
     }
 
-    @Test
-    void shouldTreatGitLabCommitsStatusAsNoOpMerge(WireMockRuntimeInfo wm) {
-        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
-                        .withBody("{\"iid\":104,\"merge_status\":\"unchecked\"}")));
-        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/104"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{\"iid\":104,\"detailed_merge_status\":\"commits_status\"}")));
-        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/104"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{}")));
-
-        GitBranchPort.MergeResult result = adapter.mergeBranch(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
-
-        assertEquals(MergeStatus.SUCCESS, result.status());
-        verify(putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/104")));
+    @Test void shouldKeepCommitsStatusUnknownWithoutClosingMr(WireMockRuntimeInfo wm) {
+        createMr(104, "commits_status");
+        assertEquals(MergeStatus.UNKNOWN, merge(wm).status());
+        verify(0, putRequestedFor(anyUrl()));
     }
 
-    @Test
-    void shouldCloseMergeRequestWhenMergeEndpointFails(WireMockRuntimeInfo wm) {
-        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
-                        .withBody("{\"iid\":103,\"merge_status\":\"can_be_merged\"}")));
-        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/103/merge"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(405)
-                        .withBody("{\"message\":\"405 Method Not Allowed\"}")));
-        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/103"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{\"iid\":103,\"merge_status\":\"can_be_merged\"}")));
-        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/103"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{}")));
-
-        GitBranchPort.MergeResult result = adapter.mergeBranch(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
-
-        assertEquals(MergeStatus.FAILED, result.status());
-        verify(putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/103")));
+    @Test void shouldKeepRejectedMergeBlockedWithoutHiddenRetry(WireMockRuntimeInfo wm) {
+        createMr(103, "mergeable");
+        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/103/merge")).willReturn(aResponse().withStatus(405)));
+        var result = merge(wm);
+        assertEquals(MergeStatus.BLOCKED, result.status());
+        assertEquals("103", result.mrEvidence().iid());
+        verify(1, putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/103/merge")));
+        verify(0, putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/103")));
     }
 
-    @Test
-    void shouldTreatCommitsStatusAfterMergeEndpoint405AsNoOpMerge(WireMockRuntimeInfo wm) {
-        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
-                        .withBody("{\"iid\":105,\"merge_status\":\"can_be_merged\"}")));
-        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/105/merge"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(405)
-                        .withBody("{\"message\":\"405 Method Not Allowed\"}")));
-        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/105"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{\"iid\":105,\"detailed_merge_status\":\"commits_status\"}")));
-        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/105"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{}")));
-
-        GitBranchPort.MergeResult result = adapter.mergeBranch(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1", "merge");
-
-        assertEquals(MergeStatus.SUCCESS, result.status());
-        verify(putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/105")));
+    @Test void shouldKeepUnknownMergeUnreplayed(WireMockRuntimeInfo wm) {
+        createMr(103, "mergeable");
+        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/103/merge")).willReturn(aResponse().withStatus(503)));
+        var result = merge(wm);
+        assertEquals(MergeStatus.UNKNOWN, result.status());
+        assertEquals("103", result.mrEvidence().iid());
+        verify(1, putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/103/merge")));
+        verify(1, postRequestedFor(urlPathEqualTo(ENC + "/merge_requests")));
     }
 
-    @Test
-    void shouldGetBranchStatusSuccessfully(WireMockRuntimeInfo wm) {
+    @Test void shouldRequireMergedEvidenceFromSuccessfulHttpResponse(WireMockRuntimeInfo wm) {
+        createMr(103, "mergeable");
+        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/103/merge")).willReturn(okJson("{}")));
+        assertEquals(MergeStatus.UNKNOWN, merge(wm).status());
+    }
+
+    @Test void shouldGetBranchStatusSuccessfully(WireMockRuntimeInfo wm) {
         stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%2FRW-1"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{\"commit\":{\"id\":\"abc123\"}}")));
-
-        GitBranchPort.BranchStatus status = adapter.getBranchStatus(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "release/RW-1");
-
+                .willReturn(okJson("{\"name\":\"release/RW-1\",\"commit\":{\"id\":\"" + SHA + "\"}}")));
+        var status = adapter.getBranchStatus(repo(wm), "token", TARGET);
         assertTrue(status.exists());
-        assertEquals("abc123", status.latestCommit());
+        assertEquals(SHA, status.latestCommit());
+        verifyNoWrites();
     }
 
-    @Test
-    void shouldListAllBranchesWhenPrefixIsBlank(WireMockRuntimeInfo wm) {
+    @Test void shouldReturnMissingBranchOnlyOnNotFound(WireMockRuntimeInfo wm) {
+        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%2FRW-1"))
+                .willReturn(aResponse().withStatus(404)));
+        var status = adapter.getBranchStatus(repo(wm), "token", TARGET);
+        assertFalse(status.exists());
+        assertNull(status.latestCommit());
+        verifyNoWrites();
+    }
+
+    @Test void shouldRejectEmptyBranchReadEvidence(WireMockRuntimeInfo wm) {
+        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%2FRW-1"))
+                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")));
+        var error = assertThrows(BusinessException.class,
+                () -> adapter.getBranchStatus(repo(wm), "token", TARGET));
+        assertEquals(ErrorCode.GIT_IDENTITY_UNAVAILABLE, error.getErrorCode());
+        verifyNoWrites();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"name\":\"release/RW-1\",\"commit\":{}}",
+            "{\"name\":\"release/RW-1\",\"commit\":{\"id\":\"abc123\"}}",
+            "{\"name\":\"release/RW-1\",\"commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"})
+    void shouldRejectIncompleteBranchReadEvidence(String body, WireMockRuntimeInfo wm) {
+        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%2FRW-1")).willReturn(okJson(body)));
+        var error = assertThrows(BusinessException.class,
+                () -> adapter.getBranchStatus(repo(wm), "token", TARGET));
+        assertEquals(ErrorCode.GIT_IDENTITY_UNAVAILABLE, error.getErrorCode());
+        verifyNoWrites();
+    }
+
+    @Test void shouldRejectMismatchedBranchReadIdentity(WireMockRuntimeInfo wm) {
+        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%2FRW-1"))
+                .willReturn(okJson("{\"name\":\"private-unexpected-branch\",\"commit\":{\"id\":\"" + SHA + "\"}}")));
+        var error = assertThrows(BusinessException.class,
+                () -> adapter.getBranchStatus(repo(wm), "sensitive-token-fixture", TARGET));
+        assertEquals(ErrorCode.GIT_IDENTITY_UNAVAILABLE, error.getErrorCode());
+        assertFalse(error.getMessage().contains("private-unexpected-branch"));
+        assertFalse(error.getMessage().contains("sensitive-token-fixture"));
+        assertNull(error.getCause());
+        verifyNoWrites();
+    }
+
+    @Test void shouldListAllBranchesWhenPrefixIsBlank(WireMockRuntimeInfo wm) {
         stubFor(get(urlEqualTo(ENC + "/repository/branches?per_page=100"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("""
-                                [
-                                  {"name":"main"},
-                                  {"name":"feature/ITER-1"},
-                                  {"name":"legacy_branch"}
-                                ]
-                                """)));
-
-        var branches = adapter.listBranches(baseUrl(wm) + "/acme/releasehub.git", "token", "");
-
-        assertEquals(List.of("main", "feature/ITER-1", "legacy_branch"), branches);
+                .willReturn(okJson("[{\"name\":\"main\"},{\"name\":\"feature/ITER-1\"},{\"name\":\"legacy_branch\"}]")));
+        assertEquals(List.of("main", SOURCE, "legacy_branch"), adapter.listBranches(repo(wm), "token", ""));
     }
 
-    @Test
-    void shouldCheckMergeabilityAsMergeable(WireMockRuntimeInfo wm) {
-        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
-                        .withBody("{\"iid\":201,\"merge_status\":\"can_be_merged\"}")));
-        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/201"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{}")));
-
-        assertTrue(adapter.checkMergeability(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1").canMerge());
+    @Test void shouldCheckExistingMrWithoutAnyWrites(WireMockRuntimeInfo wm) {
+        openedMr(201, "mergeable");
+        assertTrue(adapter.checkMergeability(repo(wm), "token", SOURCE, TARGET).canMerge());
+        verifyNoWrites();
     }
 
-    @Test
-    void shouldCheckMergeabilityAsConflict(WireMockRuntimeInfo wm) {
-        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
-                        .withBody("{\"iid\":202,\"merge_status\":\"cannot_be_merged\"}")));
-        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/202"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{}")));
-
-        GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1");
-
+    @Test void shouldReportConflictFromExistingMrWithoutClosingIt(WireMockRuntimeInfo wm) {
+        openedMr(202, "conflict");
+        var result = adapter.checkMergeability(repo(wm), "token", SOURCE, TARGET);
         assertFalse(result.canMerge());
+        assertEquals(GitBranchPort.MergeabilityFailure.CONFLICT, result.failure());
+        verifyNoWrites();
     }
 
-    @Test
-    void shouldNotTreatUnknownMergeabilityReadinessAsMergeable(WireMockRuntimeInfo wm) {
-        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
-                        .withBody("{\"iid\":204,\"detailed_merge_status\":\"not_open\"}")));
-        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/204"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{}")));
-
-        GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1");
-
+    @Test void shouldLeaveMissingMrUndeterminedWithoutCreatingATemporaryMr(WireMockRuntimeInfo wm) {
+        var result = adapter.checkMergeability(repo(wm), "token", SOURCE, TARGET);
         assertFalse(result.canMerge());
         assertEquals(GitBranchPort.MergeabilityFailure.UNKNOWN, result.failure());
+        verifyNoWrites();
     }
 
-    @Test
-    void shouldTreatNoCommitsBetweenBranchesAsMergeable(WireMockRuntimeInfo wm) {
-        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(400)
-                        .withBody("{\"message\":[\"No commits between feature/ITER-1 and release/RW-1\"]}")));
-
-        GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1");
-
-        assertTrue(result.canMerge());
+    @Test void shouldNotTreatCommitsStatusAsMergeable(WireMockRuntimeInfo wm) {
+        openedMr(203, "commits_status");
+        assertFalse(adapter.checkMergeability(repo(wm), "token", SOURCE, TARGET).canMerge());
+        verifyNoWrites();
     }
 
-    @Test
-    void shouldTreatGitLabCommitsStatusAsMergeable(WireMockRuntimeInfo wm) {
-        stubFor(post(urlPathEqualTo(ENC + "/merge_requests"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(201)
-                        .withBody("{\"iid\":203,\"merge_status\":\"unchecked\"}")));
-        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/203"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{\"iid\":203,\"detailed_merge_status\":\"commits_status\"}")));
-        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/203"))
-                .willReturn(aResponse().withHeader("Content-Type", "application/json").withStatus(200)
-                        .withBody("{}")));
-
-        GitBranchPort.MergeabilityResult result = adapter.checkMergeability(
-                baseUrl(wm) + "/acme/releasehub.git", "token", "feature/ITER-1", "release/RW-1");
-
-        assertTrue(result.canMerge());
-        verify(putRequestedFor(urlPathEqualTo(ENC + "/merge_requests/203")));
+    private static String repo(WireMockRuntimeInfo wm) { return "http://localhost:" + wm.getHttpPort() + "/acme/releasehub.git"; }
+    private GitBranchPort.MergeResult merge(WireMockRuntimeInfo wm) { return adapter.mergeBranch(repo(wm), "token", SOURCE, TARGET, "merge"); }
+    private static void createMr(int id, String status) {
+        stubFor(post(urlPathEqualTo(ENC + "/merge_requests")).willReturn(created().withHeader("Content-Type", "application/json")
+                .withBody(mr(id, "opened", status))));
+    }
+    private static void mergeMr(int id) {
+        stubFor(put(urlPathEqualTo(ENC + "/merge_requests/" + id + "/merge")).willReturn(okJson(mr(id, "merged", "not_open"))));
+    }
+    private static void openedMr(int id, String status) {
+        stubFor(get(urlPathEqualTo(ENC + "/merge_requests")).withQueryParam("state", equalTo("opened"))
+                .willReturn(okJson("[" + mr(id, "opened", status) + "]")));
+        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/" + id)).willReturn(okJson(mr(id, "opened", status))));
+    }
+    private static String mr(int id, String state, String status) {
+        return """
+                {"iid":%d,"project_id":7,"source_project_id":7,"target_project_id":7,
+                 "source_branch":"feature/ITER-1","target_branch":"release/RW-1",
+                 "web_url":"https://gitlab.test/acme/releasehub/-/merge_requests/%d",
+                 "state":"%s","detailed_merge_status":"%s","sha":"%s","merge_commit_sha":"%s"}
+                """.formatted(id, id, state, status, SHA, MERGE_SHA);
+    }
+    private static void verifyNoWrites() {
+        verify(0, postRequestedFor(anyUrl()));
+        verify(0, putRequestedFor(anyUrl()));
+        verify(0, deleteRequestedFor(anyUrl()));
     }
 }

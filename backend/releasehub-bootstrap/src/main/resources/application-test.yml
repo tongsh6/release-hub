@@ -1,4 +1,7 @@
 releasehub:
+  git-safety:
+    # 仅本 profile 的内存替身；真实 HTTP 写出口在关闭时仍拒绝派发。
+    enabled: false
   seed:
     enabled: true
   gitlab:

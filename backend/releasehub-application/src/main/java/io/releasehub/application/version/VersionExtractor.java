@@ -46,7 +46,7 @@ public class VersionExtractor implements VersionExtractorUseCase {
     public VersionInspection inspectVersion(String repoCloneUrl, String branch) {
         Optional<String> pomContent;
         try {
-            pomContent = gitLabFilePort.readFile(repoCloneUrl, branch, "pom.xml");
+            pomContent = gitLabFilePort.readFile(repoCloneUrl, branch, "pom.xml").map(GitLabFilePort.FileSnapshot::content);
         } catch (Exception e) {
             log.warn("Failed to read pom.xml from repository: {} branch: {}: {}", repoCloneUrl, branch, e.getMessage());
             return VersionInspection.unresolved(
@@ -75,7 +75,7 @@ public class VersionExtractor implements VersionExtractorUseCase {
 
         Optional<String> gradleContent;
         try {
-            gradleContent = gitLabFilePort.readFile(repoCloneUrl, branch, "gradle.properties");
+            gradleContent = gitLabFilePort.readFile(repoCloneUrl, branch, "gradle.properties").map(GitLabFilePort.FileSnapshot::content);
         } catch (Exception e) {
             log.warn("Failed to read gradle.properties from repository: {} branch: {}: {}", repoCloneUrl, branch, e.getMessage());
             return VersionInspection.unresolved(

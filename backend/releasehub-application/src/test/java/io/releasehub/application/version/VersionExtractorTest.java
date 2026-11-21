@@ -49,7 +49,7 @@ class VersionExtractorTest {
                 """;
             
             when(gitLabFilePort.readFile(REPO_URL, BRANCH, "pom.xml"))
-                    .thenReturn(Optional.of(pomContent));
+                    .thenReturn(Optional.of(new GitLabFilePort.FileSnapshot(pomContent, "a".repeat(40))));
 
             Optional<VersionExtractor.VersionInfo> result = versionExtractor.extractVersion(REPO_URL, BRANCH);
 
@@ -76,7 +76,7 @@ class VersionExtractorTest {
                 """;
             
             when(gitLabFilePort.readFile(REPO_URL, BRANCH, "pom.xml"))
-                    .thenReturn(Optional.of(pomContent));
+                    .thenReturn(Optional.of(new GitLabFilePort.FileSnapshot(pomContent, "a".repeat(40))));
 
             Optional<VersionExtractor.VersionInfo> result = versionExtractor.extractVersion(REPO_URL, BRANCH);
 
@@ -98,7 +98,7 @@ class VersionExtractorTest {
                 """;
             
             when(gitLabFilePort.readFile(REPO_URL, BRANCH, "gradle.properties"))
-                    .thenReturn(Optional.of(gradleContent));
+                    .thenReturn(Optional.of(new GitLabFilePort.FileSnapshot(gradleContent, "a".repeat(40))));
 
             Optional<VersionExtractor.VersionInfo> result = versionExtractor.extractVersion(REPO_URL, BRANCH);
 
@@ -117,7 +117,7 @@ class VersionExtractorTest {
                 """;
             
             when(gitLabFilePort.readFile(REPO_URL, BRANCH, "pom.xml"))
-                    .thenReturn(Optional.of(pomContent));
+                    .thenReturn(Optional.of(new GitLabFilePort.FileSnapshot(pomContent, "a".repeat(40))));
 
             Optional<VersionExtractor.VersionInfo> result = versionExtractor.extractVersion(REPO_URL, BRANCH);
 
@@ -167,7 +167,7 @@ class VersionExtractorTest {
                 </project>
                 """;
             when(gitLabFilePort.readFile(REPO_URL, BRANCH, "pom.xml"))
-                    .thenReturn(Optional.of(pomContent));
+                    .thenReturn(Optional.of(new GitLabFilePort.FileSnapshot(pomContent, "a".repeat(40))));
             when(gitLabFilePort.readFile(REPO_URL, BRANCH, "gradle.properties"))
                     .thenReturn(Optional.empty());
 
@@ -187,7 +187,7 @@ class VersionExtractorTest {
                 </project>
                 """;
             when(gitLabFilePort.readFile(REPO_URL, BRANCH, "pom.xml"))
-                    .thenReturn(Optional.of(pomContent));
+                    .thenReturn(Optional.of(new GitLabFilePort.FileSnapshot(pomContent, "a".repeat(40))));
 
             VersionExtractorUseCase.VersionInspection result = versionExtractor.inspectVersion(REPO_URL, BRANCH);
 
@@ -211,12 +211,12 @@ class VersionExtractorTest {
                 """;
             
             when(gitLabFilePort.readFile(REPO_URL, BRANCH, "pom.xml"))
-                    .thenReturn(Optional.of(pomContent));
+                    .thenReturn(Optional.of(new GitLabFilePort.FileSnapshot(pomContent, "a".repeat(40))));
             
             // parent 中的版本应该被跳过，导致回退到 gradle
             String gradleContent = "version=2.0.0";
             when(gitLabFilePort.readFile(REPO_URL, BRANCH, "gradle.properties"))
-                    .thenReturn(Optional.of(gradleContent));
+                    .thenReturn(Optional.of(new GitLabFilePort.FileSnapshot(gradleContent, "a".repeat(40))));
 
             Optional<VersionExtractor.VersionInfo> result = versionExtractor.extractVersion(REPO_URL, BRANCH);
 

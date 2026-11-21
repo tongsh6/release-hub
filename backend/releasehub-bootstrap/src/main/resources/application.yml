@@ -11,6 +11,9 @@ management:
         include: health,info
 
 releasehub:
+  git-safety:
+    # 默认保护真实 Git 写入；关闭只暂停派发，不允许绕过 journal 和仓库保留。
+    enabled: ${RELEASEHUB_GIT_SAFETY_ENABLED:true}
   crypto:
     # 加密默认关闭。需要加密时在 Profile 中设置 enabled: true 并提供 secret-key
     enabled: false

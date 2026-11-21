@@ -108,16 +108,19 @@ public class GradleVersionUpdaterAdapter implements VersionUpdaterPort {
         private final GitLabFilePort gitLabFilePort;
         private final String repoCloneUrl;
         private final String branch;
+        private final java.util.Map<String, GitLabFilePort.FileSnapshot> snapshots = new java.util.HashMap<>();
 
         @Override
         public String read(String path) {
-            return gitLabFilePort.readFile(repoCloneUrl, branch, path)
-                    .orElseThrow(() -> new RuntimeException("File not found on GitLab: " + path));
+            return snapshots.computeIfAbsent(path, file -> gitLabFilePort.readFile(repoCloneUrl, branch, file)
+                    .orElseThrow(() -> new IllegalStateException("File not found on GitLab: " + file))).content();
         }
 
         @Override
         public void write(String path, String content) {
-            boolean ok = gitLabFilePort.updateFile(repoCloneUrl, branch, path, content, "ReleaseHub: Update version");
+            GitLabFilePort.FileSnapshot expected = snapshots.get(path);
+            if (expected == null) throw new IllegalStateException("File must be read before update: " + path);
+            boolean ok = gitLabFilePort.updateFile(repoCloneUrl, branch, path, expected, content, "ReleaseHub: Update version");
             if (!ok) throw new RuntimeException("Failed to update file on GitLab: " + path);
         }
 

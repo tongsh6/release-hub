@@ -76,6 +76,11 @@ public class CodeRepositoryPersistenceAdapter implements CodeRepositoryPort {
     }
 
     @Override
+    public List<CodeRepository> findByCloneUrls(Set<String> urls, io.releasehub.domain.repo.GitProvider provider) {
+        return repository.findByCloneUrlInAndGitProvider(urls,provider.name()).stream().map(this::toDomain).toList();
+    }
+
+    @Override
     public void deleteById(RepoId id) {
         repository.deleteById(id.value());
     }

@@ -38,6 +38,20 @@ class GitLabAdapterTest {
     }
 
     @Test
+    void shouldPreserveEncodedProjectAndBranchPaths(WireMockRuntimeInfo wm) {
+        configureBaseUrl(wm, "valid-token");
+        stubFor(get(urlPathEqualTo("/api/v4/projects/acme%2Frepo"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\":17}")));
+        stubFor(get(urlPathEqualTo("/api/v4/projects/17/repository/branches/feature%2FS2"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json")
+                        .withBody("{\"name\":\"feature/S2\"}")));
+
+        assertEquals(17L, adapter.resolveProjectId("http://localhost:" + wm.getHttpPort() + "/acme/repo.git"));
+        assertTrue(adapter.branchExists(17L, "feature/S2"));
+    }
+
+    @Test
     void shouldTestConnectionWithGitLabCurrentUserApi(WireMockRuntimeInfo wm) {
         configureBaseUrl(wm, "valid-token");
         stubFor(get(urlPathEqualTo("/api/v4/user"))

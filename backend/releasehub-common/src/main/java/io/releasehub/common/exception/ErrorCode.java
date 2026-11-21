@@ -100,6 +100,12 @@ public enum ErrorCode {
     RUN_PLAN_KEY_CONFLICT("RUN_005", "error.run.plan_key_conflict", 409),
     RUN_PLAN_INVALID_SCOPE("RUN_006", "error.run.plan_invalid_scope", 400),
     RUN_PLAN_NOT_EXECUTABLE("RUN_007", "error.run.plan_not_executable", 409),
+    GIT_WRITE_BLOCKED("GIT_OP_001", "error.git_operation.blocked", 409),
+    GIT_OPERATION_STALE("GIT_OP_002", "error.git_operation.stale", 409),
+    GIT_OPERATION_INVALID("GIT_OP_003", "error.git_operation.invalid", 400),
+    GIT_IDENTITY_UNAVAILABLE("GIT_OP_004", "error.git_operation.identity_unavailable", 503),
+    GIT_PROVIDER_UNSUPPORTED("GIT_OP_005", "error.git_operation.provider_unsupported", 409),
+    GIT_WRITE_OUTCOME_UNKNOWN("GIT_OP_006", "error.git_operation.outcome_unknown", 409),
     // ========== 窗口迭代关联 (WI) ==========
     WINDOW_ITERATION_ID_INVALID("WI_001", "error.wi.id_invalid", 400),
 

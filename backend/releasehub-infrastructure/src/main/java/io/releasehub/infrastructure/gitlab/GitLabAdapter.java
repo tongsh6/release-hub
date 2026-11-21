@@ -17,6 +17,7 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -52,7 +53,7 @@ public class GitLabAdapter implements GitLabPort {
 
         try {
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                    url,
+                    URI.create(url),
                     HttpMethod.GET,
                     entity,
                     new ParameterizedTypeReference<>() {
@@ -95,7 +96,7 @@ public class GitLabAdapter implements GitLabPort {
         HttpEntity<Void> entity = new HttpEntity<>(headers);
 
         ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                url,
+                URI.create(url),
                 HttpMethod.GET,
                 entity,
                 new ParameterizedTypeReference<>() {
@@ -132,7 +133,7 @@ public class GitLabAdapter implements GitLabPort {
             HttpEntity<Void> entity = new HttpEntity<>(headers);
             
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                    url,
+                    URI.create(url),
                     HttpMethod.GET,
                     entity,
                     new ParameterizedTypeReference<>() {}
@@ -172,7 +173,7 @@ public class GitLabAdapter implements GitLabPort {
             HttpEntity<Void> entity = new HttpEntity<>(headers);
 
             ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
-                    url, HttpMethod.GET, entity,
+                    URI.create(url), HttpMethod.GET, entity,
                     new ParameterizedTypeReference<>() {});
 
             List<Map<String, Object>> mrs = response.getBody();
@@ -275,7 +276,7 @@ public class GitLabAdapter implements GitLabPort {
 
         try {
             ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
-                    url,
+                    URI.create(url),
                     HttpMethod.GET,
                     entity,
                     new ParameterizedTypeReference<>() {
@@ -339,7 +340,7 @@ public class GitLabAdapter implements GitLabPort {
         HttpEntity<Void> entity = new HttpEntity<>(headers);
         try {
             ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
-                    url,
+                    URI.create(url),
                     HttpMethod.GET,
                     entity,
                     new ParameterizedTypeReference<>() {
