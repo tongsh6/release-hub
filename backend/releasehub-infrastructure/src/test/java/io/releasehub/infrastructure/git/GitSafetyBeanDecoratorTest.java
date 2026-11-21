@@ -60,9 +60,14 @@ class GitSafetyBeanDecoratorTest {
         openedRead();
         server.expect(requestTo(PROJECT + "/repository/commits/" + SHA + "/refs?type=branch&per_page=100&page=1"))
                 .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
-        // The HTTP response proves an MR was created, but cannot prove its business identity.
-        server.expect(method(HttpMethod.POST))
-                .andRespond(withSuccess("{\"iid\":7}", MediaType.APPLICATION_JSON));
+        // Creation is confirmed; the later original-IID read leaves the business outcome unknown.
+        server.expect(requestTo(PROJECT + "/merge_requests")).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON).body(openedMrBody("mergeable")));
+        server.expect(requestTo(PROJECT + "/repository/commits/" + SHA + "/refs?type=branch&per_page=100&page=1"))
+                .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(PROJECT + "/merge_requests/7")).andExpect(method(HttpMethod.GET))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE));
 
         var result = adapter.mergeBranch(CLONE, "token", SOURCE, TARGET, "merge");
 
@@ -78,14 +83,10 @@ class GitSafetyBeanDecoratorTest {
         openedRead();
         server.expect(requestTo(PROJECT + "/repository/commits/" + SHA + "/refs?type=branch&per_page=100&page=1"))
                 .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
-        String blockedMr = """
-                {"iid":7,"project_id":17,"source_project_id":17,"target_project_id":17,
-                 "source_branch":"feature/IT-1","target_branch":"release/RW-1","state":"opened",
-                 "web_url":"https://gitlab.test/acme/repo/-/merge_requests/7","sha":"%s",
-                 "detailed_merge_status":"not_approved"}
-                """.formatted(SHA);
+        String blockedMr = openedMrBody("not_approved");
         server.expect(requestTo(PROJECT + "/merge_requests")).andExpect(method(HttpMethod.POST))
-                .andRespond(withSuccess(blockedMr, MediaType.APPLICATION_JSON));
+                .andRespond(withStatus(org.springframework.http.HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON).body(blockedMr));
         server.expect(requestTo(PROJECT + "/repository/commits/" + SHA + "/refs?type=branch&per_page=100&page=1"))
                 .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
         server.expect(requestTo(PROJECT + "/merge_requests/7"))
@@ -153,6 +154,15 @@ class GitSafetyBeanDecoratorTest {
 
         verifyNoInteractions(journal);
         server.verify();
+    }
+
+    private static String openedMrBody(String readiness) {
+        return """
+                {"iid":7,"project_id":17,"source_project_id":17,"target_project_id":17,
+                 "source_branch":"feature/IT-1","target_branch":"release/RW-1","state":"opened",
+                 "web_url":"https://gitlab.test/acme/repo/-/merge_requests/7","sha":"%s",
+                 "detailed_merge_status":"%s"}
+                """.formatted(SHA, readiness);
     }
 
     private static String pipelineBody() {

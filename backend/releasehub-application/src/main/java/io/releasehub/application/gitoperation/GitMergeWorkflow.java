@@ -90,8 +90,12 @@ public final class GitMergeWorkflow {
         if (!matches(mr, revision.projectId(), source, target)) {
             return ensureResult(MergeResult.unknown("MR_IDENTITY_UNCONFIRMED").withEvidence(context));
         }
-        context = evidence(mr, source, target, disposition, null);
-        if (!revision.sha().equals(mr.sourceSha())) {
+        context = disposition == MrDisposition.CREATED
+                ? new MrEvidence(mr.projectId(), source, target, mr.id(), mr.url(), mr.sourceSha(), null, disposition, null)
+                : evidence(mr, source, target, disposition, null);
+        boolean sameRevision = disposition == MrDisposition.CREATED
+                ? revision.sha().equalsIgnoreCase(mr.sourceSha()) : revision.sha().equals(mr.sourceSha());
+        if (!sameRevision) {
             return ensureResult(MergeResult.unknown("SOURCE_REVISION_CHANGED").withEvidence(context));
         }
         if (mr.state() != State.OPENED || !isValidCheckpoint(context)) {
@@ -177,7 +181,7 @@ public final class GitMergeWorkflow {
 
     private boolean matchesCheckpoint(MergeRequest mr, MrEvidence checkpoint) {
         return matches(mr, checkpoint.projectId(), checkpoint.sourceBranch(), checkpoint.targetBranch())
-                && checkpoint.iid().equals(mr.id()) && checkpoint.sourceSha().equals(mr.sourceSha());
+                && checkpoint.iid().equals(mr.id()) && checkpoint.sourceSha().equalsIgnoreCase(mr.sourceSha());
     }
 
     /** 检查只读：没有现存 MR 时无法由 MR API 确认可合并性。 */

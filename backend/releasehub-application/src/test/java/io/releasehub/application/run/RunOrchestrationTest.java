@@ -122,12 +122,12 @@ class RunOrchestrationTest {
     }
 
     @Test
-    void anAppliedBranchProjectionIsTheOnlyTaskCompletedByAnInvocation() {
-        when(runs.projectNextAppliedBranchTask(run.getId().value())).thenReturn(true);
+    void anAppliedProjectionIsTheOnlyTaskCompletedByAnInvocation() {
+        when(runs.projectNextAppliedTask(run.getId().value())).thenReturn(true);
 
         assertThat(service.executeNextTask(run.getId().value())).isTrue();
 
-        verify(runs).projectNextAppliedBranchTask(run.getId().value());
+        verify(runs).projectNextAppliedTask(run.getId().value());
         verify(runs, never()).claimNextTask(any());
         verify(runs, never()).completeTask(any(), any(), any());
         verifyNoInteractions(repositories, adapters, git);
@@ -137,7 +137,7 @@ class RunOrchestrationTest {
     @Test
     void projectionFailureCannotFallThroughToAClaimOrGitExecution() {
         var failure = new IllegalStateException("projection transaction failed");
-        when(runs.projectNextAppliedBranchTask(run.getId().value())).thenThrow(failure);
+        when(runs.projectNextAppliedTask(run.getId().value())).thenThrow(failure);
 
         assertThatThrownBy(() -> service.executeNextTask(run.getId().value())).isSameAs(failure);
 
@@ -238,6 +238,36 @@ class RunOrchestrationTest {
         verify(git).tryMergeRequest(eq(URL), eq("token"),
                 eq(evidence(GitBranchPort.MrDisposition.MR_REUSED)), anyString());
         assertThat(committed).singleElement().extracting(RunStep::result).isEqualTo(RunItemResult.MERGED);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {40, 64})
+    void tryMergeAcceptsEquivalentSourceShaWithoutReplacingTheCheckpoint(int length) {
+        pending.clear();
+        pending.add(ActionType.TRY_MERGE);
+        String originalSha = "ABCD".repeat(length / 4);
+        String observedSha = originalSha.toLowerCase(Locale.ROOT);
+        String mergeSha = "e".repeat(length);
+        String mrUrl = "https://gitlab.example/group/repository/-/merge_requests/7";
+        var original = new GitBranchPort.MrEvidence("17", SOURCE, TARGET, "7", mrUrl,
+                originalSha, null, GitBranchPort.MrDisposition.CREATED, null);
+        checkpoint(original);
+        var expectedFacts = new LinkedHashMap<>(facts);
+        expectedFacts.put("git.mergeSha", mergeSha);
+        when(git.tryMergeRequest(any(), any(), any(), any())).thenReturn(GitBranchPort.MergeResult.success()
+                .withEvidence(new GitBranchPort.MrEvidence("17", SOURCE, TARGET, "7", mrUrl,
+                        observedSha, mergeSha, GitBranchPort.MrDisposition.CREATED, null)));
+
+        execute();
+
+        assertThat(committed).singleElement().satisfies(step -> {
+            assertThat(step.actionType()).isEqualTo(ActionType.TRY_MERGE);
+            assertThat(step.result()).isEqualTo(RunItemResult.MERGED);
+        });
+        assertThat(facts).isEqualTo(expectedFacts);
+        verify(git).tryMergeRequest(eq(URL), eq("token"), eq(original), anyString());
+        verify(git, never()).ensureMergeRequest(any(), any(), any(), any(), any());
+        verify(git, never()).mergeBranch(any(), any(), any(), any(), any());
     }
 
     @Test

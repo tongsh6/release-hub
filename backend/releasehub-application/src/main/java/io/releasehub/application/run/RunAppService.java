@@ -73,8 +73,8 @@ public class RunAppService {
 
     /** 每次只完成一个任务：先补已确认结果，否则沿原领取执行路径推进。 */
     public boolean executeNextTask(String runId) {
-        // 当前四动作协议的分支任务仍有 PENDING 后继，由既有扫描可靠发现。
-        if (runPort.projectNextAppliedBranchTask(runId)) return true;
+        // 当前四动作协议的分支与 ENSURE_MR 任务均有 PENDING 后继，由既有扫描可靠发现。
+        if (runPort.projectNextAppliedTask(runId)) return true;
         var next = runPort.claimNextTask(runId);
         if (next.isEmpty()) return false;
         var claim = next.get();
@@ -151,7 +151,7 @@ public class RunAppService {
                 // MR 响应可以补足证据，不能把前置读取已确认的仓库改向另一个项目。
                 GitOperationContext.bindProjectId(evidence.projectId());
             }
-            var facts = taskMergeEvidence(evidence, null);
+            var facts = RunPort.mrEvidenceUpdates(evidence, null);
             RunItemResult outcome;
             if (result.outcome() == io.releasehub.application.gitoperation.GitWriteResult.Outcome.UNKNOWN) {
                 outcome = RunItemResult.UNKNOWN;
@@ -198,7 +198,7 @@ public class RunAppService {
             if (result.status() == MergeStatus.SUCCESS
                     && (!hasConfirmedMergeEvidence(result.mrEvidence(), source, target)
                     || !checkpoint.projectId().equals(result.mrEvidence().projectId())
-                    || !checkpoint.sourceSha().equals(result.mrEvidence().sourceSha())
+                    || !checkpoint.sourceSha().equalsIgnoreCase(result.mrEvidence().sourceSha())
                     || !java.util.Objects.equals(checkpoint.iid(), result.mrEvidence().iid()))) {
                 result = GitBranchPort.MergeResult.unknown("合并结果与持久 MR 检查点不一致").withEvidence(checkpoint);
             }
@@ -222,23 +222,6 @@ public class RunAppService {
     private TaskResult taskResult(RunPort.TaskClaim claim, RunItemResult result,
                                   String message, Map<String, String> metadata) {
         return new TaskResult(new RunStep(claim.actionType(), result, claim.startedAt(), clock.instant(), message), metadata);
-    }
-
-    private Map<String, String> taskMergeEvidence(GitBranchPort.MrEvidence evidence, String requestId) {
-        Map<String, String> metadata = new java.util.LinkedHashMap<>();
-        metadata.put("git.requestId", requestId);
-        metadata.put("git.blockReason", evidence == null || evidence.blockReason() == null ? null : evidence.blockReason().name());
-        if (evidence != null) {
-            if (evidence.projectId() != null) metadata.put("git.projectId", evidence.projectId());
-            metadata.put("git.sourceBranch", evidence.sourceBranch());
-            metadata.put("git.targetBranch", evidence.targetBranch());
-            metadata.put("git.mrIid", evidence.iid());
-            metadata.put("git.mrUrl", evidence.url());
-            metadata.put("git.sourceSha", evidence.sourceSha());
-            metadata.put("git.mergeSha", evidence.mergeSha());
-            metadata.put("git.mrDisposition", evidence.disposition() == null ? null : evidence.disposition().name());
-        }
-        return metadata;
     }
 
     private record TaskResult(RunStep step, Map<String, String> metadata) {

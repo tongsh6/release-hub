@@ -243,7 +243,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
 
     @Override
     @Transactional
-    public boolean projectNextAppliedBranchTask(String runId) {
+    public boolean projectNextAppliedTask(String runId) {
         freshPersistenceContext();
         RunJpaEntity run = lockedRun(runId);
         requireTaskRun(run);
@@ -252,7 +252,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
         Map<String, RunItemJpaEntity> items = taskItems(run, ordered);
         for (var candidate : ordered) {
             if (!"RUNNING".equals(candidate.getStatus())
-                    || !Set.of("ENSURE_FEATURE", "ENSURE_RELEASE").contains(candidate.getTaskType())) continue;
+                    || !Set.of("ENSURE_FEATURE", "ENSURE_RELEASE", "ENSURE_MR").contains(candidate.getTaskType())) continue;
             RunItemJpaEntity item = items.get(candidate.getTargetId());
             if (item.getExecutedOrder() <= 0 || !eligible(candidate, item, ordered, items)) continue;
             RunTaskJpaEntity task = tasks.findForUpdate(candidate.getId()).orElseThrow(this::stale);
@@ -264,11 +264,22 @@ public class RunJpaPersistenceAdapter implements RunPort {
             var claim = new TaskClaim(new TaskFence(task.getId(), task.getClaimToken()), runId, item.getId(),
                     RepoId.of(item.getRepoId()), ActionType.valueOf(task.getTaskType()), now(), run.getOperator(),
                     taskMetadata(run, item));
-            var project = journal.confirmedAppliedBranchProject(claim);
-            if (project.isEmpty()) continue;
+            Map<String, String> updates;
+            String message;
+            if (claim.actionType() == ActionType.ENSURE_MR) {
+                var evidence = journal.confirmedAppliedCreatedMr(claim);
+                if (evidence.isEmpty()) continue;
+                updates = RunPort.mrEvidenceUpdates(evidence.get(), null);
+                message = "根据已确认的 MR 创建结果恢复检查点";
+            } else {
+                var project = journal.confirmedAppliedBranchProject(claim);
+                if (project.isEmpty()) continue;
+                updates = Map.of("git.projectId", project.get());
+                message = "根据已确认的分支创建结果恢复记录";
+            }
             // 外层代理已建立结果事务；自调用沿同一物理事务提交，clear 后不再使用原实体。
-            completeTask(claim, new RunStep(claim.actionType(), RunItemResult.CREATED, claim.startedAt(), now(),
-                    "根据已确认的分支创建结果恢复记录"), Map.of("git.projectId", project.get()));
+            completeTask(claim, new RunStep(claim.actionType(), RunItemResult.CREATED,
+                    claim.startedAt(), now(), message), updates);
             return true;
         }
         return false;

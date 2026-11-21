@@ -208,6 +208,141 @@ class GitLabMergeRequestAdapterTest {
         server.verify();
     }
 
+    @ParameterizedTest @ValueSource(ints = {200, 202})
+    void shouldRejectNonCreatedStatusForCompleteMrResponse(int status) throws Exception {
+        server.expect(requestTo(WRITE_ENDPOINT)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.valueOf(status))
+                        .contentType(MediaType.APPLICATION_JSON).body(createdMr("mergeable").toString()));
+
+        assertEquals(GitWriteResult.Outcome.UNKNOWN,
+                adapter.create("feature/IT-1", "release/RW-1", SHA, "merge").outcome());
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"project_id", "source_project_id", "target_project_id", "source_branch",
+            "target_branch", "sha", "web_url", "iid"})
+    void shouldRequireEveryCanonicalCreatedMrField(String field) throws Exception {
+        var body = createdMr("mergeable");
+        body.put("id", 17);
+        body.remove(field);
+        server.expect(requestTo(WRITE_ENDPOINT)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON).body(body.toString()));
+
+        assertEquals(GitWriteResult.Outcome.UNKNOWN,
+                adapter.create("feature/IT-1", "release/RW-1", SHA, "merge").outcome());
+        server.verify();
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"project_id", "source_project_id", "target_project_id"})
+    void shouldRejectCreatedMrOutsideTheRequestedProject(String field) throws Exception {
+        var body = createdMr("mergeable").put(field, 8);
+        server.expect(requestTo(WRITE_ENDPOINT)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON).body(body.toString()));
+
+        assertEquals(GitWriteResult.Outcome.UNKNOWN,
+                adapter.create("feature/IT-1", "release/RW-1", SHA, "merge").outcome());
+        server.verify();
+    }
+
+    @ParameterizedTest @org.junit.jupiter.params.provider.MethodSource("invalidCreatedMrFieldTypes")
+    void shouldRequireCanonicalCreatedMrFieldTypes(String field, String jsonValue,
+                                                   String source, String target, String expectedSha) throws Exception {
+        var body = createdMr("mergeable").put("source_branch", source).put("target_branch", target).put("sha", expectedSha);
+        body.set(field, new com.fasterxml.jackson.databind.ObjectMapper().readTree(jsonValue));
+        server.expect(requestTo(WRITE_ENDPOINT)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON).body(body.toString()));
+
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, adapter.create(source, target, expectedSha, "merge").outcome());
+        server.verify();
+    }
+
+    private static java.util.List<org.junit.jupiter.params.provider.Arguments> invalidCreatedMrFieldTypes() {
+        return java.util.List.of(
+                org.junit.jupiter.params.provider.Arguments.of("project_id", "\"7\"", "feature/IT-1", "release/RW-1", SHA),
+                org.junit.jupiter.params.provider.Arguments.of("source_project_id", "\"7\"", "feature/IT-1", "release/RW-1", SHA),
+                org.junit.jupiter.params.provider.Arguments.of("target_project_id", "\"7\"", "feature/IT-1", "release/RW-1", SHA),
+                org.junit.jupiter.params.provider.Arguments.of("iid", "\"17\"", "feature/IT-1", "release/RW-1", SHA),
+                org.junit.jupiter.params.provider.Arguments.of("source_branch", "123", "123", "release/RW-1", SHA),
+                org.junit.jupiter.params.provider.Arguments.of("target_branch", "true", "feature/IT-1", "true", SHA),
+                org.junit.jupiter.params.provider.Arguments.of("sha", "1".repeat(40), "feature/IT-1", "release/RW-1", "1".repeat(40)),
+                org.junit.jupiter.params.provider.Arguments.of("web_url", "[]", "feature/IT-1", "release/RW-1", SHA));
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"source_branch", "target_branch", "sha", "state", "web_url"})
+    void shouldRejectCreatedMrContradictingTheRequestedCheckpoint(String field) throws Exception {
+        var body = createdMr("mergeable");
+        body.put(field, switch (field) {
+            case "source_branch" -> "feature/OTHER";
+            case "target_branch" -> "release/OTHER";
+            case "sha" -> "b".repeat(40);
+            case "state" -> "merged";
+            case "web_url" -> "/relative/merge_requests/17";
+            default -> throw new AssertionError(field);
+        });
+        server.expect(requestTo(WRITE_ENDPOINT)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON).body(body.toString()));
+
+        assertEquals(GitWriteResult.Outcome.UNKNOWN,
+                adapter.create("feature/IT-1", "release/RW-1", SHA, "merge").outcome());
+        server.verify();
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"checking", "not_approved", "ci_still_running"})
+    void shouldConfirmMrCreationBeforeReadinessAllowsMerging(String readiness) throws Exception {
+        server.expect(requestTo(WRITE_ENDPOINT)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON).body(createdMr(readiness).toString()));
+
+        var result = adapter.create("feature/IT-1", "release/RW-1", SHA, "merge");
+
+        assertEquals(GitWriteResult.Outcome.APPLIED, result.outcome());
+        assertEquals(GitMergeRequestPort.State.OPENED, result.evidence().state());
+        assertEquals("17", result.evidence().id());
+        assertEquals(SHA, result.evidence().sourceSha());
+        assertNull(result.evidence().mergeSha());
+        server.verify();
+    }
+
+    @Test void shouldNotTreatCreatedMrMergeCommitFieldAsAMergeResult() throws Exception {
+        var body = createdMr("checking").put("merge_commit_sha", "b".repeat(40));
+        server.expect(requestTo(WRITE_ENDPOINT)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON).body(body.toString()));
+
+        var result = adapter.create("feature/IT-1", "release/RW-1", SHA, "merge");
+
+        assertEquals(GitWriteResult.Outcome.APPLIED, result.outcome());
+        assertNull(result.evidence().mergeSha(), "an opened creation response does not prove a merge result");
+        server.verify();
+    }
+
+    @ParameterizedTest @ValueSource(ints = {40, 64})
+    void shouldConfirmCreatedMrWithEquivalentHexSourceRevision(int length) throws Exception {
+        String frozen = "aBcD".repeat(length / 4);
+        String observed = frozen.toLowerCase(java.util.Locale.ROOT);
+        var body = createdMr("checking").put("sha", observed);
+        server.expect(requestTo(WRITE_ENDPOINT)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.CREATED)
+                        .contentType(MediaType.APPLICATION_JSON).body(body.toString()));
+
+        var result = adapter.create("feature/IT-1", "release/RW-1", frozen, "merge");
+
+        assertEquals(GitWriteResult.Outcome.APPLIED, result.outcome());
+        assertEquals(observed, result.evidence().sourceSha());
+        assertNull(result.evidence().mergeSha());
+        server.verify();
+    }
+
+    private static com.fasterxml.jackson.databind.node.ObjectNode createdMr(String readiness) throws Exception {
+        return (com.fasterxml.jackson.databind.node.ObjectNode) new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(mr(17, readiness, "running"));
+    }
+
     private static String listUri(int page) {
         return ENDPOINT + "?scope=all&state=opened&source_branch=feature%2FIT-1&target_branch=release%2FRW-1&per_page=100&page=" + page;
     }

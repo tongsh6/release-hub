@@ -2,6 +2,9 @@ package io.releasehub.infrastructure.persistence.gitoperation;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.releasehub.infrastructure.git.GitLabGitBranchAdapter;
+import io.releasehub.infrastructure.git.GitLabMergeRequestAdapter;
+import io.releasehub.application.port.out.GitBranchPort.MrEvidence;
+import io.releasehub.application.port.out.GitBranchPort.MrDisposition;
 import io.releasehub.domain.run.ActionType;
 import io.releasehub.application.gitoperation.*;
 import io.releasehub.application.run.RunPort;
@@ -132,6 +135,46 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
     public Optional<String> confirmedAppliedBranchProject(RunPort.TaskClaim claim) {
         if (claim == null || claim.actionType() != ActionType.ENSURE_FEATURE
                 && claim.actionType() != ActionType.ENSURE_RELEASE) return Optional.empty();
+        var operation = confirmedAppliedTaskOperation(claim, "CREATE_BRANCH");
+        if (operation.isEmpty()) return Optional.empty();
+        var op = operation.get();
+        var metadata = em.find(RunItemJpaEntity.class, claim.itemId()).getMetadata();
+        JsonNode target = objectJson(op.getTargetJson());
+        String branch = metadata.get(claim.actionType() == ActionType.ENSURE_FEATURE
+                ? "plan.featureBranch" : "plan.releaseBranch");
+        if (target == null || !matches(target, "branch", branch)
+                || !matches(target, "sourceRef", metadata.get("plan.defaultBranch"))
+                || !target.path("ref").isTextual() || !validSha(target.path("ref").asText())) return Optional.empty();
+        JsonNode evidence = confirmedAppliedResponse(op);
+        if (evidence == null) return Optional.empty();
+        String sha = GitLabGitBranchAdapter.createdBranchSha(evidence.path("httpStatus").intValue(), evidence, branch);
+        if (sha == null || !target.path("ref").asText().equalsIgnoreCase(sha)) return Optional.empty();
+        return Optional.of(op.getProjectId());
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<MrEvidence> confirmedAppliedCreatedMr(RunPort.TaskClaim claim) {
+        if (claim == null || claim.actionType() != ActionType.ENSURE_MR) return Optional.empty();
+        var operation = confirmedAppliedTaskOperation(claim, "CREATE_MR");
+        if (operation.isEmpty()) return Optional.empty();
+        var op = operation.get();
+        var metadata = em.find(RunItemJpaEntity.class, claim.itemId()).getMetadata();
+        String source = metadata.get("plan.featureBranch");
+        String targetBranch = metadata.get("plan.releaseBranch");
+        JsonNode target = objectJson(op.getTargetJson());
+        if (target == null || !matches(target, "source_branch", source)
+                || !matches(target, "target_branch", targetBranch)
+                || !target.path("sha").isTextual() || !validSha(target.path("sha").asText())) return Optional.empty();
+        JsonNode evidence = confirmedAppliedResponse(op);
+        if (evidence == null) return Optional.empty();
+        return GitLabMergeRequestAdapter.confirmedCreatedMr(evidence.path("httpStatus").intValue(), evidence,
+                        op.getProjectId(), source, targetBranch, target.path("sha").asText())
+                .map(mr -> new MrEvidence(mr.projectId(), mr.sourceBranch(), mr.targetBranch(), mr.id(), mr.url(),
+                        mr.sourceSha(), null, MrDisposition.CREATED, null));
+    }
+
+    private Optional<GitOperationEntity> confirmedAppliedTaskOperation(RunPort.TaskClaim claim, String action) {
         var task = lockTask(claim.fence(), true);
         var run = em.find(RunJpaEntity.class, task.getRunId());
         var item = em.find(RunItemJpaEntity.class, task.getTargetId());
@@ -151,7 +194,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         var op = operations.getFirst();
         lock(op.getRemoteKey());
         em.refresh(op, LockModeType.PESSIMISTIC_WRITE);
-        if (!"APPLIED".equals(op.getState()) || !"CREATE_BRANCH".equals(op.getAction())
+        if (!"APPLIED".equals(op.getState()) || !action.equals(op.getAction())
                 || !"GITLAB".equals(op.getProvider()) || !claim.runId().equals(op.getRunId())
                 || !claim.repo().value().equals(op.getRepoId()) || !claim.operator().equals(op.getOperator())
                 || !claim.fence().claimToken().equals(op.getClaimToken())
@@ -166,23 +209,19 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         }
         var guard = matchingGuard(op);
         if (guard.isEmpty() || guard.get().getReason() != null) return Optional.empty();
-        JsonNode target = objectJson(op.getTargetJson());
-        String branch = metadata.get(claim.actionType() == ActionType.ENSURE_FEATURE
-                ? "plan.featureBranch" : "plan.releaseBranch");
-        if (target == null || !matches(target, "branch", branch)
-                || !matches(target, "sourceRef", metadata.get("plan.defaultBranch"))
-                || !target.path("ref").isTextual() || !validSha(target.path("ref").asText())) return Optional.empty();
+        return Optional.of(op);
+    }
+
+    private JsonNode confirmedAppliedResponse(GitOperationEntity op) {
         var responses = em.createQuery("select e.evidenceJson from GitOperationEventEntity e "
                         + "where e.operationId=:operation and e.attemptId=:attempt and e.sequence=2 and e.type='APPLIED'",
                         String.class)
                 .setParameter("operation", op.getId()).setParameter("attempt", op.getAttemptId()).getResultList();
-        if (responses.size() != 1) return Optional.empty();
+        if (responses.size() != 1) return null;
         JsonNode evidence = objectJson(responses.getFirst());
         if (evidence == null || !evidence.path("httpStatus").isIntegralNumber()
-                || !evidence.path("httpStatus").canConvertToInt()) return Optional.empty();
-        String sha = GitLabGitBranchAdapter.createdBranchSha(evidence.path("httpStatus").intValue(), evidence, branch);
-        if (sha == null || !target.path("ref").asText().equalsIgnoreCase(sha)) return Optional.empty();
-        return Optional.of(op.getProjectId());
+                || !evidence.path("httpStatus").canConvertToInt()) return null;
+        return evidence;
     }
 
     @Override @Transactional(propagation=Propagation.MANDATORY)

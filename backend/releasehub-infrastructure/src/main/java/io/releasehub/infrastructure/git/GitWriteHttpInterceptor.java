@@ -131,7 +131,7 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
         int status=response.getStatusCode().value();var evidence=json.createObjectNode();evidence.put("httpStatus",status);
         JsonNode parsed=null;
         try{if(bytes.length>0)parsed=json.readTree(bytes);}catch(IOException ignored){/* 保留不完整结果，不保存原始响应。 */}
-        if(parsed!=null&&!action.equals("CREATE_BRANCH")) {
+        if(parsed!=null&&!action.equals("CREATE_BRANCH")&&!action.equals("CREATE_MR")) {
             for(String key:List.of("id","iid","number","sha","merge_commit_sha","state","name","ref")) {
                 if(parsed.hasNonNull(key)&&parsed.get(key).isValueNode())evidence.put(key,parsed.get(key).asText());
             }
@@ -143,12 +143,21 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
         }
         GitWriteResult.Outcome outcome=status>=200&&status<300?GitWriteResult.Outcome.APPLIED
                 : status>=400&&status<500&&status!=408?GitWriteResult.Outcome.REJECTED:GitWriteResult.Outcome.UNKNOWN;
-        if(outcome==GitWriteResult.Outcome.APPLIED && (parsed==null || action.equals("CREATE_MR")&&!evidence.has("iid")
+        if(outcome==GitWriteResult.Outcome.APPLIED && (parsed==null
                 ||action.equals("CREATE_PR")&&!evidence.has("number")||action.equals("TRIGGER_PIPELINE")&&!evidence.has("id")))outcome=GitWriteResult.Outcome.UNKNOWN;
         if(outcome==GitWriteResult.Outcome.APPLIED&&action.equals("TRIGGER_PIPELINE")) {
             var pipeline=GitLabGitBranchAdapter.pipelineEvidence(parsed,identity.projectId(),target.path("ref").asText(),expectedSha);
             if(pipeline==null)outcome=GitWriteResult.Outcome.UNKNOWN;
             else {evidence.put("projectId",pipeline.projectId());evidence.put("url",pipeline.url());}
+        }
+        if(outcome==GitWriteResult.Outcome.APPLIED&&action.equals("CREATE_MR")) {
+            var created=GitLabMergeRequestAdapter.confirmedCreatedMr(status,parsed,identity.projectId(),
+                    target.path("source_branch").textValue(),target.path("target_branch").textValue(),target.path("sha").textValue());
+            if(created.isEmpty())outcome=GitWriteResult.Outcome.UNKNOWN;
+            else for(String key:List.of("project_id","source_project_id","target_project_id","iid",
+                    "source_branch","target_branch","sha","state","web_url")) {
+                evidence.set(key,parsed.get(key));
+            }
         }
         if(action.equals("CREATE_BRANCH")) {
             String branchSha=GitLabGitBranchAdapter.createdBranchSha(status,parsed,target.path("branch").textValue());

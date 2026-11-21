@@ -1,5 +1,7 @@
 package io.releasehub.application.gitoperation;
 
+import io.releasehub.application.port.out.GitBranchPort.MrEvidence;
+
 import io.releasehub.application.run.RunPort;
 import io.releasehub.domain.run.RunItemResult;
 
@@ -29,6 +31,8 @@ public interface GitOperationJournalPort {
     void completeSession(String sessionId, boolean businessCommitted);
     /** 必须加入原任务结果事务，核对 CREATE_BRANCH 响应证明与 guard，返回原 numeric project；零远端调用。 */
     Optional<String> confirmedAppliedBranchProject(RunPort.TaskClaim claim);
+    /** 必须加入原任务结果事务，核对完整 CREATE_MR 原响应，返回历史 CREATED 检查点；零远端调用。 */
+    Optional<MrEvidence> confirmedAppliedCreatedMr(RunPort.TaskClaim claim);
     /** 仅在活动领取者的结果事务中确认；没有远端操作的任务不创建仓库保护。 */
     void acknowledgeTask(RunPort.TaskFence fence, RunItemResult result);
     List<Operation> list(String repoId, int page, int size);

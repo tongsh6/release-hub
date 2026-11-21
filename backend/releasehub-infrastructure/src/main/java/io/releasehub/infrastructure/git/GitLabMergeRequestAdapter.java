@@ -21,7 +21,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /** GitLab REST 原子请求适配器。列表必须读完分页，写入最多一次且不自动关闭 MR。 */
-final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
+public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
     private static final int MAX_PAGES = 20;
     private static final ObjectMapper ERROR_JSON = new ObjectMapper();
     private final RestTemplate http;
@@ -107,9 +107,15 @@ final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
             writeHeaders.set(GitRemoteIdentityResolver.EXPECTED_SHA, sourceSha);
             var response = http.exchange(URI.create(uri), method, new HttpEntity<>(body, writeHeaders),
                     new ParameterizedTypeReference<Map<String, Object>>() {});
+            if (!merging) {
+                var confirmed = confirmedCreatedMr(response.getStatusCode().value(), ERROR_JSON.valueToTree(response.getBody()),
+                        projectId, string(body.get("source_branch")), string(body.get("target_branch")), sourceSha);
+                return confirmed.map(GitWriteResult::applied).orElseGet(() ->
+                        new GitWriteResult<>(GitWriteResult.Outcome.UNKNOWN, createdEvidence(response.getBody()), "INCOMPLETE_RESPONSE"));
+            }
             var mr = evidence(response.getBody());
             if (!response.getStatusCode().is2xxSuccessful() || !complete(mr)
-                    || merging && (mr.state() != State.MERGED || !validSha(mr.sourceSha()))) {
+                    || mr.state() != State.MERGED || !validSha(mr.sourceSha())) {
                 return new GitWriteResult<>(GitWriteResult.Outcome.UNKNOWN, mr, "INCOMPLETE_RESPONSE");
             }
             return GitWriteResult.applied(mr);
@@ -120,6 +126,37 @@ final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
         } catch (RestClientException e) {
             return GitWriteResult.unknown("RESPONSE_UNCONFIRMED");
         }
+    }
+
+    /** CREATE 的成功证明与合并就绪状态分开；三个消费者共用同一原始响应判定。 */
+    public static java.util.Optional<MergeRequest> confirmedCreatedMr(int status, JsonNode body, String projectId,
+            String sourceBranch, String targetBranch, String expectedSourceSha) {
+        if (status != 201 || body == null || !body.isObject() || sourceBranch == null || targetBranch == null
+                || !validSha(expectedSourceSha)) return java.util.Optional.empty();
+        for (String field : List.of("project_id", "source_project_id", "target_project_id")) {
+            JsonNode id = body.path(field);
+            if (!positiveInteger(id) || !id.asText().equals(projectId)) return java.util.Optional.empty();
+        }
+        if (!positiveInteger(body.path("iid")) || !body.path("web_url").isTextual()
+                || !body.path("source_branch").isTextual() || !sourceBranch.equals(body.path("source_branch").textValue())
+                || !body.path("target_branch").isTextual() || !targetBranch.equals(body.path("target_branch").textValue())
+                || !body.path("state").isTextual() || !"opened".equals(body.path("state").textValue())
+                || !body.path("sha").isTextual() || !validSha(body.path("sha").textValue())
+                || !expectedSourceSha.equalsIgnoreCase(body.path("sha").textValue())) return java.util.Optional.empty();
+        var mr = createdEvidence(ERROR_JSON.convertValue(body,
+                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}));
+        return complete(mr) ? java.util.Optional.of(mr) : java.util.Optional.empty();
+    }
+
+    private static boolean positiveInteger(JsonNode value) {
+        return value.isIntegralNumber() && value.bigIntegerValue().signum() > 0;
+    }
+
+    /** 创建正文可以提供诊断身份，但尚不能提供本次合并的提交结果。 */
+    private static MergeRequest createdEvidence(Map<String, Object> body) {
+        var mr = evidence(body);
+        return mr == null ? null : new MergeRequest(mr.id(), mr.url(), mr.projectId(), mr.sourceBranch(),
+                mr.targetBranch(), mr.sourceSha(), null, mr.state(), mr.readiness(), mr.blockReason(), mr.detail());
     }
 
     /** Provider 拒绝语义只在此分类；安全拦截器在丢弃原始正文前复用这些规则。 */
@@ -184,7 +221,7 @@ final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
         return incomplete();
     }
 
-    private MergeRequest evidence(Map<String, Object> body) {
+    private static MergeRequest evidence(Map<String, Object> body) {
         if (body == null) return null;
         State state = switch (string(body.get("state")) == null ? "" : string(body.get("state"))) {
             case "opened" -> State.OPENED;

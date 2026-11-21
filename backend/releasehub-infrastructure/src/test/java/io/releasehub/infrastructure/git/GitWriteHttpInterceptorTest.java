@@ -185,14 +185,25 @@ class GitWriteHttpInterceptorTest {
     @Test void shouldCorrelateRequestWithoutPersistingTokenOrBodyContent() throws Exception {
         var request=request();request.getHeaders().set("PRIVATE-TOKEN","sensitive-fixture");
         byte[] input="{\"source_branch\":\"feature\",\"target_branch\":\"main\",\"title\":\"private title\"}".getBytes(StandardCharsets.UTF_8);
+        byte[] created = new ObjectMapper().writeValueAsBytes(java.util.Map.of(
+                "iid", 17, "project_id", 17, "source_project_id", 17, "target_project_id", 17,
+                "source_branch", "feature", "target_branch", "main", "sha", "a".repeat(40),
+                "state", "opened", "web_url", "https://gitlab.invalid/acme/repo/-/merge_requests/17"));
         try(var response=interceptor.intercept(request,input,(r,b)->{
             assertTrue(new String(b,StandardCharsets.UTF_8).contains("ReleaseHub-Operation:"));
-            return new MockClientHttpResponse("{\"iid\":17}".getBytes(StandardCharsets.UTF_8),HttpStatus.CREATED);
+            assertNull(r.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID));
+            assertNull(r.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_SHA));
+            return new MockClientHttpResponse(created,HttpStatus.CREATED);
         })) { assertEquals(201,response.getStatusCode().value()); }
         var captor=org.mockito.ArgumentCaptor.forClass(GitOperationJournalPort.Command.class);verify(journal).begin(captor.capture());
         assertFalse(captor.getValue().toString().contains("sensitive-fixture"));
         assertFalse(captor.getValue().toString().contains("private title"));
-        verify(journal).finish(anyString(),eq(GitWriteResult.Outcome.APPLIED),contains("17"),isNull());
+        assertEquals("a".repeat(40),new ObjectMapper().readTree(captor.getValue().targetJson()).path("sha").asText());
+        var evidence=org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(journal).finish(anyString(),eq(GitWriteResult.Outcome.APPLIED),evidence.capture(),isNull());
+        assertEquals(17,new ObjectMapper().readTree(evidence.getValue()).path("iid").asInt());
+        assertFalse(evidence.getValue().contains("sensitive-fixture"));
+        assertFalse(evidence.getValue().contains("private title"));
     }
     @Test void shouldKeepMissingRemoteIdUnknown() {
         assertThrows(IOException.class,()->interceptor.intercept(request(),new byte[0],(r,b)->new MockClientHttpResponse("{}".getBytes(StandardCharsets.UTF_8),HttpStatus.CREATED)));

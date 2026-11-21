@@ -288,6 +288,51 @@ class GitMergeWorkflowTest {
         verify(port, never()).merge(anyString(), anyString(), anyString());
     }
 
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void createdCheckpointMustNotQueryOrAttributeAnUnrelatedMergeSha(boolean unrelatedCommitIsContained) {
+        var created = new MergeRequest("17", ready.url(), "7", "source", "target", SHA, MERGE_SHA,
+                State.OPENED, Readiness.PENDING, null, null);
+        when(port.create("source", "target", SHA, "title")).thenReturn(GitWriteResult.applied(created));
+        when(port.contains("target", SHA)).thenReturn(GitReadResult.found(false), GitReadResult.found(true));
+        when(port.contains("target", MERGE_SHA)).thenReturn(unrelatedCommitIsContained
+                ? GitReadResult.found(true) : GitReadResult.unavailable());
+        var workflow = workflow();
+
+        var ensured = workflow.ensureMergeRequest("source", "target", "title");
+        assertEquals(GitWriteResult.Outcome.APPLIED, ensured.outcome());
+        var result = workflow.tryMergeRequest(ensured.evidence(), "title");
+
+        assertAll(
+                () -> assertNull(ensured.evidence().mergeSha(), "CREATE owns no merge result"),
+                () -> assertEquals(MergeStatus.SUCCESS, result.status()),
+                () -> assertEquals(MrDisposition.ALREADY_MERGED, result.mrEvidence().disposition()),
+                () -> assertNull(result.mrEvidence().mergeSha(), "unrelated commit must not become this merge's result"),
+                () -> verify(port, never()).contains("target", MERGE_SHA));
+        verify(port, times(1)).create("source", "target", SHA, "title");
+        verify(port, never()).read(anyString());
+        verify(port, never()).merge(anyString(), anyString(), anyString());
+    }
+
+    @ParameterizedTest @ValueSource(ints = {40, 64})
+    void createdCheckpointPreservesResponseShaAfterEquivalentHexComparison(int length) {
+        String frozen = "aBcD".repeat(length / 4);
+        String observed = frozen.toLowerCase(java.util.Locale.ROOT);
+        when(port.readSource("source")).thenReturn(GitReadResult.found(new SourceRevision("7", frozen)));
+        when(port.contains("target", frozen)).thenReturn(GitReadResult.found(false));
+        when(port.create("source", "target", frozen, "title")).thenReturn(GitWriteResult.applied(
+                new MergeRequest("17", ready.url(), "7", "source", "target", observed, null,
+                        State.OPENED, Readiness.PENDING, null, null)));
+
+        var result = workflow().ensureMergeRequest("source", "target", "title");
+
+        assertEquals(GitWriteResult.Outcome.APPLIED, result.outcome());
+        assertEquals(MrDisposition.CREATED, result.evidence().disposition());
+        assertEquals(observed, result.evidence().sourceSha());
+        assertNull(result.evidence().mergeSha());
+        verify(port, never()).read(anyString());
+        verify(port, never()).merge(anyString(), anyString(), anyString());
+    }
+
     @Test void tryMustUseThePersistedCheckpointWithoutReselectingOrCreating() {
         when(port.merge("17", SHA, "title")).thenReturn(GitWriteResult.applied(merged));
         var result = workflow().tryMergeRequest(checkpoint(MrDisposition.CREATED, null), "title");
