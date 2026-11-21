@@ -1,262 +1,139 @@
-# ReleaseHub 项目总体规划书
+# ReleaseHub 愿景与产品规划
 
-> 版本：v3.2
-> 最后更新：2026-05-09（v0.1.10 发布 + 文档同步）
-> 状态：核心功能已完成（v0.1.10），质量基线运行时验证通过，10 个版本迭代，进入真实验收与治理收尾阶段
+> 更新：2026-11-21。项目处于研发阶段，尚未上线。
+> 本文维护愿景、问题定义和产品边界；实现及验证事实见 [项目台账](../../project-ledger.md)，当前任务只从 [执行路线图](../../execution-roadmap.md) 的唯一 HEAD 选择。
 
----
+## 1. 愿景与产品定义
 
-## 1. 背景与问题定义
+**让团队围绕一次发布，共享一份明确的发布计划，并把跨仓库集成的执行过程变成可控、可解释、可追溯、可安全重试的过程，减少对个人记忆和临场协调的依赖。**
 
-ReleaseHub 面向「多项目、多仓库」场景，统一管理发布窗口、版本号演进、分支策略与迭代管理，解决团队在多仓协作中常见的三类成本：
+ReleaseHub 是发布窗口驱动的跨仓分支与集成编排系统，当前面向 GitLab。长期目标是成为发布节奏、发布范围和执行记录的单一事实源。
 
-| 成本类型 | 问题描述 | 解决方案 |
-|---------|---------|---------|
-| **认知成本** | 版本、分支、窗口分散在各仓库/文档中 | 发布窗口统一规划与展示 |
-| **协调成本** | 发布窗口冲突、跨仓版本不一致 | 迭代与仓库关联管理 |
-| **执行成本** | 版本号更新依赖人工，易错且难规模化 | 版本号自动管理（Maven/Gradle） |
+“单一事实源”有明确责任边界：
 
-**项目愿景**：成为「发布节奏的单一事实源（Single Source of Truth）」。
+- ReleaseHub 保存发布意图：窗口、参与迭代、仓库范围、分支计划、执行顺序、触发主体和策略。
+- GitLab 提供远端事实：分支、提交、MR、审批、流水线和合并结果。
+- ReleaseHub 将发布意图、实际动作与 GitLab 证据对应起来；缺少证据时保留未知状态，不用本地状态代替远端事实。
 
----
+## 2. 要解决的问题
 
-## 2. 项目目标与完成状态
+一次业务发布是整体，但改动、分支和执行事实分散在多个仓库；同一个仓库又可能被多个迭代共同影响。团队需要持续把分散事实重新组织成可执行、可检查的发布计划。
 
-### 2.1 核心目标
+| 成本 | 具体问题 | 产品责任 |
+|---|---|---|
+| 认知成本 | 不清楚一次发布包含哪些迭代、影响哪些仓库、每仓要集成哪些分支 | 以窗口统一展示范围、仓库并集及仓库内迭代队列 |
+| 协调成本 | 多人、多迭代共享仓库，范围变更和合并顺序依赖口头约定 | 明确绑定、计划、顺序与阻塞传播规则，配置变更和执行分离 |
+| 执行成本 | 逐仓建分支、找 MR、合并、检查状态容易漏项或重复 | 显式编排、MR-first、幂等动作和完整执行记录 |
+| 故障判断与恢复成本 | 请求超时、进程退出或落库失败后，不知道远端是否已经执行 | 保存意图和证据，区分明确失败与未知结果，只在证据允许时重试或继续 |
 
-| 目标 | 状态 |
-|------|------|
-| 发布窗口统一规划与展示（列表/详情/状态流转） | ✅ 已完成 |
-| 版本号自动管理（Maven pom.xml / Gradle gradle.properties） | ✅ 已完成 |
-| 分支规则配置（BranchRule） | ✅ 已完成 |
-| 版本校验与推导（VersionPolicy） | ✅ 已完成 |
+系统应当让用户从同一发布上下文中回答：这次发什么、执行到哪里、为什么卡住、下一步该处理什么。
 
-### 2.2 交付标准
+## 3. 主要使用者
 
-| 标准 | 状态 |
-|------|------|
-| 从 UI 创建窗口 → 绑定迭代 → 提测合并 → 收尾编排 → 查看运行记录 | ✅ 已完成 |
-| 核心策略（版本策略/更新器）可插拔 | ✅ 已完成 |
-| 审计记录（createdAt/updatedAt） | ✅ 已完成 |
+| 使用者 | 需要达成的结果 |
+|---|---|
+| 发布负责人 / 项目管理人员 | 明确发布时间、发布范围和当前整体状态 |
+| 技术负责人 / 研发人员 | 核对分支计划，按仓库集成改动，定位阻塞并执行安全重试 |
+| 测试人员 | 看到窗口所含迭代、仓库及实际集成结果，明确待测内容 |
+| 配置维护人员 | 维护仓库、GitLab 连接及必要命名规则 |
 
----
+角色描述表达使用场景，不构成自研 RBAC 或审批平台的需求。
 
-## 3. 术语表
+## 4. 核心业务关系
 
-| 术语 | 描述 |
-|------|------|
-| **ReleaseWindow** | 发布窗口，具有起止时间、状态、影响范围 |
-| **Iteration** | 迭代，聚合一组相关的代码仓库 |
-| **WindowIteration** | 窗口与迭代的 N:N 关联 |
-| **CodeRepository** | Git 仓库实体（集成 GitLab） |
-| **VersionPolicy** | 版本递增策略（MAJOR/MINOR/PATCH/DATE） |
-| **VersionUpdater** | 版本更新执行器（Maven/Gradle） |
-| **Run** | 版本更新的执行记录 |
-| **BranchRule** | 分支规则与合规校验 |
-| **RunTask** | 运行任务与执行步骤 |
+- ReleaseWindow 关联多个 Iteration。
+- Iteration 关联多个 Repository，仓库允许重叠。
+- 窗口仓库集合为所关联迭代仓库的并集。
+- 同一迭代可被其他窗口引用；单个窗口的关闭不能擅自终结全局迭代或删除共享分支。
 
-> 详细领域模型参见 `docs/context/business/domain-model.md`
+两个关键执行单位：
 
----
+| 执行单位 | 责任 |
+|---|---|
+| (window, repository) | 确保该窗口的 release 分支，承载仓库级收尾 |
+| (window, iteration, repository) | 将指定迭代的 feature 分支集成到窗口的 release 分支 |
 
-## 4. 范围边界
+例如：窗口 W 包含迭代 A、B；A 修改订单和支付仓库，B 修改订单和管理前端仓库。窗口计划应包含三个仓库，订单仓库依次集成 A、B；不按迭代重复创建互相竞争的仓库流程。
 
-### ✅ 核心功能已完成
-- ReleaseWindow：CRUD + 状态流转 + 冻结机制
-- Iteration：迭代管理 + 仓库关联 + 窗口关联
-- CodeRepository：仓库 CRUD + GitLab 集成
-- BranchRule：规则 CRUD + 合规校验
-- VersionUpdater：Maven/Gradle 版本更新 + Diff 生成
-- Run：执行记录 + 导出/重试
-- RunTask：10 种任务执行器
-- 发布准备/收尾：合并与编排 API + Publish 自动编排（事件驱动）
-- 前端 UI：核心页面全部可用
+## 5. 当前 MVP 主线
 
-### ⚠️ 待完善
-- Attach 分支操作集成 Run 追踪（技术债务，较大架构调整，择期处理）
-- 预存 SpotBugs EI_EXPOSE_REP x5（`releasehub-common` 基础类，全局影响）
+完整用户路径为：规划窗口 → 关联迭代与仓库 → 预览范围及顺序 → 显式触发编排 → 查看结果和阻塞 → 按证据处理并精确重试。
 
-### ❌ 明确排除（当前版本不实现）
-- 项目管理（Project）
-- 权限体系（RBAC）
-- 通知（飞书/钉钉/邮件）
-- CI/CD 深度集成
+必须具备：
 
-> 注：通知和 RBAC 在早期 Roadmap 中列为 Phase 3/4，但经评估不属于 MVP 范围。当前 Roadmap 中 Phase 6 标记为"待规划"，上述能力将根据用户反馈决定优先级。
+1. 窗口、迭代、仓库及绑定管理，正确表达共享仓库。
+2. 窗口视角按仓库选择迭代集合，预览真实分支计划与稳定顺序。
+3. 确保 feature/release 分支，采用 ENSURE_MR → TRY_MERGE 的 MR-first 集成。
+4. 不同仓库可独立推进，同一目标仓库的迭代合并串行执行。
+5. Run/Item/Step 记录实际范围、顺序、结果、阻塞原因及 GitLab 证据。
+6. 重试只作用于明确失败或阻塞的选定执行项，已成功动作不重复制造副作用。
+7. 窗口页可查看迭代、仓库并集、各迭代合并状态及有效重试入口。
 
----
+默认命名为 feature/{iterationKey}、release/{windowKey}；ref 默认来源为仓库默认分支。覆盖能力必须有明确配置来源并进入计划，不能由执行器临时猜测。
 
-## 5. 技术架构
+## 6. 不可破坏的不变量
 
-### 5.1 技术栈
+### 配置与执行分离
 
-| 层级 | 技术选型 |
-|------|---------|
-| 后端 | Java 21 + Spring Boot 3.4.1 + Spring Data JPA |
-| 数据库 | PostgreSQL + Flyway |
-| 安全 | Spring Security + JWT |
-| 前端 | Vue 3.5 + TypeScript + Vite + Element Plus |
+Attach/Detach 建立或解除关系，不写 Git；Publish 改变窗口生命周期，不隐式启动编排。默认 MANUAL，用户明确触发 Orchestrate 后才进行 Git 写操作。未来 AUTO_ON_ATTACH 如实现，必须显式开启并复用同一受理路径。
 
-### 5.2 模块结构
+### 顺序与失败范围
 
-```
-backend/                          # 后端（DDD 分层）
-├── releasehub-domain/            # 聚合根、实体（无框架依赖）
-├── releasehub-application/       # 应用服务、Port 接口
-├── releasehub-infrastructure/    # JPA 实现、VersionUpdater
-├── releasehub-interfaces/        # REST 控制器
-└── releasehub-bootstrap/         # Spring Boot 启动
+仓库内默认按 attachAt 及稳定次序执行，并记录实际顺序。默认 FAIL_FAST：明确失败或阻塞后，后续同仓迭代标记 SKIPPED_DUE_TO_BLOCK；其他仓库继续。CONTINUE_ON_BLOCK 只能显式选择。结果 UNKNOWN 时，即使选择 CONTINUE，也不能继续该仓后继写入。
 
-frontend/                         # 前端（Vue 3）
-├── src/views/                    # 按业务域划分页面
-├── src/api/                      # API 封装
-└── src/components/               # 可复用组件
-```
+### 事实与幂等
 
-**架构约束**（ArchUnit 强制）：`domain` 禁止依赖 Spring/JPA
+分支已存在、MR 已存在、合并已完成都有明确结果语义。HTTP 成功、时间戳、分支存在、CI 已触发都不能单独证明整个发布成功。必须保留 project ID、分支、MR IID/URL、提交 SHA、窗口/迭代及阻塞原因等可核实证据。
 
----
+结果未知不得伪装为明确失败后重放。恢复时使用原计划和已保存事实；数据库回滚、任务超时和租约到期不能撤销已经发出的 Git 请求。
 
-## 6. 核心领域模型
+### 生命周期与收尾
 
-### 实体关系
+业务 CLOSED 与收尾结果分别展示。关闭受理、Run 和不可变计划原子提交；重复关闭返回原回执，不重新执行。共享 feature/release 和 Iteration 保留；Tag 使用已确认提交，CI 默认关闭且需显式选择。收尾自动恢复须单独验收。
 
-```
-┌─────────────────┐        N:N           ┌─────────────────┐
-│  ReleaseWindow  │◄────────────────────►│    Iteration    │
-│    (发布窗口)    │   WindowIteration    │     (迭代)       │
-└────────┬────────┘                      └────────┬────────┘
-         │ 1:N                                    │ N:N
-         ▼                                        ▼
-┌─────────────────┐                      ┌─────────────────┐
-│      Run        │                      │  CodeRepository │
-└─────────────────┘                      └─────────────────┘
-```
+## 7. 范围取舍
 
-### 状态流转
+当前优先完成跨仓集成及其可靠性闭环：
 
-```
-ReleaseWindow: DRAFT → PUBLISHED → CLOSED
-```
+- 一期只使用 GitLab REST API，不 clone 仓库进行 Git push。
+- Maven/Gradle 版本更新扩展放在二期；现存实现的存在不改变当前 MVP 优先级。
+- 不自动解决冲突；读取必要的审批、流水线、权限和保护分支状态，解释阻塞。
+- 不扩展为自研审批或 CI 编排平台。
+- 通知、RBAC、跨 Provider 平台化及无当前消费者的通用任务/DAG 基础设施不进入当前主线。
 
-> 文案映射：待发布（DRAFT）→ 已发布（PUBLISHED）→ 已关闭（CLOSED）
+新增对象、接口或设计之前，必须核查现有职责能否承载、是否符合目标，以及是否有实际消费者。研发阶段不保留旧执行入口、兼容写路径或双轨实现。
 
----
+## 8. 如何判断产品是否达成目标
 
-## 7. API 概览
+| 场景 | 可观察的验收标准 |
+|---|---|
+| 共享仓库的多迭代发布 | 窗口仓库并集完整，计划没有遗漏或重复，仓内顺序可核对 |
+| 配置调整 | Attach/Detach/Publish 零 Git 写，不因保存配置意外执行发布 |
+| 正常集成 | 每个执行单位有可追溯结果，完成状态有真实 MR/提交证据 |
+| 单仓阻塞 | 原因及证据可见；默认只阻止同仓后继，其他仓库能够完成 |
+| 重复操作 | 同一受理意图返回原记录，不重复创建计划或远端副作用 |
+| 中断和响应丢失 | 原计划及已确认事实保留；未知结果不盲目重发，继续必须有证据 |
+| 用户观察 | 页面、API、导出使用同一事实，能够说明当前状态和可执行的下一步 |
 
-### 核心 API（已实现）
+这些是目标标准。测试、设计标记或表结构仅用于验证是否达到目标，不能代替目标本身。
 
-| 模块 | 路径前缀 | 关键操作 |
-|------|---------|---------|
-| ReleaseWindow | `/api/v1/release-windows` | CRUD, publish, freeze, attach/detach, plan, orchestrate, merge, validate |
-| Iteration | `/api/v1/iterations` | CRUD, repos add/remove |
-| Repository | `/api/v1/repositories` | CRUD, sync, branch summary |
-| BranchRule | `/api/v1/branch-rules` | CRUD, enable/disable, test, 合规检查 |
-| Run | `/api/v1/runs` | 查询, 导出, 重试 |
-| Group | `/api/v1/groups` | tree, CRUD |
-| Settings | `/api/v1/settings/gitlab` | get/save/test |
+## 9. 当前实施路线与事实来源
 
-### 待实现 API
+2026-11-21 已验收并推送 S3-A/B1 和 B2：纯配置边界、权威计划、MR-first、统一状态、精确执行项选择，以及仓库级关闭与安全收尾。当前在实现 S3-C1，尚不能宣称持久任务切片或自动恢复已验收。
 
-| 模块 | 路径前缀 |
-|------|---------|
-| 暂无 | - |
+- S3-C1：唯一持久四动作、请求幂等、MR 分段、结果与保护状态原子确认；验证进程中断后可查询且安全停住。
+- S3-C2：同一执行器的后台驱动、202/轮询、持久扫描和证据驱动恢复。
+- S4/S5：其他动作的安全恢复、完整 GitLab/UI 旅程和受控交付。
 
-> 完整 API 文档：`http://localhost:8080/swagger-ui.html`
+完整阶段依赖、迁移、风险及验收条件统一维护在 [恢复设计](../../openspec/changes/add-durable-run-recovery/design.md) 与 [任务追踪](../../openspec/changes/add-durable-run-recovery/tasks.md)，不在本文维护第二份执行队列。
 
----
+| 文档 | 承担的责任 |
+|---|---|
+| 本文 | 愿景、问题定义、MVP 与产品取舍 |
+| [项目台账](../../project-ledger.md) | 当前实际实现、验证范围及风险 |
+| [执行路线图](../../execution-roadmap.md) | 唯一队首与后续任务 |
+| [场景验收矩阵](../../reports/scenario-acceptance-matrix.md) | 用户场景与证据 |
+| [工程治理准则](../tech/architecture/ai-engineering-governance.md) | 设计、实现和验证方法 |
+| [研发记录](../../../tasks/records/2026-11-21-sa-013-orchestration-consistency.md) | 本轮代码、反例、验证和提交证据 |
 
-## 8. 版本更新器
-
-### Maven ✅
-- 解析 pom.xml（DOM）
-- 更新 `<project><version>`
-- 生成 Diff
-
-### Gradle ✅
-- 更新 `gradle.properties` 中的 `version=`
-- build.gradle 内嵌版本暂不支持
-
----
-
-## 9. 里程碑与质量
-
-### 完成状态
-
-| 里程碑 | 状态 |
-|--------|------|
-| M0 工程骨架 | ✅ |
-| M1 发布窗口闭环 | ✅ |
-| M2 迭代/仓库/设置 | ✅ |
-| M3 版本更新器 | ✅ |
-| M4 体验增强 | ✅ 已完成 |
-| M5 前端对齐 | ✅ 已完成 |
-
-### 测试覆盖
-
-> **注意**：以下为 2026-05-02 快照数据。测试体系重构（Slice 1-8）后 surefire/failsafe 已拆分，实际基线以 `docs/PROJECT_PROGRESS.md` 为准。
-
-- ✅ 后端测试：Surefire 106 通过（单元/组件，2026-05-09 运行时验证）+ Failsafe 集成测试（需容器环境）
-- ✅ 前端 Vitest：18 通过（2026-05-09 运行时验证）
-- ✅ 前端 E2E：Playwright（2 spec / 16 test case，历史全量套件已迁移至 CI test-runner，详见台账）
-- ✅ 架构测试：ArchUnit（11 个测试通过）
-- ✅ 前端 typecheck / lint 通过
-
-### 已解决的技术债务（2026-05-09 更新）
-
-> 2026-05-09：以下两项已在 v0.1.10 中修复。当前无阻塞性待办项。
-
-- ~~Attach 分支操作集成 Run 追踪~~ → ✅ v0.1.10（commit `502e9ab`，`AttachAppService.attach()` 新增 Run 记录创建）
-- ~~预存 SpotBugs EI_EXPOSE_REP~~ → ✅ v0.1.10（commit `e1c5a31`，EI_EXPOSE_REP ×6 已修复）
-
----
-
-## 10. Roadmap
-
-| 阶段 | 内容 | 状态 |
-|------|------|------|
-| **Phase 1** | 前端对齐：BranchRule 新 API 对接、Version Ops Dashboard | ✅ 已完成 |
-| **Phase 2** | 体验增强：日历视图（月/周 + 冲突可视化） | ✅ 已完成 |
-| **Phase 3** | 部署 & 发布自动化：部署文档、Attach 错误可见性、Publish 自动编排 | ✅ 已完成 |
-| **Phase 4** | E2E & 质量：TestContainers E2E 补齐、静态扫描脚本、文档一致性 | ✅ 已完成 |
-| **Phase 5** | 技术债务清理：预存 SpotBugs 修复、Attach Run 追踪集成 | 📋 择期 |
-| **Phase 6** | 待规划：通知/RBAC/性能优化/变更日志/异步执行 — 根据用户反馈决定优先级 | 📋 待规划 |
-
----
-
-## 11. 快速开始
-
-```bash
-# PostgreSQL
-cd docs && docker compose up -d
-
-# 后端
-cd backend && mvn -q spring-boot:run -pl releasehub-bootstrap -Dspring-boot.run.profiles=local
-
-# 前端
-cd frontend && pnpm dev
-
-# 访问
-# 前端: http://localhost:5173 (admin/admin)
-# API 文档: http://localhost:8080/swagger-ui.html
-```
-
----
-
-## 附录：快速参考
-
-### 状态枚举
-
-| 实体 | 状态值 |
-|------|--------|
-| ReleaseWindow | DRAFT → PUBLISHED → CLOSED |
-| Run | RUNNING / SUCCESS / FAILED / PARTIAL |
-
-### 相关文档
-
-| 文档 | 描述 |
-|------|------|
-| `FUNCTION_DEVELOPMENT_PLAN.md` | 功能开发规划 |
-| `NEXT_STEPS_TASKS.md` | 待办任务清单 |
-| `docs/context/business/domain-model.md` | 详细领域模型 |
+旧 v3.2 文档中的“10 种执行器已完成”“Publish 自动编排”“版本更新是 MVP 核心”及旧 Run 状态不能作为当前规范或完成证据。历史演变通过 Git 历史与 [项目变更日志](../../PROJECT_PROGRESS.md) 追溯。

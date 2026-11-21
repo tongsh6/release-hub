@@ -45,7 +45,7 @@ context/
 
 ### 业务知识
 - [领域模型](business/domain-model.md) - DDD 核心概念
-- [项目规划](business/project-plan.md) - 整体规划与里程碑
+- [愿景与产品规划](business/project-plan.md) - 问题定义、发布窗口与跨仓集成、MVP 边界；实际完成状态见项目台账
 
 ### 技术文档
 - [仓库快照](tech/REPO_SNAPSHOT.md) - 技术栈、模块划分、基础命令（AI 快速理解）
