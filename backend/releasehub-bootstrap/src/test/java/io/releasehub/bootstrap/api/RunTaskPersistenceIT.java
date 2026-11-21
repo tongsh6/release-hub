@@ -54,7 +54,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-@SpringBootTest(properties = "spring.jpa.open-in-view=false")
+@SpringBootTest(properties = {"spring.jpa.open-in-view=false", "releasehub.run.worker.enabled=false"})
 @ActiveProfiles("e2e")
 class RunTaskPersistenceIT {
     private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:18.1")
@@ -116,7 +116,13 @@ class RunTaskPersistenceIT {
 
     @Test
     void admissionPersistsFourTaskIntentsInTheSameScopeWithoutGit() {
-        var run = runs.findById(plans.admit(windowId, List.of(firstRepo), List.of(firstIteration), true, "operator", java.util.UUID.randomUUID().toString()).runId()).orElseThrow();
+        String key = UUID.randomUUID().toString();
+        var admission = plans.admit(windowId, List.of(firstRepo), List.of(firstIteration), true, "operator", key);
+        var run = runs.findById(admission.runId()).orElseThrow();
+        assertThat(plans.admit(windowId, List.of(firstRepo), List.of(firstIteration), true, "operator", key).runId())
+                .isEqualTo(admission.runId());
+        assertThat(jdbc.queryForObject("select count(*) from run_plan where operator=? and idempotency_key=?",
+                Integer.class, "operator", key)).isEqualTo(1);
         assertThat(jdbc.queryForObject("select count(*) from run_task where run_id=?", Integer.class, run.getId().value()))
                 .isEqualTo(4);
         assertThat(jdbc.queryForList("select task_type from run_task where run_id=? order by task_order",
@@ -149,6 +155,7 @@ class RunTaskPersistenceIT {
                 "operator", UUID.randomUUID().toString());
         var run = runs.findById(plans.admit(windowId, List.of(firstRepo), List.of(firstIteration), true, "operator", java.util.UUID.randomUUID().toString()).runId()).orElseThrow();
         assertThat(jdbc.queryForObject("select count(*) from run_task where run_id=?", Integer.class, preview.runId())).isZero();
+        assertThat(runs.findPendingTaskRunIds(null, 1000)).doesNotContain(preview.runId());
         assertThat(jdbc.queryForObject("select count(*) from run_task where run_id=?", Integer.class, run.getId().value())).isEqualTo(4);
     }
 
@@ -301,7 +308,7 @@ class RunTaskPersistenceIT {
         String key = UUID.randomUUID().toString();
         var admission = plans.admitRetry(previous, List.of(merge.itemId()), "retry-operator", key);
         Run retry = runs.findById(admission.runId()).orElseThrow();
-        assertThat(admission.created()).isTrue();
+        assertThat(retry.getId()).isNotEqualTo(previous.getId());
         assertThat(runs.findTasks(retry.getId().value()).stream().map(RunPort.TaskView::status))
                 .containsExactly("INHERITED", "INHERITED", "INHERITED", "PENDING");
         assertThat(runs.findById(retry.getId().value()).orElseThrow().getItems().getFirst().getSteps()).isEmpty();
@@ -311,7 +318,12 @@ class RunTaskPersistenceIT {
                 .containsEntry("git.mrIid", "11").containsEntry("git.sourceSha", "a".repeat(40));
         completeSuccess(retryMerge);
         assertThat(runs.findById(retry.getId().value()).orElseThrow().getItems().getFirst().getSteps()).hasSize(1);
-        assertThat(plans.admitRetry(previous, List.of(merge.itemId()), "retry-operator", key).created()).isFalse();
+        assertThat(plans.admitRetry(previous, List.of(merge.itemId()), "retry-operator", key).runId())
+                .isEqualTo(retry.getId().value());
+        assertThat(jdbc.queryForObject("select count(*) from run_plan where operator=? and idempotency_key=?",
+                Integer.class, "retry-operator", key)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from run_task where run_id=?", Integer.class,
+                retry.getId().value())).isEqualTo(4);
         assertThat(runs.findTasks(previous.getId().value()).getLast().status()).isEqualTo("FAILED");
     }
 
@@ -344,6 +356,89 @@ class RunTaskPersistenceIT {
         runs.completeTask(claim, step(claim, RunItemResult.UNKNOWN), Map.of("git.blockReason", "UNKNOWN"));
         assertThat(runs.findById(run.getId().value()).orElseThrow().getItems().getFirst().getMetadata())
                 .containsEntry("git.mrIid", "11").containsEntry("git.sourceSha", "a".repeat(40));
+    }
+
+    @Test
+    void candidateDiscoveryRequiresCurrentWindowProtocolActiveStateAndPendingIntent() {
+        Run run = admit(List.of(firstRepo), List.of(firstIteration), true);
+        String id = run.getId().value();
+        assertThat(runs.findPendingTaskRunIds(null, 1000)).contains(id);
+
+        // 有意构造历史/其他协议行，仅验证候选发现边界，不派发这些反例。
+        for (int version : List.of(1, 2)) {
+            jdbc.update("update run set execution_version=? where id=?", version, id);
+            assertThat(runs.findPendingTaskRunIds(null, 1000)).doesNotContain(id);
+        }
+        jdbc.update("update run set execution_version=? where id=?", Run.ORCHESTRATION_PROTOCOL_VERSION, id);
+        for (String type : List.of("WINDOW_CLEANUP", "VERSION_UPDATE", "ATTACH_ITERATION")) {
+            jdbc.update("update run set run_type=? where id=?", type, id);
+            assertThat(runs.findPendingTaskRunIds(null, 1000)).doesNotContain(id);
+        }
+        jdbc.update("update run set run_type='WINDOW_ORCHESTRATION' where id=?", id);
+        for (String status : List.of("PLANNED", "DONE", "PARTIAL_FAILED", "FAILED")) {
+            jdbc.update("update run set execution_status=? where id=?", status, id);
+            assertThat(runs.findPendingTaskRunIds(null, 1000)).doesNotContain(id);
+        }
+        jdbc.update("update run set execution_status='NEEDS_REVIEW' where id=?", id);
+        assertThat(runs.findPendingTaskRunIds(null, 1000)).contains(id);
+        jdbc.update("update run_task set status='SKIPPED' where run_id=?", id);
+        assertThat(runs.findPendingTaskRunIds(null, 1000)).doesNotContain(id);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void candidatePagesAreBoundedStableAndDoNotClaimTasks() {
+        var expected = new java.util.ArrayList<String>();
+        for (int index = 0; index < 3; index++) {
+            if (index > 0) fixtures();
+            expected.add(admit(List.of(firstRepo), List.of(firstIteration), true).getId().value());
+        }
+        var discovered = new java.util.ArrayList<String>();
+        String cursor = null;
+        boolean ended = false;
+        for (int page = 0; page < 1000; page++) {
+            var candidates = runs.findPendingTaskRunIds(cursor, 1);
+            assertThat(candidates).hasSizeLessThanOrEqualTo(1);
+            if (candidates.isEmpty()) { ended = true; break; }
+            String next = candidates.getFirst();
+            if (cursor != null) assertThat(next.compareTo(cursor)).isPositive();
+            discovered.add(next);
+            cursor = next;
+        }
+        assertThat(ended).as("bounded traversal must reach the end").isTrue();
+        assertThat(discovered).isSorted().doesNotHaveDuplicates().containsAll(expected);
+        for (String id : expected) {
+            assertThat(runs.findTasks(id)).hasSize(4).allMatch(task -> task.status().equals("PENDING"));
+            assertThat(jdbc.queryForObject("select count(*) from run_task where run_id=? and claim_token is not null",
+                    Integer.class, id)).isZero();
+        }
+        assertThatThrownBy(() -> runs.findPendingTaskRunIds(null, 0))
+                .hasRootCauseInstanceOf(IllegalArgumentException.class).hasMessageContaining("between 1 and 1000");
+        assertThatThrownBy(() -> runs.findPendingTaskRunIds(null, 1001))
+                .hasRootCauseInstanceOf(IllegalArgumentException.class).hasMessageContaining("between 1 and 1000");
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void discoveryNeverReclaimsRunningOrUnknownTasks() {
+        Run run = admit(List.of(firstRepo), List.of(firstIteration), true);
+        String id = run.getId().value();
+        var claim = runs.claimNextTask(id).orElseThrow();
+        var runningTasks = runs.findTasks(id);
+        assertThat(runs.findPendingTaskRunIds(null, 1000)).contains(id);
+        assertThat(runs.claimNextTask(id)).isEmpty();
+        assertThat(runs.findTasks(id)).isEqualTo(runningTasks);
+        assertThat(jdbc.queryForObject("select claim_token from run_task where id=?", String.class,
+                claim.fence().taskId())).isEqualTo(claim.fence().claimToken());
+
+        runs.completeTask(claim, step(claim, RunItemResult.UNKNOWN), Map.of("git.blockReason", "UNKNOWN"));
+        var unresolved = runs.findTasks(id);
+        assertThat(unresolved.getFirst().status()).isEqualTo("UNKNOWN");
+        assertThat(runs.claimNextTask(id)).isEmpty();
+        assertThat(runs.findTasks(id)).isEqualTo(unresolved);
+        assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class,
+                claim.fence().taskId())).isEqualTo(1);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
     }
 
     private Run admit(List<String> repos, List<String> iterations, boolean failFast) {

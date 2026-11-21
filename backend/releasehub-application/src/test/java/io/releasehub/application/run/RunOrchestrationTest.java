@@ -65,7 +65,7 @@ class RunOrchestrationTest {
                 mock(ConflictDetectionAppService.class), mock(SettingsPort.class),
                 Clock.fixed(NOW, ZoneOffset.UTC), planner, rules);
         when(planner.admit(WINDOW, List.of("r1"), List.of("I1"), true, "admitted-actor", KEY))
-                .thenReturn(new RunPlanAppService.OrchestrationAdmission(run.getId().value(), true));
+                .thenReturn(new RunPlanAppService.OrchestrationAdmission(run.getId().value()));
         when(runs.findById(run.getId().value())).thenReturn(Optional.of(run));
         facts.putAll(Map.of("plan.windowId", WINDOW, "plan.featureBranch", SOURCE,
                 "plan.releaseBranch", TARGET, "plan.defaultBranch", "main",
@@ -97,6 +97,50 @@ class RunOrchestrationTest {
     }
 
     @Test
+    void aFreshAdmissionReturnsItsReceiptWithoutClaimingOrCallingGit() {
+        assertThat(service.startOrchestrate(WINDOW, List.of("r1"), List.of("I1"),
+                true, "admitted-actor", KEY)).isSameAs(run);
+        assertThat(committed).isEmpty();
+        verify(runs, never()).claimNextTask(any());
+        verifyNoInteractions(git);
+    }
+
+    @Test
+    void aRetryAdmissionReturnsItsReceiptWithoutClaimingOrCallingGit() {
+        var retryRun = Run.rehydrate(RunId.generate(RunType.WINDOW_ORCHESTRATION, NOW),
+                RunType.WINDOW_ORCHESTRATION, "admitted-actor", NOW, null,
+                List.of(), NOW, NOW, 0L, 3, RunExecutionStatus.RUNNING);
+        var selected = List.of(item.getId().value());
+        when(planner.admitRetry(run, selected, "admitted-actor", "retry-intent"))
+                .thenReturn(new RunPlanAppService.OrchestrationAdmission(retryRun.getId().value()));
+        when(runs.findById(retryRun.getId().value())).thenReturn(Optional.of(retryRun));
+
+        assertThat(service.retry(run.getId().value(), selected, "admitted-actor", "retry-intent"))
+                .isSameAs(retryRun);
+        verify(runs, never()).claimNextTask(any());
+        verifyNoInteractions(git);
+    }
+
+    @Test
+    void oneInvocationCommitsOneTaskAndLeavesTheRestUnclaimed() {
+        assertThat(service.executeNextTask(run.getId().value())).isTrue();
+        assertThat(committed).extracting(RunStep::actionType).containsExactly(ActionType.ENSURE_FEATURE);
+        assertThat(pending).containsExactly(ActionType.ENSURE_RELEASE, ActionType.ENSURE_MR, ActionType.TRY_MERGE);
+        verify(runs, times(1)).claimNextTask(run.getId().value());
+        verify(git, never()).ensureMergeRequest(any(), any(), any(), any(), any());
+        verify(git, never()).tryMergeRequest(any(), any(), any(), any());
+        assertThat(GitOperationContext.taskFence()).isNull();
+    }
+
+    @Test
+    void noEligibleTaskReturnsFalseWithoutReconstructingThePlan() {
+        pending.clear();
+        assertThat(service.executeNextTask(run.getId().value())).isFalse();
+        verifyNoInteractions(git, planner);
+        verify(runs, never()).completeTask(any(), any(), any());
+    }
+
+    @Test
     void commitsEachActionBeforeTheNextAndNeverUsesTheCompoundMergePath() {
         when(git.tryMergeRequest(any(), any(), any(), any())).thenAnswer(invocation -> {
             assertThat(committed).extracting(RunStep::actionType)
@@ -122,8 +166,9 @@ class RunOrchestrationTest {
     @Test
     void aRepeatedAdmissionReturnsItsReceiptWithoutClaimingOrCallingGit() {
         when(planner.admit(WINDOW, List.of("r1"), List.of("I1"), true, "admitted-actor", KEY))
-                .thenReturn(new RunPlanAppService.OrchestrationAdmission(run.getId().value(), false));
-        assertThat(execute()).isSameAs(run);
+                .thenReturn(new RunPlanAppService.OrchestrationAdmission(run.getId().value()));
+        assertThat(service.startOrchestrate(WINDOW, List.of("r1"), List.of("I1"),
+                true, "admitted-actor", KEY)).isSameAs(run);
         verify(runs).findById(run.getId().value());
         verify(runs, never()).claimNextTask(any());
         verifyNoInteractions(git);
@@ -352,7 +397,10 @@ class RunOrchestrationTest {
     }
 
     private Run execute() {
-        return service.startOrchestrate(WINDOW, List.of("r1"), List.of("I1"), true, "admitted-actor", KEY);
+        for (int i = 0; i < 5; i++) {
+            if (!service.executeNextTask(run.getId().value())) return run;
+        }
+        throw new AssertionError("The fixed four-action fixture did not stop");
     }
 
     private Run commit(RunPort.TaskClaim claim, RunStep step, Map<String, String> updates) {

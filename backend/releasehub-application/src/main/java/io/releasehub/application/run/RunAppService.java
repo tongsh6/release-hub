@@ -68,28 +68,26 @@ public class RunAppService {
     public Run startOrchestrate(String windowId, List<String> repoIds, List<String> iterationKeys,
                                 boolean failFast, String operator, String key) {
         var admission = runPlanAppService.admit(windowId, repoIds, iterationKeys, failFast, operator, key);
-        return admission.created() ? executeOrchestration(admission.runId()) : loadRun(admission.runId());
+        return loadRun(admission.runId());
     }
 
-    /** 请求线程仅驱动已受理的持久任务；进度和仓库队列资格均来自存储。 */
-    private Run executeOrchestration(String runId) {
-        while (true) {
-            var next = runPort.claimNextTask(runId);
-            if (next.isEmpty()) break;
-            var claim = next.get();
-            try (var scope = GitOperationContext.withTask(claim)) {
-                TaskResult result = executeTask(claim);
-                Map<String, String> updates = new java.util.LinkedHashMap<>(result.metadata());
-                // 即使分支已存在、没有 HTTP 写入，也必须把首次确认的项目身份交给后继任务。
-                if ((claim.actionType() == ActionType.ENSURE_FEATURE || claim.actionType() == ActionType.ENSURE_RELEASE)
-                        && GitOperationContext.expectedProjectId() != null) {
-                    updates.put("git.projectId", GitOperationContext.expectedProjectId());
-                }
-                // 业务投影失败必须向外传播；不能被 Git 异常处理转换后派发后继。
-                runPort.completeTask(claim, result.step(), updates);
+    /** 每次只领取并执行一个持久任务；仓库队列资格和进度始终来自存储。 */
+    public boolean executeNextTask(String runId) {
+        var next = runPort.claimNextTask(runId);
+        if (next.isEmpty()) return false;
+        var claim = next.get();
+        try (var scope = GitOperationContext.withTask(claim)) {
+            TaskResult result = executeTask(claim);
+            Map<String, String> updates = new java.util.LinkedHashMap<>(result.metadata());
+            // 即使分支已存在、没有 HTTP 写入，也必须把首次确认的项目身份交给后继任务。
+            if ((claim.actionType() == ActionType.ENSURE_FEATURE || claim.actionType() == ActionType.ENSURE_RELEASE)
+                    && GitOperationContext.expectedProjectId() != null) {
+                updates.put("git.projectId", GitOperationContext.expectedProjectId());
             }
+            // 业务提交失败向外传播；不得回退 PENDING 或自行派发后继。
+            runPort.completeTask(claim, result.step(), updates);
         }
-        return loadRun(runId);
+        return true;
     }
 
     private Run loadRun(String runId) {
@@ -370,7 +368,7 @@ public class RunAppService {
             throw BusinessException.of(io.releasehub.common.exception.ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
         }
         var admission = runPlanAppService.admitRetry(previous, items, operator, key);
-        return admission.created() ? executeOrchestration(admission.runId()) : loadRun(admission.runId());
+        return loadRun(admission.runId());
     }
     private BusinessException invalidRunScope(String reason) {
         return BusinessException.of(io.releasehub.common.exception.ErrorCode.RUN_PLAN_INVALID_SCOPE, reason);

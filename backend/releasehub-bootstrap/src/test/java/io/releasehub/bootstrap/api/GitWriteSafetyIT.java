@@ -39,7 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.*;
 
-@SpringBootTest @ActiveProfiles("e2e")
+@SpringBootTest(properties = "releasehub.run.worker.enabled=false") @ActiveProfiles("e2e")
 class GitWriteSafetyIT {
     private static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:18.1")
             .withDatabaseName("git_safety_test").withUsername("safety_test").withPassword("isolated-safety-db");
@@ -60,6 +60,7 @@ class GitWriteSafetyIT {
     @Autowired ApplicationContext context;
     @Autowired java.util.List<VersionUpdaterPort> versionUpdaters;
     @Autowired RunPort taskRuns;
+    @Autowired io.releasehub.application.run.RunAppService taskService;
     @Autowired RunPlanAppService taskPlans;
     @Autowired io.releasehub.application.releasewindow.ReleaseWindowPort taskWindows;
     @Autowired io.releasehub.application.iteration.IterationPort taskIterations;
@@ -560,6 +561,144 @@ class GitWriteSafetyIT {
         SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
         SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 1);
         assertNoNamespaceWrites();
+    }
+
+    @Test
+    @Timeout(30)
+    void boundedWorkerLetsAnotherRepositoryProgressWhileTheFirstHttpResponseIsHeld() throws Exception {
+        var other = createRepo(path + "-parallel");
+        int otherProject = PROJECT.incrementAndGet();
+        String otherSha = String.format("%040x", otherProject);
+        String otherEndpoint = "/api/v4/projects/" + URLEncoder.encode(path + "-parallel", StandardCharsets.UTF_8);
+        SERVER.reply("GET", otherEndpoint, 200, "{\"id\":" + otherProject + "}");
+        SERVER.reply("GET", "/api/v4/projects/" + otherProject + "/repository/commits/main", 200,
+                "{\"id\":\"" + otherSha + "\"}");
+        var orderedRepos = java.util.stream.Stream.of(repo, other)
+                .sorted(java.util.Comparator.comparing(value -> value.getId().value())).toList();
+        var firstRepo = orderedRepos.getFirst();
+        var secondRepo = orderedRepos.getLast();
+        var projectIds = Map.of(repo.getId().value(), project, other.getId().value(), otherProject);
+        var sourceShas = Map.of(repo.getId().value(), sha, other.getId().value(), otherSha);
+        String firstApi = "/api/v4/projects/" + projectIds.get(firstRepo.getId().value());
+        String secondApi = "/api/v4/projects/" + projectIds.get(secondRepo.getId().value());
+        String windowId = UUID.randomUUID().toString();
+        String iterationKey = "ITER-WORKER-" + UUID.randomUUID();
+        String feature = "feature/" + iterationKey;
+        String release = "release/worker-" + windowId;
+        String featureRoute = "/repository/branches/" + URLEncoder.encode(feature, StandardCharsets.UTF_8);
+        String releaseRoute = "/repository/branches/" + URLEncoder.encode(release, StandardCharsets.UTF_8);
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var featureBodies = new java.util.HashMap<String, String>();
+        for (var repository : orderedRepos) {
+            String api = "/api/v4/projects/" + projectIds.get(repository.getId().value());
+            String commit = sourceShas.get(repository.getId().value());
+            String featureBody = json.writeValueAsString(Map.of("name", feature, "commit", Map.of("id", commit)));
+            featureBodies.put(api + "/repository/branches", featureBody);
+            SERVER.reply("GET", api + featureRoute, 404, "{}");
+            SERVER.reply("GET", api + releaseRoute, 200,
+                    json.writeValueAsString(Map.of("name", release, "commit", Map.of("id", commit))));
+            SERVER.reply("POST", api + "/repository/branches", 201, featureBody);
+        }
+        Instant now = Instant.now();
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            taskWindows.save(io.releasehub.domain.releasewindow.ReleaseWindow.rehydrate(
+                    io.releasehub.domain.releasewindow.ReleaseWindowId.of(windowId), "RW-" + windowId,
+                    "并发任务验证", "", now, "G001", io.releasehub.domain.releasewindow.ReleaseWindowStatus.DRAFT,
+                    now, now, false, null));
+            taskIterations.save(io.releasehub.domain.iteration.Iteration.rehydrate(
+                    io.releasehub.domain.iteration.IterationKey.of(iterationKey), "并发迭代", "", null, "G001",
+                    Set.of(repo.getId(), other.getId()), io.releasehub.domain.iteration.IterationStatus.ACTIVE, now, now));
+            for (var repository : orderedRepos) {
+                taskVersions.saveWithVersion(iterationKey, repository.getId().value(), "1.0.0", "1.1.0-SNAPSHOT", "1.1.0",
+                        feature, "SYSTEM", now, io.releasehub.domain.iteration.BranchCreationMode.NAMED);
+            }
+            taskBindings.attach(io.releasehub.domain.releasewindow.ReleaseWindowId.of(windowId),
+                    io.releasehub.domain.iteration.IterationKey.of(iterationKey), now);
+            taskBindings.updateReleaseBranch(windowId, iterationKey, release, now);
+        });
+        var admission = taskPlans.admit(windowId, orderedRepos.stream().map(value -> value.getId().value()).toList(),
+                List.of(iterationKey), true, "parallel-task-operator", UUID.randomUUID().toString());
+        var run = taskRuns.findById(admission.runId()).orElseThrow();
+        String firstItem = run.getItems().stream().filter(item -> item.getRepo().equals(firstRepo.getId()))
+                .findFirst().orElseThrow().getId().value();
+        String secondItem = run.getItems().stream().filter(item -> item.getRepo().equals(secondRepo.getId()))
+                .findFirst().orElseThrow().getId().value();
+        var entered = new java.util.concurrent.CountDownLatch(1);
+        var releaseResponse = new java.util.concurrent.CountDownLatch(1);
+        Object target = AopTestUtils.getUltimateTargetObject(factory.getAdapter(GitProvider.GITLAB));
+        var http = (RestTemplate) ReflectionTestUtils.getField(target, "restTemplate");
+        assertThat(http).isNotNull();
+        var original = List.copyOf(http.getInterceptors());
+        var interceptors = new java.util.ArrayList<>(original);
+        // 复用真实 HTTP fixture；扣住客户端响应，不把其单线程服务端变成跨仓阻塞源。
+        interceptors.add((request, body, execution) -> {
+            var response = execution.execute(request, body);
+            String route = request.getURI().getRawPath();
+            if (request.getMethod() == org.springframework.http.HttpMethod.POST && featureBodies.containsKey(route)) {
+                String api = route.substring(0, route.length() - "/repository/branches".length());
+                SERVER.reply("GET", api + featureRoute, 200, featureBodies.get(route));
+                if (route.equals(firstApi + "/repository/branches")) {
+                    entered.countDown();
+                    try {
+                        if (!releaseResponse.await(15, java.util.concurrent.TimeUnit.SECONDS)) {
+                            response.close();
+                            throw new java.io.IOException("fixture response gate timed out");
+                        }
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        response.close();
+                        throw new java.io.IOException("fixture response gate interrupted", interrupted);
+                    }
+                }
+            }
+            return response;
+        });
+        http.setInterceptors(interceptors);
+        try (var worker = new io.releasehub.infrastructure.run.RunTaskWorker(taskRuns, taskService, 2, 0, 32)) {
+            long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while (entered.getCount() != 0 && System.nanoTime() < deadline) {
+                worker.scanOnce();
+                entered.await(20, java.util.concurrent.TimeUnit.MILLISECONDS);
+            }
+            assertThat(entered.getCount()).as("first repository HTTP reached the response gate").isZero();
+            assertThat(workerTaskStatus(run.getId().value(), firstItem, ActionType.ENSURE_FEATURE)).isEqualTo("RUNNING");
+            assertThat(journal.list(firstRepo.getId().value(), 0, 20)).singleElement()
+                    .satisfies(operation -> assertThat(operation.state()).isEqualTo("SEND_STARTED"));
+
+            deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while (!"COMPLETED".equals(workerTaskStatus(run.getId().value(), secondItem, ActionType.ENSURE_FEATURE))
+                    && System.nanoTime() < deadline) {
+                worker.scanOnce();
+                Thread.sleep(20);
+            }
+            assertThat(workerTaskStatus(run.getId().value(), secondItem, ActionType.ENSURE_FEATURE)).isEqualTo("COMPLETED");
+            assertThat(workerTaskStatus(run.getId().value(), firstItem, ActionType.ENSURE_FEATURE)).isEqualTo("RUNNING");
+            assertThat(taskRuns.findTasks(run.getId().value()).stream()
+                    .filter(task -> task.itemId().equals(firstItem) && task.actionType() != ActionType.ENSURE_FEATURE))
+                    .hasSize(3).allMatch(task -> task.status().equals("PENDING"));
+            SERVER.verify("GET", firstApi + releaseRoute, 0);
+            SERVER.verify("POST", firstApi + "/repository/branches", 1);
+            SERVER.verify("POST", secondApi + "/repository/branches", 1);
+
+            releaseResponse.countDown();
+            deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while (!"COMPLETED".equals(workerTaskStatus(run.getId().value(), firstItem, ActionType.ENSURE_FEATURE))
+                    && System.nanoTime() < deadline) Thread.sleep(20);
+            assertThat(workerTaskStatus(run.getId().value(), firstItem, ActionType.ENSURE_FEATURE)).isEqualTo("COMPLETED");
+            SERVER.verify("POST", firstApi + "/repository/branches", 1);
+            assertThat(journal.list(firstRepo.getId().value(), 0, 20)).singleElement().satisfies(operation -> {
+                assertThat(operation.state()).isEqualTo("APPLIED");
+                assertThat(operation.blocked()).isFalse();
+            });
+        } finally {
+            releaseResponse.countDown();
+            http.setInterceptors(original);
+        }
+    }
+
+    private String workerTaskStatus(String runId, String itemId, ActionType action) {
+        return taskRuns.findTasks(runId).stream().filter(task -> task.itemId().equals(itemId) && task.actionType() == action)
+                .findFirst().orElseThrow().status();
     }
 
     /** 真实受理并领取任务；前置分支事实来自本地 HTTP fixture，不手工构造领取权。 */

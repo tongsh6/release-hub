@@ -308,6 +308,11 @@ class RunPagedApiTest {
             assertThat(keyHeaders).as(path + " requires one request key header").hasSize(1);
             assertThat(keyHeaders.getFirst().path("in").asText()).isEqualTo("header");
             assertThat(keyHeaders.getFirst().path("required").asBoolean()).isTrue();
+            JsonNode responses = document.path("paths").path(path).path("post").path("responses");
+            assertThat(responses.has("202")).as(path + " acknowledges durable acceptance").isTrue();
+            assertThat(responses.has("200")).as(path + " must not promise synchronous execution").isFalse();
+            assertThat(responses.path("202").path("content").path("*/*").path("schema").path("$ref").asText())
+                    .isEqualTo("#/components/schemas/ApiResponseString");
         }
         JsonNode close = document.path("paths").path("/api/v1/release-windows/{id}/close").path("post");
         assertThat(close.path("requestBody").path("required").asBoolean()).isFalse();

@@ -77,7 +77,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "spring.jpa.open-in-view=false")
+@SpringBootTest(properties = {"spring.jpa.open-in-view=false", "releasehub.run.worker.enabled=false"})
 @AutoConfigureMockMvc
 @ActiveProfiles("e2e")
 @Import(RunPlanApiIT.PreciseClock.class)
@@ -110,6 +110,7 @@ class RunPlanApiIT {
     @Autowired RunPlanAppService planService;
     @Autowired RunPlanPort persistedPlans;
     @Autowired RunPort runs;
+    @Autowired io.releasehub.application.run.RunAppService taskDriver;
     @MockBean GitLabPort gitLab;
     @MockBean GitLabFilePort gitFiles;
     @MockBean GitBranchAdapterFactory gitBranches;
@@ -157,6 +158,37 @@ class RunPlanApiIT {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_001"));
         assertThat(persistedPlans.listByWindow(windowId, 20)).isEmpty();
+        verifyNoInteractions(git);
+    }
+
+    @Test
+    void acceptsDurableIntentWithoutGitAndFindsReceiptAfterWindowFreezes() throws Exception {
+        GitBranchPort git = orchestrationGit();
+        String payload = body(List.of(repoId), true);
+        var response = mvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
+                        .header("Authorization", "Bearer " + token).header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andReturn().getResponse();
+        String runId = json.readTree(response.getContentAsString()).path("data").asText();
+        assertThat(runId).isNotBlank();
+        assertThat(runs.findTasks(runId)).hasSize(4).allSatisfy(task -> assertThat(task.status()).isEqualTo("PENDING"));
+        assertThat(response.getStatus()).isEqualTo(202);
+        assertThat(persistedPlans.listByWindow(windowId, 20)).hasSize(1);
+        verifyNoInteractions(git);
+
+        jdbc.update("update release_window set frozen=true where id=?", windowId);
+        var repeated = mvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
+                        .header("Authorization", "Bearer " + token).header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isAccepted()).andReturn().getResponse();
+        assertThat(json.readTree(repeated.getContentAsString()).path("data").asText()).isEqualTo(runId);
+        mvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
+                        .header("Authorization", "Bearer " + token).header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("RUN_006"));
+        assertThat(persistedPlans.listByWindow(windowId, 20)).hasSize(1);
+        assertThat(runs.findTasks(runId)).allSatisfy(task -> assertThat(task.status()).isEqualTo("PENDING"));
         verifyNoInteractions(git);
     }
 
@@ -239,12 +271,14 @@ class RunPlanApiIT {
         String first = json.readTree(mvc.perform(post("/api/v1/runs/{id}/retry", sourceRun)
                         .header("Authorization", "Bearer " + token).header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON).content(request))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data").asText();
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString()).path("data").asText();
         String repeated = json.readTree(mvc.perform(post("/api/v1/runs/{id}/retry", sourceRun)
                         .header("Authorization", "Bearer " + token).header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON).content(request))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data").asText();
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString()).path("data").asText();
         assertThat(repeated).isEqualTo(first).isNotEqualTo(sourceRun);
+        driveTasks(first);
+        assertThat(runs.findById(first).orElseThrow().getExecutionStatus().name()).isEqualTo("DONE");
         assertThat(persistedPlans.listByWindow(windowId, 20)).hasSize(2);
         assertThat(runs.findById(first).orElseThrow().getItems().getFirst().getMetadata())
                 .containsEntry("retry.sourceItemId", itemId).containsEntry("retry.sourceRunId", sourceRun);
@@ -277,11 +311,26 @@ class RunPlanApiIT {
                 GitBranchPort.MrDisposition.MR_REUSED, null);
     }
 
-    private String executeRequest(String key, boolean failFast) throws Exception {
+    private String acceptRequest(String key, boolean failFast) throws Exception {
         return json.readTree(mvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
                         .header("Authorization", "Bearer " + token).header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON).content(body(List.of(repoId), failFast)))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data").asText();
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString()).path("data").asText();
+    }
+
+    private String executeRequest(String key, boolean failFast) throws Exception {
+        String runId = acceptRequest(key, failFast);
+        driveTasks(runId);
+        return runId;
+    }
+
+    // 本类隔离受理/事务契约；真实调度与重启由后台和进程集成测试验证。
+    private void driveTasks(String runId) {
+        int budget = runs.findTasks(runId).size() + 1;
+        while (budget-- > 0) {
+            if (!taskDriver.executeNextTask(runId)) return;
+        }
+        throw new AssertionError("Task driver exceeded the persisted task count for " + runId);
     }
 
     @Test
@@ -634,13 +683,12 @@ class RunPlanApiIT {
             assertThat(releaseGit.await(20, TimeUnit.SECONDS)).isTrue();
             return GitBranchPort.MergeResult.success().withEvidence(orchestrationEvidence());
         }).when(git).tryMergeRequest(anyString(), anyString(), any(GitBranchPort.MrEvidence.class), anyString());
+        String executionId = acceptRequest(requestKey, true);
         try (var pool = Executors.newSingleThreadExecutor()) {
-            var execution = pool.submit(() -> mvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
-                            .header("Authorization", "Bearer " + token).header("Idempotency-Key", requestKey)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(json.writeValueAsString(Map.of("repoIds", List.of(repoId),
-                                    "iterationKeys", List.of(iterationKey), "failFast", true))))
-                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+            var execution = pool.submit(() -> {
+                driveTasks(executionId);
+                return true;
+            });
             try {
                 assertThat(enteredGit.await(20, TimeUnit.SECONDS)).isTrue();
                 assertThat(jdbc.queryForObject("select count(*) from run_plan p join run r on r.id = p.run_id where p.window_id = ? and r.execution_status = 'RUNNING'",
@@ -653,7 +701,7 @@ class RunPlanApiIT {
             } finally {
                 releaseGit.countDown();
             }
-            String executionId = json.readTree(execution.get(20, TimeUnit.SECONDS)).path("data").asText();
+            assertThat(execution.get(20, TimeUnit.SECONDS)).isTrue();
             assertThat(runs.findById(executionId).orElseThrow().getExecutionStatus().name()).isEqualTo("DONE");
         }
         verify(git, times(1)).ensureMergeRequest(anyString(), anyString(), anyString(), anyString(), anyString());

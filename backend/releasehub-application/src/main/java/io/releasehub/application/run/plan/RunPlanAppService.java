@@ -89,10 +89,10 @@ public class RunPlanAppService {
         Prepared prepared = prepare(lockWindow(windowId), repos, selectedIterations, failFast, operator, true, false);
         rejectOverlappingExecution(windowId, prepared.run());
         save(prepared, windowId, key, fingerprint);
-        return new OrchestrationAdmission(prepared.run().getId().value(), true);
+        return new OrchestrationAdmission(prepared.run().getId().value());
     }
 
-    public record OrchestrationAdmission(String runId, boolean created) {}
+    public record OrchestrationAdmission(String runId) {}
 
     /** 关闭受理返回已有或首次创建的仓库级 Run；执行器只消费首次受理。 */
     @Transactional
@@ -363,7 +363,7 @@ public class RunPlanAppService {
                 window.isFrozen(), snapshot.failFast(), retryItems);
         rejectOverlappingExecution(source.windowId(), run);
         save(new Prepared(run, retrySnapshot), source.windowId(), key, requestHash);
-        return new OrchestrationAdmission(run.getId().value(), true);
+        return new OrchestrationAdmission(run.getId().value());
     }
 
     private Optional<OrchestrationAdmission> replayAdmission(String operator, String key, String requestHash) {
@@ -380,7 +380,7 @@ public class RunPlanAppService {
                 || !Objects.equals(saved.planHash(), planHash(run, saved.snapshot())))
             throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
         requireTaskProtocol(run);
-        return Optional.of(new OrchestrationAdmission(run.getId().value(), false));
+        return Optional.of(new OrchestrationAdmission(run.getId().value()));
     }
 
     private List<RunPort.TaskView> requireTaskProtocol(Run run) {

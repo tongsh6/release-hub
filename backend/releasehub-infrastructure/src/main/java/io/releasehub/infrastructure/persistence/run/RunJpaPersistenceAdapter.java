@@ -194,6 +194,24 @@ public class RunJpaPersistenceAdapter implements RunPort {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<String> findPendingTaskRunIds(String afterId, int limit) {
+        if (limit < 1 || limit > 1000) throw new IllegalArgumentException("Scan limit must be between 1 and 1000");
+        return entityManager.createQuery("""
+                select r.id from RunJpaEntity r
+                where r.runType = :type and r.executionVersion = :protocol
+                  and r.executionStatus in ('RUNNING', 'NEEDS_REVIEW') and r.id > :cursor
+                  and exists (select t.id from RunTaskJpaEntity t where t.runId = r.id and t.status = 'PENDING')
+                order by r.id
+                """, String.class)
+                .setParameter("type", RunType.WINDOW_ORCHESTRATION.name())
+                .setParameter("protocol", Run.ORCHESTRATION_PROTOCOL_VERSION)
+                .setParameter("cursor", afterId == null ? "" : afterId)
+                .setMaxResults(limit)
+                .getResultList();
+    }
+
+    @Override
     @Transactional
     public Optional<TaskClaim> claimNextTask(String runId) {
         freshPersistenceContext();

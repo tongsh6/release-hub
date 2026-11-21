@@ -2,6 +2,7 @@ package io.releasehub.bootstrap.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.releasehub.application.run.RunPort;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.gitoperation.GitWriteResult;
@@ -26,6 +27,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,7 +42,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "spring.jpa.open-in-view=false")
+@SpringBootTest(properties = {
+        "spring.jpa.open-in-view=false", "releasehub.run.worker.enabled=true",
+        "releasehub.run.worker.scan-delay-ms=25", "releasehub.run.worker.parallelism=2",
+        "releasehub.run.worker.queue-capacity=2"})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class WindowRunApiIT {
@@ -62,6 +68,9 @@ class WindowRunApiIT {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private RunPort runs;
 
     @MockBean
     private GitBranchAdapterFactory gitFactory;
@@ -150,8 +159,17 @@ class WindowRunApiIT {
         when(git.ensureMergeRequest(eq(repo1.cloneUrl()), anyString(), anyString(), eq(releaseBranch), anyString()))
                 .thenAnswer(invocation -> GitWriteResult.applied(
                         invocation.getArgument(2).equals(firstCheckpoint.sourceBranch()) ? firstCheckpoint : laterCheckpoint));
+        CountDownLatch mergeEntered = new CountDownLatch(1);
+        CountDownLatch releaseMerge = new CountDownLatch(1);
         when(git.tryMergeRequest(eq(repo1.cloneUrl()), anyString(), eq(firstCheckpoint), anyString()))
-                .thenReturn(GitBranchPort.MergeResult.conflict("Fixture conflict").withEvidence(firstCheckpoint));
+                .thenAnswer(invocation -> {
+                    assertThat(Thread.currentThread().getName()).startsWith("releasehub-run-task-");
+                    assertThat(org.springframework.transaction.support.TransactionSynchronizationManager
+                            .isActualTransactionActive()).isFalse();
+                    mergeEntered.countDown();
+                    assertThat(releaseMerge.await(15, TimeUnit.SECONDS)).isTrue();
+                    return GitBranchPort.MergeResult.conflict("Fixture conflict").withEvidence(firstCheckpoint);
+                });
 
         String orchestrationRequest = objectMapper.writeValueAsString(Map.of(
                 "repoIds", java.util.List.of(repo1.id()), "iterationKeys", java.util.List.of(), "failFast", true));
@@ -174,11 +192,19 @@ class WindowRunApiIT {
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(orchestrationRequest))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andExpect(jsonPath("$.data").exists())
             .andReturn();
         String runId = objectMapper.readTree(orch.getResponse().getContentAsString()).get("data").asText();
         assertThat(runId).isNotBlank();
+        try {
+            assertThat(mergeEntered.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(runs.findById(runId).orElseThrow().getExecutionStatus().name()).isEqualTo("RUNNING");
+            verify(git, never()).tryMergeRequest(eq(repo1.cloneUrl()), anyString(), eq(laterCheckpoint), anyString());
+        } finally {
+            releaseMerge.countDown();
+        }
+        awaitExecutionStatus(runId, "FAILED");
 
         mockMvc.perform(get("/api/v1/runs/" + runId)
                 .header("Authorization", "Bearer " + token))
@@ -273,9 +299,10 @@ class WindowRunApiIT {
                         .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
                         .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("items", java.util.List.of(firstItemId, skippedItemId)))))
-                .andExpect(status().isOk()).andReturn();
+                .andExpect(status().isAccepted()).andReturn();
         String retryRunId = objectMapper.readTree(retry.getResponse().getContentAsString()).path("data").asText();
         assertThat(retryRunId).isNotBlank().isNotEqualTo(runId);
+        awaitExecutionStatus(retryRunId, "DONE");
         MvcResult retried = mockMvc.perform(get("/api/v1/runs/" + retryRunId + "/export.json")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andReturn();
@@ -305,6 +332,17 @@ class WindowRunApiIT {
         }
         assertThat(retryJson.path("items").get(0).path("steps")).hasSize(1);
         assertThat(retryJson.path("items").get(0).path("steps").get(0).path("actionType").asText()).isEqualTo("TRY_MERGE");
+    }
+
+    private void awaitExecutionStatus(String runId, String expected) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        while (!runs.findById(runId).orElseThrow().getExecutionStatus().name().equals(expected)
+                && System.nanoTime() < deadline) {
+            Thread.sleep(50);
+        }
+        assertThat(runs.findById(runId).orElseThrow().getExecutionStatus().name())
+                .withFailMessage("Scheduled worker did not reach %s: %s", expected, runs.findTasks(runId))
+                .isEqualTo(expected);
     }
 
     private Map<String, byte[]> readZipEntries(byte[] zipBytes) throws IOException {
