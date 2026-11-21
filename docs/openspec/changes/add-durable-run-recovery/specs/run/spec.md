@@ -104,7 +104,7 @@ C1 已交付 protocol 3 的 WINDOW_ORCHESTRATION 持久四动作及检查点后�
 
 ### Requirement: 确认身份与未决写保持一致
 
-系统 SHALL 从首次确认的 GitLab 分支读取开始冻结数字项目 ID，而非等到首次 HTTP 写入。该身份 SHALL 经既有任务上下文与 Item metadata 持久化，并约束同 Run、同仓库的后继任务、其他 Item 和重试；不同仓库分别绑定。所有真实读写 SHALL 校验期望身份并使用 numeric URI；业务 UNKNOWN 不得覆盖已确认的项目或 MR 检查点。传输层某请求 APPLIED 不能代替业务证据完整性。
+系统 SHALL 从首次确认的 GitLab 分支读取开始在当前任务上下文固定数字项目 ID，而非等到首次 HTTP 写入；动作提交时与结果一起写入 Item metadata，写意图按既有 operation 固定远端目标。已有持久身份 SHALL 约束同 Run、同仓库的后继任务、其他 Item 和重试；不同仓库分别绑定。未提交且无 operation/Step/metadata 的内存读取不是跨进程检查点。所有真实读写 SHALL 校验期望身份并使用 numeric URI；业务 UNKNOWN 不得覆盖已确认的项目或 MR 检查点。传输层某请求 APPLIED 不能代替业务证据完整性。
 
 #### Scenario: 首次分支已存在且没有写 operation
 
@@ -385,9 +385,9 @@ C1 已交付 protocol 3 的 WINDOW_ORCHESTRATION 持久四动作及检查点后�
 
 #### Scenario: 结果和时间事实不被误判
 
-- **GIVEN** 某 task 已有任意 operation 或 Step，或期限为 NULL/未到，或 Task 已终结/UNKNOWN
+- **GIVEN** 某 task 已有任意 operation 或 Step，或原 token/首次 started_at/期限缺失，或实际顺序非正，或期限未到，或 Task 已终结/UNKNOWN
 - **WHEN** 扫描或领取
-- **THEN** 该 task 不因过期规则获得接管资格；查询错误不得降级为“没有证据”
+- **THEN** 该 task 不因过期规则获得接管资格，原 token、期限和顺序不变，也不补造缺失事实；查询错误不得降级为“没有证据”
 - **AND** 同 Item 其他 task 的成功 Step 不妨碍最后一个无写意图任务接管
 
 #### Scenario: 拿锁后的数据库期限与本次步骤时间

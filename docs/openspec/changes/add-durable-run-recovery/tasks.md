@@ -1,6 +1,6 @@
 # 实施切片与验收追踪
 
-完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2、S3-C1 已交付；C1 固定 `e5094ba` 的 Full-Link 44899945002 为 5/5。C2-A 本地实现、反例与静态门禁通过，当前队首等待本次分组提交和固定 SHA Full-Link 收口；C2-B 再交付已领取任务接管及证据恢复，C2 整体尚未完成。
+完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2、S3-C1、S3-C2-A 已交付；C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。当前唯一队首 C2-B1 已实现并通过本地功能验收和最终静态复扫，分组提交后的固定 SHA CI 待收口；任何已有 operation 的恢复仍未交付，C2 整体尚未完成。
 
 关联：[需求](../../../requirements/in-progress/SA-013-发布编排中断恢复.md)、[提案](proposal.md)、[Run delta](specs/run/spec.md)、[窗口 delta](specs/release-window/spec.md)。依赖顺序为 S0 → S1 → S2 → S3 → S4 → S5。
 
@@ -117,11 +117,14 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 - 蓝图归属：设计 0/3/4/5；复用原任务和单步执行器，先证明无写意图边界。
 - 用户价值：领取后、写意图前退出的任务能由默认扫描继续；Run/Item/检查点与成功前缀保持。
 - 依赖：C2-A 固定 SHA CI 验收；实现前已完成现有时间、锁序、operation/Step 身份和真实消费者的只读查重。
-- [ ] 原 Task 新增可空 claim_expires_at，Flyway/JPA 两条实际 schema 路径验证；NULL 不推断恢复资格。
-- [ ] 候选发现与唯一领取一起扩展，Run→Task 锁内按 task_id 排除全部 operation/Step；不新增恢复执行器或旧方法别名。
-- [ ] Task 首次时间保留，当前 Claim/Step 同 worker 时钟，期限使用拿锁后 DB 时间；默认保守 60 分钟且合法配置有实际消费者。
-- [ ] 真实 PG 验证末尾仅 RUNNING、双 worker、begin/接管两个胜出顺序、旧完成拒绝、跨时钟及锁等待；真实 HTTP 验证旧 GET 迟到零重复写。
-- [ ] 独立 JVM 在 MR 已提交、TRY 已领取但无 operation 后强杀，重启接管原任务并完成一次合并；相关回归、静态 TopN 与阶段交付通过。
+- [x] 原 Task 新增可空 claim_expires_at，Flyway/JPA 两条实际 schema 路径验证；NULL 不推断恢复资格，local 用例只证明新增列。
+- [x] 候选发现与唯一领取一起扩展，Run→Task 锁内按 task_id 排除全部 operation/Step；不新增恢复执行器或旧方法别名。
+- [x] Task 首次时间及已有实际顺序保留；领取事实缺失时拒绝接管，不补造顺序。当前 Claim/Step 同 worker 时钟，期限使用拿锁后 DB 时间；默认保守 60 分钟且零/负值拒绝。
+- [x] 真实 PG 验证末尾仅 RUNNING、双 worker、begin/接管两个胜出顺序、旧完成拒绝、跨时钟及锁等待；真实 HTTP 验证旧 GET 迟到零重复写。
+- [x] 独立 JVM 的 PENDING/CLAIMED_UNWRITTEN 两场景均强杀退出 137，默认扫描重启继续原任务；MR POST=1、MERGE PUT=1，Item/Task/成功 Step 前缀保持。
+- [x] API 48/48、普通后端 675 PASS/5 既有 SKIP 在静态整理前各自稳定树通过；仅适配器 SQL/标注整理后的最终树再次组合 76/76，源码前后 hash 一致，重叠不累计。
+- [x] 最终静态 20261121-214959：六模块 SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 fixture warnings；首扫 4 项修复或精确说明，TopN 逐项留痕。
+- [ ] 分组提交/推送及本片固定 SHA Full-Link 验收收口；不能借用 C2-A 的 5/5。
 - 回滚和非目标：停派发、保留事实；不处理任何已有 operation，不宣称任意中断点或完整 UI 旅程可恢复。
 
 #### C2-B 后续：已有写意图与外部证据

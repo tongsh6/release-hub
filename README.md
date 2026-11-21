@@ -9,9 +9,9 @@
 
 核心能力：窗口/迭代/仓库与绑定、权威计划预览、显式 MR-first 编排、Run/Item/Step 与持久任务证据，以及按原计划精确重试。Attach/Detach/Publish 只维护配置和生命周期；Orchestrate 将所选 feature 分支集成到窗口 release 分支。
 
-当前 WINDOW 编排先在事务中保存计划与任务，HTTP 202 返回 Run ID；有界后台 worker 只消费已落库的 ENSURE_FEATURE → ENSURE_RELEASE → ENSURE_MR → TRY_MERGE 四动作。执行和重试必须提供 `Idempotency-Key`；相同主体、键及请求返回原回执，后台沿冻结计划和已确认 GitLab 数值项目 ID 推进。进程重启可继续尚未领取的 PENDING；已领取或结果未知的任务保持保护，不盲目重放。
+当前 WINDOW 编排先在事务中保存计划与任务，HTTP 202 返回 Run ID；有界后台 worker 只消费已落库的 ENSURE_FEATURE → ENSURE_RELEASE → ENSURE_MR → TRY_MERGE 四动作。执行和重试必须提供 `Idempotency-Key`；相同主体、键及请求返回原回执，后台沿冻结计划和已确认 GitLab 数值项目 ID 推进。进程重启可继续尚未领取的 PENDING。C2-B1 当前源码已通过本地验证：仅接管期限已到、领取事实完整，且该 task 没有任何 git_operation 或自身 Step 的 RUNNING；Run→Task 锁内重核并按原 token CAS，保留首次领取时间及已有实际顺序，缺失顺序不补造。任何已有写意图或 UNKNOWN 仍保持保护，不自动恢复。
 
-关闭窗口使用独立的仓库级收尾 Run；重复关闭返回原回执，Tag 使用确认的合并提交，CI 默认关闭并由用户显式选择，共享分支与迭代保留。C1 固定 `e5094ba` 的 [Full-Link CI](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 为 5/5。**S3-C2-A 已完成并分组推送**：202、后台扫描、回执找回和进度观察通过本地门禁，固定 `1761572` 的 [Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754) 为 5/5。当前唯一队首为 **S3-C2-B1：无 operation 的过期 RUNNING 接管**，尚未实现；已有写意图的证据核对与恢复仍在后续范围，真实 UI 黄金旅程按 S5 单独验收。
+关闭窗口使用独立的仓库级收尾 Run；重复关闭返回原回执，Tag 使用确认的合并提交，CI 默认关闭并由用户显式选择，共享分支与迭代保留。C1 固定 `e5094ba` 的 [Full-Link CI](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 为 5/5。**S3-C2-A 已完成并分组推送**：202、后台扫描、回执找回和进度观察通过本地门禁，固定 `1761572` 的 [Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754) 为 5/5。当前唯一队首为 **S3-C2-B1：无 operation 的过期 RUNNING 接管**，本地实现、复验与最终静态门禁已通过，后端已本地提交 `3f810c8`；文档收口、分组推送及本片固定 SHA Full-Link 待完成，尚未 DONE；已有写意图的证据核对与恢复仍在后续范围，真实 UI 黄金旅程按 S5 单独验收。
 
 > **协作入口：[`AGENTS.md`](AGENTS.md)** — 唯一项目画像、工程规则与知识导航；生命周期、工作模式和发布事实分别记录。
 > 📋 **实现与验证事实：[`docs/project-ledger.md`](docs/project-ledger.md)** — 已交付基线、当前任务目标与验收边界。

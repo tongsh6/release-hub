@@ -395,4 +395,55 @@ C2-B 的首个候选子片已只读核实：只考虑没有任何 git_operation 
 
 实施前已独立定义反例，并由两个只读审查交叉核实锁序、时间消费者、已有 operation 归属和真实预写读取路径。设计、Run delta 和任务队列已记录最小范围：只在原 Run→Task 锁内确认当前 task_id 没有任何 operation/Step 后换 token；原 Task 首次时间保留，本次 Claim/Step 同 worker 时钟，claim_expires_at 由拿锁后数据库时间驱动。无心跳首片采用保守 60 分钟默认，配置过短的活性限制明确；隔离测试不等待该生产默认期限。
 
-当前只完成契约与正反例定义，尚无实现或 GREEN 结论。下一步先保存真实 RED，再扩展现有候选查询和唯一领取路径，验证最后一个 RUNNING、两个抢锁顺序、旧 GET 迟到、首次时间和独立进程接管。任何已有 INTENT/SEND/结果操作、UNKNOWN 精确恢复仍属于后续子片。
+契约先于实现固定；以下先记录真实 RED，再扩展既有候选查询和唯一领取路径。任何已有 INTENT/SEND/结果操作、UNKNOWN 精确恢复仍属于后续子片，不提前标记完成。
+
+### 14.1 独立反例与 RED 证据
+
+| 范围 | 实际结果 | 工件（相对 .ai/reports/validation/） |
+|---|---|---|
+| schema | 2 项、2 个 assertion FAIL、0 error；Flyway 与 Hibernate update 都缺新增期限列 | c2-b1/schema-red |
+| schema 基础后的持久行为 | 27 项：22 PASS、5 assertion FAIL、0 error；失败为期限未写、末尾 RUNNING 不发现、无法接管、双 worker 与锁等待期限 | c2-b1/behavior-red-jdk21 |
+| HTTP/Journal | 5 项：3 PASS、2 assertion FAIL、0 error；扣住真实 GET 响应后原任务不能被接管；SEND 在途/INTENT 先赢锁与全状态排除反例已通过 | c2-b1/http-process-red |
+| 独立 JVM | 2 项：PENDING 原场景 PASS，TRY 已领取但无 operation 场景 1 assertion FAIL、0 error；强杀后默认扫描一直留下原 RUNNING | c2-b1/http-process-red |
+| 配置边界 | 1 项、1 assertion FAIL、0 error；零期限尚未在构造时拒绝 | c2-b1/config-negatives-red-jdk21 |
+| PG 额外边界 | 4 项：3 PASS、1 assertion FAIL、0 error；NEEDS_REVIEW 下另一仓的过期任务尚不能接管 | c2-b1/pg-negative-boundaries-red-jdk21 |
+
+上述验证均保留 backend 源码前后 hash 一致证据；范围有重叠，不相加为总数。schema RED 后只补了 V40 可空列与现有实体映射，再运行领取行为 RED；未用缺列 SQL 错误冒充行为失败。一次验证运行器误选 Java 25，Clock spy 触发 Byte Buddy 版本限制，属于测试环境预检失败，不计 RED；后续固定 Temurin 21 重跑。
+
+HTTP 反例扣住客户端收到的短响应，服务端未被 latch 阻塞。旧写路径要求特定 BusinessException、零 HTTP 写和零 operation；旧纯读路径先要求 MR_REUSED，再检验旧 complete。INTENT 竞争在真实 begin 的物理事务中持有 Run→Task 锁，通过 pg_blocking_pids 确认接管连接确实等待，提交后接管必须拒绝。各 operation 状态/旧 token 的 SQL 投影仅用于验证保守排除，未称为真实核对流程。
+
+进程 RED 中原 PENDING 案例保持 MR POST=1、MERGE PUT=1；已领取案例的重启 JVM 实际报告前三任务 COMPLETED、TRY_MERGE=RUNNING，未出现启动错误。测试只在默认 worker 已完成后用原 key 核对 receipt。独立审查另指出“成功前缀不变”初版只比较 Task 行，GREEN 前已补上 Item ID 集合和前三条 Step 完整行对比，下节记录最终验证；不把这些后补断言计入 RED 证据。
+
+新增期限列的 local 用例只证明现有 JPA/Hibernate update 建列；未宣称完整 local 应用旅程。已核实既有 RunStepJpaEmbeddable 确有 task_id 映射，不因错误的缺列假设新增初始化器或扩展本片范围。下节记录 GREEN、静态整理后的复验与交付边界。
+
+### 14.2 最终实现、冻结回归与静态处置
+
+复用原 RunPort / JPA / RunTaskWorker 和单任务执行器，移除旧候选方法名。V40 与已有 Task 实体只增加可空期限；原 Task/Item/Run 身份、成功前缀、首次 started_at、已有实际顺序与持久 MR 检查点保持。Run→Task 锁取得后读取数据库 clock_timestamp，CAS 同时检查原 token、原期限和当前 task 无任何 operation/Step；只换 token 与期限，不引入第二个恢复执行器。到期本身不否定仍有效的原 owner，也不变更 operation/guard。
+
+独立复审发现一个额外负例：已领取 task 若丢失 Item.executedOrder，原实现在接管时会补造顺序。先运行 `incomplete-order-red-jdk21` 得到 1 个失败用例（4 条事实不变断言失败），再限制接管必须已有正顺序，且只在首次 PENDING 领取时分配顺序；`incomplete-order-green-jdk21` 通过。下面全部后端门禁均在该修正之后执行。
+
+| 验证范围 | 结果 | 工件（相对 .ai/reports/validation/c2-b1/） |
+|---|---|---|
+| 冻结后端组合 | 76/76：PG 31、真实 HTTP 33、独立 JVM 2、worker 7、scope/config 3，0 FAIL/ERROR/SKIP | final-backend/result.json |
+| API 回归 | 48/48：RunPaged 22、RunPlanApiIT 25、WindowRunApiIT 1 | final-backend/result.json |
+| 普通后端 | 680 项＝675 PASS＋5 既有 SKIP，0 FAIL/ERROR | final-backend/result.json |
+| 静态整理后的最终组合 | 两处 SQL 从 formatted 改为固定片段拼接、构造器精确标注后再次 76/76 | static-fix-green/result.json |
+| 最终静态 | 六模块新鲜 SpotBugs XML 均 0；typecheck PASS；lint 0 errors/8 既有 fixture warnings | static-fix-green/static-result.json |
+
+各轮使用 Temurin 21，保留该轮 backend 源码前后 hash，均一致；重叠测试不累计。API/普通后端是在两处 SQL 表达方式与构造器标注整理之前的冻结树运行，整理后的最终树另以覆盖该适配器的完整 76 项组合和静态扫描验证，不伪称所有门禁在同一次运行。B1 没有 UI/API 改动，前端 214 项是 C2-A 的已有基线，本片实际重跑 lint/typecheck。
+
+最终独立 JVM 日志：
+
+- PENDING：原 Run `a4419959-9f2e-46fc-b5d1-514837eba3c8`，PID 45587 强杀退出 137，PID 45959 重启默认扫描完成；MR POST=1、MERGE PUT=1。
+- CLAIMED_UNWRITTEN：原 Run `2d19d0f8-0785-4194-873a-961fdded5d00`，PID 46412 强杀退出 137，PID 46781 重启默认扫描接管；MR POST=1、MERGE PUT=1。
+- 两场景均在默认 worker 完成后才查询原 receipt，原 Item ID 集合、全部 Task ID、前三个成功 Task 完整行及 Step 完整行保持；只新增最后一步结果。已领取场景原首次时间保持，token 和期限更新。没有用重发受理触发恢复。
+
+静态首扫 `20261121-213959` 的原始日志实际有 4 项，摘要漏列 CT_CONSTRUCTOR_THROW 且把 SpotBugs check 的失败误标为环境问题；未以运行器退出码 0 当作通过。两处 VA_FORMAT_STRING_USES_NEWLINE 已改为编译期固定 SQL 片段组合，参数仍逐项绑定。EI_EXPOSE_REP2 与 CT_CONSTRUCTOR_THROW 仅在现有构造器标注：保存 Spring 事务绑定 EntityManager 代理属于真实职责，不对外暴露；非法期限在任何字段赋值前拒绝，不分配资源或发布 this，类保留事务代理能力。独立只读复审确认这些依据，不新造包装器或全局忽略。复扫最终报告：`.ai/reports/static-scan/20261121-214959/summary.md`，8 条既有测试 fixture 告警逐项记录保留理由。
+
+身份反例复核：首次 GET 只绑定当前动作上下文；动作结果提交才写入 Item metadata，写意图另由既有 operation 固定目标。原进程若仅有未提交读取、无 operation/Step/metadata，重启不能声称保留其未提交 numeric ID。已有同 Run 同仓持久身份则由 Run.repositoryProjectId 汇总并注入每次 Claim，在实际读写前拒绝 namespace 重绑定；当前 task 任何 operation 直接排除本片接管。设计与规范已精确区分这两种情况。
+
+当前本地门禁已通过，C2-B1 仍为 HEAD，下一步将后端与其必要测试消费者同组、文档另组提交并阶段推送，再核对本片固定 SHA Full-Link。默认 60 分钟、无心跳，短期限可造成健康长读反复失权；NULL/不完整领取事实保持停住。任何已有 INTENT/SEND/APPLIED/UNKNOWN 的恢复、完整 local 业务旅程和真实 UI 黄金旅程均不属于本片已验收能力。
+
+### 14.3 本地分组提交
+
+后端及必要测试提交为 `3f810c887afa3bdbf35e0786822756f3e0b2f711`，共 10 文件。候选方法改名涉及真实 PG/HTTP 测试消费者，代码和这些回归同组，确保中间提交可编译；不人为拆出断裂接口提交。提交前再次核对最终受验 backend hash、空 index、feature 分支与预期父提交，均匹配；详细清单见 `.ai/reports/validation/c2-b1/backend-commit.json`。文档另组收口后再推送，以该阶段最终 SHA 运行 Full-Link；本地提交不代表远端验收完成。

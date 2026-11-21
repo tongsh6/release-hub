@@ -76,15 +76,15 @@ UI 复用 executionIntent 的原 actor/operation/key/payload，并在原页面�
 
 当前操作账本对 task_id 唯一，观察、迟到结果和 ack 还关联原 claimToken；不得通过换 token 再创建第二个 operation 来规避。C2-B 需沿现有账本区分历史 HTTP 事实、当前发送权和当前投影权；只读 FOUND 还须验证动作所需的项目、IID、分支与冻结 SHA。无 SEND 的意图、已确认 HTTP 结果和 SEND_STARTED 后未知请求分别处理。租约过期或单次 404 均不能授权重发，未知事实不得仅凭 FOUND 解除 guard。
 
-##### C2-B1：无写意图的过期领取（当前子片，尚未实现）
+##### C2-B1：无写意图的过期领取（已实现、本地功能验收通过，当前待交付子片）
 
 用户价值是进程已领取任务、尚未建立写意图时，后台能继续原任务；先独立验收这一边界，再处理已有 operation。只沿既有 RunPort/JPA、RunTask、RunAppService.executeNextTask 和 RunTaskWorker 扩展，不新增恢复实体、执行器、API 或按钮。
 
-资格必须同时满足：当前 WINDOW 协议、Run=RUNNING/NEEDS_REVIEW、Task=RUNNING、有原 token 和非空到期值、到期，且该 task_id 没有任何 git_operation 和任何 run_step。operation 按 task_id 跨所有状态/所有 token 排除，包括 INTENT；Step 只查当前 task，不因同 Item 的成功前缀而阻断最后一步。
+资格必须同时满足：当前 WINDOW 协议、Run=RUNNING/NEEDS_REVIEW、Task=RUNNING、原 token/首次 started_at/到期值非空、已有正的 Item.executedOrder、期限已到，且该 task_id 没有任何 git_operation 和任何 run_step。缺少领取事实时保持原状，不替已领取任务补造实际顺序。operation 按 task_id 跨所有状态/所有 token 排除，包括 INTENT；Step 只查当前 task，不因同 Item 的成功前缀而阻断最后一步。
 
-扫描方法直接改为 findTaskCandidateRunIds，继续有界游标和提交后领取；发现 PENDING 或上述过期 RUNNING。最终资格仍在 Run→Task 同一事务锁内重新检查，换 token 的条件更新再次带原 token、状态、期限及双 NOT EXISTS，并要求恰一行。旧 begin 先提交则接管拒绝；接管先提交则旧 begin/complete 均被 token 拒绝。到期只是候选条件，不给 sending/finish/ack 添加期限拒绝，不自动清 guard。
+扫描方法直接改为 findTaskCandidateRunIds，继续有界游标和提交后领取；发现 PENDING 或无 operation/Step 的过期 RUNNING 候选，扫描不承诺执行资格，缺失实际顺序的候选仍在锁内拒绝。最终资格仍在 Run→Task 同一事务锁内重新检查，换 token 的条件更新再次带原 token、状态、期限及双 NOT EXISTS，并要求恰一行。旧 begin 先提交则接管拒绝；接管先提交则旧 begin/complete 均被 token 拒绝。到期只是候选条件，不给 sending/finish/ack 添加期限拒绝，不自动清 guard。
 
-| 现有时间责任 | 本片目标 |
+| 现有时间责任 | C2-B1 实际实现 |
 |---|---|
 | Task.started_at | 保留首次领取事实，继续供 TaskView/页面展示，接管不覆盖 |
 | TaskClaim.startedAt | 每次从当前 worker Clock 取本次执行起点；Step 起止同源，不强制等于首次 Task 时间 |
@@ -187,21 +187,21 @@ flowchart TD
 
 ## 4. 数据模型与身份
 
-当前 C1 直接复用 S1/S2 的计划、操作账本和 V21 任务表。下表记录实际承载关系，不把未来候选字段写成现有能力。
+当前 C1/C2 直接复用 S1/S2 的计划、操作账本和 V21 任务表。下表记录实际承载关系，C2-B1 已实现且本地功能验收通过；其远端验收仍单独记录，不把未来候选字段写成现有能力。
 
-| 结构 / 责任 | C1 实际约束 |
+| 结构 / 责任 | 当前实际约束 |
 |---|---|
 | Run | 独立 UUID；窗口执行使用 execution_version=3；预览和现有收尾仍使用各自协议；实际状态由后端汇总 |
 | SavedRunPlan / 既有计划存储 | window、actor、原始 key、请求 hash、计划 hash 和不可变快照；不把同义字段再复制到 Run |
 | RunItem | 独立 UUID；编排保留 window/iteration/repository 三元组，收尾为仓库级范围；plannedOrder 与 executedOrder 分别记录，metadata 保存已确认 Git 身份和 retry 来源 |
-| run_task | 复用 run_id、target_type=RUN_ITEM、target_id、task_type、task_order；V39 增加 claim_token；同 Run/Item/action 唯一；没有新增 item_id 或依赖表 |
+| run_task | 复用 run_id、target_type=RUN_ITEM、target_id、task_type、task_order；V39 claim_token；C2-B1 的 V40 增加可空 claim_expires_at，由现有扫描/领取消费，旧 NULL 不回填；同 Run/Item/action 唯一，没有新增 item_id 或依赖表 |
 | run_step | V39 增加可空且唯一的 task_id；新任务一个实际结果对应一个 Step，INHERITED 不伪造新执行 Step |
 | Git 操作及事件账本 | 独立提交意图、SEND_STARTED 与 HTTP 结果；V39 增加 task_id/claim_token 关联，每个 C1 动作至多一次外部写；非任务收尾和文件操作继续复用同一账本 |
 | 既有只读 observation 与仓库 guard | 保留外部观察、版本和保护状态；Task 完成确认加入业务结果事务，远端未决证据独立保留 |
 
 C1 不建立通用 DAG、任务依赖表、第二份 attempt 账本或恢复决策实体。C2 若需要租约、代次或恢复投影，必须先核实既有 RunTask、Git operation/observation 能否承责，并给出真实 worker/API/页面消费者。
 
-计划不保存 Token、请求头或完整敏感响应体。凭据按仓库引用读取；已有计划中的仓库映射、分支目标和第一次读取确认的 numeric project ID 不能因路径重用或凭据轮换而改向。
+计划不保存 Token、请求头或完整敏感响应体。凭据按仓库引用读取；计划冻结仓库映射与分支目标，numeric project ID 在动作上下文首次确认时固定，动作提交后写入 Item metadata，写意图另由既有 operation 固定远端目标。跨进程接管必须继承已有持久身份，路径重用或凭据轮换不能改向；只有内存中的 GET 且尚无 operation/Step/metadata 时，该读取不是跨进程检查点。此时再次读取冻结计划中的逻辑目标不等于保留了旧进程未提交的 numeric ID。
 
 任务结果使用 Run → Task → guard 的锁顺序与条件更新，定向写 Step、Item、metadata 和 Run 汇总；旧整份 Run 级联保存不能覆盖含持久任务的 Run。业务结果与 guard 确认一起提交或一起回滚，HTTP 结果先独立保存。
 
@@ -213,7 +213,7 @@ Orchestrate/retry 的 Idempotency-Key 必填，缺失返回 400。唯一性按 a
 
 C1 Run 状态为 PLANNED、RUNNING、DONE、PARTIAL_FAILED、FAILED、NEEDS_REVIEW。受理的任务保持可查询；发生未知副作用时优先 NEEDS_REVIEW，其他仓库仍可完成。不存在 C1 后台 RECOVERING worker，也不以 finishedAt 或一次 HTTP 成功推断业务完成。
 
-C1 Task 为 PENDING → RUNNING → COMPLETED / FAILED / UNKNOWN；规则跳过项为 SKIPPED，成功前缀继承为 INHERITED。一次 claimToken 只能提交一次结果，没有超时重领入口。UNKNOWN 始终停止受影响仓库，不能交给普通 retry。
+Task 仍为 PENDING → RUNNING → COMPLETED / FAILED / UNKNOWN；规则跳过项为 SKIPPED，成功前缀继承为 INHERITED。一次 claimToken 只能提交一次结果。C1/C2-A 不重领 RUNNING；C2-B1 只对上述领取事实完整、无任何 operation/Step 的过期 RUNNING 换 token，已有操作与 UNKNOWN 仍停止该仓，不能交给普通 retry。
 
 确认失败后的 retry 创建带来源的新 Run/Item/Task，只选择实际 Item UUID；已成功前缀引用原事实，不再执行，也不制造新成功 Step。原终态 Run 不被改回运行中。当前版本更新和收尾不能通过窗口编排 retry 路径重放。
 
@@ -222,7 +222,9 @@ C1 Task 为 PENDING → RUNNING → COMPLETED / FAILED / UNKNOWN；规则跳过�
 | 中断位置 / 证据 | 恢复目标与限制 |
 |---|---|
 | 受理事务未提交 | 无任务可派发；同一 key 重交可创建计划 |
-| 计划已提交，尚无 SEND_STARTED | 核实旧领取者不能再发送后，才可继续领取或执行 |
+| 计划已提交、Task=PENDING | C2-A 默认扫描继续原任务 |
+| Task=RUNNING，领取事实完整且无任何 operation/Step | C2-B1 到期后在 Run→Task 锁内换 token，原执行器继续 |
+| 已有 INTENT，尚无 SEND_STARTED | 后续子片核实发送权，C2-B1 不接管 |
 | SEND_STARTED 已提交，无完整响应 | UNKNOWN，保留仓库阻断，先核对 |
 | 明确外部完成，业务结果未落库 | 核对精确操作标识及计划 SHA 后只补记完成，不再次写入 |
 | 查询不可达 / 403 / 列表不完整 | UNKNOWN / NEEDS_REVIEW，不能判定不存在 |
