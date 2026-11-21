@@ -651,7 +651,7 @@ C2-B5 已交付：独立 RED、本地门禁、分阶段推送及固定后端完�
 
 ### Requirement: 原 MERGE 未发送意图的本地结果收口
 
-C2-B6 为当前唯一实施队首；以下为独立实施前契约，源码未实施、新测试待 RED，事实见 tasks 与任务记录 19。系统 SHALL 仅以当前 Task fence、原完整 MERGE INTENT、同 attempt 严格唯一 sequence 0 且无 SEND/Step，以及同物理事务的 NOT_SENT 与 Task 终态证明释放原 reservation；不得使用 BlockReason 白名单或业务读取是否确定代替未发送证明。
+C2-B6 为当前唯一实施队首；以下独立契约已完成 RED→GREEN 与本地门禁，实现 4e992e9 已推送，固定实现 SHA 的 Full-Link 44940092094 执行中，事实见 tasks 与任务记录 19。系统 SHALL 仅以当前 Task fence、原完整 MERGE INTENT、同 attempt 严格唯一 sequence 0 且无 SEND/Step，以及同物理事务的 NOT_SENT 与 Task 终态证明释放原 reservation；不得使用 BlockReason 白名单或业务读取是否确定代替未发送证明。
 
 #### Scenario: 原结果事务内记录未发送事实
 
@@ -679,7 +679,7 @@ C2-B6 为当前唯一实施队首；以下为独立实施前契约，源码未�
 
 - **GIVEN** GET 403、其他真实 BLOCKED，或 unavailable/closed/sourceChanged 的 UNKNOWN，均具备原完整未发送证明
 - **WHEN** NOT_SENT 与本地结果原子提交
-- **THEN** GET 403 保持 BLOCKED/PERMISSION_DENIED；UNKNOWN 保持 Task UNKNOWN/Run NEEDS_REVIEW，同仓后继停住且禁止自动或普通重试
+- **THEN** GET 403 保持 BLOCKED/PERMISSION_DENIED；UNKNOWN 保持 Task UNKNOWN/Run NEEDS_REVIEW，同仓后继沿原规则 SKIPPED，领取 token/开始时间为空且无后继 Step，禁止自动或普通重试
 - **AND** BLOCKED 沿原 FAIL_FAST/CONTINUE_ON_BLOCK 汇总和用户重试语义，重试复用原 MR；释放 reservation 不扩大 UNKNOWN 的执行或重试权
 
 #### Scenario: SEND 与本地收口互斥并保留真实响应
@@ -701,7 +701,7 @@ C2-B6 为当前唯一实施队首；以下为独立实施前契约，源码未�
 
 - **GIVEN** 观察使用 NOT_SENT 前旧 expectedVersion，或同 remote 后来存在另一操作的 guard
 - **WHEN** 原操作收口后观察或读取 Operation
-- **THEN** 旧版本观察拒绝，新 observe 仍只读；仅清匹配原 session/operation/generation 的 reservation，其他 guard 保留，mapping/baseURL 的 hasActiveGuards 仍按真实保护生效
+- **THEN** 旧版本观察拒绝，新 observe 仅保存观察审计与 operation 更新时间/版本，不推进执行、不改写原事实或 guard；仅清匹配原 session/operation/generation 的 reservation，其他 guard 保留，mapping/baseURL 的 hasActiveGuards 仍按真实保护生效
 - **AND** Operation.blocked 继续表示 remote 当前是否有任一 guard，历史 NOT_SENT 可为 blocked=true，不硬设恒 false
 
 #### Scenario: 默认 worker 的进程恢复与仍 ready 的请求

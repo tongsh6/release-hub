@@ -1,6 +1,6 @@
 # 2026-11-21 SA-013：分支收敛与唯一编排语义
 
-状态：已交付阶段及其固定 SHA 证据按各节保留；C2-B5 后端 0642828、文档 62d075c 已分阶段推送，固定后端完整 SHA 的 Full-Link 44935216788 为 5/5，B5 已 DONE，详见 18.9。当前唯一 HEAD 为 C2-B6 原 MERGE 未发送意图的本地结果收口，仅独立契约与只读审查完成，源码未实施、新测试待 RED，见第 19 节。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
+状态：已交付阶段及其固定 SHA 证据按各节保留；C2-B5 后端 0642828、文档 62d075c 已分阶段推送，固定后端完整 SHA 的 Full-Link 44935216788 为 5/5，B5 已 DONE，详见 18.9。当前唯一 HEAD 为 C2-B6 原 MERGE 未发送意图的本地结果收口，独立 RED→GREEN、相关单次 749/API 48/普通 816、前端 217 与静态门禁已通过；实现 4e992e9 已推送，固定实现 SHA 的 Full-Link 44940092094 执行中，见第 19 节。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
 
 ## 1. 目标与范围
 
@@ -839,15 +839,15 @@ B5 当时的本地验收中，前置读取已包含 A/BLOCKED 只验证整事务
 
 后端与本地最终验收树未变，B5 标记 DONE。该 CI 精确绑定后端提交，未将后续文档 SHA 当成该 run 的 headSha；5/5 仍限后端 API 与隔离 GitLab，不等于完整 UI 旅程，不扩大 Slice4/5 的既有边界。全部 RED/GREEN、分批 692 汇总及 B5 保守本地结果限制保留；改变未发送意图的结果收口由 B6 独立承担。
 
-## 19. C2-B6 实施前：原 MERGE 未发送意图的本地结果收口
+## 19. C2-B6：原 MERGE 未发送意图的本地结果收口
 
-B5 交付后，当前唯一 HEAD 接续 B6。根侧及 provider/持久化两路已完成只读职责核对和独立契约，尚未实施 B6 源码或运行新 RED；以下定位和预期不是已测缺陷或 GREEN 结论。详细正反例集中于原 design/Run delta，执行清单见 tasks。
+B5 交付后，当前唯一 HEAD 接续 B6。19.1–19.3 保留先于实现定义的职责、独立正反例和验收出口；19.4 起记录实际 RED、实现、本地验收与审查。详细规范集中于原 design/Run delta，执行清单见 tasks。当前本地门禁已通过，实现 4e992e9 已推送，固定实现 SHA 的 Full-Link 44940092094 执行中，未将 B6 标记 DONE。
 
 ### 19.1 第一性原理与首选方案反证
 
 BlockReason 白名单不能证明未发送：unavailable 等 UNKNOWN 也可能具有完整 INTENT 且没有任何 SEND；确定的业务结果也不能覆盖一个已赢得发送权的执行者。最小充分依据是当前 fence、原完整 INTENT、严格唯一 seq0 无 SEND，以及 NOT_SENT 与 Task 终态同物理事务。只释放已证明无在途写的原 reservation，UNKNOWN 的业务不确定性及队列/重试限制保持。
 
-源码定位已核：GitWriteHttpInterceptor 120–122 先 begin/sending，131 才 HTTP；Journal 的 sending 独立提交，completeTask 现于 Step/metadata 之后 ack。validUnsentMerge 483–524 已核原完整 request/hash、CREATED/MR_REUSED checkpoint、guard 与 no Step，故应复用并把 ack 前移，而不是复制或放宽资格。validatedPatch 仅负责字段集合/身份，结果与 patch 的语义还须单独核对。V35 的 state/event_type 为字符串且无 enum CHECK，不需要为本片追加迁移。
+实施前源码定位（9f72670）已核：GitWriteHttpInterceptor 120–122 先 begin/sending，131 才 HTTP；Journal 的 sending 独立提交，当时 completeTask 于 Step/metadata 之后 ack。validUnsentMerge 483–524 已核原完整 request/hash、CREATED/MR_REUSED checkpoint、guard 与 no Step，故应复用并把 ack 前移，而不是复制或放宽资格。validatedPatch 仅负责字段集合/身份，结果与 patch 的语义还须单独核对。V35 的 state/event_type 为字符串且无 enum CHECK，不需要为本片追加迁移。
 
 ### 19.2 收口、历史事实与消费者边界
 
@@ -855,10 +855,64 @@ BlockReason 白名单不能证明未发送：unavailable 等 UNKNOWN 也可能�
 
 ALREADY_MERGED 必须对应 patch.mrDisposition=ALREADY_MERGED；UNKNOWN/BLOCKED 不带成功 mergeSha/disposition，null 保留原删除语义，异常路径缺 requestId 键不因此被拒绝。未发送却 MERGED 明确拒绝，FAILED 不扩入。原 target contains A 足以 ALREADY，无额外 MR 读取要求，MR 404 不推翻既有证明；额外 mergeSha contains 规则保持且不补 SHA。MR merged 但 target reset 仍 UNKNOWN；GET 403 仍 BLOCKED/PERMISSION_DENIED，unavailable/closed/sourceChanged 仍 Task UNKNOWN/Run NEEDS_REVIEW、同仓后继停住且不可自动或普通重试。
 
-NOT_SENT 与 SEND_STARTED 互斥；MERGE SEND 先赢且尚无 seq2 响应时，包括同 fence UNKNOWN 在内的任何本地 completeTask 均整笔拒绝，保留迟到真实 finish；op 已 UNKNOWN 且真实 seq2 已存在时仍允许既有 UNKNOWN 确认，不扩展 SEND 恢复。NOT_SENT 先赢时旧/现 worker 迟到 sending/finish/complete 均拒绝。收口使旧 expectedVersion 失效，新 observe 仍只读。只释放匹配原 session/op/generation 的 guard；Operation.blocked 仍表示 remote 当前任一 guard，历史 NOT_SENT 可因新操作而 blocked=true。mapping/baseURL 的 hasActiveGuards 与 Run/Repo 的 GitOperationsPanel 均为实际消费者；补 zh/en 与组件验收，不冒称完整 UI 旅程。
+NOT_SENT 与 SEND_STARTED 互斥；MERGE SEND 先赢且尚无 seq2 响应时，包括同 fence UNKNOWN 在内的任何本地 completeTask 均整笔拒绝，保留迟到真实 finish；op 已 UNKNOWN 且真实 seq2 已存在时仍允许既有 UNKNOWN 确认，不扩展 SEND 恢复。NOT_SENT 先赢时旧/现 worker 迟到 sending/finish/complete 均拒绝。收口使旧 expectedVersion 失效；新 observe 保存原有观察审计时间与版本，不推进执行或改写原事实和 guard。只释放匹配原 session/op/generation 的 guard；Operation.blocked 仍表示 remote 当前任一 guard，历史 NOT_SENT 可因新操作而 blocked=true。mapping/baseURL 的 hasActiveGuards 与 Run/Repo 的 GitOperationsPanel 均为实际消费者；补 zh/en 与组件验收，不冒称完整 UI 旅程。
 
 ### 19.3 独立 RED 与交付出口
 
 先验证 ALREADY/各真实 BLOCKED（含 GET 403）/UNKNOWN 零 PUT，ready 沿 B5 一次 PUT；真实锁顺序的 SEND/NOT_SENT 先后、双收口及迟到调用；stale/缺 typed/旧 hash/错 guard/checkpoint/多事件与结果语义污染拒绝；ack 后外层回滚和真实 Task CAS=0 两类完整回滚；旧/新观察与其他 guard 保护。BLOCKED 保留原 FAIL_FAST/CONTINUE 与用户重试复用 MR，UNKNOWN 释放 reservation 不放开队列或重试。
 
 补真实 JVM INTENT 后强杀、默认 worker 到期后本地收口和无 PENDING 末尾发现，回归 B2–B5；现有组件覆盖 NOT_SENT 状态/事件及真实 blocked。完成本片独立 RED→GREEN、相关/API/前端/静态门禁、review、分组提交推送和固定 SHA CI 后再收口。回滚停派发并保留事实，不重发 NOT_SENT、不撤销远端写；其他 INTENT 动作、SEND/UNKNOWN 恢复、cleanup/version 与完整 UI 仍独立排队。
+
+### 19.4 独立旧生产 RED 与测试语义校正
+
+本节证据统一位于 `.ai/reports/validation/c2-b6/`。后端从旧生产完整 HEAD `9f72670e4bc360cde0e3c64ccf82bfe90440b05d` 导出冻结树，只叠加对应新测试；生产未变，前后源码 hash 一致。独立结果如下，三类后端测试不能因断言失败而误记为执行错误：
+
+| 范围 | 独立结果 | 证据 |
+|---|---|---|
+| PostgreSQL | 41 项：24 FAIL、17 PASS、0 ERROR / SKIP | initial-red-pg-frozen-jdk21/pg/result.json |
+| 真实 HTTP fixture | 13 项：13 FAIL、0 ERROR / SKIP | initial-red-http-process-frozen-jdk21/http/result.json |
+| 独立 JVM 强杀重启 | 3 项：3 FAIL、0 ERROR / SKIP | initial-red-http-process-frozen-jdk21/process/result.json |
+| 原前端新组件用例 | 3 项：3 FAIL、0 pending | ui-initial-red/result.json |
+
+HTTP 的 ALREADY/BLOCKED 原实现因 stale 拒绝；UNKNOWN 保留 INTENT_RECORDED；SEND 已提交且无 seq2 时，提前 UNKNOWN 原本未被拒绝。PG 进一步暴露资格污染可落 UNKNOWN、原终态/版本未推进、真实发送竞争和 ack 后 CAS 证据未形成。三个 JVM 均实际在原 INTENT 后以 exit 137 强杀；重启仍 RUNNING 或 INTENT，失败发生于业务预期而非编译或环境错误。UI 三例失败为显示未翻译的 NOT_SENT key。
+
+独立 RED 保存后，更正测试本身的两类过强预期：UNKNOWN 后继沿既有规则严格 SKIPPED，并验证 token/started_at 为空及零后继 Step；新 observe 允许原有审计更新 operation.updated_at/state_version，除此之外完整执行事实和当前 guard 不变，且版本必须前进。未为这些修正修改生产队列或 observe。原 B5 的 PG 两例与 HTTP 五例均保留场景、更新为 B6 契约；没有删例，旧 RED 文件保持原样。
+
+### 19.5 最小实现与定向 GREEN
+
+生产只改原 Journal Port、GitOperationPersistenceAdapter 与 RunJpaPersistenceAdapter：ack 接收真实 nullable patch，并前移至同一 completeTask 事务的 Step/metadata 改写之前，复用原 validUnsentMerge 完整证明。合法本地结果形成原操作 NOT_SENT 与同 attempt sequence 1 事件；当前 Task、Step、patch、队列、绑定、Run 和匹配 guard 同事务提交。无新实体、表、DTO、API、dispatcher、迁移或兼容写路径，ack 的唯一生产消费者仍是 completeTask。
+
+MERGE/SEND_STARTED 尚无响应时拒绝所有提前本地完成，包括同 fence UNKNOWN，保留真实迟到 finish；已有真实 sequence 2 UNKNOWN 的确认行为保持。未发送证据与业务结果分责，GET 403 的实际 PERMISSION_DENIED 不被原因白名单截断；UNKNOWN 释放原 reservation 后仍 NEEDS_REVIEW，同仓后继停住且不可普通/自动重试。
+
+`first-green-jdk21/result.json` 记录新定向 57/57 PASS（PG 41、HTTP 13、JVM 3），0 FAIL / ERROR / SKIP，源码前后稳定。PG 包含真实锁等待、SEND/NOT_SENT 先后、双收口、外层回滚及真正令 Task UPDATE 返回 0 的 trigger；不是在 ack 之前拒绝而冒充完整回滚。三个独立 JVM 场景恢复阶段各完成 3 次实际扫描，后续独立观察阶段扫描为 4/3/3；MERGE PUT 为 0、观察 HTTP 为 0，原 op/attempt 保留、Task token 换权、同 attempt sequence 1 为 NOT_SENT。
+
+前端只在现有 zh/en 加 NOT_SENT 状态/事件文案，复用 Run/Repo 的 GitOperationsPanel。新三例和原三例 6/6 PASS（ui-first-green），完整 Vitest 217/217 PASS（ui-full-green），源码稳定；同时覆盖业务结果、实际当前 guard 和无新增执行入口，不扩为完整 UI 黄金旅程。
+
+### 19.6 审查与范围
+
+根侧对全部 9 个代码/测试/翻译文件完成 fenced review：生产与 UI 一页、测试七页，冻结 tree `1411b22203cb2219075e5037b506fb07707e51c1`。provider 与持久化两路独立审查均未发现阻断：实际 nullable patch 生产者满足校验，原 CREATE_BRANCH/CREATE_MR/APPLIED 投影不依赖 ack 前尚未写入的结果，MANDATORY 与既有锁顺序保持，历史 NOT_SENT 不获得新发送权。运行验收与源码审查分别留痕，不相互替代。
+
+### 19.7 最终本地门禁与源码绑定
+
+| 范围 | 实际结果 | 证据（相对本节验证根目录） |
+|---|---|---|
+| 新定向 | 3 suites / 57 PASS / 0 FAIL / ERROR / SKIP | first-green-jdk21/result.json |
+| 相关回归 | 单次 Maven 13 suites / 749 PASS / 0 FAIL / ERROR / SKIP | regression-green-jdk21/result.json |
+| API | 3 suites / 48 PASS / 0 FAIL / ERROR / SKIP | final-gates/api/result.json |
+| 普通后端 | 58 suites / 816 tests：811 PASS、5 既有 SKIP、0 FAIL / ERROR | final-gates/ordinary/result.json |
+| 前端 | 定向 6/6，完整 Vitest 217/217 PASS，0 failed / pending | ui-first-green/result.json；ui-full-green/result.json |
+| 静态 | 六份 fresh SpotBugs XML 均 0；typecheck PASS；lint 0 errors / 8 既有 fixture warnings | final-gates/result.json；.ai/reports/static-scan/20261122-031351/summary.md |
+
+本次相关回归为单次完整调用，PG 250、HTTP 132、独立 JVM 11 与其余 10 suites 全部通过；不沿用 B5 的分批汇总口径，不将新定向、相关、API 和普通的重叠测试累加。JVM 11/11 覆盖此前 B2–B5 及本片三个新场景。
+
+九份 495 文件 backend 快照一致，五份 222 文件 frontend 快照一致，`local-evidence-audit.json` 记录源码清单与验收一致性，`source-review.json` 留存九文件 review 证据。TopN 八项既有 fixture warning 已逐项说明保留依据；lint 原始输出与 B5 逐字节相同，SHA-256 为 `b5496961a4422b7ea5154e6aead19f4c751cd8e76575656cf0b4b92a6fea0faa`，未关闭规则。
+
+本地验收不替代远端交付：B6 实现已分阶段推送，固定实现 SHA 的 CI 执行中（19.8），仍为唯一 HEAD。其他 INTENT 动作、SEND/UNKNOWN 恢复、cleanup/version 和完整 GitLab/UI 黄金旅程未在本片验收；Slice4/5 的既有较弱覆盖边界不扩大。
+
+### 19.8 实现阶段提交推送与固定 SHA CI（执行中）
+
+实现提交为 `4e992e9c2406586ec23fa7636292e3d48c163118`，父提交 `9f72670e4bc360cde0e3c64ccf82bfe90440b05d`，说明 `feat(run): atomically close unsent merge intents`。9 个后端/测试/翻译文件合计 1355 行新增、38 行删除，validatedSourceMatchesCommit=true；`implementation-commit.json` 保存提交与已验收源码匹配证据，`implementation-push.json` 确认本阶段已推送至 feature/orchestration-consistency。
+
+推送时 main/develop 仍共同指向 `d4534ccc34fedb9bbf394ced89b4726f43ec197c`，远端恰为 main、develop 与当前 feature 三分支。此处只确认实现阶段，不把未提交的本地验收文档写成已推送。
+
+固定实现完整 SHA `4e992e9c2406586ec23fa7636292e3d48c163118` 的 [Full-Link 44940092094](https://github.com/tongsh6/release-hub/actions/runs/44940092094) 已实际触发并核对 headSha；创建于 `2026-11-21T19:17:03Z`，即北京时间 `2026-11-22 03:17:03`。本次记录观察状态为 in_progress，尚无完成或通过结论，证据为 `full-link/initial-run.json`。B6 保持 HEAD，待该 run 完成后按实际结论收口；不使用 B5 CI 代替本片验收。
