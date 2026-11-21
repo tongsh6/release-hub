@@ -270,7 +270,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
             if (steps.longValue() != 0) continue;
             var claim = new TaskClaim(new TaskFence(task.getId(), task.getClaimToken()), runId, item.getId(),
                     RepoId.of(item.getRepoId()), ActionType.valueOf(task.getTaskType()), now(), run.getOperator(),
-                    taskMetadata(run, item));
+                    taskMetadata(run, item), null);
             Map<String, String> updates;
             String message;
             RunItemResult result = RunItemResult.CREATED;
@@ -322,17 +322,18 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 continue;
             }
             Map<String, String> metadata = taskMetadata(run, item);
-            boolean preparedUnsentMerge = false;
+            GitOperationJournalPort.Operation unsentOperation = null;
             if (!initialClaim && !recoverableWithoutEvidence(task, databaseTime)) {
-                if (!"TRY_MERGE".equals(task.getTaskType())) continue;
+                if (!Set.of("TRY_MERGE", "ENSURE_FEATURE", "ENSURE_RELEASE").contains(task.getTaskType())) continue;
                 Number steps = (Number) entityManager.createNativeQuery(
                         "SELECT count(*) FROM {h-schema}run_step WHERE task_id=?1")
                         .setParameter(1, task.getId()).getSingleResult();
                 if (steps.longValue() != 0) continue;
                 var currentClaim = new TaskClaim(new TaskFence(task.getId(), task.getClaimToken()), runId, item.getId(),
-                        RepoId.of(item.getRepoId()), ActionType.TRY_MERGE, now(), run.getOperator(), metadata);
-                preparedUnsentMerge = journal.prepareUnsentMergeClaim(currentClaim);
-                if (!preparedUnsentMerge) continue;
+                        RepoId.of(item.getRepoId()), ActionType.valueOf(task.getTaskType()), now(), run.getOperator(), metadata, null);
+                var prepared = journal.prepareUnsentTaskClaim(currentClaim);
+                if (prepared.isEmpty()) continue;
+                unsentOperation = prepared.get();
             }
             Instant started = now();
             String token = UUID.randomUUID().toString();
@@ -343,7 +344,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                         token, stamp(started), expiresAt, task.getId()));
             } else {
                 // 原意图已在同一物理事务中锁定并验证；CAS 失败必须回滚其观察版本变更。
-                String evidenceFence = preparedUnsentMerge
+                String evidenceFence = unsentOperation != null
                         ? "NOT EXISTS (SELECT 1 FROM {h-schema}run_step s WHERE s.task_id=t.id)"
                         : NO_TASK_EVIDENCE;
                 requireOne(update("""
@@ -361,7 +362,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                         order, stamp(started), item.getId()));
             }
             var claim = new TaskClaim(new TaskFence(task.getId(), token), runId, item.getId(),
-                    RepoId.of(item.getRepoId()), ActionType.valueOf(task.getTaskType()), started, run.getOperator(), metadata);
+                    RepoId.of(item.getRepoId()), ActionType.valueOf(task.getTaskType()), started, run.getOperator(), metadata, unsentOperation);
             entityManager.clear();
             return Optional.of(claim);
         }

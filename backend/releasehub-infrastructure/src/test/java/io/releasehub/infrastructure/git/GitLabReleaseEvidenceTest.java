@@ -63,7 +63,13 @@ class GitLabReleaseEvidenceTest {
         var sessions = new GitSafetySessions(journal);
         var transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
-        when(journal.begin(any())).thenAnswer(invocation -> ((GitOperationJournalPort.Command) invocation.getArgument(0)).operationId());
+        when(journal.begin(any())).thenAnswer(invocation -> {
+            GitOperationJournalPort.Command command = invocation.getArgument(0);
+            return new GitOperationJournalPort.Operation(command.operationId(), command.repoId(), command.remoteKey(),
+                    command.provider(), command.baseUrl(), command.projectId(), command.action(), command.targetJson(),
+                    command.runId(), command.operator(), "INTENT_RECORDED", 0, java.time.Instant.EPOCH,
+                    java.time.Instant.EPOCH, null, true);
+        });
         interceptor = new GitWriteHttpInterceptor(properties, sessions, journal, identities, new ObjectMapper(), transactions);
         target = new GitLabGitBranchAdapter(builder, identities);
         target.installWriteSafety(interceptor);

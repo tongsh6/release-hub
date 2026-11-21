@@ -56,7 +56,13 @@ class GitTaskIdentityTest {
         });
         when(identities.metadata(any(), anyString(), any(), any())).thenReturn(
                 new ObjectMapper().readTree("{\"id\":\"" + SHA + "\"}"));
-        when(journal.begin(any())).thenAnswer(call -> call.getArgument(0, GitOperationJournalPort.Command.class).operationId());
+        when(journal.begin(any())).thenAnswer(call -> {
+            GitOperationJournalPort.Command command = call.getArgument(0);
+            return new GitOperationJournalPort.Operation(command.operationId(), command.repoId(), command.remoteKey(),
+                    command.provider(), command.baseUrl(), command.projectId(), command.action(), command.targetJson(),
+                    command.runId(), command.operator(), "INTENT_RECORDED", 0, java.time.Instant.EPOCH,
+                    java.time.Instant.EPOCH, null, true);
+        });
         http.getInterceptors().add(new GitWriteHttpInterceptor(new GitSafetyProperties(), new GitSafetySessions(journal),
                 journal, identities, new ObjectMapper(), transactions));
         adapter.setRestTemplate(http);
@@ -132,6 +138,6 @@ class GitTaskIdentityTest {
 
     private RunPort.TaskClaim claim(String repoId, ActionType action, Map<String, String> facts) {
         return new RunPort.TaskClaim(new RunPort.TaskFence(UUID.randomUUID().toString(), UUID.randomUUID().toString()),
-                "run", "item", RepoId.of(repoId), action, Instant.parse("2026-11-21T00:00:00Z"), "admitted-user", facts);
+                "run", "item", RepoId.of(repoId), action, Instant.parse("2026-11-21T00:00:00Z"), "admitted-user", facts, null);
     }
 }

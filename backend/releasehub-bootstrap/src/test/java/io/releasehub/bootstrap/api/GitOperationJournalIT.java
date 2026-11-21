@@ -54,7 +54,7 @@ class GitOperationJournalIT {
         assertThat(journal.find(c.operationId())).isEmpty();
     }
     @Test void shouldExposeEvidenceOnlyAfterAuthentication() throws Exception {
-        var c=command(remote(),UUID.randomUUID().toString());String id=journal.begin(c);journal.sending(id, null);
+        var c=command(remote(),UUID.randomUUID().toString());String id=journal.begin(c).id();journal.sending(id, null);
         journal.finish(id, null,GitWriteResult.Outcome.UNKNOWN,"{}","RESPONSE_LOST");
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/git-operations/"+id))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
@@ -81,7 +81,7 @@ class GitOperationJournalIT {
     @Test void shouldPreserveExternalEvidenceAfterOuterRollback() {
         var c=command(remote(),UUID.randomUUID().toString());
         assertThatThrownBy(()->new TransactionTemplate(transactions).executeWithoutResult(tx->{
-            String id=journal.begin(c);journal.sending(id, null);journal.finish(id, null,GitWriteResult.Outcome.APPLIED,"{\"sha\":\"abc\"}",null);
+            String id=journal.begin(c).id();journal.sending(id, null);journal.finish(id, null,GitWriteResult.Outcome.APPLIED,"{\"sha\":\"abc\"}",null);
             throw new IllegalStateException("模拟业务回滚");
         })).isInstanceOf(IllegalStateException.class);
         journal.completeSession(c.sessionId(),false);
@@ -100,7 +100,7 @@ class GitOperationJournalIT {
         }
     }
     @Test void shouldReleaseOnlyConfirmedSessionAndPermitDifferentRepository() {
-        var c=command(remote(),UUID.randomUUID().toString());String id=journal.begin(c);journal.sending(id, null);
+        var c=command(remote(),UUID.randomUUID().toString());String id=journal.begin(c).id();journal.sending(id, null);
         journal.finish(id, null,GitWriteResult.Outcome.APPLIED,"{}",null);journal.completeSession(c.sessionId(),true);
         assertThat(journal.find(id).orElseThrow().operation().blocked()).isFalse();
         assertThatCode(()->journal.begin(command(c.projectId(),UUID.randomUUID().toString()))).doesNotThrowAnyException();
@@ -108,13 +108,13 @@ class GitOperationJournalIT {
         assertThatCode(()->journal.begin(command(remote(),UUID.randomUUID().toString()))).doesNotThrowAnyException();
     }
     @Test void shouldRejectOldGenerationWithoutOverwritingEvidence() {
-        var c=command(remote(),UUID.randomUUID().toString());String id=journal.begin(c);journal.sending(id, null);
+        var c=command(remote(),UUID.randomUUID().toString());String id=journal.begin(c).id();journal.sending(id, null);
         jdbc.update("update repo_execution_guard set generation=generation+1 where remote_key=?",c.remoteKey());
         assertThatThrownBy(()->journal.finish(id, null,GitWriteResult.Outcome.APPLIED,"{}",null)).isInstanceOf(BusinessException.class);
         assertThat(journal.find(id).orElseThrow().events()).hasSize(2);
     }
     @Test void shouldKeepUnknownBlockedAndMakeObservationsIdempotent() {
-        var c=command(remote(),UUID.randomUUID().toString());String id=journal.begin(c);journal.sending(id, null);
+        var c=command(remote(),UUID.randomUUID().toString());String id=journal.begin(c).id();journal.sending(id, null);
         journal.finish(id, null,GitWriteResult.Outcome.UNKNOWN,"{}","RESPONSE_LOST");journal.completeSession(c.sessionId(),true);
         long version=journal.find(id).orElseThrow().operation().version();
         var first=journal.observe(id,"tester","same-key",version,GitReadResult.Status.FOUND,"{}");
@@ -125,7 +125,7 @@ class GitOperationJournalIT {
         assertThat(journal.find(id).orElseThrow().operation().state()).isEqualTo("UNKNOWN");
     }
     @Test void shouldKeepSendStartedWhenResultCommitFails() {
-        var c=command(remote(),UUID.randomUUID().toString());String id=journal.begin(c);journal.sending(id, null);
+        var c=command(remote(),UUID.randomUUID().toString());String id=journal.begin(c).id();journal.sending(id, null);
         jdbc.execute("alter table git_operation add constraint fixture_reject_applied check (id <> '"+id+"' or state <> 'APPLIED')");
         try {
             assertThatThrownBy(()->journal.finish(id, null,GitWriteResult.Outcome.APPLIED,"{}",null)).isInstanceOf(RuntimeException.class);

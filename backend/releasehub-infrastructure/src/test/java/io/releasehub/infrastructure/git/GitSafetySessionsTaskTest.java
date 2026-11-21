@@ -17,7 +17,7 @@ class GitSafetySessionsTaskTest {
     private final RunPort.TaskClaim claim = new RunPort.TaskClaim(
             new RunPort.TaskFence("e06f7c88-69ea-4ef7-a6f8-ac095f63ce59", "8d5f3932-7fe0-45be-a04c-5fb52bd1890b"),
             "run", "item", RepoId.of("repo"), ActionType.ENSURE_MR, Instant.parse("2026-11-21T00:00:00Z"),
-            "admitted-operator", Map.of());
+            "admitted-operator", Map.of(), null);
 
     @Test void aReturnedAdapterCannotAcknowledgeTheTaskBeforeItsResultCommits() {
         try (var context = GitOperationContext.withTask(claim)) {

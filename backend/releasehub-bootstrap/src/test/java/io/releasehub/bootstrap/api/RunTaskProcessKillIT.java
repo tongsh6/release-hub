@@ -821,6 +821,236 @@ class RunTaskProcessKillIT {
         return patch;
     }
 
+    @ParameterizedTest(name = "branchIntentRestart={0}")
+    @ValueSource(strings = {"feature", "release", "feature_applied_crash"})
+    @Timeout(240)
+    void branchIntentRestartUsesFrozenRequest(String scenario) throws Exception {
+        boolean releaseAction = scenario.equals("release");
+        boolean crashAfterApplied = scenario.equals("feature_applied_crash");
+        ActionType action = releaseAction ? ActionType.ENSURE_RELEASE : ActionType.ENSURE_FEATURE;
+        int index = releaseAction ? 1 : 0;
+        String branch = releaseAction ? TARGET : SOURCE;
+        GitLabHttpFixture server = new GitLabHttpFixture();
+        Process first = null, resumed = null, projected = null;
+        try (var db = new PostgreSQLContainer<>("postgres:18.1")
+                .withDatabaseName("branch_intent_restart").withUsername("process_test").withPassword("isolated-process-db")) {
+            db.start(); server.start(); routes(server);
+            String root = "/api/v4/projects/" + PROJECT_ID;
+            String branchPath = root + "/repository/branches/" + URLEncoder.encode(branch, StandardCharsets.UTF_8);
+            server.reply("GET", branchPath, 404, "{}");
+            server.reply("GET", root + "/repository/commits/main", 200, "{\"id\":\"" + SOURCE_SHA + "\"}");
+            server.reply("GET", root + "/repository/branches/main", 200, branchIntentResponse("main", SOURCE_SHA));
+            server.reply("POST", root + "/repository/branches", 201, branchIntentResponse(branch, SOURCE_SHA));
+            String windowId = UUID.randomUUID().toString(), repoId = UUID.randomUUID().toString();
+            Path marker = temporary.resolve("branch-original-intent.txt");
+            Path appliedMarker = marker.resolveSibling("resumed-branch-applied.txt");
+            Path receipt = temporary.resolve("branch-intent-receipt.txt");
+            Path firstLog = temporary.resolve("branch-intent-first.log");
+            first = launch("first-intent-branch-" + (releaseAction ? "release" : "feature"),
+                    db, server, windowId, repoId, marker, receipt, firstLog);
+            awaitCheckpoint(first, marker, firstLog);
+            JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword()));
+            String runId = Files.readString(marker).trim();
+            var originalTasks = tasks(jdbc, runId);
+            var originalTask = originalTasks.get(index);
+            String taskId = originalTask.get("id").toString();
+            int originalTaskOrder = jdbc.queryForObject("select task_order from run_task where id=?", Integer.class, taskId);
+            var originalOperation = jdbc.queryForMap("select * from git_operation where task_id=?", taskId);
+            String operationId = originalOperation.get("id").toString();
+            var originalEvents = mergeEvents(jdbc, operationId);
+            var originalMetadata = metadata(jdbc, runId);
+            var originalOrder = jdbc.queryForMap("select planned_order,executed_order from run_item where run_id=?", runId);
+            var originalGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", originalOperation.get("remote_key"));
+            assertThat(originalTasks).extracting(row -> row.get("status")).containsExactlyElementsOf(releaseAction
+                    ? List.of("COMPLETED", "RUNNING", "PENDING", "PENDING") : List.of("RUNNING", "PENDING", "PENDING", "PENDING"));
+            assertThat(originalOperation).containsEntry("state", "INTENT_RECORDED").containsEntry("action", "CREATE_BRANCH")
+                    .containsEntry("claim_token", originalTask.get("claim_token")).containsEntry("session_id", originalTask.get("claim_token"));
+            assertThat(originalEvents).singleElement().satisfies(event -> assertThat(event)
+                    .containsEntry("event_sequence", 0).containsEntry("event_type", "INTENT_RECORDED")
+                    .containsEntry("attempt_id", originalOperation.get("attempt_id")));
+            assertThat(originalGuard).containsEntry("operation_id", operationId)
+                    .containsEntry("session_id", originalTask.get("claim_token")).containsEntry("reason", "INTENT_PENDING");
+            server.verify("POST", root + "/repository/branches", 0);
+            long killedPid = first.pid();
+            first.destroyForcibly();
+            assertThat(first.waitFor(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(first.exitValue()).isEqualTo(137);
+            System.out.printf("PROCESS_BRANCH_INTENT_CHECKPOINT action=%s run=%s task=%s operation=%s attempt=%s "
+                            + "pid=%d exit=%d pendingSuccessors=%d branchPost=0%n",
+                    action, runId, taskId, operationId, originalOperation.get("attempt_id"), killedPid, first.exitValue(), 3 - index);
+            server.reply("GET", root + "/repository/commits/main", 200, "{\"id\":\"" + "b".repeat(40) + "\"}");
+            server.reply("GET", root + "/repository/branches/main", 200, branchIntentResponse("main", "b".repeat(40)));
+            int requestsBeforeResume = server.requests.size();
+            Path resumedLog = temporary.resolve("branch-intent-resumed.log");
+            resumed = launch("resume-intent-branch-" + (releaseAction ? "release" : "feature") + (crashAfterApplied ? "-crash" : ""),
+                    db, server, windowId, repoId, marker, receipt, resumedLog);
+            awaitCheckpoint(resumed, appliedMarker, resumedLog);
+            assertThat(Files.readString(appliedMarker).trim()).isEqualTo(runId);
+            var appliedTask = tasks(jdbc, runId).get(index);
+            String currentToken = appliedTask.get("claim_token").toString();
+            assertThat(currentToken).isNotEqualTo(originalTask.get("claim_token"));
+            assertThat(appliedTask).containsEntry("status", "RUNNING").containsEntry("started_at", originalTask.get("started_at"));
+            assertThat(jdbc.queryForObject("select task_order from run_task where id=?", Integer.class, taskId)).isEqualTo(originalTaskOrder);
+            var appliedOperation = jdbc.queryForMap("select * from git_operation where task_id=?", taskId);
+            var appliedEvents = mergeEvents(jdbc, operationId);
+            assertThat(appliedOperation).containsEntry("state", "APPLIED");
+            assertThat(operationProvenance(appliedOperation)).isEqualTo(operationProvenance(originalOperation));
+            assertThat(appliedEvents.getFirst()).isEqualTo(originalEvents.getFirst());
+            assertSenderEvidence(appliedEvents, originalOperation, taskId, currentToken);
+            assertThat(metadata(jdbc, runId)).isEqualTo(originalMetadata);
+            assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class, taskId)).isZero();
+            assertThat(jdbc.queryForMap("select planned_order,executed_order from run_item where run_id=?", runId)).isEqualTo(originalOrder);
+            branchIntentAssertFrozenRequest(server, jdbc, operationId, branch);
+            assertThat(server.requests.subList(requestsBeforeResume, server.requests.size()))
+                    .noneMatch(request -> request.path().equals(root + "/repository/commits/main")
+                            || request.path().equals(root + "/repository/branches/main"));
+            server.reply("GET", branchPath, 200, branchIntentResponse(branch, SOURCE_SHA));
+            if (releaseAction) {
+                // A release created at A already contains the existing feature at A.
+                server.reply("GET", root + "/repository/commits/" + SOURCE_SHA + "/refs", 200,
+                        "[{\"type\":\"branch\",\"name\":\"" + TARGET + "\"}]");
+            }
+
+            Process completionProcess = resumed;
+            Path completionLog = resumedLog;
+            if (crashAfterApplied) {
+                long secondPid = resumed.pid();
+                resumed.destroyForcibly();
+                assertThat(resumed.waitFor(10, TimeUnit.SECONDS)).isTrue();
+                assertThat(resumed.exitValue()).isEqualTo(137);
+                int requestsBeforeProjection = server.requests.size();
+                Path projectedLog = temporary.resolve("branch-intent-projected.log");
+                projected = launch("project-intent-branch-feature", db, server, windowId, repoId, marker, receipt, projectedLog);
+                awaitCheckpoint(projected, marker.resolveSibling("projection-committed.txt"), projectedLog);
+                assertThat(tasks(jdbc, runId).get(index)).containsEntry("status", "COMPLETED")
+                        .containsEntry("claim_token", currentToken).containsEntry("started_at", originalTask.get("started_at"));
+                assertThat(jdbc.queryForMap("select * from git_operation where task_id=?", taskId)).isEqualTo(appliedOperation);
+                assertThat(mergeEvents(jdbc, operationId)).isEqualTo(appliedEvents);
+                var projectedMetadata = new java.util.LinkedHashMap<>(originalMetadata);
+                projectedMetadata.put("git.projectId", PROJECT_ID);
+                assertThat(metadata(jdbc, runId)).isEqualTo(projectedMetadata);
+                assertThat(server.requests).hasSize(requestsBeforeProjection);
+                assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", originalOperation.get("remote_key")))
+                        .containsEntry("session_id", null).containsEntry("operation_id", null).containsEntry("reason", null);
+                System.out.printf("PROCESS_BRANCH_INTENT_APPLIED_PROJECTION run=%s task=%s operation=%s secondPid=%d "
+                                + "secondExit=%d projectedPid=%d projectionHttp=0 currentTokenPreserved=true events=%d%n",
+                        runId, taskId, operationId, secondPid, resumed.exitValue(), projected.pid(), appliedEvents.size());
+                Files.writeString(marker.resolveSibling("projection-release.txt"), "continue");
+                completionProcess = projected;
+                completionLog = projectedLog;
+            } else {
+                Files.writeString(marker.resolveSibling("branch-completion-release.txt"), "continue");
+            }
+            assertThat(completionProcess.waitFor(55, TimeUnit.SECONDS))
+                    .withFailMessage("Branch continuation JVM did not finish: %s", tail(completionLog)).isTrue();
+            assertThat(completionProcess.exitValue()).withFailMessage("Branch continuation failed: %s", tail(completionLog)).isZero();
+            assertThat(Files.readString(receipt).trim()).isEqualTo(runId);
+            var completedTasks = tasks(jdbc, runId);
+            assertThat(completedTasks).extracting(row -> row.get("id")).containsExactlyElementsOf(
+                    originalTasks.stream().map(row -> row.get("id")).toList());
+            assertThat(completedTasks).allSatisfy(task -> assertThat(task.get("status")).isEqualTo("COMPLETED"));
+            assertThat(completedTasks.get(index)).containsEntry("claim_token", currentToken)
+                    .containsEntry("started_at", originalTask.get("started_at"));
+            assertThat(operationProvenance(jdbc.queryForMap("select * from git_operation where task_id=?", taskId)))
+                    .isEqualTo(operationProvenance(originalOperation));
+            assertThat(mergeEvents(jdbc, operationId)).isEqualTo(appliedEvents);
+            assertThat(jdbc.queryForList("select result from run_step where task_id=?", taskId))
+                    .singleElement().satisfies(row -> assertThat(row).containsEntry("result", "CREATED"));
+            assertThat(metadata(jdbc, runId)).containsEntry("git.projectId", PROJECT_ID);
+            assertThat(jdbc.queryForObject("select execution_status from run where id=?", String.class, runId)).isEqualTo("DONE");
+            assertThat(jdbc.queryForObject("select count(*) from git_operation where task_id=?", Integer.class, taskId)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select count(*) from run", Integer.class)).isEqualTo(1);
+            server.verify("POST", root + "/repository/branches", 1);
+            System.out.printf("PROCESS_BRANCH_INTENT_RESULT action=%s run=%s task=%s operation=%s attempt=%s killedPid=%d "
+                            + "exit=%d resumedPid=%d branchPost=1 refA=true originalOwnerPreserved=true events=%d crashAgain=%s%n",
+                    action, runId, taskId, operationId, originalOperation.get("attempt_id"), killedPid, first.exitValue(),
+                    resumed.pid(), appliedEvents.size(), crashAfterApplied);
+        } finally {
+            stopOwnedProcess(first); stopOwnedProcess(resumed); stopOwnedProcess(projected); server.stop();
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    @Timeout(180)
+    void branchIntentSendRestartDoesNotReplay() throws Exception {
+        GitLabHttpFixture server = new GitLabHttpFixture();
+        Process first = null, observed = null;
+        try (var db = new PostgreSQLContainer<>("postgres:18.1")
+                .withDatabaseName("branch_send_restart").withUsername("process_test").withPassword("isolated-process-db")) {
+            db.start(); server.start(); routes(server);
+            String root = "/api/v4/projects/" + PROJECT_ID;
+            server.reply("GET", root + "/repository/branches/" + URLEncoder.encode(TARGET, StandardCharsets.UTF_8), 404, "{}");
+            server.reply("GET", root + "/repository/commits/main", 200, "{\"id\":\"" + SOURCE_SHA + "\"}");
+            server.reply("GET", root + "/repository/branches/main", 200, branchIntentResponse("main", SOURCE_SHA));
+            server.reply("POST", root + "/repository/branches", 201, branchIntentResponse(TARGET, SOURCE_SHA));
+            String windowId = UUID.randomUUID().toString(), repoId = UUID.randomUUID().toString();
+            Path marker = temporary.resolve("branch-send-original.txt"), receipt = temporary.resolve("branch-send-receipt.txt");
+            Path firstLog = temporary.resolve("branch-send-first.log");
+            first = launch("first-sent-branch-release", db, server, windowId, repoId, marker, receipt, firstLog);
+            awaitCheckpoint(first, marker, firstLog);
+            JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword()));
+            String runId = Files.readString(marker).trim();
+            var originalTasks = tasks(jdbc, runId);
+            String taskId = originalTasks.get(1).get("id").toString();
+            var originalOperation = jdbc.queryForMap("select * from git_operation where task_id=?", taskId);
+            String operationId = originalOperation.get("id").toString();
+            var originalEvents = mergeEvents(jdbc, operationId);
+            var originalMetadata = metadata(jdbc, runId);
+            var originalGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", originalOperation.get("remote_key"));
+            var originalSteps = jdbc.queryForList("select s.* from run_step s join run_task t on s.task_id=t.id where t.run_id=? order by t.task_order", runId);
+            assertThat(originalTasks).extracting(task -> task.get("status")).containsExactly("COMPLETED", "RUNNING", "PENDING", "PENDING");
+            assertThat(originalOperation).containsEntry("state", "SEND_STARTED").containsEntry("action", "CREATE_BRANCH");
+            assertThat(originalEvents).extracting(event -> event.get("event_type")).containsExactly("INTENT_RECORDED", "SEND_STARTED");
+            assertThat(originalGuard).containsEntry("operation_id", operationId).containsEntry("reason", "REQUEST_IN_FLIGHT");
+            server.verify("POST", root + "/repository/branches", 0);
+            long killedPid = first.pid();
+            first.destroyForcibly();
+            assertThat(first.waitFor(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(first.exitValue()).isEqualTo(137);
+            int requestsBeforeRestart = server.requests.size();
+            Path observedLog = temporary.resolve("branch-send-observed.log");
+            observed = launch("observe-sent-branch-release", db, server, windowId, repoId, marker, receipt, observedLog);
+            assertThat(observed.waitFor(55, TimeUnit.SECONDS)).withFailMessage("Branch SEND observer timed out: %s", tail(observedLog)).isTrue();
+            assertThat(observed.exitValue()).withFailMessage("Branch SEND observer failed: %s", tail(observedLog)).isZero();
+            int scans = Integer.parseInt(Files.readString(marker.resolveSibling("branch-send-scans.txt")).trim());
+            assertThat(scans).isGreaterThanOrEqualTo(3);
+            assertThat(tasks(jdbc, runId)).isEqualTo(originalTasks);
+            assertThat(jdbc.queryForMap("select * from git_operation where task_id=?", taskId)).isEqualTo(originalOperation);
+            assertThat(mergeEvents(jdbc, operationId)).isEqualTo(originalEvents);
+            assertThat(metadata(jdbc, runId)).isEqualTo(originalMetadata);
+            assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", originalOperation.get("remote_key"))).isEqualTo(originalGuard);
+            assertThat(jdbc.queryForList("select s.* from run_step s join run_task t on s.task_id=t.id where t.run_id=? order by t.task_order", runId)).isEqualTo(originalSteps);
+            assertThat(server.requests).hasSize(requestsBeforeRestart);
+            server.verify("POST", root + "/repository/branches", 0);
+            assertThat(Files.readString(receipt).trim()).isEqualTo(runId);
+            System.out.printf("PROCESS_BRANCH_SEND_NO_REPLAY run=%s task=%s operation=%s attempt=%s killedPid=%d exit=%d "
+                            + "observedPid=%d completedScans=%d branchPost=0 observationHttp=0 originalTaskPreserved=true%n",
+                    runId, taskId, operationId, originalOperation.get("attempt_id"), killedPid, first.exitValue(), observed.pid(), scans);
+        } finally { stopOwnedProcess(first); stopOwnedProcess(observed); server.stop(); }
+    }
+
+    private static String branchIntentResponse(String branch, String commit) {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var value = json.createObjectNode().put("name", branch); value.putObject("commit").put("id", commit);
+        return value.toString();
+    }
+
+    private static void branchIntentAssertFrozenRequest(GitLabHttpFixture server, JdbcTemplate jdbc, String operationId, String branch) throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        String canonical = json.createObjectNode().put("branch", branch).put("ref", SOURCE_SHA).toString();
+        var requests = server.requests.stream().filter(request -> request.method().equals("POST")
+                && request.path().equals("/api/v4/projects/" + PROJECT_ID + "/repository/branches")).toList();
+        assertThat(requests).singleElement().satisfies(request -> {
+            assertThat(request.body()).isEqualTo(canonical); assertThat(request.query()).isNull(); assertThat(request.internalHeaders()).isFalse();
+        });
+        var op = jdbc.queryForMap("select remote_key,request_hash,target_json from git_operation where id=?", operationId);
+        String bodyHash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(canonical.getBytes(StandardCharsets.UTF_8)));
+        String envelope = "POST|" + op.get("remote_key") + "|/repository/branches||" + bodyHash + "|";
+        assertThat(op.get("request_hash")).isEqualTo(java.util.HexFormat.of().formatHex(
+                java.security.MessageDigest.getInstance("SHA-256").digest(envelope.getBytes(StandardCharsets.UTF_8))));
+        assertThat(json.readTree(op.get("target_json").toString()).path("ref").textValue()).isEqualTo(SOURCE_SHA);
+    }
+
     private static List<Map<String, Object>> mergeEvents(JdbcTemplate jdbc, String operationId) {
         return jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence", operationId);
     }
@@ -925,27 +1155,30 @@ class RunTaskProcessKillIT {
             boolean pauseAfterProjection = environment.getProperty("releasehub.fixture.pause-after-projection", Boolean.class, false);
             boolean observeScans = environment.getProperty("releasehub.fixture.observe-scans", Boolean.class, false);
             String journalPoint = environment.getProperty("releasehub.fixture.pause-after-merge-journal", "");
+            String branchJournalPoint = environment.getProperty("releasehub.fixture.pause-after-branch-journal", "");
+            String completionReleaseFile = environment.getProperty("releasehub.fixture.completion-release-file", "");
             Path marker = Path.of(environment.getRequiredProperty("releasehub.fixture.checkpoint-file"));
             Path completionMarker = Path.of(environment.getProperty(
                     "releasehub.fixture.completion-checkpoint-file", marker.toString()));
             return new BeanPostProcessor() {
                 @Override
                 public Object postProcessAfterInitialization(Object bean, String beanName) {
-                    if (!journalPoint.isBlank() && bean instanceof GitOperationJournalPort originalJournal) {
+                    if ((!journalPoint.isBlank() || !branchJournalPoint.isBlank()) && bean instanceof GitOperationJournalPort originalJournal) {
                         return Proxy.newProxyInstance(GitOperationJournalPort.class.getClassLoader(),
                                 new Class<?>[]{GitOperationJournalPort.class}, (proxy, method, arguments) -> {
                                     Object result;
                                     try { result = method.invoke(originalJournal, arguments); }
                                     catch (InvocationTargetException error) { throw error.getCause(); }
                                     String pausedRunId = null;
-                                    if ("INTENT_RECORDED".equals(journalPoint) && method.getName().equals("begin")
-                                            && arguments[0] instanceof GitOperationJournalPort.Command command
-                                            && command.taskFence() != null && "MERGE_MR".equals(command.action())) {
+                                    if (method.getName().equals("begin") && arguments[0] instanceof GitOperationJournalPort.Command command
+                                            && command.taskFence() != null && ("INTENT_RECORDED".equals(journalPoint) && "MERGE_MR".equals(command.action())
+                                            || "INTENT_RECORDED".equals(branchJournalPoint) && "CREATE_BRANCH".equals(command.action()))) {
                                         pausedRunId = command.runId();
                                     }
-                                    if ("SEND_STARTED".equals(journalPoint) && method.getName().equals("sending")) {
+                                    if (("SEND_STARTED".equals(journalPoint) || "SEND_STARTED".equals(branchJournalPoint)) && method.getName().equals("sending")) {
                                         var operation = originalJournal.find((String) arguments[0]).orElseThrow().operation();
-                                        if ("MERGE_MR".equals(operation.action())) pausedRunId = operation.runId();
+                                        if ("SEND_STARTED".equals(journalPoint) && "MERGE_MR".equals(operation.action())
+                                                || "SEND_STARTED".equals(branchJournalPoint) && "CREATE_BRANCH".equals(operation.action())) pausedRunId = operation.runId();
                                     }
                                     if (pausedRunId != null) {
                                         // The actual Journal transaction has returned; only the next caller instruction is paused.
@@ -964,8 +1197,11 @@ class RunTaskProcessKillIT {
                                         && arguments[0] instanceof RunPort.TaskClaim task
                                         && task.actionType().name().equals(completionAction)) {
                                     Files.writeString(completionMarker, task.runId());
-                                    new CountDownLatch(1).await();
-                                    throw new IllegalStateException("Applied action pause unexpectedly ended");
+                                    if (completionReleaseFile.isBlank()) {
+                                        new CountDownLatch(1).await();
+                                        throw new IllegalStateException("Applied action pause unexpectedly ended");
+                                    }
+                                    while (!Files.exists(Path.of(completionReleaseFile))) Thread.sleep(25);
                                 }
                                 if (pauseAfterMr && method.getName().equals("claimNextTask")) {
                                     String runId = (String) arguments[0];
@@ -1020,8 +1256,16 @@ class RunTaskProcessKillIT {
             boolean sentMergeResume = "resume-sent-merge".equals(args[0]);
             boolean notSentResume = args[0].startsWith("resume-not-sent-");
             boolean notSentObservation = args[0].startsWith("observe-not-sent-");
+            boolean branchIntentFirst = args[0].startsWith("first-intent-branch-");
+            boolean branchSentFirst = args[0].equals("first-sent-branch-release");
+            boolean branchIntentResume = args[0].startsWith("resume-intent-branch-");
+            boolean branchIntentProjection = args[0].equals("project-intent-branch-feature");
+            boolean branchSentObservation = args[0].equals("observe-sent-branch-release");
+            boolean releaseBranchAction = args[0].contains("branch-release");
+            String branchAction = releaseBranchAction ? "ENSURE_RELEASE" : "ENSURE_FEATURE";
             boolean first = "first".equals(args[0]) || claimedBeforeCrash || appliedBranchBeforeCrash
-                    || appliedMrBeforeCrash || appliedMergeBeforeCrash || intentMergeBeforeCrash || sentMergeBeforeCrash;
+                    || appliedMrBeforeCrash || appliedMergeBeforeCrash || intentMergeBeforeCrash || sentMergeBeforeCrash
+                    || branchIntentFirst || branchSentFirst;
             Path marker = Path.of(args[1]);
             Path receipt = Path.of(args[2]);
             try (ConfigurableApplicationContext context = new SpringApplicationBuilder(
@@ -1030,14 +1274,17 @@ class RunTaskProcessKillIT {
                             "--releasehub.run.worker.enabled=true", "--releasehub.run.worker.parallelism=1",
                             "--releasehub.run.worker.queue-capacity=0", "--releasehub.run.worker.scan-delay-ms=25",
                             "--releasehub.run.worker.claim-lease-ms=2000",
-                            "--releasehub.fixture.pause-after-mr=" + (first && !claimedBeforeCrash && !appliedBranchBeforeCrash && !appliedMrBeforeCrash && !appliedMergeBeforeCrash && !intentMergeBeforeCrash && !sentMergeBeforeCrash),
+                            "--releasehub.fixture.pause-after-mr=" + (first && !claimedBeforeCrash && !appliedBranchBeforeCrash && !appliedMrBeforeCrash && !appliedMergeBeforeCrash && !intentMergeBeforeCrash && !sentMergeBeforeCrash && !branchIntentFirst && !branchSentFirst),
                             "--releasehub.fixture.pause-after-claim=" + claimedBeforeCrash,
-                            "--releasehub.fixture.pause-before-completion=" + (appliedBranchBeforeCrash ? "ENSURE_FEATURE" : appliedMrBeforeCrash ? "ENSURE_MR" : appliedMergeBeforeCrash || intentThenAppliedCrash ? "TRY_MERGE" : ""),
-                            "--releasehub.fixture.pause-after-projection=" + (branchProjectionResume || mrProjectionResume || mergeProjectionResume),
+                            "--releasehub.fixture.pause-before-completion=" + (branchIntentResume ? branchAction : appliedBranchBeforeCrash ? "ENSURE_FEATURE" : appliedMrBeforeCrash ? "ENSURE_MR" : appliedMergeBeforeCrash || intentThenAppliedCrash ? "TRY_MERGE" : ""),
+                            "--releasehub.fixture.pause-after-projection=" + (branchProjectionResume || mrProjectionResume || mergeProjectionResume || branchIntentProjection),
                             "--releasehub.fixture.pause-after-merge-journal=" + (intentMergeBeforeCrash ? "INTENT_RECORDED" : sentMergeBeforeCrash ? "SEND_STARTED" : ""),
-                            "--releasehub.fixture.observe-scans=" + (sentMergeResume || notSentResume || notSentObservation),
-                            "--releasehub.fixture.completion-checkpoint-file=" + (intentThenAppliedCrash
-                                    ? marker.resolveSibling("resumed-merge-applied.txt") : marker),
+                            "--releasehub.fixture.pause-after-branch-journal=" + (branchIntentFirst ? "INTENT_RECORDED" : branchSentFirst ? "SEND_STARTED" : ""),
+                            "--releasehub.fixture.observe-scans=" + (sentMergeResume || notSentResume || notSentObservation || branchSentObservation),
+                            "--releasehub.fixture.completion-checkpoint-file=" + (branchIntentResume ? marker.resolveSibling("resumed-branch-applied.txt")
+                                    : intentThenAppliedCrash ? marker.resolveSibling("resumed-merge-applied.txt") : marker),
+                            "--releasehub.fixture.completion-release-file=" + (branchIntentResume && !args[0].endsWith("-crash")
+                                    ? marker.resolveSibling("branch-completion-release.txt") : ""),
                             "--releasehub.fixture.checkpoint-file=" + marker,
                             "--spring.datasource.url=" + environment("RH_C2_DB_URL"),
                             "--spring.datasource.username=" + environment("RH_C2_DB_USER"),
@@ -1055,6 +1302,14 @@ class RunTaskProcessKillIT {
                 // 重启由生产扫描继续原任务；只读等待，不重发受理或手动领取。
                 String originalRunId = Files.readString(marker).trim();
                 RunPort runs = context.getBean(RunPort.class);
+                if (branchSentObservation) {
+                    observeSentBranch(context, runs, originalRunId, marker, receipt);
+                    return;
+                }
+                if (branchIntentResume || branchIntentProjection) {
+                    finishBranchIntent(context, runs, service, originalRunId, windowId, repoId, receipt, releaseBranchAction);
+                    return;
+                }
                 if (notSentResume || notSentObservation) {
                     String observation = args[0].substring((notSentObservation ? "observe-not-sent-" : "resume-not-sent-").length());
                     observeNotSentMerge(context, runs, originalRunId, marker, receipt, observation, notSentObservation);
@@ -1080,6 +1335,42 @@ class RunTaskProcessKillIT {
                 assertThat(run.getId().value()).isEqualTo(originalRunId);
                 Files.writeString(receipt, run.getId().value());
             }
+        }
+
+        private static void finishBranchIntent(ConfigurableApplicationContext context, RunPort runs, RunAppService service,
+                                               String runId, String windowId, String repoId, Path receipt,
+                                               boolean releaseAction) throws Exception {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(35);
+            while (runs.findById(runId).orElseThrow().getExecutionStatus() != RunExecutionStatus.DONE) {
+                if (System.nanoTime() >= deadline) fail("Default worker did not finish branch continuation: " + runs.findTasks(runId));
+                Thread.sleep(25);
+            }
+            assertThat(context.getBean(GitOperationJournalPort.class).list(repoId, 0, 10))
+                    .hasSize(releaseAction ? 1 : 3).allMatch(operation -> operation.state().equals("APPLIED") && !operation.blocked());
+            var replay = service.startOrchestrate(windowId, List.of(repoId), List.of(ITERATION), true, ACTOR, INTENT);
+            assertThat(replay.getId().value()).isEqualTo(runId);
+            Files.writeString(receipt, runId);
+        }
+
+        private static void observeSentBranch(ConfigurableApplicationContext context, RunPort runs,
+                                              String runId, Path marker, Path receipt) throws Exception {
+            String taskId = runs.findTasks(runId).stream().filter(task -> task.actionType() == ActionType.ENSURE_RELEASE)
+                    .findFirst().orElseThrow().taskId();
+            JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (!Boolean.TRUE.equals(jdbc.queryForObject(
+                    "select claim_expires_at<=clock_timestamp() from run_task where id=?", Boolean.class, taskId))) {
+                if (System.nanoTime() >= deadline) fail("Original branch SEND lease did not expire");
+                Thread.sleep(25);
+            }
+            int before = CheckpointConfiguration.COMPLETED_SCANS.get();
+            while (CheckpointConfiguration.COMPLETED_SCANS.get() - before < 3) {
+                if (System.nanoTime() >= deadline) fail("Default scanner did not complete three branch SEND scans");
+                Thread.sleep(25);
+            }
+            assertThat(runs.findTasks(runId).stream().filter(task -> task.taskId().equals(taskId)).findFirst().orElseThrow().status()).isEqualTo("RUNNING");
+            Files.writeString(marker.resolveSibling("branch-send-scans.txt"), Integer.toString(CheckpointConfiguration.COMPLETED_SCANS.get() - before));
+            Files.writeString(receipt, runId);
         }
 
         private static void observeNotSentMerge(ConfigurableApplicationContext context, RunPort runs,

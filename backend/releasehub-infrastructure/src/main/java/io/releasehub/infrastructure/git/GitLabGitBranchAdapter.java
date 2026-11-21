@@ -115,6 +115,36 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
         return mergeWorkflow(repoCloneUrl, token, checkpoint.projectId()).tryMergeRequest(checkpoint, message);
     }
 
+    /** The complete CREATE_BRANCH body; ordering is stable and the frozen ref retains its original bytes. */
+    public static com.fasterxml.jackson.databind.node.ObjectNode canonicalBranchRequest(JsonNode body) {
+        if (body == null || !body.isObject() || body.size() != 2
+                || !body.path("branch").isTextual() || body.path("branch").textValue().isBlank()
+                || !body.path("ref").isTextual() || !validSha(body.path("ref").textValue())) return null;
+        return com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()
+                .put("branch", body.path("branch").textValue()).put("ref", body.path("ref").textValue());
+    }
+
+    /** CREATE_BRANCH has no query parameters; normal dispatch and recovery fingerprint the same compact body. */
+    public static String branchRequestHash(String remoteKey, JsonNode body) {
+        var canonical = canonicalBranchRequest(body);
+        if (canonical == null || remoteKey == null || remoteKey.isBlank()) return null;
+        return GitRemoteIdentityResolver.hash("POST|" + remoteKey + "|/repository/branches||"
+                + GitRemoteIdentityResolver.hash(canonical.toString().getBytes(StandardCharsets.UTF_8)) + "|");
+    }
+
+    /** Strict persisted CREATE_BRANCH target; plan correspondence remains the task journal's responsibility. */
+    public static com.fasterxml.jackson.databind.node.ObjectNode recordedBranchRequest(JsonNode target) {
+        if (target == null || !target.isObject() || target.size() != 5
+                || !target.path("method").isTextual() || !"POST".equals(target.path("method").textValue())
+                || !target.path("suffix").isTextual()
+                || !"/repository/branches".equals(target.path("suffix").textValue())
+                || !target.path("sourceRef").isTextual() || target.path("sourceRef").textValue().isBlank()) return null;
+        var body = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+        body.set("branch", target.path("branch"));
+        body.set("ref", target.path("ref"));
+        return canonicalBranchRequest(body);
+    }
+
     /** Canonical creation proof shared by the client, HTTP journal and database projection. */
     public static String createdBranchSha(int status, JsonNode body, String expectedBranch) {
         if (status != 201 || body == null || !body.isObject() || expectedBranch == null || expectedBranch.isBlank()

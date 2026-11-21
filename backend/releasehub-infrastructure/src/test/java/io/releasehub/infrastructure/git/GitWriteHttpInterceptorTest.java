@@ -31,7 +31,10 @@ class GitWriteHttpInterceptorTest {
         var manager=mock(PlatformTransactionManager.class);when(manager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
         var endpoint=new GitRemoteIdentityResolver.Endpoint("GITLAB","https://gitlab.invalid","acme/repo","https://gitlab.invalid/api/v4/projects/17","/merge_requests");
         when(identities.resolve(any(),any())).thenReturn(new GitRemoteIdentityResolver.Identity("repo","mapping","a".repeat(64),"GITLAB","https://gitlab.invalid","17",endpoint));
-        when(journal.begin(any())).thenAnswer(i->((GitOperationJournalPort.Command)i.getArgument(0)).operationId());
+        when(journal.begin(any())).thenAnswer(i -> {
+            GitOperationJournalPort.Command command = i.getArgument(0);
+            return journalOperation(command, command.operationId());
+        });
         interceptor=new GitWriteHttpInterceptor(properties,new GitSafetySessions(journal),journal,identities,new ObjectMapper(),manager);
     }
     @Test void shouldNotReleasePipelineGuardBeforeConsumerRejectsDifferentShaText() throws Exception {
@@ -58,7 +61,7 @@ class GitWriteHttpInterceptorTest {
     @ValueSource(strings = {"APPLIED", "REJECTED", "INCOMPLETE", "IO"})
     void mergeIntentUsesTheJournalOperationIdForSendingAndFinish(String outcome) throws Exception {
         String originalId = "11111111-1111-4111-8111-111111111111";
-        doReturn(originalId).when(journal).begin(any());
+        doAnswer(i -> journalOperation(i.getArgument(0), originalId)).when(journal).begin(any());
         try (var context = GitOperationContext.withTask(mergeIntentClaim())) {
             executeMergeIntentOutcome(outcome);
         }
@@ -247,7 +250,7 @@ class GitWriteHttpInterceptorTest {
                         "git.mrUrl", "https://gitlab.invalid/acme/repo/-/merge_requests/7",
                         "git.sourceBranch", "feature/IT-1", "git.targetBranch", "release/RW-1",
                         "git.sourceSha", "a".repeat(40), "git.mrDisposition", "CREATED",
-                        "plan.featureBranch", "feature/IT-1", "plan.releaseBranch", "release/RW-1"));
+                        "plan.featureBranch", "feature/IT-1", "plan.releaseBranch", "release/RW-1"), null);
     }
 
     private MockClientHttpRequest mergeIntentRequest(String sha, String query) {
@@ -307,6 +310,120 @@ class GitWriteHttpInterceptorTest {
                 .filter(call -> call.getMethod().getName().equals(method)).toList();
         assertEquals(1, calls.size(), method + " must have exactly one call");
         return calls.getFirst();
+    }
+
+
+    @ParameterizedTest
+    @ValueSource(ints = {40, 64})
+    void branchIntentCanonicalRequestPreservesFrozenShaAcrossFieldOrder(int shaLength) throws Exception {
+        String sha = "A".repeat(shaLength);
+        var json = new ObjectMapper();
+        var sentBodies = new java.util.ArrayList<byte[]>();
+        for (boolean refFirst : java.util.List.of(true, false)) {
+            var request = branchIntentRequest(null, sha);
+            var input = json.createObjectNode();
+            if (refFirst) input.put("ref", "main").put("branch", "feature/IT-1");
+            else input.put("branch", "feature/IT-1").put("ref", "main");
+            try (var response = interceptor.intercept(request, json.writeValueAsBytes(input), (sent, body) -> {
+                assertEquals("/api/v4/projects/17/repository/branches", sent.getURI().getRawPath());
+                assertNull(sent.getURI().getRawQuery());
+                sentBodies.add(body.clone());
+                return branchIntentResponse(sha);
+            })) {
+                assertEquals(HttpStatus.CREATED, response.getStatusCode());
+            }
+        }
+        byte[] canonical = json.createObjectNode().put("branch", "feature/IT-1").put("ref", sha)
+                .toString().getBytes(StandardCharsets.UTF_8);
+        assertEquals(2, sentBodies.size());
+        assertArrayEquals(canonical, sentBodies.get(0));
+        assertArrayEquals(canonical, sentBodies.get(1));
+        var commands = org.mockito.ArgumentCaptor.forClass(GitOperationJournalPort.Command.class);
+        verify(journal, times(2)).begin(commands.capture());
+        assertEquals(commands.getAllValues().get(0).requestHash(), commands.getAllValues().get(1).requestHash());
+        for (var command : commands.getAllValues()) {
+            var target = json.readTree(command.targetJson());
+            assertEquals(5, target.size());
+            assertEquals("POST", target.path("method").textValue());
+            assertEquals("/repository/branches", target.path("suffix").textValue());
+            assertEquals("feature/IT-1", target.path("branch").textValue());
+            assertEquals("main", target.path("sourceRef").textValue());
+            assertEquals(sha, target.path("ref").textValue());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"EXTRA", "MISSING_BRANCH", "MISSING_REF", "NUMBER_BRANCH", "NUMBER_REF",
+            "NULL_BRANCH", "NULL_REF", "EMPTY_BRANCH", "BLANK_REF", "ARRAY"})
+    void branchIntentRejectsIncompleteTypedCreationBeforeIntent(String variant) throws Exception {
+        var json = new ObjectMapper();
+        var request = branchIntentRequest(null, "a".repeat(40));
+        var input = json.createObjectNode().put("branch", "feature/IT-1").put("ref", "main");
+        switch (variant) {
+            case "EXTRA" -> input.put("extra", "unrecorded input");
+            case "MISSING_BRANCH" -> input.remove("branch");
+            case "MISSING_REF" -> input.remove("ref");
+            case "NUMBER_BRANCH" -> input.put("branch", 17);
+            case "NUMBER_REF" -> input.put("ref", 17);
+            case "NULL_BRANCH" -> input.putNull("branch");
+            case "NULL_REF" -> input.putNull("ref");
+            case "EMPTY_BRANCH" -> input.put("branch", "");
+            case "BLANK_REF" -> input.put("ref", " ");
+            case "ARRAY" -> { }
+            default -> throw new IllegalArgumentException(variant);
+        }
+        byte[] body = json.writeValueAsBytes(variant.equals("ARRAY") ? json.createArrayNode() : input);
+        var sent = new AtomicInteger();
+        var error = assertThrows(BusinessException.class, () -> interceptor.intercept(request, body, (out, bytes) -> {
+            sent.incrementAndGet();
+            return branchIntentResponse("a".repeat(40));
+        }));
+        assertEquals(ErrorCode.GIT_OPERATION_INVALID, error.getErrorCode());
+        assertEquals(0, sent.get());
+        verify(journal, never()).begin(any());
+        verify(journal, never()).sending(anyString(), any());
+        verify(journal, never()).finish(anyString(), any(), any(), anyString(), any());
+        verify(identities, never()).metadata(any(), anyString(), any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "ref=changed", "branch=elsewhere"})
+    void branchIntentRejectsAnyQueryBeforeIntent(String query) throws Exception {
+        var request = branchIntentRequest(query, "a".repeat(40));
+        var sent = new AtomicInteger();
+        var error = assertThrows(BusinessException.class, () -> interceptor.intercept(request,
+                "{\"branch\":\"feature/IT-1\",\"ref\":\"main\"}".getBytes(StandardCharsets.UTF_8),
+                (out, bytes) -> {
+                    sent.incrementAndGet();
+                    return branchIntentResponse("a".repeat(40));
+                }));
+        assertEquals(ErrorCode.GIT_OPERATION_INVALID, error.getErrorCode());
+        assertEquals(0, sent.get());
+        verify(journal, never()).begin(any());
+        verify(journal, never()).sending(anyString(), any());
+        verify(identities, never()).metadata(any(), anyString(), any(), any());
+    }
+
+    private MockClientHttpRequest branchIntentRequest(String query, String sha) {
+        var endpoint = new GitRemoteIdentityResolver.Endpoint("GITLAB", "https://gitlab.invalid", "acme/repo",
+                "https://gitlab.invalid/api/v4/projects/acme%2Frepo", "/repository/branches");
+        when(identities.resolve(any(), any())).thenReturn(new GitRemoteIdentityResolver.Identity(
+                "repo", "mapping", "a".repeat(64), "GITLAB", "https://gitlab.invalid", "17", endpoint));
+        when(identities.metadata(any(), anyString(), any(), any()))
+                .thenReturn(new ObjectMapper().createObjectNode().put("id", sha));
+        return new MockClientHttpRequest(HttpMethod.POST, URI.create(endpoint.projectEndpoint() + endpoint.suffix()
+                + (query == null ? "" : "?" + query)));
+    }
+
+    private MockClientHttpResponse branchIntentResponse(String sha) {
+        return new MockClientHttpResponse(("{\"name\":\"feature/IT-1\",\"commit\":{\"id\":\"" + sha + "\"}}")
+                .getBytes(StandardCharsets.UTF_8), HttpStatus.CREATED);
+    }
+
+    private static GitOperationJournalPort.Operation journalOperation(GitOperationJournalPort.Command command, String id) {
+        return new GitOperationJournalPort.Operation(id, command.repoId(), command.remoteKey(), command.provider(),
+                command.baseUrl(), command.projectId(), command.action(), command.targetJson(), command.runId(),
+                command.operator(), "INTENT_RECORDED", 0, java.time.Instant.EPOCH, java.time.Instant.EPOCH, null, true);
     }
 
     private MockClientHttpRequest request(){

@@ -165,6 +165,439 @@ class GitWriteSafetyIT {
         return body;
     }
 
+    @org.junit.jupiter.params.ParameterizedTest(name = "branchResume={0}/{1}")
+    @org.junit.jupiter.params.provider.CsvSource({"ENSURE_FEATURE,moved", "ENSURE_RELEASE,moved",
+            "ENSURE_FEATURE,deleted", "ENSURE_RELEASE,deleted", "ENSURE_FEATURE,mixed64", "ENSURE_RELEASE,mixed64"})
+    void branchIntentResumeUsesFrozenRequest(ActionType action, String refChange) throws Exception {
+        if (refChange.equals("mixed64")) sha = "aBcD".repeat(16);
+        var run = branchIntentReadyRun(action);
+        String runId = run.getId().value();
+        String branch = branchIntentBranch(run, action);
+        var workers = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try (var gate = new BranchIntentGate(action, true)) {
+            try {
+                var oldOwner = workers.submit(() -> taskService.executeNextTask(runId));
+                assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var command = gate.command.get();
+                String operationId = gate.operationId.get();
+                String taskId = command.taskFence().taskId();
+                var original = mergeIntentIdentity(operationId);
+                var intent = journal.find(operationId).orElseThrow().events().getFirst();
+                var originalTask = jdbc.queryForMap("select * from run_task where id=?", taskId);
+                var originalMetadata = mergeNotSentMetadata(originalTask.get("target_id").toString());
+                int requestsBeforeResume = SERVER.requests.size();
+                gate.expire();
+                SERVER.reply("GET", canonicalEndpoint + "/repository/commits/main", refChange.equals("deleted") ? 404 : 200,
+                        refChange.equals("deleted") ? "{}" : "{\"id\":\"" + "b".repeat(40) + "\"}");
+                SERVER.reply("GET", canonicalEndpoint + "/repository/branches/main", refChange.equals("deleted") ? 404 : 200,
+                        refChange.equals("deleted") ? "{}" : branchIntentResponse("main", "b".repeat(40)));
+                var newOwner = workers.submit(() -> taskService.executeNextTask(runId));
+                assertThat(gate.responseEntered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .as("expired complete branch INTENT must resume the original HTTP request").isTrue();
+                var current = gate.claims.getLast();
+                assertThat(current.fence().claimToken()).isNotEqualTo(command.taskFence().claimToken());
+                assertThat(current.metadata()).isEqualTo(gate.claims.getFirst().metadata());
+                assertThat(mergeNotSentMetadata(current.itemId())).isEqualTo(originalMetadata);
+                assertThat(journal.find(operationId).orElseThrow().operation().state()).isEqualTo("SEND_STARTED");
+                assertThat(mergeIntentIdentity(operationId)).isEqualTo(original);
+                gate.release.countDown();
+                assertThatThrownBy(() -> oldOwner.get(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .isInstanceOf(java.util.concurrent.ExecutionException.class).hasCauseInstanceOf(BusinessException.class);
+                assertThat(jdbc.queryForMap("select status,claim_token from run_task where id=?", taskId))
+                        .containsEntry("status", "RUNNING").containsEntry("claim_token", current.fence().claimToken());
+                assertThat(journal.find(operationId).orElseThrow().events()).hasSize(2);
+                gate.releaseResponse.countDown();
+                boolean resumed = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> newOwner.get(5, java.util.concurrent.TimeUnit.SECONDS));
+                assertThat(resumed).isTrue();
+                branchIntentAssertApplied(operationId, current.fence(), intent);
+                assertThat(mergeIntentIdentity(operationId)).isEqualTo(original);
+                assertThat(jdbc.queryForMap("select * from run_task where id=?", taskId))
+                        .containsEntry("status", "COMPLETED").containsEntry("started_at", originalTask.get("started_at"))
+                        .containsEntry("task_order", originalTask.get("task_order")).containsEntry("claim_token", current.fence().claimToken());
+                var expectedMetadata = new LinkedHashMap<>(originalMetadata);
+                expectedMetadata.put("git.projectId", String.valueOf(project));
+                assertThat(mergeNotSentMetadata(current.itemId())).isEqualTo(expectedMetadata);
+                branchIntentAssertRequest(operationId, branch, sha);
+                assertThat(SERVER.requests.subList(requestsBeforeResume, SERVER.requests.size()))
+                        .noneMatch(request -> request.path().equals(canonicalEndpoint + "/repository/commits/main")
+                                || request.path().equals(canonicalEndpoint + "/repository/branches/main"));
+                System.out.printf("HTTP_BRANCH_INTENT_RESUME action=%s ref=%s run=%s task=%s operation=%s attempt=%s "
+                                + "oldTokenRevoked=true originalOwnerPreserved=true branchPost=1 originalRefPreserved=true%n",
+                        action, refChange, runId, taskId, operationId, intent.attemptId());
+            } finally {
+                gate.releaseAll(); workers.shutdown();
+                assertThat(workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = ActionType.class, names = {"ENSURE_FEATURE", "ENSURE_RELEASE"})
+    void branchIntentFirstAttemptKeepsProjectCheckpoint(ActionType action) throws Exception {
+        var run = branchIntentReadyRun(action);
+        String runId = run.getId().value();
+        var expected = new LinkedHashMap<>(run.getItems().getFirst().getMetadata());
+        expected.put("git.projectId", String.valueOf(project));
+        boolean completed = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> taskService.executeNextTask(runId));
+        assertThat(completed).isTrue();
+        var task = taskRuns.findTasks(runId).stream().filter(value -> value.actionType() == action).findFirst().orElseThrow();
+        assertThat(task.status()).isEqualTo("COMPLETED");
+        assertThat(mergeNotSentMetadata(task.itemId())).isEqualTo(expected);
+        var operation = journal.listByRun(runId, 0, 20).getFirst();
+        assertThat(operation.state()).isEqualTo("APPLIED");
+        assertThat(operation.blocked()).isFalse();
+        assertThat(jdbc.queryForObject("select result from run_step where task_id=?", String.class, task.taskId())).isEqualTo("CREATED");
+        SERVER.verify("POST", canonicalEndpoint + "/repository/branches", 1);
+        assertThat(SERVER.body("POST", canonicalEndpoint + "/repository/branches").path("ref").textValue()).isEqualTo(sha);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest(name = "branchPreflight={0}/{1}")
+    @org.junit.jupiter.params.provider.CsvSource({"ENSURE_FEATURE,exists", "ENSURE_RELEASE,exists",
+            "ENSURE_FEATURE,forbidden", "ENSURE_RELEASE,forbidden", "ENSURE_FEATURE,unavailable",
+            "ENSURE_RELEASE,unavailable", "ENSURE_RELEASE,feature_missing"})
+    void branchIntentPreflightClosesWithoutWrite(ActionType action, String observation) throws Exception {
+        branchIntentAssertLocalResult(action, observation);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = ActionType.class, names = {"ENSURE_FEATURE", "ENSURE_RELEASE"})
+    void branchIntentRejectsReboundNamespaceBeforeBranchRead(ActionType action) throws Exception {
+        branchIntentAssertLocalResult(action, "rebound");
+    }
+
+    private void branchIntentAssertLocalResult(ActionType action, String observation) throws Exception {
+        var run = branchIntentReadyRun(action);
+        String runId = run.getId().value();
+        String branch = branchIntentBranch(run, action);
+        var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try (var gate = new BranchIntentGate(action, false)) {
+            try {
+                var oldOwner = workers.submit(() -> taskService.executeNextTask(runId));
+                assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var command = gate.command.get();
+                String operationId = gate.operationId.get();
+                var original = mergeIntentIdentity(operationId);
+                var intent = journal.find(operationId).orElseThrow().events().getFirst();
+                var originalMetadata = new LinkedHashMap<>(gate.claims.getFirst().metadata());
+                String targetPath = canonicalEndpoint + "/repository/branches/" + URLEncoder.encode(branch, StandardCharsets.UTF_8);
+                String reboundEndpoint = "/api/v4/projects/" + (project + 10000);
+                gate.expire();
+                switch (observation) {
+                    case "exists" -> SERVER.reply("GET", targetPath, 200, branchIntentResponse(branch, "b".repeat(40)));
+                    case "forbidden" -> SERVER.reply("GET", targetPath, 403, "{}");
+                    case "unavailable" -> SERVER.reply("GET", targetPath, 503, "{}");
+                    case "feature_missing" -> SERVER.reply("GET", canonicalEndpoint + "/repository/branches/"
+                            + URLEncoder.encode(run.getItems().getFirst().getMetadata().get("plan.featureBranch"), StandardCharsets.UTF_8), 404, "{}");
+                    case "rebound" -> {
+                        SERVER.reply("GET", endpoint, 200, "{\"id\":" + (project + 10000) + "}");
+                        for (String key : List.of("plan.featureBranch", "plan.releaseBranch")) {
+                            String name = run.getItems().getFirst().getMetadata().get(key);
+                            SERVER.reply("GET", reboundEndpoint + "/repository/branches/" + URLEncoder.encode(name, StandardCharsets.UTF_8),
+                                    200, branchIntentResponse(name, "b".repeat(40)));
+                        }
+                    }
+                    default -> throw new AssertionError(observation);
+                }
+                boolean completed = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> taskService.executeNextTask(runId));
+                assertThat(completed).isTrue();
+                var current = gate.claims.getLast();
+                assertThat(current.fence().claimToken()).isNotEqualTo(command.taskFence().claimToken());
+                assertThat(current.metadata()).isEqualTo(originalMetadata);
+                RunItemResult result = observation.equals("exists") ? RunItemResult.ALREADY_EXISTS : RunItemResult.FAILED;
+                Map<String, String> patch = new LinkedHashMap<>();
+                patch.put("git.projectId", String.valueOf(project));
+                if (observation.equals("rebound") && action == ActionType.ENSURE_RELEASE) patch.put("git.blockReason", "UNKNOWN");
+                mergeNotSentAssertEvent(operationId, current.fence().taskId(), current.fence().claimToken(), result, patch, intent);
+                assertThat(mergeIntentIdentity(operationId)).isEqualTo(original);
+                var expected = new LinkedHashMap<>(originalMetadata); expected.putAll(patch);
+                assertThat(mergeNotSentMetadata(current.itemId())).isEqualTo(expected);
+                assertTaskStatus(current, result == RunItemResult.ALREADY_EXISTS ? "COMPLETED" : "FAILED");
+                assertThat(jdbc.queryForObject("select result from run_step where task_id=?", String.class, current.fence().taskId()))
+                        .isEqualTo(result.name());
+                assertThat(taskRuns.findById(runId).orElseThrow().getExecutionStatus().name())
+                        .isEqualTo(result == RunItemResult.ALREADY_EXISTS ? "RUNNING" : "FAILED");
+                assertThat(SERVER.requests).noneMatch(request -> request.path().startsWith(reboundEndpoint + "/repository/branches"));
+                SERVER.verify("POST", canonicalEndpoint + "/repository/branches", 0);
+                assertThat(SERVER.writeCount()).isZero();
+                var closedTask = jdbc.queryForMap("select * from run_task where id=?", current.fence().taskId());
+                var closedOperation = jdbc.queryForMap("select * from git_operation where id=?", operationId);
+                var closedEvents = journal.find(operationId).orElseThrow().events();
+                gate.release.countDown();
+                assertThatThrownBy(() -> oldOwner.get(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .isInstanceOf(java.util.concurrent.ExecutionException.class).hasCauseInstanceOf(BusinessException.class);
+                assertThat(jdbc.queryForMap("select * from run_task where id=?", current.fence().taskId())).isEqualTo(closedTask);
+                assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).isEqualTo(closedOperation);
+                assertThat(journal.find(operationId).orElseThrow().events()).isEqualTo(closedEvents);
+                assertThat(SERVER.writeCount()).isZero();
+                System.out.printf("HTTP_BRANCH_INTENT_LOCAL action=%s observation=%s run=%s task=%s operation=%s result=%s "
+                        + "branchPost=0 reboundBranchReads=0 originalProject=%d%n", action, observation, runId,
+                        current.fence().taskId(), operationId, result, project);
+            } finally {
+                gate.releaseAll(); workers.shutdown();
+                assertThat(workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest(name = "branchHttp={0}/{1}")
+    @org.junit.jupiter.params.provider.CsvSource({"ENSURE_FEATURE,403", "ENSURE_RELEASE,403", "ENSURE_FEATURE,408", "ENSURE_RELEASE,408"})
+    void branchIntentHttpOutcomeRetainsSendHistory(ActionType action, int status) throws Exception {
+        var run = branchIntentReadyRun(action);
+        String runId = run.getId().value();
+        var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try (var gate = new BranchIntentGate(action, false)) {
+            try {
+                var oldOwner = workers.submit(() -> taskService.executeNextTask(runId));
+                assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                String operationId = gate.operationId.get();
+                var original = mergeIntentIdentity(operationId);
+                var intent = journal.find(operationId).orElseThrow().events().getFirst();
+                gate.expire();
+                SERVER.reply("GET", canonicalEndpoint + "/repository/commits/main", 200, "{\"id\":\"" + "b".repeat(40) + "\"}");
+                SERVER.reply("POST", canonicalEndpoint + "/repository/branches", status, "{}");
+                boolean completed = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> taskService.executeNextTask(runId));
+                assertThat(completed).isTrue();
+                var current = gate.claims.getLast();
+                assertThat(current.fence().claimToken()).isNotEqualTo(gate.command.get().taskFence().claimToken());
+                var detail = journal.find(operationId).orElseThrow();
+                String outcome = status == 403 ? "REJECTED" : "UNKNOWN";
+                assertThat(detail.operation().state()).isEqualTo(outcome);
+                assertThat(detail.events()).extracting(GitOperationJournalPort.Event::type)
+                        .containsExactly("INTENT_RECORDED", "SEND_STARTED", outcome);
+                assertThat(detail.events().getFirst()).isEqualTo(intent);
+                mergeIntentAssertSender(operationId, current.fence());
+                assertThat(mergeIntentIdentity(operationId)).isEqualTo(original);
+                assertTaskStatus(current, status == 403 ? "FAILED" : "UNKNOWN");
+                assertThat(detail.operation().blocked()).isEqualTo(status == 408);
+                branchIntentAssertRequest(operationId, branchIntentBranch(run, action), sha);
+                var closed = jdbc.queryForMap("select * from git_operation where id=?", operationId);
+                gate.release.countDown();
+                assertThatThrownBy(() -> oldOwner.get(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .isInstanceOf(java.util.concurrent.ExecutionException.class).hasCauseInstanceOf(BusinessException.class);
+                assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).isEqualTo(closed);
+                SERVER.verify("POST", canonicalEndpoint + "/repository/branches", 1);
+            } finally {
+                gate.releaseAll(); workers.shutdown();
+                assertThat(workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = ActionType.class, names = {"ENSURE_FEATURE", "ENSURE_RELEASE"})
+    void branchIntentPendingSendRejectsLocalUnknown(ActionType action) throws Exception {
+        var run = branchIntentReadyRun(action);
+        var claim = taskRuns.claimNextTask(run.getId().value()).orElseThrow();
+        assertThat(claim.actionType()).isEqualTo(action);
+        var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try (var gate = new BranchIntentGate(action, true)) {
+            try {
+                var sender = workers.submit(() -> {
+                    try (var scope = GitOperationContext.withTask(claim)) {
+                        return factory.getAdapter(GitProvider.GITLAB).createBranch(repo.getCloneUrl(), "fixture-token",
+                                branchIntentBranch(run, action), "main");
+                    }
+                });
+                assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                gate.release.countDown();
+                assertThat(gate.responseEntered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                String operationId = gate.operationId.get();
+                var task = jdbc.queryForMap("select * from run_task where id=?", claim.fence().taskId());
+                var operation = jdbc.queryForMap("select * from git_operation where id=?", operationId);
+                var events = journal.find(operationId).orElseThrow().events();
+                var metadata = mergeNotSentMetadata(claim.itemId());
+                var guard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", gate.command.get().remoteKey());
+                assertThat(events).extracting(GitOperationJournalPort.Event::type).containsExactly("INTENT_RECORDED", "SEND_STARTED");
+                SERVER.verify("POST", canonicalEndpoint + "/repository/branches", 1);
+                assertThatThrownBy(() -> taskRuns.completeTask(claim, taskStep(claim, RunItemResult.UNKNOWN),
+                        Map.of("git.projectId", String.valueOf(project)))).isInstanceOf(BusinessException.class);
+                assertThat(jdbc.queryForMap("select * from run_task where id=?", claim.fence().taskId())).isEqualTo(task);
+                assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).isEqualTo(operation);
+                assertThat(journal.find(operationId).orElseThrow().events()).isEqualTo(events);
+                assertThat(mergeNotSentMetadata(claim.itemId())).isEqualTo(metadata);
+                assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", gate.command.get().remoteKey())).isEqualTo(guard);
+                assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class, claim.fence().taskId())).isZero();
+                gate.releaseResponse.countDown();
+                boolean created = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> sender.get(5, java.util.concurrent.TimeUnit.SECONDS));
+                assertThat(created).isTrue();
+                org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> taskRuns.completeTask(claim,
+                        taskStep(claim, RunItemResult.CREATED), Map.of("git.projectId", String.valueOf(project))));
+                branchIntentAssertApplied(operationId, claim.fence(), events.getFirst());
+                assertTaskStatus(claim, "COMPLETED");
+                SERVER.verify("POST", canonicalEndpoint + "/repository/branches", 1);
+            } finally {
+                gate.releaseAll(); workers.shutdown();
+                assertThat(workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
+
+    @Test
+    void branchIntentObservationKeepsExecutionFacts() throws Exception {
+        var run = branchIntentReadyRun(ActionType.ENSURE_FEATURE);
+        var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try (var gate = new BranchIntentGate(ActionType.ENSURE_FEATURE, false)) {
+            try {
+                var owner = workers.submit(() -> taskService.executeNextTask(run.getId().value()));
+                assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                String operationId = gate.operationId.get();
+                var before = journal.find(operationId).orElseThrow();
+                var original = mergeIntentIdentity(operationId);
+                var task = jdbc.queryForMap("select * from run_task where id=?", gate.command.get().taskFence().taskId());
+                var guard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", gate.command.get().remoteKey());
+                var observed = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() ->
+                        service.reconcile(operationId, "branch-observer", UUID.randomUUID().toString(), before.operation().version()));
+                assertThat(observed.status()).isEqualTo("NOT_FOUND");
+                var after = journal.find(operationId).orElseThrow();
+                assertThat(after.operation().version()).isGreaterThan(before.operation().version());
+                assertThat(after.operation().state()).isEqualTo("INTENT_RECORDED");
+                assertThat(after.events()).isEqualTo(before.events());
+                assertThat(after.observations()).hasSize(1);
+                assertThat(mergeIntentIdentity(operationId)).isEqualTo(original);
+                assertThat(jdbc.queryForMap("select * from run_task where id=?", gate.command.get().taskFence().taskId())).isEqualTo(task);
+                assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", gate.command.get().remoteKey())).isEqualTo(guard);
+                SERVER.verify("POST", canonicalEndpoint + "/repository/branches", 0);
+                gate.release.countDown();
+                boolean completed = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> owner.get(5, java.util.concurrent.TimeUnit.SECONDS));
+                assertThat(completed).isTrue();
+                branchIntentAssertApplied(operationId, gate.command.get().taskFence(), before.events().getFirst());
+                SERVER.verify("POST", canonicalEndpoint + "/repository/branches", 1);
+            } finally {
+                gate.releaseAll(); workers.shutdown();
+                assertThat(workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
+
+    private io.releasehub.domain.run.Run branchIntentReadyRun(ActionType action) {
+        SERVER.reply("GET", canonicalEndpoint + "/repository/commits/main", 200, "{\"id\":\"" + sha + "\"}");
+        var run = admittedBranchRun();
+        if (action == ActionType.ENSURE_RELEASE) {
+            String feature = run.getItems().getFirst().getMetadata().get("plan.featureBranch");
+            SERVER.reply("GET", canonicalEndpoint + "/repository/branches/" + URLEncoder.encode(feature, StandardCharsets.UTF_8),
+                    200, branchIntentResponse(feature, sha));
+            boolean prepared = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> taskService.executeNextTask(run.getId().value()));
+            assertThat(prepared).isTrue();
+        }
+        String branch = branchIntentBranch(run, action);
+        SERVER.reply("GET", canonicalEndpoint + "/repository/branches/" + URLEncoder.encode(branch, StandardCharsets.UTF_8), 404, "{}");
+        SERVER.reply("POST", canonicalEndpoint + "/repository/branches", 201, branchIntentResponse(branch, sha));
+        return taskRuns.findById(run.getId().value()).orElseThrow();
+    }
+
+    private String branchIntentBranch(io.releasehub.domain.run.Run run, ActionType action) {
+        return run.getItems().getFirst().getMetadata().get(action == ActionType.ENSURE_FEATURE ? "plan.featureBranch" : "plan.releaseBranch");
+    }
+
+    private String branchIntentResponse(String branch, String commit) {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var body = json.createObjectNode().put("name", branch);
+        body.putObject("commit").put("id", commit);
+        return body.toString();
+    }
+
+    private void branchIntentAssertApplied(String operationId, RunPort.TaskFence fence, GitOperationJournalPort.Event originalIntent) throws Exception {
+        var detail = journal.find(operationId).orElseThrow();
+        assertThat(detail.operation().state()).isEqualTo("APPLIED");
+        assertThat(detail.operation().blocked()).isFalse();
+        assertThat(detail.events()).extracting(GitOperationJournalPort.Event::type).containsExactly("INTENT_RECORDED", "SEND_STARTED", "APPLIED");
+        assertThat(detail.events().getFirst()).isEqualTo(originalIntent);
+        assertThat(detail.events()).allSatisfy(event -> assertThat(event.attemptId()).isEqualTo(originalIntent.attemptId()));
+        mergeIntentAssertSender(operationId, fence);
+    }
+
+    private void branchIntentAssertRequest(String operationId, String branch, String frozenSha) throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        String canonical = json.createObjectNode().put("branch", branch).put("ref", frozenSha).toString();
+        var requests = SERVER.requests.stream().filter(request -> request.method().equals("POST")
+                && request.path().equals(canonicalEndpoint + "/repository/branches")).toList();
+        assertThat(requests).singleElement().satisfies(request -> {
+            assertThat(request.body()).isEqualTo(canonical);
+            assertThat(request.query()).isNull();
+            assertThat(request.internalHeaders()).isFalse();
+        });
+        var operation = jdbc.queryForMap("select remote_key,request_hash,target_json from git_operation where id=?", operationId);
+        String bodyHash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(canonical.getBytes(StandardCharsets.UTF_8)));
+        String envelope = "POST|" + operation.get("remote_key") + "|/repository/branches||" + bodyHash + "|";
+        String expected = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(envelope.getBytes(StandardCharsets.UTF_8)));
+        assertThat(operation.get("request_hash")).isEqualTo(expected);
+        var target = json.readTree(operation.get("target_json").toString());
+        assertThat(target.path("branch").textValue()).isEqualTo(branch);
+        assertThat(target.path("ref").textValue()).isEqualTo(frozenSha);
+    }
+
+    /** Observe real claims and pause after the real Journal proxy commits; never replace its decisions. */
+    private final class BranchIntentGate implements AutoCloseable {
+        private final java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        private final java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        private final java.util.concurrent.CountDownLatch responseEntered = new java.util.concurrent.CountDownLatch(1);
+        private final java.util.concurrent.CountDownLatch releaseResponse = new java.util.concurrent.CountDownLatch(1);
+        private final java.util.concurrent.atomic.AtomicReference<GitOperationJournalPort.Command> command = new java.util.concurrent.atomic.AtomicReference<>();
+        private final java.util.concurrent.atomic.AtomicReference<String> operationId = new java.util.concurrent.atomic.AtomicReference<>();
+        private final java.util.List<RunPort.TaskClaim> claims = new java.util.concurrent.CopyOnWriteArrayList<>();
+        private final io.releasehub.infrastructure.git.GitWriteHttpInterceptor interceptor;
+        private final GitOperationJournalPort originalJournal;
+        private final RestTemplate http;
+        private final List<org.springframework.http.client.ClientHttpRequestInterceptor> originalInterceptors;
+        private final Object serviceTarget;
+        private final RunPort originalRuns;
+
+        private BranchIntentGate(ActionType action, boolean holdResponse) {
+            interceptor = context.getBean(io.releasehub.infrastructure.git.GitWriteHttpInterceptor.class);
+            originalJournal = (GitOperationJournalPort) ReflectionTestUtils.getField(interceptor, "journal");
+            Object adapter = AopTestUtils.getUltimateTargetObject(factory.getAdapter(GitProvider.GITLAB));
+            http = (RestTemplate) ReflectionTestUtils.getField(adapter, "restTemplate");
+            originalInterceptors = List.copyOf(http.getInterceptors());
+            serviceTarget = AopTestUtils.getUltimateTargetObject(taskService);
+            originalRuns = (RunPort) ReflectionTestUtils.getField(serviceTarget, "runPort");
+            var observedRuns = (RunPort) java.lang.reflect.Proxy.newProxyInstance(RunPort.class.getClassLoader(),
+                    new Class<?>[]{RunPort.class}, (proxy, method, arguments) -> {
+                        Object result;
+                        try { result = method.invoke(originalRuns, arguments); }
+                        catch (java.lang.reflect.InvocationTargetException error) { throw error.getCause(); }
+                        if (method.getName().equals("claimNextTask") && result instanceof java.util.Optional<?> value
+                                && value.orElse(null) instanceof RunPort.TaskClaim claim && claim.actionType() == action) claims.add(claim);
+                        return result;
+                    });
+            var pausedJournal = (GitOperationJournalPort) java.lang.reflect.Proxy.newProxyInstance(GitOperationJournalPort.class.getClassLoader(),
+                    new Class<?>[]{GitOperationJournalPort.class}, (proxy, method, arguments) -> {
+                        Object result;
+                        try { result = method.invoke(originalJournal, arguments); }
+                        catch (java.lang.reflect.InvocationTargetException error) { throw error.getCause(); }
+                        if (method.getName().equals("begin") && arguments[0] instanceof GitOperationJournalPort.Command value
+                                && value.action().equals("CREATE_BRANCH") && command.compareAndSet(null, value)) {
+                            operationId.set(((GitOperationJournalPort.Operation) result).id());
+                            entered.countDown();
+                            if (!release.await(15, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("Branch INTENT gate timed out");
+                        }
+                        return result;
+                    });
+            var interceptors = new java.util.ArrayList<>(originalInterceptors);
+            if (holdResponse) interceptors.add((request, body, execution) -> {
+                var response = execution.execute(request, body);
+                if (request.getMethod() == org.springframework.http.HttpMethod.POST
+                        && request.getURI().getRawPath().equals(canonicalEndpoint + "/repository/branches")) {
+                    holdFixtureResponse(response, responseEntered, releaseResponse);
+                }
+                return response;
+            });
+            ReflectionTestUtils.setField(serviceTarget, "runPort", observedRuns);
+            ReflectionTestUtils.setField(interceptor, "journal", pausedJournal);
+            http.setInterceptors(interceptors);
+        }
+        private void expire() {
+            var fence = command.get().taskFence();
+            assertThat(jdbc.update("update run_task set claim_expires_at=clock_timestamp()-interval '1 second' where id=? and status='RUNNING' and claim_token=?",
+                    fence.taskId(), fence.claimToken())).isEqualTo(1);
+        }
+        private void releaseAll() { release.countDown(); releaseResponse.countDown(); }
+        @Override public void close() {
+            releaseAll(); http.setInterceptors(originalInterceptors);
+            ReflectionTestUtils.setField(interceptor, "journal", originalJournal);
+            ReflectionTestUtils.setField(serviceTarget, "runPort", originalRuns);
+        }
+    }
+
     private io.releasehub.domain.run.Run admittedBranchRun() {
         String windowId = UUID.randomUUID().toString();
         String iterationKey = "ITER-PROOF-" + UUID.randomUUID();
@@ -1677,7 +2110,7 @@ class GitWriteSafetyIT {
             // 真实 begin 在测试控制的同一物理事务内持有 Run→Task 锁，直到允许提交。
             var owner = executor.submit(() -> new TransactionTemplate(transactions).execute(tx -> {
                 blockerPid.set(jdbc.queryForObject("select pg_backend_pid()", Integer.class));
-                String id = actualJournal.begin(command);
+                String id = actualJournal.begin(command).id();
                 entered.countDown();
                 try {
                     if (!commitIntent.await(10, java.util.concurrent.TimeUnit.SECONDS))
@@ -2294,7 +2727,7 @@ class GitWriteSafetyIT {
                         boolean originalBegin = method.getName().equals("begin")
                                 && arguments[0] instanceof GitOperationJournalPort.Command value
                                 && value.action().equals("MERGE_MR") && command.compareAndSet(null, value);
-                        if (originalBegin) operationId.set((String) result);
+                        if (originalBegin) operationId.set(((GitOperationJournalPort.Operation) result).id());
                         boolean originalSend = method.getName().equals("sending") && operationId.get() != null
                                 && operationId.get().equals(arguments[0]);
                         if ((afterSending ? originalSend : originalBegin) && paused.compareAndSet(false, true)) {

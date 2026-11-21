@@ -79,7 +79,7 @@ class RunOrchestrationTest {
             if (stopped || pending.isEmpty()) return Optional.empty();
             var action = pending.removeFirst();
             return Optional.of(new RunPort.TaskClaim(fences.get(action), run.getId().value(),
-                    item.getId().value(), item.getRepo(), action, NOW, run.getOperator(), Map.copyOf(facts)));
+                    item.getId().value(), item.getRepo(), action, NOW, run.getOperator(), Map.copyOf(facts), null));
         });
         when(runs.completeTask(any(), any(), any())).thenAnswer(invocation -> commit(
                 invocation.getArgument(0), invocation.getArgument(1), invocation.getArgument(2)));

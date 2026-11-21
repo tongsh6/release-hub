@@ -1,5 +1,6 @@
 package io.releasehub.application.run;
 
+import io.releasehub.application.gitoperation.GitOperationJournalPort;
 import io.releasehub.application.port.out.GitBranchPort;
 
 import io.releasehub.common.paging.PageResult;
@@ -27,7 +28,7 @@ public interface RunPort {
     List<String> findTaskCandidateRunIds(String afterId, int limit);
     /** 在结果事务内仅补一个已确认的分支创建、MR 创建或合并结果；不访问 Git、不换 token 或期限。 */
     boolean projectNextAppliedTask(String runId);
-    /** 锁内领取一个任务；无事实或具备完整未发送 MERGE 证明的到期领取可换 token，SEND 及未知结果不重派。 */
+    /** 锁内领取一个任务；无事实或具备完整未发送分支/MERGE 证明的到期领取可换 token，SEND 及未知结果不重派。 */
     Optional<TaskClaim> claimNextTask(String runId);
     /** 短事务内定向保存事实、投影、绑定和 guard 确认；不保存传入的整个 Run。 */
     Run completeTask(TaskClaim claim, RunStep step, Map<String, String> metadataUpdates);
@@ -77,7 +78,8 @@ public interface RunPort {
     record TaskFence(String taskId, String claimToken) {}
     /** startedAt 是当前持有者的执行起点；TaskView.startedAt 保留任务首次领取时间。 */
     record TaskClaim(TaskFence fence, String runId, String itemId, RepoId repo, ActionType actionType,
-                     Instant startedAt, String operator, Map<String, String> metadata) {
+                     Instant startedAt, String operator, Map<String, String> metadata,
+                     GitOperationJournalPort.Operation unsentOperation) {
         public TaskClaim { metadata = Map.copyOf(metadata); }
         @Override public Map<String, String> metadata() { return Map.copyOf(metadata); }
     }

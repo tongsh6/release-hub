@@ -26,12 +26,12 @@ public interface GitOperationJournalPort {
         @Override public List<Event> events() { return List.copyOf(events); }
         @Override public List<Observation> observations() { return List.copyOf(observations); }
     }
-    String begin(Command command);
+    Operation begin(Command command);
     void sending(String operationId, RunPort.TaskFence fence);
     void finish(String operationId, RunPort.TaskFence fence, GitWriteResult.Outcome outcome, String evidenceJson, String reason);
     void completeSession(String sessionId, boolean businessCommitted);
-    /** 加入原领取事务，核对未发送 MERGE 的完整证明并推进版本；Task 换权由唯一领取者在同事务 CAS。 */
-    boolean prepareUnsentMergeClaim(RunPort.TaskClaim currentClaim);
+    /** 加入原领取事务，核对未发送分支或 MERGE 的完整证明并推进版本；原操作快照随 Task 换权在同事务返回。 */
+    Optional<Operation> prepareUnsentTaskClaim(RunPort.TaskClaim currentClaim);
     /** 必须加入原任务结果事务，核对 CREATE_BRANCH 响应证明与 guard，返回原 numeric project；零远端调用。 */
     Optional<String> confirmedAppliedBranchProject(RunPort.TaskClaim claim);
     /** 必须加入原任务结果事务，核对完整 CREATE_MR 原响应，返回历史 CREATED 检查点；零远端调用。 */

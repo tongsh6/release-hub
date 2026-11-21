@@ -40,8 +40,13 @@ class GitSafetyBeanDecoratorTest {
         when(identities.resolve(any(), any())).thenAnswer(invocation -> new GitRemoteIdentityResolver.Identity(
                 "repo", "mapping", "b".repeat(64), "GITLAB", "https://gitlab.test", "17",
                 GitRemoteIdentityResolver.parse(invocation.getArgument(0))));
-        when(journal.begin(any())).thenAnswer(invocation ->
-                ((GitOperationJournalPort.Command) invocation.getArgument(0)).operationId());
+        when(journal.begin(any())).thenAnswer(invocation -> {
+            GitOperationJournalPort.Command command = invocation.getArgument(0);
+            return new GitOperationJournalPort.Operation(command.operationId(), command.repoId(), command.remoteKey(),
+                    command.provider(), command.baseUrl(), command.projectId(), command.action(), command.targetJson(),
+                    command.runId(), command.operator(), "INTENT_RECORDED", 0, java.time.Instant.EPOCH,
+                    java.time.Instant.EPOCH, null, true);
+        });
         var transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
         var http = new RestTemplate();

@@ -64,22 +64,47 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
         if(action.equals("DELETE_BRANCH"))throw BusinessException.of(ErrorCode.GIT_WRITE_BLOCKED);
         String rawQuery=request.getURI().getRawQuery();
         boolean merge=action.equals("MERGE_MR");
-        if(merge&&rawQuery!=null)throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
+        boolean branch=action.equals("CREATE_BRANCH");
+        if((merge||branch)&&rawQuery!=null)throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
         URI dispatchUri=URI.create(identity.baseUrl()+"/api/v4/projects/"+identity.projectId()+suffix
                 +(rawQuery==null?"":"?"+rawQuery));
         String id=UUID.randomUUID().toString();byte[] body=original;
         JsonNode requested=original.length==0?json.createObjectNode():json.readTree(original);
+        if(branch&&(requested==null||!requested.isObject()||requested.size()!=2
+                ||!requested.path("branch").isTextual()||requested.path("branch").textValue().isBlank()
+                ||!requested.path("ref").isTextual()||requested.path("ref").textValue().isBlank())) {
+            throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
+        }
         ObjectNode input=merge?GitLabMergeRequestAdapter.canonicalMergeRequest(requested):(ObjectNode)requested;
         if(merge&&(input==null||!expectedSha.equals(input.path("sha").textValue())))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
         ObjectNode target=json.createObjectNode();
-        if(action.equals("CREATE_BRANCH")||action.equals("CREATE_TAG")) {
+        if(branch||action.equals("CREATE_TAG")) {
             String ref=input.path("ref").asText();
             if(action.equals("CREATE_TAG")&&!GitLabGitBranchAdapter.validSha(ref))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
-            var commit=identities.metadata(identity,"/repository/commits/"+java.net.URLEncoder.encode(ref,java.nio.charset.StandardCharsets.UTF_8),null,request.getHeaders());
-            String sha=commit.path("id").asText();
-            if(!GitLabGitBranchAdapter.validSha(sha)
-                    ||action.equals("CREATE_TAG")&&!ref.equals(sha))throw BusinessException.of(ErrorCode.GIT_IDENTITY_UNAVAILABLE);
-            target.put("sourceRef",ref);input.put("ref",sha);
+            var prepared=branch?GitOperationContext.unsentOperation():null;
+            if(prepared!=null) {
+                JsonNode originalTarget=json.readTree(prepared.targetJson());
+                var originalBody=GitLabGitBranchAdapter.recordedBranchRequest(originalTarget);
+                if(originalBody==null||!"CREATE_BRANCH".equals(prepared.action())
+                        ||!identity.repoId().equals(prepared.repoId())||!identity.remoteKey().equals(prepared.remoteKey())
+                        ||!identity.projectId().equals(prepared.projectId())
+                        ||!ref.equals(originalTarget.path("sourceRef").textValue())
+                        ||!input.path("branch").equals(originalBody.path("branch"))) {
+                    throw BusinessException.of(ErrorCode.GIT_OPERATION_STALE);
+                }
+                input=originalBody;
+            } else {
+                var commit=identities.metadata(identity,"/repository/commits/"+java.net.URLEncoder.encode(ref,java.nio.charset.StandardCharsets.UTF_8),null,request.getHeaders());
+                String sha=commit.path("id").textValue();
+                if(!GitLabGitBranchAdapter.validSha(sha)
+                        ||action.equals("CREATE_TAG")&&!ref.equals(sha))throw BusinessException.of(ErrorCode.GIT_IDENTITY_UNAVAILABLE);
+                input.put("ref",sha);
+            }
+            target.put("sourceRef",ref);
+            if(branch) {
+                input=GitLabGitBranchAdapter.canonicalBranchRequest(input);
+                if(input==null)throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
+            }
         }
         if(action.equals("UPDATE_FILE")) {
             String expectedRevision=input.path("last_commit_id").asText();
@@ -96,7 +121,7 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
             String field=action.equals("CREATE_MR")?"description":"body";
             input.put(field,input.path(field).asText("")+"\nReleaseHub-Operation: "+id);
         }
-        body=merge?input.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8):json.writeValueAsBytes(input);
+        body=(merge||branch)?input.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8):json.writeValueAsBytes(input);
         target.put("suffix",suffix);target.put("method",request.getMethod().name());
         if(merge)target.setAll(input);
         else for(String key:List.of("branch","ref","source_branch","target_branch","head","base","tag_name","sha","last_commit_id","state_event","state")) {
@@ -111,14 +136,24 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
         }
         if(action.equals("TRIGGER_PIPELINE")||action.equals("CREATE_MR"))target.put("sha",expectedSha);
         String requestHash=merge?GitLabMergeRequestAdapter.mergeRequestHash(identity.remoteKey(),suffix,input)
+                :branch?GitLabGitBranchAdapter.branchRequestHash(identity.remoteKey(),input)
                 :GitRemoteIdentityResolver.hash(request.getMethod()+"|"+identity.remoteKey()+"|"+suffix+"|"
                 +(rawQuery==null?"":rawQuery)+"|"+GitRemoteIdentityResolver.hash(body)+"|"+target.path("sha").asText());
         var auth=SecurityContextHolder.getContext().getAuthentication();
         String operator=GitOperationContext.operator();
         if(operator==null)operator=auth==null?"system":auth.getName();
         var callerFence=GitOperationContext.taskFence();
-        id=journal.begin(new GitOperationJournalPort.Command(id,identity.repoId(),identity.repositoryMapping(),identity.remoteKey(),identity.provider(),identity.baseUrl(),identity.projectId(),
+        var operation=journal.begin(new GitOperationJournalPort.Command(id,identity.repoId(),identity.repositoryMapping(),identity.remoteKey(),identity.provider(),identity.baseUrl(),identity.projectId(),
                 action,json.writeValueAsString(target),requestHash,GitOperationContext.runId(),operator,session,callerFence));
+        id=operation.id();
+        if(branch) {
+            JsonNode admittedTarget=json.readTree(operation.targetJson());
+            var admittedBody=GitLabGitBranchAdapter.recordedBranchRequest(admittedTarget);
+            if(admittedBody==null||!target.equals(admittedTarget)||!"CREATE_BRANCH".equals(operation.action())
+                    ||!identity.repoId().equals(operation.repoId())||!identity.remoteKey().equals(operation.remoteKey())
+                    ||!identity.projectId().equals(operation.projectId()))throw BusinessException.of(ErrorCode.GIT_OPERATION_STALE);
+            body=admittedBody.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
         journal.sending(id,callerFence);
         HttpHeaders headers=GitRemoteIdentityResolver.externalHeaders(request.getHeaders());headers.setContentLength(body.length);
         HttpRequest wrapped=new HttpRequestWrapper(request) {
