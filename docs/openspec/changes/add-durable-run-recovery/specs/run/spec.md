@@ -6,7 +6,7 @@
 
 系统 SHALL 从窗口绑定关系生成仓库并集和 `(window, iteration, repository)` 计划，完整校验后，在同一受理事务保存协议 3 的 Run、不可变快照与每个 Item 的固定四动作任务，再执行 GitLab MR-first。计划包含真实 feature 分支模式、source/target、ref、提供方、仓库映射和稳定顺序；执行及重试不得重新解释这些目标。Publish/Attach 不因此获得隐式 Git 写入权限。
 
-C1 已交付 protocol 3 的 WINDOW_ORCHESTRATION 持久四动作及检查点后安全停住。当前 C2-A 目标将同一任务执行器改由持久扫描和有界 worker 消费，Orchestrate/retry 只返回 202 回执；仅继续未领取的 PENDING，不接管 RUNNING/UNKNOWN。C2-B 的租约接管与证据驱动恢复、S4 的其他执行类型恢复仍独立验收；交付状态以任务记录和真实证据为准。S3-B2 cleanup 复用 MR 规则，未迁入四动作协议。
+C1、C2-A 已交付持久四动作、后台扫描与 202。C2-B1 无 operation/Step 的过期 RUNNING 接管已验收并推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。当前 HEAD 为 C2-B2，规范化建分支证明与 APPLIED 投影恢复契约已定义、实现未开始。其他恢复仍待独立验收，cleanup 未迁入四动作协议。
 
 #### Scenario: 相同仓库属于多个迭代
 
@@ -397,6 +397,69 @@ C1 已交付 protocol 3 的 WINDOW_ORCHESTRATION 持久四动作及检查点后�
 - **THEN** 当前期限依据拿锁后的数据库当前时间重新设置，不使用事务开始时刻或首次 Task 时间
 - **AND** Task.started_at 保留首次领取；新 TaskClaim/Step 的起止时间来自本次 worker，二者不要求与首次 Task 时间相等
 - **AND** 到期只允许竞争接管，不在 begin/sending/finish/ack 中单独撤销仍匹配的 token
+
+### Requirement: 已确认建分支结果的受控投影恢复
+
+C2-B2 为当前子片与唯一 HEAD，契约已定义、实现未开始；依赖 C2-B1 的固定 SHA 远端验收已满足。规范化成功证明与 APPLIED 建分支投影恢复在同一切片交付。
+
+系统 SHALL 沿现有任务与账本，只对当前 WINDOW 协议的 ENSURE_FEATURE/ENSURE_RELEASE 补原 Task 投影：Task 为完整到期 RUNNING、实际顺序为正、无当前 Step，唯一 CREATE_BRANCH/APPLIED operation 具有 HTTP 201 及匹配的规范化 name/commit.id 证明。正常创建与事件共用此判定。系统 SHALL 保留原 operation/token/期限，在 Run→Task→guard 同一结果事务提交 Step、Item、绑定、Task 终态、Run 进度并确认 guard；恢复阶段零网络。不新增实体/API/UI/通用平台，不改变 GET 分支或 Tag 契约。
+
+#### Scenario: 建分支结果已确认但投影未提交
+
+- **GIVEN** 原 CREATE_BRANCH 的 HTTP 201 与完整匹配响应证明已提交 APPLIED，进程在 Task/Step 结果事务前被强杀
+- **WHEN** 本片实现后，默认 worker 在到期后处理原任务
+- **THEN** 仅补该 Task 的业务投影并原子确认 guard，原 Task/Item/operation 身份、token、期限、顺序与成功前缀保持
+- **AND** POST 总数仍为 1，恢复阶段 GET/POST/PUT 等远端请求均为 0，单次 worker 只完成一个任务
+
+#### Scenario: 命名 ref 与冻结提交各自约束原事实
+
+- **GIVEN** plan.defaultBranch 与 operation.target.sourceRef 保存原 ref 表达，operation.target.ref 保存写前已解析的提交 SHA
+- **WHEN** 判断分支证明是否足以补投影
+- **THEN** sourceRef 必须等于原计划 ref，target.branch 必须等于对应计划分支，target.ref 必须为合法 SHA 且等于规范化响应 commit.id
+- **AND** 不把命名 ref 直接当作 SHA，不查询当前 ref；numeric project 取原 operation 并与同 Run/仓库已持久 git.projectId 一致，namespace 改向不能替换该身份
+
+#### Scenario: 旁支字段不能掩盖错误 commit.id
+
+- **GIVEN** CREATE_BRANCH 返回 HTTP 201、正确 name、错误但合法的 commit.id=B，同时 object.id 或 commit.sha 为原 target.ref 的冻结 SHA A
+- **WHEN** 正常创建、HTTP 事件证明或恢复投影判断成功
+- **THEN** 只认确切 commit.id=B，因其不等于 A 而不确认 CREATED 或可恢复的 APPLIED 成功证明，不补成功 Step、不清 guard
+- **AND** commit.sha、object.id/object.sha 等字段不得替代或覆盖 commit.id，包括 commit.id 本身正确时；规范化证明始终保留该确切来源
+
+#### Scenario: HTTP 摘要不冒充业务完整证明
+
+- **GIVEN** HTTP 201 摘要只有 object.id/通用 commitSha，或 name/commit.id 类型、来源、分支、SHA、项目或 attempt 不匹配
+- **WHEN** operation 状态为 APPLIED，或者通用只读观察为 FOUND
+- **THEN** 不补成功 Step、不清 guard、不改变 token/期限/顺序，不补造旧摘要的证明
+- **AND** MR 的 APPLIED/FOUND、INTENT、SEND_STARTED、UNKNOWN/NEEDS_REVIEW、已有 Step 或领取事实不完整均不获得本片恢复授权
+
+#### Scenario: 非 201 响应不确认创建完成
+
+- **GIVEN** CREATE_BRANCH 返回 202 Accepted 或其他非 201 的 2xx，即便正文 name/commit.id 完整且匹配
+- **WHEN** 正常创建处理响应或恢复检查已有摘要
+- **THEN** 不把该响应当作 CREATED 或可恢复的 APPLIED 成功证明，保留未确认结果及 guard，不因正文看似成功而放行
+- **AND** 此创建约束不改变 GET 分支的成功响应或 Tag 等其他动作的确认规则
+
+#### Scenario: 结果与保护同事务且迟到结果不能覆盖
+
+- **GIVEN** 两个恢复 worker，或原 owner 与恢复 worker，竞争同一 Task
+- **WHEN** 结果事务按 Run→Task→guard 加锁并复核完整事实
+- **THEN** 最多提交一个 Step；先成功提交者保留投影，后提交者不覆盖，原 owner 先提交 UNKNOWN 时本片不恢复
+- **AND** guard 归属不符或投影后故障使业务结果与 guard 一起回滚，不新建 operation、不重发、不派发被阻塞后继
+
+#### Scenario: 结果事务不被自调用或新事务拆开
+
+- **GIVEN** 外层投影处理已按 Run→Task 取得锁
+- **WHEN** 复用 completeTask 的提交核心并调用 Journal 证据检查和 ack
+- **THEN** 外层入口须经 Spring 代理建立真实事务，同类 self-call 注解不另起事务，Journal 检查以 MANDATORY 加入，不用 REQUIRES_NEW 重取外层锁
+- **AND** 锁重入只限同一物理事务，flush/clear 后不修改已脱离上下文的旧实体，任何结果或 ack 失败均向外传播并整体回滚
+- **AND** 期限仅筛候选，不因证据不足释放 guard、续租或退回 PENDING，也不单凭到期撤销仍匹配的原 finish/ack
+
+#### Scenario: 补投影处理时间与历史时间分开
+
+- **GIVEN** 当前 worker 与原 worker 的时钟存在偏差，原 Task 首次时间及 HTTP event 时间已持久化
+- **WHEN** 当前 worker 成功补投影
+- **THEN** 新 Step.startAt/endAt 使用当前 worker 同一 Clock 的处理起止，明确表示本次补记；原 Task.started_at 与 HTTP 历史时间不变
+- **AND** 不伪造原 HTTP 执行时段，不用 max() 修饰跨时钟差异；停止派发回滚时保留已提交事实，不撤销分支或退回 PENDING
 
 ## MODIFIED Requirements
 

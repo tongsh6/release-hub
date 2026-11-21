@@ -442,8 +442,24 @@ HTTP 反例扣住客户端收到的短响应，服务端未被 latch 阻塞。�
 
 身份反例复核：首次 GET 只绑定当前动作上下文；动作结果提交才写入 Item metadata，写意图另由既有 operation 固定目标。原进程若仅有未提交读取、无 operation/Step/metadata，重启不能声称保留其未提交 numeric ID。已有同 Run 同仓持久身份则由 Run.repositoryProjectId 汇总并注入每次 Claim，在实际读写前拒绝 namespace 重绑定；当前 task 任何 operation 直接排除本片接管。设计与规范已精确区分这两种情况。
 
-当前本地门禁已通过，C2-B1 仍为 HEAD，下一步将后端与其必要测试消费者同组、文档另组提交并阶段推送，再核对本片固定 SHA Full-Link。默认 60 分钟、无心跳，短期限可造成健康长读反复失权；NULL/不完整领取事实保持停住。任何已有 INTENT/SEND/APPLIED/UNKNOWN 的恢复、完整 local 业务旅程和真实 UI 黄金旅程均不属于本片已验收能力。
+本地门禁通过时，C2-B1 保持 HEAD 等待后端及必要测试、文档分组提交和固定 SHA Full-Link；后续实际结果见 14.3–14.4。默认 60 分钟、无心跳，短期限可造成健康长读反复失权；NULL/不完整领取事实保持停住。任何已有 INTENT/SEND/APPLIED/UNKNOWN 的恢复、完整 local 业务旅程和真实 UI 黄金旅程均不属于本片已验收能力。
 
-### 14.3 本地分组提交
+### 14.3 分组提交与推送
 
-后端及必要测试提交为 `3f810c887afa3bdbf35e0786822756f3e0b2f711`，共 10 文件。候选方法改名涉及真实 PG/HTTP 测试消费者，代码和这些回归同组，确保中间提交可编译；不人为拆出断裂接口提交。提交前再次核对最终受验 backend hash、空 index、feature 分支与预期父提交，均匹配；详细清单见 `.ai/reports/validation/c2-b1/backend-commit.json`。文档另组收口后再推送，以该阶段最终 SHA 运行 Full-Link；本地提交不代表远端验收完成。
+后端及必要测试提交为 `3f810c887afa3bdbf35e0786822756f3e0b2f711`，共 10 文件。候选方法改名涉及真实 PG/HTTP 测试消费者，代码和这些回归同组，确保中间提交可编译；不人为拆出断裂接口提交。文档提交为 `5441df6bdc971953dee390c9470d4786fe0eab44`，共 10 文件。两组已正常快进推送到 feature/orchestration-consistency；提交和推送前均核对最终受验 backend hash、index、分支与预期父提交，推送后本地/远端 SHA 一致且工作区干净。main/develop 仍同指 `d4534ccc34fedb9bbf394ced89b4726f43ec197c`。详细清单见 `.ai/reports/validation/c2-b1/backend-commit.json`、`grouped-commits.json`、`push-result.json`。
+
+### 14.4 固定 SHA Full-Link 验收完成
+
+[Full-Link 44911634004](https://github.com/tongsh6/release-hub/actions/runs/44911634004) 的 head_sha 精确为 `5441df6bdc971953dee390c9470d4786fe0eab44`，job 136868521085 成功。2026-11-21 22:09:44（Asia/Shanghai）的原始结果行明确 Passed: 5 / Failed: 0，后端和 GitLab 健康检查及五个纵向切片通过；未延长启动等待，未使用真实业务密钥。原始结果和日志在 `.ai/reports/validation/c2-b1/full-link/result.json`、`136868521085.log`，未复用 C2-A 的 CI 结论。
+
+C2-B1 完成本片验收并标记 DONE。该 CI 仍是后端 API 与隔离 GitLab 的业务链；它与本地两类独立 JVM 故障证据分别承责，不代替完整浏览器旅程。Slice4/5 的既有弱覆盖、任何已有写意图/未知结果自动恢复的未交付边界保留。
+
+## 15. S3-C2-B2：建分支成功证明与 APPLIED 结果投影恢复
+
+B1 收口后直接进入这一已授权子片，当前先固定契约与独立正反例，尚未实施。目标仅为 ENSURE_FEATURE/ENSURE_RELEASE 的 CREATE_BRANCH：统一正确的创建成功证明，并让后台在 HTTP 已确认成功、Task 结果未提交时补齐原 Task/Step/项目身份和 guard；补投影阶段零网络请求、不旋转历史 HTTP token。复用原事件 JSON、Journal、RunPort/JPA 与 executeNextTask，不新增恢复实体、API/UI 或另一条执行路径。
+
+只读复审推翻了“APPLIED 摘要已足够”的首选假设：interceptor 从 commit/object 的 id/sha 依次写同一个 commitSha，合法但错误的 commit.id=B 可被 object.id=A 或 commit.sha=A 覆盖；当 A 为请求冻结 SHA 时，账本可能 APPLIED，而正常 adapter 仅验证 B 是合法 SHA，业务可错误提交 CREATED。反向例中正确 commit.id=A 被额外字段 B 覆盖，也会错误拒绝成功。上述是代码路径推导，必须先由真实 HTTP + Task 反例复现，不冒称已有 RED。
+
+独立标准依据 [GitLab 创建分支 API](https://docs.gitlab.com/api/branches/#create-repository-branch)：201 Created、匹配名称、合法且精确来自 commit.id 的 SHA；202、字段类型不符、只有 object.id、名称或冻结 SHA 不符均不构成创建成功证明。只收紧 CREATE_BRANCH 的创建确认，不改变 GET 或 Tag 契约。计划中的 plan.defaultBranch/operation.sourceRef 是命名引用，operation.target.ref 才是写前解析并固定的 SHA；补记时核对两层，不重新解析当前分支头。
+
+正反例还覆盖：完整事件/attempt/operation/guard 归属，缺证据不补造；双 worker、旧 owner 与恢复者分别先提交、UNKNOWN 先提交；结果事务故意回滚时 guard 同回滚；独立 JVM 在 APPLIED 后、Task/Step 前强杀，重启补原任务且恢复阶段 HTTP 计数不增加。事务沿 Run→Task→guard，Journal 校验加入现有事务而非 REQUIRES_NEW；外层必须真正经过 Spring 事务代理，不能依赖自调用注解。当前补投影 Step 使用本次处理起止时间，旧 Task 首次时间与 HTTP event 历史时间保留。MR、INTENT 发送权、SEND_STARTED/UNKNOWN 及其他动作继续排队。

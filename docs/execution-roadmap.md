@@ -18,9 +18,10 @@
 | 2 | DONE | SA-013 | S3-B2 仓库级关闭受理、收尾失败传播与共享引用保护 | e127023、5ad0666 已推送 | 重复 close 返回原 Run；精确 Tag/显式 CI；共享引用保留；生命周期并发屏障通过验证 |
 | 3 | DONE | SA-013 | S3-C1 持久四动作与安全中断 | `44e742c`、`3766686`、`4c6b3e9`、`e5094ba` 已推送；Full-Link 44899945002 为 5/5 | 唯一持久四动作、请求幂等、MR 检查点、原子结果和安全中断已完成本阶段验收 |
 | 4 | DONE | SA-013 | S3-C2-A 持久扫描、异步受理与进度观察 | 四组提交已推送；固定 `1761572` 的 Full-Link 44905843754 为 5/5 | 202、持久扫描、PENDING 重启继续与原回执观察完成本阶段验收；不冒称 RUNNING/UNKNOWN 接管 |
-| 5 | HEAD | SA-013 | S3-C2-B1 无写意图的过期 RUNNING 接管 | 本地功能回归及最终静态复扫通过；分组提交后的固定 SHA CI 待验 | 同 Run→Task 锁内确认领取事实完整且当前 task 无任何 operation/Step 后才换 token；原任务、首次时间、实际顺序与 MR 检查点保持 |
-| 6 | QUEUED | SA-013 | S3-C2-B 后续：已有写意图与证据恢复 | C2-B1 之后独立验收 | INTENT 发送权、APPLIED 只补投影、SEND/UNKNOWN 精确核对与观察版本分别处理 |
-| 7 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队列保留 | 历史数据处置仍先核实计划，不自动迁移或清库 |
+| 5 | DONE | SA-013 | S3-C2-B1 无写意图的过期 RUNNING 接管 | 3f810c8、5441df6 已推送；固定 5441df6 的 Full-Link 44911634004 为 5/5 | 无 operation/Step 的完整过期领取按原 token 接管，原任务/首次时间/实际顺序与 MR 检查点保持 |
+| 6 | HEAD | SA-013 | S3-C2-B2 建分支成功证明与 APPLIED 结果投影恢复 | B1 已验收；独立反例和现有职责查重完成，实现未开始 | 先修正 commit.id 被旁支字段覆盖的错误成功风险，再沿现有事件证明仅补原分支任务结果；恢复过程零网络 |
+| 7 | QUEUED | SA-013 | S3-C2-B 后续：MR 证据、发送权与未知结果恢复 | C2-B2 之后独立验收 | MR 完整检查点、INTENT 发送权、SEND/UNKNOWN 精确核对与观察版本分别处理 |
+| 8 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队列保留 | 历史数据处置仍先核实计划，不自动迁移或清库 |
 
 ## 3. 当前队首验收出口
 
@@ -34,7 +35,9 @@ C2-A 本地验收已完成：202 与 Git I/O 解耦，默认数据库扫描无�
 
 C2-A 最终静态报告为 `.ai/reports/static-scan/20261121-203554/summary.md`：SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings，TopN 逐项处理且 EOF 修正复查通过。任意中断点接管与真实 UI 黄金旅程仍未验收。CI profile/Python/fixture 修复链及 C1 5/5 保留为历史；C2-A 已用本次 SHA 独立复验，Slice4/5 的较弱覆盖不扩写为完整清理/真实冲突验收。
 
-当前 C2-B1 已在同一路径实现：API 48/48、普通后端 680 项（675 PASS、5 既有 SKIP）在静态整理前各自源码稳定的树通过；整理仅涉及 RunJpaPersistenceAdapter，最终代码已重跑覆盖它的组合 76/76，源码前后 hash 一致，重叠不累计。末尾仅 RUNNING、双 worker 原子接管、旧 begin/complete 拒绝、全部 operation/当前 task Step 排除、拿锁后 DB 期限、首次时间及已有顺序保留均有真实 RED→GREEN；PENDING 和已领取但无 operation 两个独立 JVM 强杀重启场景均 MR POST=1、MERGE PUT=1。默认期限 60 分钟、无心跳；V40 NULL 不回填为资格。最终静态 `.ai/reports/static-scan/20261121-214959/summary.md` 为六模块 SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 fixture warnings；首扫 4 项已修复或精确说明并复扫。当前等待分组提交、推送及本片固定 SHA Full-Link；此前 C2-A CI 不替代本片验收。
+当前 C2-B1 已在同一路径实现：API 48/48、普通后端 680 项（675 PASS、5 既有 SKIP）在静态整理前各自源码稳定的树通过；整理仅涉及 RunJpaPersistenceAdapter，最终代码已重跑覆盖它的组合 76/76，源码前后 hash 一致，重叠不累计。末尾仅 RUNNING、双 worker 原子接管、旧 begin/complete 拒绝、全部 operation/当前 task Step 排除、拿锁后 DB 期限、首次时间及已有顺序保留均有真实 RED→GREEN；PENDING 和已领取但无 operation 两个独立 JVM 强杀重启场景均 MR POST=1、MERGE PUT=1。默认期限 60 分钟、无心跳；V40 NULL 不回填为资格。最终静态 `.ai/reports/static-scan/20261121-214959/summary.md` 为六模块 SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 fixture warnings；首扫 4 项已修复或精确说明并复扫。后端 3f810c8、文档 5441df6 已推送；固定完整 5441df6bdc971953dee390c9470d4786fe0eab44 的 [Full-Link 44911634004](https://github.com/tongsh6/release-hub/actions/runs/44911634004) 为 5/5，B1 正式出队，未借用 C2-A CI。
+
+当前 C2-B2 只处理 CREATE_BRANCH 成功证明与原分支 Task 的 APPLIED 投影。先用真实 HTTP/业务入口验证错误 commit.id 被 object.id/commit.sha 覆盖、201 仅 object.id、202 仿成功正文等负例，再统一 201/name/确切 commit.id 校验。复用原事件、operation、Task 与 guard，同 Run→Task→guard 事务补原结果，不重发、不换历史 token；双 worker、旧 owner、回滚和 APPLIED 后独立进程强杀均须独立验收。已有 MR、INTENT、SEND/UNKNOWN 与完整 UI 旅程仍不包含在本片完成条件中。
 
 ## 4. 暂缓项
 

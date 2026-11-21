@@ -1,6 +1,6 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002 为 5/5。C2-A 已实现、验证并分四组推送，固定 `1761572` 的 Full-Link 44905843754 为 5/5；当前先推进 C2-B1 无写意图的过期任务接管，再逐项处理已有写意图与证据驱动恢复。当前事实与历史验收分别见 tasks.md 和本轮记录。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。当前唯一 HEAD 为 C2-B2：规范化建分支成功证明与 APPLIED 结果投影恢复，契约已定义、实现未开始。当前事实与历史验收分别见 tasks.md 和本轮记录。
 
 
 ## 0. 当前研发蓝图与授权（2026-11-21）
@@ -76,7 +76,7 @@ UI 复用 executionIntent 的原 actor/operation/key/payload，并在原页面�
 
 当前操作账本对 task_id 唯一，观察、迟到结果和 ack 还关联原 claimToken；不得通过换 token 再创建第二个 operation 来规避。C2-B 需沿现有账本区分历史 HTTP 事实、当前发送权和当前投影权；只读 FOUND 还须验证动作所需的项目、IID、分支与冻结 SHA。无 SEND 的意图、已确认 HTTP 结果和 SEND_STARTED 后未知请求分别处理。租约过期或单次 404 均不能授权重发，未知事实不得仅凭 FOUND 解除 guard。
 
-##### C2-B1：无写意图的过期领取（已实现、本地功能验收通过，当前待交付子片）
+##### C2-B1：无写意图的过期领取（已验收，提交推送完成）
 
 用户价值是进程已领取任务、尚未建立写意图时，后台能继续原任务；先独立验收这一边界，再处理已有 operation。只沿既有 RunPort/JPA、RunTask、RunAppService.executeNextTask 和 RunTaskWorker 扩展，不新增恢复实体、执行器、API 或按钮。
 
@@ -104,6 +104,41 @@ PostgreSQL CURRENT_TIMESTAMP 固定为事务开始时刻，不能在长锁等待
 | MR 检查点已提交，TRY 已领取但无 operation，强杀并重启 | 默认 worker 接管原 TRY；MR POST 仍 1，MERGE PUT 恰 1，成功前缀逐字段不变 |
 
 回滚先停止派发，保留任务、期限和证据；不恢复同步旧循环、不将 RUNNING 改回 PENDING。已有 INTENT 的发送权转移、APPLIED 只补投影、SEND_STARTED/UNKNOWN 精确核对与 guard 确认属于 C2-B 后续子片，不以本片完成宣称完整恢复。
+
+##### C2-B2：规范化建分支证明与投影恢复（当前子片 / HEAD，契约已定义、实现未开始）
+
+C2-B1 固定 `5441df6` 的远端验收已完成，C2-B2 为当前唯一 HEAD，契约已定义、实现未开始。正常创建成功证明的规范化与 CREATE_BRANCH/APPLIED 投影恢复在同一切片交付。用户价值是 CREATE_BRANCH 的 HTTP 结果已持久化、原 ENSURE_FEATURE/ENSURE_RELEASE 结果尚未提交时，后台只补原 Task 投影。恢复阶段不访问网络，不新增实体、API、UI、发送入口或通用恢复平台；MR、INTENT 发送权、SEND_STARTED/UNKNOWN 与其他执行类型仍分别排队。
+
+APPLIED 不是业务完整证明。[GitLab 创建分支契约](https://docs.gitlab.com/api/branches/#create-repository-branch)规定成功响应为 201 Created，正文包含分支 name 与 commit.id，ref 可为分支名或提交 SHA。本片仅接受 201 加完整匹配的 name/commit.id；202 Accepted 等其他 2xx 即便正文看似成功也属于未确认。正常创建与既有 HTTP event 的 evidence_json 证明必须共用该创建成功判定，规范化只允许确切 commit.id，commit.sha、object.id/object.sha 或其他字段均不得替代或覆盖；不改变 GET 分支、Tag 或其他动作契约。
+
+现 createBranch 检查 2xx、name 和 commit.id 格式，但未独立核对写前冻结 SHA；拦截器循环又会覆盖 commitSha。首要 RED 是 HTTP 201 的 name 正确、commit.id 为错误但合法的 B，而 object.id 或 commit.sha 为冻结 A：现路径可能错误 APPLIED/CREATED 并确认 guard。201 只有 object.id、202 即便正文完整仍分别保留为负例。无完整证明的旧摘要不推断成功、不补造字段，也不以额外 GET 或通用 FOUND 绕过；现拦截器判为 UNKNOWN 时会关闭响应并抛 IOException，不能假设原正文仍返回正常消费者。
+
+计划与 HTTP 意图分别承责：plan.defaultBranch 保留计划的原 ref 表达，现两个 ENSURE 分支动作都将它传给 createBranch；拦截器先保存 target.sourceRef，再解析并把 target.ref 固定为实际提交 SHA。投影须同时验证 sourceRef 等于已存 plan.defaultBranch、target.branch 等于对应计划分支、target.ref 是合法 SHA 且等于规范化响应 commit.id。不得把命名 ref（如 main）直接当作 SHA 比较，不重新解析当前 ref。远端身份取原 operation 的 numeric project，与同 Run/仓库已有持久 git.projectId 一致；缺少 Item 身份时只从该已持久 operation 补入，不能因当前 namespace 改向而更换项目。
+
+| 既有职责 | 本片的实际消费者与边界 |
+|---|---|
+| GitWriteHttpInterceptor / 正常分支响应校验 / 原 event | 统一成功证明，由正常返回与恢复投影共同消费；不保存 Token 或完整敏感响应 |
+| GitOperationJournalPort / 原 operation 与 guard | 在结果事务内核实唯一 task operation、完整证明及相同 session/generation/operation 归属 |
+| RunPort / RunJpaPersistenceAdapter / completeTask | 同 Run→Task→guard 短事务补 Step、Item 身份、必要绑定、Task 终态及 Run 进度，并确认 guard |
+| RunAppService.executeNextTask / 原 RunTaskWorker | 单次最多补一个投影；没有合格投影时走原 claim 执行路径，不把旧 token 交给 Git 执行 |
+
+投影资格仍需当前 WINDOW 协议、Run=RUNNING/NEEDS_REVIEW、完整到期 RUNNING、正的实际顺序、当前 task 无 Step，以及匹配的唯一 CREATE_BRANCH/APPLIED operation 和响应证明。到期只筛候选，不授予成功或发送权；保留原 operation、claimToken、期限及 HTTP 事件，不续租、不回 PENDING。旧 owner 先成功提交则恢复无操作；恢复先提交则旧 complete 被任务终态拒绝；旧 owner 先提交 UNKNOWN 则本片不恢复。两个恢复者最终只能提交一个 Step。
+
+外层公开投影入口必须由 Spring 代理建立结果事务；同类自调用 completeTask 不会使内层注解另起事务，可复用同一提交核心。新增 Journal 证据检查须显式 MANDATORY，不能继承类级 REQUIRES_NEW 后重取外层已持有的 Run/Task 锁。锁重入只限同一物理事务；completeTask 的 flush/clear 后不得再修改已脱离上下文的旧实体，结果或 ack 失败必须向外传播并整体回滚。
+
+新增 Step.startAt/endAt 来自当前 worker 的同一 Clock，表示本次补投影处理起止，不冒充原 HTTP 执行时段。Task.started_at 的首次领取事实与 HTTP event 的历史时间保持；不得用 max() 拼合跨时钟时间或重写旧事实。
+
+| 独立正反例 | 验收结果 |
+|---|---|
+| 201 与完整分支证明已提交 APPLIED，Task/Step 前硬杀 | 默认扫描重启补原 Task；POST 总数仍 1，恢复阶段零网络请求，原身份、顺序与前缀保持 |
+| 命名 ref 已变、namespace 已改向 | 只按原 target.ref 与持久项目补记；不重读 ref，不改向新项目 |
+| 201 commit.id=B，而 object.id 或 commit.sha=冻结 A | 只以确切 commit.id 判定；正常执行记录 UNKNOWN，不能确认 CREATED/APPLIED；恢复不补成功 Step，不清 guard |
+| 201 只有 object.id、202 即便正文完整、摘要缺证明或分支/SHA/项目/attempt 不符 | 不补成功 Step，不清 guard，不改变 token/期限/顺序 |
+| 双恢复者、旧 owner 与恢复者两个胜出顺序 | 一个 Step；旧 UNKNOWN 先提交时不恢复，迟到结果不覆盖 |
+| 投影写入后失败、guard 归属不符 | 结果与 guard 同事务回滚，缺失事实不补造 |
+| 当前 worker 时钟与历史时间存在偏差 | 新 Step 记录本次处理起止，Task 首次时间与 HTTP 历史时间不改 |
+
+回滚先停派发，保留已提交投影、任务、证明及 guard；不重新发送、不清空证据或撤销已发生的分支。MR 的 APPLIED/FOUND 尚不足以构造完整检查点，不在本片取得投影或解除保护的授权。
 
 ### 分阶段依赖与交付
 
@@ -187,7 +222,7 @@ flowchart TD
 
 ## 4. 数据模型与身份
 
-当前 C1/C2 直接复用 S1/S2 的计划、操作账本和 V21 任务表。下表记录实际承载关系，C2-B1 已实现且本地功能验收通过；其远端验收仍单独记录，不把未来候选字段写成现有能力。
+当前 C1/C2 直接复用 S1/S2 的计划、操作账本和 V21 任务表。下表记录实际承载关系，C2-B1 已实现、验收并推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5；C2-B2 仍仅完成契约定义，不把未实现能力写成现有事实。
 
 | 结构 / 责任 | 当前实际约束 |
 |---|---|
