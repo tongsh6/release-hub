@@ -16,9 +16,10 @@
 |---|---|---|---|---|---|
 | 1 | DONE | SA-013 | S3-A/B1 唯一编排语义与阶段交付 | 提交 53eed67、a4007f2、71a1487 已分阶段推送 | 纯配置、不可变计划、MR-first、精确重试、统一状态与写入证据完成目标验收 |
 | 2 | DONE | SA-013 | S3-B2 仓库级关闭受理、收尾失败传播与共享引用保护 | e127023、5ad0666 已推送 | 重复 close 返回原 Run；精确 Tag/显式 CI；共享引用保留；生命周期并发屏障通过验证 |
-| 3 | HEAD | SA-013 | S3-C1 持久四动作与安全中断 | 复用 run_task、Run/Item/Step、计划和操作账本 | 唯一编排路径按任务提交；请求幂等、MR 分段、结果 CAS 与 guard 同事务；先验证中断后安全停住 |
-| 4 | QUEUED | SA-013 | S3-C2 后台驱动、核对与恢复 | C1 同一执行器 | 有界 worker、202/轮询、持久扫描和证据驱动恢复；不增加第二条执行路径 |
-| 5 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队列保留 | 历史数据处置仍先核实计划，不自动迁移或清库 |
+| 3 | DONE | SA-013 | S3-C1 持久四动作与安全中断 | `44e742c`、`3766686`、`4c6b3e9`、`e5094ba` 已推送；Full-Link 44899945002 为 5/5 | 唯一持久四动作、请求幂等、MR 检查点、原子结果和安全中断已完成本阶段验收 |
+| 4 | HEAD | SA-013 | S3-C2-A 持久扫描、异步受理与进度观察 | C1 同一执行器 | 有界 worker 只领取 PENDING，202/原请求回执/任务观察闭环；不增加第二条执行路径 |
+| 5 | QUEUED | SA-013 | S3-C2-B 已领取任务接管与证据驱动恢复 | C2-A 与现有操作账本 | 证明无发送或精确完成后才继续；租约过期不等于可重发，保留历史 HTTP 事实 |
+| 6 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队列保留 | 历史数据处置仍先核实计划，不自动迁移或清库 |
 
 ## 3. 当前队首验收出口
 
@@ -26,9 +27,11 @@ S3-A/B1 已完成单元、H2/PostgreSQL/API、前端门禁、静态扫描与交�
 
 B2 已完成：普通后端 613 项（608 PASS、5 既有 SKIP）、六类数据库/API/HTTP fixture 70/70、前端 38 文件/149 项及全部门禁通过。最终静态扫描 `.ai/reports/static-scan/20261121-153304/summary.md`：SpotBugs 0、lint 0 errors/8 既有 fixture warnings，逐项处置已记录。关闭受理与 CLOSED 同事务；共享仓库只执行一次；Tag/CI 失败零后继写；release 缺失零发布副作用；共享 Iteration 和引用保留；重复/并发 close 返回原 Run；在途编排与关闭通过同一窗口锁互斥。
 
-C1 的本地最后候选验证已通过：普通后端 57 类 657 项（652 PASS/5 SKIP），最新契约 9 类 148/148，前端 170/170，以及 MR 检查点提交后独立 JVM 强杀、重启同 key 零新增 HTTP。受理回执已收窄为 runId；迭代配置建分支/归档旧入口已删除，repoConfigs 范围已校验；E2E fixture 使用隔离项目与已验证 Settings。最终扫描 `20261121-175548` 为 SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings，TopN 与 EOF 修正复验已留痕。分组推送和新 SHA Full-Link 尚待完成，HEAD 保持 C1；其验收边界是可查询且安全停住，C2 才交付自动扫描和继续执行。
+C1 的本地最后候选验证已通过：普通后端 57 类 657 项（652 PASS/5 SKIP），最新契约 9 类 148/148，前端 170/170，以及 MR 检查点提交后独立 JVM 强杀、重启同 key 零新增 HTTP。受理回执已收窄为 runId；迭代配置建分支/归档旧入口已删除，repoConfigs 范围已校验；E2E fixture 使用隔离项目与已验证 Settings。最终扫描 `20261121-175548` 为 SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings，TopN 与 EOF 修正复验已留痕。四组提交已推送，固定 `e5094ba` 的 Full-Link 44899945002 为 5/5，C1 标记 DONE；其硬杀验收边界仍是可查询且安全停住。
 
-完整范围及分阶段依赖见 `docs/openspec/changes/add-durable-run-recovery/design.md` 与 `tasks.md`。后台 worker、自动 resume、任意中断点接管及当前真实 UI 黄金旅程仍未验收。CI profile/Python 修复已推送；固定 SHA a7181fa 的 Full-Link 已执行 5 切片，其中 1/2/4 通过、3/5 失败，不能作为当前 C1 全绿证据。真实外部写仅限明确隔离 fixture，未对业务 GitLab 仓库执行写操作。
+当前 C2-A 验收出口：202 与 Git I/O 解耦；持久扫描不依赖内存唤醒；有界游标防止被阻塞的前页饿死后续 Run；worker 开始后才领取，拒绝提交不制造 RUNNING 孤儿；同仓串行、不同仓可进展；旧协议/预览/cleanup/version 不误派发；原请求回执不依赖当前 scope；NEEDS_REVIEW 下其他仓仍活动时继续观察；在 MR 检查点后重启只继续原 PENDING TRY_MERGE，不再 POST MR。领取后中断仍安全停住，自动接管属于 C2-B。
+
+完整范围及分阶段依赖见 `docs/openspec/changes/add-durable-run-recovery/design.md` 与 `tasks.md`。后台 worker、任意中断点接管及当前真实 UI 黄金旅程仍未验收。CI profile/Python/fixture 修复链与本轮真实 5/5 结果均已记录；Slice4/5 的较弱覆盖不被扩写为完整清理/真实冲突验收。真实外部写仅限明确隔离 fixture，未对业务 GitLab 仓库执行写操作。
 
 ## 4. 暂缓项
 

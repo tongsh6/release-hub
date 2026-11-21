@@ -121,11 +121,11 @@ Attach/Detach 建立或解除关系，不写 Git；Publish 改变窗口生命周
 
 ## 9. 当前实施路线与事实来源
 
-2026-11-21 已验收并推送 S3-A/B1 和 B2：纯配置边界、权威计划、MR-first、统一状态、精确执行项选择，以及仓库级关闭与安全收尾。当前 S3-C1 已形成唯一 WINDOW 持久四动作执行路径，最后候选契约、前端回归与静态复扫已通过；修复后新 SHA 的 Full-Link CI 尚待完成，当前仍不能记为 C1 整体交付。真实 UI 黄金旅程按完整恢复蓝图另行验收，不用后端 API/GitLab fixture 代替。
+2026-11-21 已验收并推送 S3-A/B1、B2 和 C1：纯配置边界、权威计划、MR-first、统一状态、精确执行项选择、仓库级安全收尾，以及唯一 WINDOW 持久四动作。C1 最后候选契约、前端回归与静态复扫通过，固定提交 `e5094ba` 的 [Full-Link CI](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 为 5/5。真实 UI 黄金旅程按完整恢复蓝图另行验收，不用后端 API/GitLab fixture 代替。
 
 - S3-C1 当前实现：请求线程消费持久任务，沿用冻结范围、顺序和分支计划；首次确认的 GitLab 数值项目 ID 落库并约束后续动作。ENSURE_MR 与 TRY_MERGE 分段保存检查点，任务结果 CAS、Step/Item/Run、绑定和 guard 确认在同一事务提交。
 - S3-C1 请求与中断边界：执行和重试使用必填 `Idempotency-Key` 请求头，仍返回 HTTP 200/Run ID；同一主体的相同键及相同请求只返回原回执，改变请求不能复用该键。真实 PostgreSQL/本地 HTTP fixture 与独立 JVM 硬杀已证明：ENSURE_MR 检查点提交后重启可查原回执，且不会重放或自动继续。该证据不覆盖所有中断时点，也不等于真实 GitLab/UI 全旅程通过。
-- S3-C2 后续待实现：复用同一执行器的有界后台 worker、202/轮询、持久扫描、租约接管，以及精确证据驱动的核对与恢复；当前没有 worker 或自动 resume。
+- S3-C2 分步推进：C2-A 接入同一执行器的有界后台 worker、PENDING 持久扫描、202/轮询和原请求回执找回；C2-B 再处理已领取任务的过期接管、精确证据核对与恢复。当前尚无 worker 或自动 resume，C2-A 完成也不等于 C2 整体完成。
 - S4/S5：其他动作的安全恢复、完整 GitLab/UI 旅程和受控交付。
 
 完整阶段依赖、迁移、风险及验收条件统一维护在 [恢复设计](../../openspec/changes/add-durable-run-recovery/design.md) 与 [任务追踪](../../openspec/changes/add-durable-run-recovery/tasks.md)，不在本文维护第二份执行队列。

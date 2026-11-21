@@ -1,6 +1,6 @@
 # 2026-11-21 SA-013：分支收敛与唯一编排语义
 
-状态：S3-A/B1、S3-B2 已完成目标验收、交叉审查、静态扫描及分阶段推送，当前进入 S3-C1 持久四动作与安全中断。提交前发现的业务 UNKNOWN 会话收口和最终写 URI 两个组合缺陷均已用真实 RED→GREEN 修复。本文只记录本轮实际结果，历史 GitLab 证据不视为本轮重跑。
+状态：S3-A/B1、S3-B2、S3-C1 已完成目标验收、交叉审查、静态扫描及分阶段推送；C1 固定 e5094ba 的 Full-Link 44899945002 为 5/5，当前队首推进到 C2-A 持久扫描、异步受理与进度观察。此前业务 UNKNOWN 会话收口和最终写 URI 两个组合缺陷均已有真实 RED→GREEN。本文只记录实际结果，历史 GitLab 证据不视为本轮重跑。
 
 ## 1. 目标与范围
 
@@ -163,7 +163,7 @@
 
 ## 9. S3-C1：持久四动作与安全中断（专项验证记录）
 
-状态：**本地候选验证通过，等待分组交付与新 SHA Full-Link**。后端/API/真实 PostgreSQL 与本地 HTTP/进程硬杀/前端门禁已通过；编排受理已收窄为 runId 回执，配置隐式 Git 写和 repoConfigs 越界已修复。新提交的真实 GitLab CI 仍待运行，不据此认定 C1 已整体交付。本节的 S3-C1 是恢复蓝图阶段，不是第 6 节已交付的 Git 安全提交分组 C1。
+状态：**C1 已验收并分阶段推送，固定 SHA Full-Link 5/5 通过**。后端/API/真实 PostgreSQL 与本地 HTTP/进程硬杀/前端及静态门禁已通过；编排受理已收窄为 runId 回执，配置隐式 Git 写和 repoConfigs 越界已修复。四组提交至 e5094ba，真实 GitLab CI 44899945002 成功，自动恢复和浏览器完整旅程不在本节完成范围。本节的 S3-C1 是恢复蓝图阶段，不是第 6 节已交付的 Git 安全提交分组 C1。
 
 ### 9.1 目标、依赖与非目标
 
@@ -250,11 +250,11 @@ RunTaskProcessKillIT 使用独立 JVM、隔离 PostgreSQL 与本地 GitLab HTTP 
 |---|---|
 | 行为 | 已取得四动作提交、重复请求零执行、原身份保留与检查点硬杀专项证据；未把自动恢复计入完成。 |
 | 层级 | Run/Plan/Port/JPA/Git 与 API/HTTP/数据库组合已验证；前端 retry envelope、同页路由和离页生命周期已修复并通过 170 项回归、类型与构建门禁。 |
-| 测试 | RED/GREEN、普通后端 652 PASS/5 SKIP、最后候选契约 148 PASS、独立进程硬杀和前端 170 PASS 已归档；真实 GitLab 新 SHA Full-Link 仍待收口。 |
+| 测试 | RED/GREEN、普通后端 652 PASS/5 SKIP、最后候选 148 PASS、独立进程硬杀和前端 170 PASS 已归档；固定 e5094ba 的 Full-Link 44899945002 为 5 切片 PASS/0 FAIL。 |
 | 架构 | 复用 run_task、现有 Port/metadata/guard；无第二套 WINDOW executor，无租约重发或兼容重载。 |
 | 性能 | HTTP 不占结果事务；C1 仍由请求线程逐项消费，不宣称已交付仓库后台并发或性能基准。 |
-| 文档 | 台账、路线图、矩阵、设计及 iteration delta 已同步当前事实；OpenSpec 2.1.1 最终 strict 通过，HEAD 在真实 CI 收口前保留 C1。 |
-| 工作区 | 已按后端、前端、E2E/脚本分组提交；本记录随后随文档提交。远端 hash 与固定 SHA CI 结果另行记录，不提前宣称通过。 |
+| 文档 | 台账、路线图、矩阵、设计及 iteration delta 已同步；OpenSpec 2.1.1 strict 通过，C1 真实 CI 收口后标记 DONE，当前队首为 C2-A。 |
+| 工作区 | 后端、前端、E2E/脚本、文档四组已推送到 feature，远端 HEAD=e5094ba；main/develop 均保持 d4534cc。验收结果及 C2 切片计划随后单独提交。 |
 
 静态首扫 `.ai/reports/static-scan/20261121-173206/summary.md` 的 OrchestrationAdmission 两项可变聚合暴露已通过 runId 回执消除，无 suppress 或新抽象。复扫 `.ai/reports/static-scan/20261121-175548/summary.md`：六模块 SpotBugs 0，typecheck 通过，lint 0 errors/8 个既有测试替身 warnings。复扫首次发现本记录 EOF 多一个空行，本次已修正并在报告中追加独立 diff-check 复验；原始失败日志保留。TopN 逐项处理及仍保留的 fixture warning 理由写入两轮报告。
 
@@ -267,8 +267,9 @@ RunTaskProcessKillIT 使用独立 JVM、隔离 PostgreSQL 与本地 GitLab HTTP 
 | 后端 | `44e742c2f590a7368e122c840e17e02df2558057` | 持久任务、原子结果、冻结身份、幂等回执、配置零 Git、请求范围与真实故障验证 |
 | 前端 | `376668606cff57a1500e3e5faa5032f9ee6ba34f` | 持久任务展示、回执保留、精确重试、路由/离页生命周期及配置文案 |
 | E2E/脚本 | `4c6b3e9ff7f17c36a4556a629f5eb05b05cc6ac4` | 隔离 GitLab fixture、真实首次编排/合并、正确 HTTP 方法、配置边界消费者；删除无实际消费者的旧脚本 |
+| 文档 | `e5094ba7971066749221f1ca4356f716b1514a4c` | 本地验收、证据边界和设计同步；本阶段固定 SHA Full-Link 的真实执行提交 |
 
-提交前 staged diff-check 额外发现新 GitLabE2EFixtureTest 的 EOF 空行，已仅删除该空行并重新检查；没有变更验证后的 Java 语义，也没有绕过钩子或改写历史提交。远端推送与新 SHA CI 以实际观察结果补充。
+提交前 staged diff-check 额外发现新 GitLabE2EFixtureTest 的 EOF 空行，已仅删除该空行并重新检查；没有变更验证后的 Java 语义，也没有绕过钩子或改写历史提交。四组提交已推送，远端 feature 与固定 SHA CI 均核对到 `e5094ba7971066749221f1ca4356f716b1514a4c`；证据为 `.ai/reports/validation/c1-stage-push.json`。
 
 ## 10. Full-Link E2E：按实际失败层逐项修复
 
@@ -279,10 +280,11 @@ RunTaskProcessKillIT 使用独立 JVM、隔离 PostgreSQL 与本地 GitLab HTTP 
 | `d4534cc` / [44869040704](https://github.com/tongsh6/release-hub/actions/runs/44869040704) | Dockerfile 固定参数 `gitlab-e2e` 覆盖 Compose 的 `e2e`，JWT 测试配置未加载，后端未启动；尚未执行业务断言 | `08432e9` 删除启动参数中的 profile，Compose 统一选择；未增加等待或引入真实密钥。`.ai/reports/validation/ci-profile-original-e2e-logs.txt`、`ci-compose-profile-preflight.json` |
 | `08432e9` / [44885542824](https://github.com/tongsh6/release-hub/actions/runs/44885542824) | 后端约 20 秒就绪，GitLab 健康；init-gitlab.sh 因 test-runner 缺少 python3 在 Java 测试前退出 127 | `a7181fa` 在既有 Alpine test-runner 安装 python3；shell 语法与消费者审计通过，远端下一轮证明初始化已越过。`ci-profile-44885542824-job-136789914349.log` |
 | `a7181fa` / [44886918919](https://github.com/tongsh6/release-hub/actions/runs/44886918919) | 已执行 5 个业务切片：Slice1/2/4 PASS；Slice3 的假仓库地址/空 token 导致 branch-status 500；Slice5 对 PUT 端点发 POST 得到 500 | 真实隔离项目 fixture、正确 PUT 与显式 405 已补；未放宽原业务成功断言。`ci-python-44886918919-job-136794077207.log`、`ci-python-44886918919-slice-summary.txt` |
+| `e5094ba` / [44899945002](https://github.com/tongsh6/release-hub/actions/runs/44899945002) | 2026-11-21 19:45（Asia/Shanghai）完成 SUCCESS，5 个切片全部 PASS、0 FAIL；后端约 20 秒就绪，首次真实编排/合并、同 key 幂等及 close DONE 通过 | job 136833534514；`.ai/reports/validation/c1-full-link-44899945002-status.json`、`-job-136833534514.log`、`-slice-summary.txt`。该 SHA 包含本阶段三个代码提交和文档提交 |
 
 进一步核对发现两个原验收缺口：Slice3 未显式 Orchestrate，close 即使失败也会有三个 Step，旧断言可能假通过；Slice1 会把 GLOBAL GitLab 设置写成假地址，真实安全 resolver 读取数据库设置而不是 YAML。因此本轮保持生产身份校验，fixture 在核实专用 E2E 用户与独立项目之后显式配置现有 Settings API；Slice3 用实际 plan 准备 feature 差异，由 Orchestrate 首建 release/MR，断言 Run DONE、完整四动作、数值项目/IID/SHA、远端 merged 与同 key 零额外 MR，并要求 close 真实 DONE。
 
-下一轮只运行包含上述修复的新提交。当前尚未取得该提交的 Full-Link 全绿结果；不重跑旧 SHA 作为本轮验收，不宣称真实 UI 全旅程已完成。
+本轮运行已核对固定 SHA，C1 验收出口完成；没有重跑旧 SHA 冒充修复验证。GitHub workflow_dispatch 不接受裸 commit SHA 的调用返回明确 422，未创建运行；改用已核对 branch ref 触发，并再次核对实际 run.head_sha=e5094ba。真实 UI 黄金旅程、Slice4 更强清理断言、Slice5 真实 Git 冲突和自动恢复仍各自保留未完成边界。只读预研中的“201 暂缺 SHA”假设没有在本轮形成实际失败证据，未据此改动 MR 完整性或增加重试。
 
 
 ## 11. 真实 fixture 揭露的迭代配置边界
@@ -303,3 +305,13 @@ RunTaskProcessKillIT 使用独立 JVM、隔离 PostgreSQL 与本地 GitLab HTTP 
 普通后端最近一次完整回归为 57 类 657 项（652 PASS、5 既有 SKIP）；其后新增范围校验由上述 37 项及最终 148 项覆盖。证据在 `c1-backend-candidate-final.{log,json}`，记录当次完整 source manifest。前端本轮文案迁移的 3 文件/6 项及 i18n 另验通过，不与此前 170 项相加。
 
 未纳入本切片的输入边界：HTTP `repoConfigs:[null]` 会在旧 DTO 转换器进入服务前解引用；本轮不宣称所有非法 JSON 都已返回统一校验错误。该边界不会被本轮服务层范围/重复测试冒充覆盖。真实 GitLab 五切片与浏览器黄金旅程仍分别按第 10 节和后续阶段验收。
+
+## 12. C2-A / C2-B 的独立切片依据
+
+C1 收口后按授权继续，唯一 HEAD 推进为 C2-A。先核实生产中不存在现成 scheduler/executor；复用 RunPlanAppService 的 receipt-first 受理、RunAppService 四动作、RunPort/RunJpaPersistenceAdapter 的 claim/eligible/complete，以及 GitOperationContext 的持久主体，不增加同义 domain 实体、队列 Port 或运行时 DAG。详细方案已回写现有 design.md/tasks.md。
+
+C2-A 的正例是持久 PENDING 在请求返回、无唤醒或重启后仍可执行；强反例包括线程池拒绝前已 claim、按整个 Run 互斥导致跨仓停滞、最早阻塞页饿死后续 Run、NEEDS_REVIEW 时另一仓仍活动但 UI 停止查询、冻结或空 scope 后丢失旧 receipt。按单任务工作、有界游标发现及原 actor/key/payload 找回解决；新意图继续验证当前范围。扫描只消费当前 WINDOW 协议，不误派发历史、预览、cleanup 或 version。C2-A 对 RUNNING/UNKNOWN 不重领，不能宣称任意中断点恢复。
+
+真实消费者包含两个受理 controller、API 集成测试、RunTaskProcessKillIT、Slice3/Connectivity E2E、RunDetail/OrchestrationPanel、executionIntent、生成 OpenAPI、Playwright 和验收脚本。它们必须一起从“POST 已完成”迁移到“202 已受理、按原 Run/Task 观察”，有界等待不能放宽 DONE、四动作、项目/IID/SHA 和外部次数断言。既有 wait_for_run 仅看 RUNNING，须覆盖 NEEDS_REVIEW 下另仓活动。
+
+C2-B 的独立风险是当前 Journal 的历史 operation 与 Task token 绑定、task_id 唯一，以及 FOUND 证据不总是完整 checkpoint；不能仅旋转 token 或重新造 operation。历史 HTTP 事实、当前发送权和当前业务投影权分别核对，租约或单次 404 不能替代远端 fencing。各项仍未实施或验收，本节不是完成声明。

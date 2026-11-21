@@ -1,6 +1,6 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2 已验收并分阶段推送，当前进入 S3-C1 持久四动作与安全中断；C2 继续同一执行器的后台驱动和恢复。实际已验收边界见 `s1-implementation.md`、`s2-implementation.md` 及 tasks.md。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002 为 5/5；当前推进 C2-A 持久扫描、异步受理与进度观察，C2-B 再完成已领取任务接管与证据驱动恢复。实际已验收边界见 `s1-implementation.md`、`s2-implementation.md` 及 tasks.md。
 
 
 ## 0. 当前研发蓝图与授权（2026-11-21）
@@ -61,6 +61,20 @@ ENSURE_MR 持久保存项目 ID、IID/URL、source/target、冻结 source SHA �
 成功重试前缀使用 INHERITED 状态和原 Run/Item 来源，不复制成功 Step 或伪造新的 CREATED/MERGED。FAIL_FAST 只跳过同仓后继；UNKNOWN 始终停止该仓，Run 进入 NEEDS_REVIEW 后其他仓库仍可领取和提交。任务结果、Step、Item/Run 投影与 guard 确认同一事务，旧 claimToken 和整份 Run 保存均不能覆盖新事实。
 
 C1 的独立验收是重复请求返回原回执，已确认步骤具有持久事实，中断后可查询且安全停住；它不声称自动恢复。C2 使用同一个执行器增加有界 worker、202/前端轮询、数据库扫描、租约和证据驱动的核对/继续；AFTER_COMMIT 仅作唤醒提示。完整硬中断、重启继续、双 worker 与丢失唤醒在 C2 验收。两阶段都不提供 force 绕过未知事实，收尾恢复仍属于 S4。
+
+#### C2-A 的纵向切片与反例
+
+C2-A 删除请求线程的窗口任务驱动；Orchestrate/retry 仍复用 RunPlanAppService 受理，在事务提交后返回 202 与同一 Run ID。RunAppService 收窄为一次领取和执行一个 Task，RunPort/JPA 提供有界候选发现。扫描限定当前 WINDOW 协议、RUNNING/NEEDS_REVIEW 且有 PENDING；使用游标轮转避免不可领取的最早一页饿死后续 Run，最终资格只由既有 claimNextTask/eligible 决定。没有额外消息队列或运行时 DAG，数据库扫描是可靠来源，AFTER_COMMIT 并非必要依赖。
+
+新增基础设施 worker 具有实际消费者：在有界线程池中调用上述唯一单任务执行方法。领取发生于 worker 开始后，提交拒绝/排队取消不会制造已领取孤儿；不使用 caller-runs 回退。不能按整个 Run single-flight，否则 R1 的阻塞 HTTP 会连带阻止 R2；短事务继续使用 Run→Task→guard 锁序，同仓前序 RUNNING/UNKNOWN 仍阻断后继。C2-A 不重领 RUNNING，领取后强杀保留原事实。
+
+UI 复用 executionIntent 的原 actor/operation/key/payload，并在原页面提供不依赖当前 scope 的回执找回；已确认 receipt 后仅查询原 Run。轮询与路由初始化分开，不每次清空详情或选择；Run=NEEDS_REVIEW 时若其他仓任务仍活动则继续观察，离页、换主体或有界观察停止后不再排请求。API、OpenAPI、组件、真实 E2E 和 shell 消费者必须一起迁移，不能把 202 当作执行成功。
+
+独立出口：受理响应不等待被 latch 阻塞的 Git；无内存唤醒仍能推进；拒绝投递零领取；阻塞前页不饥饿；双 worker 同仓串行/跨仓进展；旧协议/其他动作零误派发；冻结后原回执可找回而新意图仍校验；独立 JVM 在 ENSURE_MR 检查点后重启只消费原 PENDING TRY_MERGE，MR POST 不增加。该切片通过后也不能宣称任意中断点自动恢复。
+
+#### C2-B 的接管约束
+
+当前操作账本对 task_id 唯一，观察、迟到结果和 ack 还关联原 claimToken；不得通过换 token 再创建第二个 operation 来规避。C2-B 需沿现有账本区分历史 HTTP 事实、当前发送权和当前投影权；只读 FOUND 还须验证动作所需的项目、IID、分支与冻结 SHA。无 SEND 的意图、已确认 HTTP 结果和 SEND_STARTED 后未知请求分别处理。租约过期或单次 404 均不能授权重发，未知事实不得仅凭 FOUND 解除 guard。
 
 ### 分阶段依赖与交付
 
