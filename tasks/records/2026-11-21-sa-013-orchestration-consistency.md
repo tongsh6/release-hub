@@ -514,10 +514,133 @@ B1 收口后直接进入这一已授权子片，先固定契约与独立正反�
 
 ## 16. C2-B3 接续：创建 MR 完整证明与原检查点恢复
 
-B2 固定 SHA 验收后，唯一 HEAD 推进 C2-B3；当前仅完成独立正反例、源码职责及官方响应 producer 核对，尚未执行新测试或修改后端代码。目标与验收完整写入原 design/tasks/run spec，不建立新提案或第二套队列。
+B2 固定 SHA 验收后，唯一 HEAD 推进 C2-B3；先独立完成正反例、源码职责及官方响应 producer 核对，再执行实现前初轮 RED（16.1）。365/365 中间 GREEN 经交叉复审暴露 SHA 等值表示消费者缺口，新增 6 例独立 RED 后取得 371/371（16.2）；普通门禁 718 项失败历史保留于 16.3。仅修两份旧夹具后，最终定向 403/403、API 48/48、普通 738 项及静态检查已通过，源码复审无阻塞（16.4）；TopN 处置完成，后端 d87dfa8 已本地提交（16.5），文档提交、推送与本片固定 SHA CI 尚待完成。目标与验收继续归属原 design/tasks/run spec，不建立新提案或第二套队列。
 
-定位依据：`GitLabMergeRequestAdapter.create/write/evidence/complete` 与 `GitMergeWorkflow.ensureMergeRequest` 分别承担 provider 响应与业务身份确认；现 CREATE_MR HTTP 账本仅凭 2xx+iid 即 APPLIED，事件缺项目、分支和 URL。原 operation.target.sha 已在 begin 前冻结；原 MrEvidence、ENSURE_MR 检查点和 TRY 消费者足以承责。独立强反例是非201完整正文、同名fork、仅iid的旧摘要；待先通过真实 HTTP→Task 复现，不将源码推断写成已测缺陷。
+定位依据：`GitLabMergeRequestAdapter.create/write/evidence/complete` 与 `GitMergeWorkflow.ensureMergeRequest` 分别承担 provider 响应与业务身份确认；初轮 RED 基线中的 CREATE_MR HTTP 账本仅凭 2xx+iid 即 APPLIED，事件缺项目、分支和 URL。原 operation.target.sha 已在 begin 前冻结；原 MrEvidence、ENSURE_MR 检查点和 TRY 消费者足以承责。独立强反例包括非 201 完整正文、同名 fork、仅 iid 的旧摘要；实现前初轮已通过真实 HTTP→Task 复现错误成功及保护释放，并保留尚未通过的恢复正例，具体证据与范围见 16.1。
 
 同仓 CREATE_MR 必须使用原始项目/source_project/target_project 身份、分支、IID/URL、冻结SHA与opened证明。GitLab 17.11 producer 的三个官方文件已独立读取并保存 hash/range，见 `.ai/reports/validation/c2-b3/baseline/gitlab-17-11-mr-producer.json`；响应字段缺失不能沿用请求参数默认值。readiness 不等于创建结果，TRY 仍负责当前状态；target 已精确包含原SHA时保留 ALREADY_MERGED 语义。
 
 实施复用原结果事务和 metadata patch；投影入口只改名扩到 ENSURE_MR，删除旧名，新 Journal 证明返回既有 MrEvidence。保留原token/期限/历史事实、新Step用当前Clock，null清除语义与正常路径一致，requestId不伪装成operationId。MERGE_MR终态发现、INTENT/SEND/UNKNOWN与其他动作仍后续独立验收。
+
+### 16.1 实现前初轮 RED：正常创建证明、原检查点投影与进程恢复
+
+原始证据为 `.ai/reports/validation/c2-b3/initial-red-jdk21/result.json` 及同目录各阶段 XML。固定 JDK 21；adapter、workflow、business 三阶段的 `sourceStable` 和整轮 `sourceStable` 均为 true，阶段前后源码 hash 保持一致。三个 Maven 阶段实际退出码均为 1；失败是目标断言的 RED，采集脚本完成不表示测试通过。下列 suite 不与 business 阶段汇总重复累计。
+
+| 范围 | 初轮实际结果 | 复现的缺口 |
+|---|---|---|
+| GitLabMergeRequestAdapterTest | 56 项：37 PASS / 19 FAIL / 0 ERROR / 0 SKIP | 非 201、同名 fork/跨项目、缺失或错误类型字段、与请求检查点矛盾的响应仍可 APPLIED；opened 创建响应还携入不属于创建动作的 mergeSha |
+| GitMergeWorkflowTest | 44 项：42 PASS / 2 FAIL / 0 ERROR / 0 SKIP | 创建检查点携入无关 mergeSha，后继错误查询该提交；一个分支还把应为 ALREADY_MERGED 的结果变成 UNKNOWN |
+| GitWriteSafetyIT | 28 项：15 PASS / 13 FAIL / 0 ERROR / 0 SKIP | 11 项真实 HTTP→Task 反例实际为 COMPLETED/CREATED、operation APPLIED、Run RUNNING 且 guard 已释放，后继仍 PENDING；另两项分别暴露规范原字段/整数类型未落库和 mergeSha 污染 |
+| RunTaskPersistenceIT | 38 项：35 PASS / 3 FAIL / 0 ERROR / 0 SKIP | 原 MR 检查点不能投影；双恢复者均返回 false；预期的投影后回滚路径未进入。其余反例通过不等于恢复能力已交付 |
+| RunTaskProcessKillIT | 2 项：1 PASS / 1 FAIL / 0 ERROR / 0 SKIP | 既有分支投影重启场景通过；新增 MR 场景重启后原 ENSURE_MR 仍 RUNNING，TRY_MERGE 仍 PENDING |
+
+进程 RED 的完整 failure 位于 `business/xml/releasehub-bootstrap/TEST-io.releasehub.bootstrap.api.RunTaskProcessKillIT.xml`。第二进程 PID 27308 在北京时间 23:35:50.208 已正常启动，日志为 `Started RunTaskProcessKillIT.Child in 3.393 seconds`；其后触发 `Scheduled worker did not finish original task`。35 秒上限由当时 `RunTaskProcessKillIT.Child` 的 deadline 明确设置。原 Run `2c8762a9-c7b3-4c1b-8d30-072f2fa19cd9` 的两个分支任务已 COMPLETED，ENSURE_MR 保持 RUNNING，TRY_MERGE 保持 PENDING；这是未实现 MR 恢复的业务 RED，不能只凭 result.json 中被截短的“JVM exited before checkpoint”摘要归为启动失败。
+
+附加历史检查点消费者 RED 已单独执行，证据为 `.ai/reports/validation/c2-b3/additional-red-http-jdk21/result.json`：`historical-consumer` 阶段 2 tests / 2 FAIL / 0 ERROR / 0 SKIP，阶段与整轮 sourceStable=true，实际退出码 1。`mrCreationProjectsHistoricalCheckpointBeforeCheckingChangedRemoteState` 的两个参数场景均为 expected true、实际 false；它们覆盖历史冻结 SHA=A 与当前 MR 关闭/source 改为 B 的分离要求，此时仍未取得贯穿 GREEN。该附加运行单独留痕，不与初轮 HTTP 28 项混称同一轮结果。
+
+初轮及附加 RED 只证明实现前缺陷，该轮结束时尚无 GREEN 或本片交付结论；后续实现、中间 GREEN、SHA 消费者再 RED 与本轮 371 项定向证据见 16.2。B2 的 CI 与分支恢复正例不代替 B3 验收，当前 HEAD 保持 C2-B3。
+
+### 16.2 原职责实现、SHA 消费者再 RED 与阶段定向 GREEN
+
+实现沿已有创建响应、操作账本、Task 检查点及结果事务收敛，没有新增实体、表、API 或第二条执行路径。现有 operation.target.sha 仍是 begin 前冻结的意图；原响应和实际消费者分别证明该意图已发生及其后继仍成立。
+
+| 现有职责 | 已实现行为与消费者 |
+|---|---|
+| GitLabMergeRequestAdapter.confirmedCreatedMr | 正常 create、GitWriteHttpInterceptor 和 Journal 投影共用 HTTP 201 与原始完整正文判定；三个正整数项目 ID、IID、URL、原分支、合法等值 SHA 与 opened 必须同时成立，不从请求填补响应 |
+| GitWriteHttpInterceptor / APPLIED event | CREATE_MR 保存规范原字段及整数 httpStatus，保留 JSON 类型；不沿用仅 iid 的扁平摘要，不采纳 merge_commit_sha，失败证明保持 UNKNOWN 和保护 |
+| GitOperationPersistenceAdapter.confirmedAppliedCreatedMr | 复用原 Task/operation/attempt、项目及 guard 锁内校验和唯一 sequence 2 APPLIED；返回既有 MrEvidence，disposition=CREATED、mergeSha=null |
+| RunJpaPersistenceAdapter.projectNextAppliedTask / RunPort.mrEvidenceUpdates | 删除旧分支专用入口名，沿原完整到期 RUNNING 资格补原 ENSURE_MR；与正常路径共用 metadata null 清除规则，经 completeTask 同一结果事务提交检查点、Step 和 guard 确认 |
+| GitMergeWorkflow / RunAppService | 创建事实清除无关 mergeSha；原 TRY 使用同一项目/IID/source SHA 读取当前状态，成功结果再确认同一检查点，不以历史 CREATED 宣称当前可合并 |
+
+原 token、期限、首次时间、实际顺序及三条 HTTP 历史事件保持；补记 Step 使用当前 Clock，requestId 不冒充 operationId。PG 覆盖双恢复者、原 owner 胜出顺序、结果事务整体回滚（含 guard 确认），以及旧摘要、错误证明和 UNKNOWN owner 的拒绝。当前 MR 已关闭或 source 从 A 变 B 时先纯 DB 补历史 A，再由原 TRY 复核；target 不含 A 则保持 UNKNOWN 且无重复写，精确包含 A 则沿原 ALREADY_MERGED 规则。
+
+中间轮 `.ai/reports/validation/c2-b3/initial-green-jdk21/result.json` 为 9 suites、365/365，0 FAIL/ERROR/SKIP、sourceStable=true；四类独立 JVM 均真实 exit=137。该轮 MR Run `004cdadf-b50d-4222-b63b-cac3ddc7f218`：PID 35837 被强杀，PID 35845 恢复，projectionHttp=0、branchPost=0、mrPost=1、mergePut=1，原 token/三条事件保持。这一轮保留为中间证据，不替代下述 SHA 修正后的 371 项定向验收。
+
+交叉复审用最强反例检查同一合法摘要的不同表示：CREATE 接收大写 A，原 IID 的 GET/MERGE 返回等值小写 a。`.ai/reports/validation/c2-b3/sha-consumer-red-jdk21/result.json` 独立复现应用 2 tests / 2 FAIL、HTTP 4 tests / 4 FAIL，均 0 ERROR/0 SKIP、各阶段及整轮 sourceStable=true。应用预期 MERGED、实际 UNKNOWN；贯穿 HTTP 预期 DONE、实际 NEEDS_REVIEW。清单核对显示该 RED 相对 365 中间轮仅改变 RunOrchestrationTest 与 GitWriteSafetyIT，生产实现未变。
+
+修复仅将 GitMergeWorkflow.matchesCheckpoint 和 RunAppService 成功结果确认的 sourceSha 比较改为 equalsIgnoreCase；保留合法摘要校验、原响应表示、检查点、PUT 意图及 GET/MERGE 解析。该 RED 到本轮 371 项 GREEN 的 495 文件清单只在这两个生产文件变化，补充测试未改；不同摘要 B、项目/IID/分支不符仍拒绝。
+
+SHA 修正后 `.ai/reports/validation/c2-b3/final-green-jdk21/result.json` 为退出码 0、9 suites、371/371，0 FAIL/ERROR/SKIP；source-before/source-after 的 495 个 backend 文件 hash 完全一致。中间与本轮不能累计，SHA 新增 6 例已包含在本轮总数内。
+
+| Suite | 中间 GREEN | SHA 修正后 GREEN |
+|---|---:|---:|
+| GitMergeWorkflowTest | 46 | 46 |
+| RunOrchestrationTest | 25 | 27 |
+| GitWriteSafetyIT | 74 | 78 |
+| RunTaskPersistenceIT | 93 | 93 |
+| RunTaskProcessKillIT | 4 | 4 |
+| GitLabGitBranchAdapterTest | 55 | 55 |
+| GitLabMergeRequestAdapterTest | 58 | 58 |
+| RunRepositoryScopePersistenceTest | 3 | 3 |
+| RunTaskWorkerTest | 7 | 7 |
+| 总计 | 365 | 371 |
+
+本轮独立进程原文位于 `final-green-jdk21/xml/releasehub-bootstrap/TEST-io.releasehub.bootstrap.api.RunTaskProcessKillIT.xml`，四类均真实 exit=137 后由默认 worker 继续：
+
+| 强杀检查点 | killed / resumed PID | 本轮实际结果 |
+|---|---|---|
+| PENDING 后继 | 37397 / 37446 | MR POST=1、MERGE PUT=1，原 3 项前缀保持、四任务 COMPLETED |
+| 已领取但无写意图 | 37496 / 37532 | MR POST=1、MERGE PUT=1，原 3 项前缀保持、四任务 COMPLETED |
+| CREATE_BRANCH/APPLIED、业务结果前 | 37598 / 37616 | 投影 HTTP=0、branchPost=1、MR POST=1、MERGE PUT=1；原 token/三条事件保持 |
+| CREATE_MR/APPLIED、业务结果前 | 37648 / 37654 | 投影 HTTP=0、branchPost=0、MR POST=1、MERGE PUT=1；原 token/三条事件保持 |
+
+本轮 MR Run 为 `244e55f6-bbc4-4f60-ad3e-b21c9fec5494`。这里的 HTTP=0 仅指纯 DB 投影阶段，后继 TRY 仍按原规则访问原 IID；这些受控 HTTP fixture 和真实 JVM 中断证据不等于真实 GitLab 或完整 UI 黄金旅程。
+
+实现及本轮 371 项定向通过仍有范围边界；后续门禁失败及最终本地复验见 16.3–16.4，HEAD 保持 C2-B3。MERGE_MR 末尾候选发现、INTENT/SEND/UNKNOWN、其他执行类型恢复与完整 UI 仍需独立验收，C2 整体未完成。
+
+### 16.3 普通门禁失败：旧响应夹具（历史轮）
+
+`.ai/reports/validation/c2-b3/final-gates/api/result.json` 确认 API 48/48、0 FAIL/ERROR/SKIP、sourceStable=true。普通门禁未通过：`final-gates/ordinary/membership-diagnostic.json` 为实际 718 tests / 2 FAIL / 1 ERROR / 5 SKIP、sourceStable=true；infra 失败导致 bootstrap 的 ArchitectureRulesTest 与 GitLabE2EFixtureTest 合计 20 项未执行。原汇总脚本先报 suite membership 缺失只是包装症状，不能掩盖已执行测试的真实失败，也不能把缺席 suite 算作通过。
+
+原 XML/log 留存 3 处旧夹具问题：GitSafetyBeanDecoratorTest 两处、GitWriteHttpInterceptorTest 一处，仍使用 HTTP 200 或不完整 CREATE_MR 正文并期待 APPLIED；这与实现前独立定义、真实 RED 后已验证的 201/完整证明契约冲突。修正范围为这两个测试文件，保留原 guard、阻塞与隐私验证目的，生产契约不退回旧行为。该轮结束时修正后的新增定向及普通门禁尚待实测，371/371 仅代表当时局部通过；最终复验见 16.4，不能倒写为该失败轮已通过。
+
+该轮结束时，静态门禁、最终复审、分组提交推送及本片固定 SHA Full-Link 尚未完成全部验收，B3 未出队；之后的修正与本地最终复验见 16.4，原失败证据保留。
+
+### 16.4 旧夹具修正后的最终本地验收
+
+修正后的 `.ai/reports/validation/c2-b3/final-green-v2-jdk21/result.json` 为 11 suites、403/403，退出码 0、0 FAIL/ERROR/SKIP、sourceStable=true。相对 371 轮，495 文件清单仅 GitSafetyBeanDecoratorTest 与 GitWriteHttpInterceptorTest 两个测试文件变化，所有生产文件完全相同；两类原有 guard/阻塞/隐私测试的 6+26 项加入定向选择器，不能把 403−371=32 说成 32 个新增业务场景。365、371 与 403 为先后验证轮，重叠不累计。
+
+| 本地验收范围 | 最终实际结果 | 原始证据 |
+|---|---|---|
+| 11 类定向组合 | 403 PASS / 0 FAIL / 0 ERROR / 0 SKIP | final-green-v2-jdk21/result.json 与 XML |
+| API 三类 | 48 PASS / 0 FAIL / 0 ERROR / 0 SKIP，suiteInventoryMatches=true | final-gates-v2/api/result.json |
+| 普通后端 | 738 tests = 733 PASS + 5 既有 SKIP，0 FAIL/ERROR，suiteInventoryMatches=true | final-gates-v2/ordinary/result.json |
+| 静态检查 | 六份 fresh SpotBugs XML 各 0；typecheck PASS；lint 0 errors/8 既有 fixture warnings | final-gates-v2/static-result.json、静态报告 20261122-001110 及 raw 日志 |
+
+普通复验已执行此前因 infra 失败而缺席的 ArchitectureRulesTest 4 项与 GitLabE2EFixtureTest 16 项；它们通过不扩大 Full-Link Slice4/5 或完整 UI 旅程的验收范围。定向前后、API 前后、普通前后以及 source-after-static.json 的同一 495 个 backend 文件 hash 均一致，不能只用相近总数推断代码相同。
+
+403 轮四类真实独立 JVM 再次 exit=137 后恢复，原文为 `final-green-v2-jdk21/xml/releasehub-bootstrap/TEST-io.releasehub.bootstrap.api.RunTaskProcessKillIT.xml`：
+
+| 检查点 | killed / resumed PID | 已核实结果 |
+|---|---|---|
+| PENDING 后继 | 41043 / 41051 | MR POST=1、MERGE PUT=1，原前缀保持、四任务 COMPLETED |
+| 已领取但无写意图 | 41059 / 41067 | MR POST=1、MERGE PUT=1，原前缀保持、四任务 COMPLETED |
+| CREATE_BRANCH/APPLIED、结果前 | 41090 / 41093 | 投影 HTTP=0、branchPost=1、MR POST=1、MERGE PUT=1，原 token/三条事件保持 |
+| CREATE_MR/APPLIED、结果前 | 41103 / 41112 | 投影 HTTP=0、branchPost=0、MR POST=1、MERGE PUT=1，原 token/三条事件保持 |
+
+最新 MR Run 为 `40bf6c0a-0914-4783-85a9-8978b3b9ccc4`；零 HTTP 仅指纯 DB 投影阶段，后继 TRY 仍复核原 IID/source SHA。此前 365/371 的进程证据保留为相应源码轮次的历史，不混用 Run/PID。
+
+静态报告为 `.ai/reports/static-scan/20261122-001110/summary.md`，原始 lint 明确为 0 errors/8 warnings。backend 完整 fenced source review 已逐页核对 8 页且无阻塞；TopN 逐项处置及本地代码提交事实见 16.5，不能把扫描命令退出码当作全部问题已处置。当前本地行为与回归验收通过，固定 SHA Full-Link 尚待验证，B3 保持 HEAD。
+
+本片范围仍仅为 CREATE_MR 完整证明及原 ENSURE_MR 检查点恢复。MERGE_MR 末尾候选发现、INTENT/SEND/UNKNOWN、其他类型恢复和完整 UI 仍待独立验收，C2 整体未完成。
+
+### 16.5 本地后端提交与交付准备
+
+后端完整纵向切片已本地提交：
+
+| 项目 | 核实事实 |
+|---|---|
+| 提交 | d87dfa87751713b2a8a146bdb8062ef06c9571ce |
+| 父提交 | f6ca0682c096547aa0fc178f860f6b5f4b25b9d4 |
+| 提交标题 | feat(run): recover confirmed MR creation checkpoints |
+| 范围 | 16 个 backend 文件，创建证明、原检查点投影、消费者修正与相关测试同一完整切片 |
+| 验证绑定 | 提交源码与最终 403/403、API 48/48、普通 738（733 PASS/5 SKIP）及静态验收为同一 backend 树 |
+| 此时交付状态 | 后端仅本地提交；文档提交、分阶段推送与本片固定 SHA Full-Link 待完成，B3 保持 HEAD |
+
+静态 TopN 处置已写回原报告：八项既有 fixture warning 逐项列出保留理由、实际消费者和覆盖边界；告警继续存在，未修改源码或关闭规则。当前 lint raw 与 B2 字节一致，两份前端 fixture 与 B2 固定提交一致；六份 fresh XML 的 BugInstance 与 total_bugs 均为 0。XML suite 属性及 testcase/failure/error/skipped 节点已分别计数，与 403/48/738 一致；五项既有 SKIP 为 GroupAppServiceTest 1、GroupDeleteTest 2、GroupGetByCodeTest 2。
+
+API 清单另经只读核对：实际三类为 RunPagedApiTest、RunPlanApiIT、WindowRunApiIT，与命令选择器精确相等；清单结论依据该独立核对，不能单靠通用 suiteInventoryMatches 字段。原静态结果文件保留生成时的 summary 快照，TopN 人工复核只追加到原报告，没有回写或替换 raw、result.json 与源码快照。
+
+文档同步消除两处旧歧义：C2-A 历史段把 C2-B2 明确为当时队首；Run spec 区分“已有 APPLIED 后业务证据不足”与“CREATE_MR 原始响应证明不完整即 UNKNOWN”。结果事务的 NEEDS_REVIEW/guard 约束保持，不改变实现或扩大恢复范围。
+
+本地验收与后端提交均不代替远端交付验收。下一步为最终文档门禁与提交、分阶段推送，再对完整固定 SHA 执行 Full-Link；结果返回后据实收口，当前不标 DONE，不借用 B2 CI 或完整 UI 结论。

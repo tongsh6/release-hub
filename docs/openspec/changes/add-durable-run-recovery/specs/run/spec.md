@@ -120,12 +120,13 @@
 - **THEN** 不将该响应当作可创建的 missing
 - **AND** 不发送建分支请求；真实分支 404 仍须携带已确认项目 ID
 
-#### Scenario: 传输成功但 MR 证据不完整
+#### Scenario: 已确认写入后的业务证据不足
 
-- **GIVEN** HTTP 2xx 已记录 APPLIED，但业务无法确认 MR 身份、分支或提交
+- **GIVEN** 已有 HTTP APPLIED 事实，但后续业务读取不可用或结果证据不足
 - **WHEN** ENSURE_MR 或 TRY_MERGE 返回 UNKNOWN
 - **THEN** 结果事务保留 NEEDS_REVIEW 与仓库 guard
 - **AND** 任务 scope 正常退出不能提前释放 guard，后续新 Run 的写请求在远端发送前被拒绝
+- **AND** CREATE_MR 原始响应不满足完整证明时直接记录 UNKNOWN，不因 HTTP 2xx 记为 APPLIED；此时不满足上述 APPLIED 前提
 
 #### Scenario: TRY 返回不完整或不一致的身份
 
@@ -463,7 +464,7 @@ C2-B2 已完成本地门禁与固定 cc80036 的 Full-Link 44917254215 5/5 验�
 
 ### Requirement: 已确认创建 MR 结果的受控检查点恢复
 
-C2-B3 为当前实施队首，以下为目标契约，尚未完成实现和验收。系统 SHALL 复用原 Task、操作账本和结果事务，仅对完整到期的原 ENSURE_MR/CREATE_MR/APPLIED 补历史 CREATED 检查点，随后由原 TRY_MERGE 复核并使用同一项目/IID/source SHA；纯 DB 投影不得重新 GET 或 POST。
+C2-B3 为当前实施队首，实现与本地最终定向 403/403、API 48/48、普通 738 项及静态 TopN/源码复审已通过，后端 d87dfa8 已本地提交；文档提交、推送与固定 SHA CI 尚待完成。本地验证及提交证据见本轮记录 16.4–16.5，中间与失败历史保留于 16.2–16.3。系统 SHALL 复用原 Task、操作账本和结果事务，仅对完整到期的原 ENSURE_MR/CREATE_MR/APPLIED 补历史 CREATED 检查点，随后由原 TRY_MERGE 复核并使用同一项目/IID/source SHA；纯 DB 投影不得重新 GET 或 POST。
 
 #### Scenario: 规范创建证明与原检查点
 
@@ -487,6 +488,13 @@ C2-B3 为当前实施队首，以下为目标契约，尚未完成实现和验�
 - **WHEN** 纯 DB 投影提交后原 TRY_MERGE 继续，target 尚未包含 A
 - **THEN** 后继按原 IID/SHA 复核并保持 UNKNOWN，不重新创建 MR、不合并 B、不覆盖原检查点
 - **AND** 若 target 精确包含 A，仍按原规则返回 ALREADY_MERGED，不因后续关闭或源变化误判失败
+
+#### Scenario: 原检查点 SHA 的等值表示保持一致
+
+- **GIVEN** 正常创建或纯 DB 恢复保留响应 SHA 大写 A，后续原 IID 的 GET/MERGE 返回同一个合法 40/64 位摘要的小写 a
+- **WHEN** 原 TRY_MERGE 复核、合并并提交结果
+- **THEN** 按摘要值确认身份，不把大小写差异误判为 UNKNOWN；合并请求仍使用原检查点 A，已存检查点和创建事件不改写
+- **AND** 真实不同的 SHA B 仍拒绝，不能放宽项目、IID、分支、状态或既有响应解析规则
 
 #### Scenario: 创建结果后的独立进程中断
 

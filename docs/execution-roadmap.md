@@ -20,7 +20,7 @@
 | 4 | DONE | SA-013 | S3-C2-A 持久扫描、异步受理与进度观察 | 四组提交已推送；固定 `1761572` 的 Full-Link 44905843754 为 5/5 | 202、持久扫描、PENDING 重启继续与原回执观察完成本阶段验收；不冒称 RUNNING/UNKNOWN 接管 |
 | 5 | DONE | SA-013 | S3-C2-B1 无写意图的过期 RUNNING 接管 | 3f810c8、5441df6 已推送；固定 5441df6 的 Full-Link 44911634004 为 5/5 | 无 operation/Step 的完整过期领取按原 token 接管，原任务/首次时间/实际顺序与 MR 检查点保持 |
 | 6 | DONE | SA-013 | S3-C2-B2 建分支成功证明与 APPLIED 结果投影恢复 | fe4c006、1386ccc、cc80036 已推送；固定 cc80036 的 Full-Link 44917254215 为 5/5 | 规范成功证明与纯 DB 原分支结果投影完成；同一 backend 树定向 189/API 48/普通 700 及静态门禁通过 |
-| 7 | HEAD | SA-013 | S3-C2-B3 创建 MR 完整证明与原检查点恢复 | B2 固定 SHA 验收完成；正反例与原职责只读核对完成，尚未实施 | 先统一 CREATE_MR 原始完整证明，再沿原 Task 补 ENSURE_MR 检查点；后继 TRY 消费原 IID/SHA，恢复阶段零网络 |
+| 7 | HEAD | SA-013 | S3-C2-B3 创建 MR 完整证明与原检查点恢复 | 同一 backend 树最终定向 403/403、API 48/48、普通 738（733 PASS/5 既有 SKIP）及静态 TopN/源码复审通过；后端 d87dfa8 已本地提交，证据见记录 16.4–16.5；文档提交、推送与固定 SHA CI 待完成 | CREATE_MR 原始完整证明共用原职责；纯 DB 补 ENSURE_MR 后由原 TRY 消费原 IID/SHA，不扩大其他动作恢复范围 |
 | 8 | QUEUED | SA-013 | S3-C2-B 后续：合并 MR 证据、发送权与未知结果恢复 | C2-B3 之后独立验收 | 最后 TRY_MERGE 的候选发现、INTENT 发送权、SEND/UNKNOWN 精确核对与观察版本分别处理 |
 | 9 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队列保留 | 历史数据处置仍先核实计划，不自动迁移或清库 |
 

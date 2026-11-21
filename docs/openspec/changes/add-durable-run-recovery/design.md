@@ -1,6 +1,6 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。C2-B2 已分组推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5；规范化建分支成功证明与 APPLIED 结果投影恢复已交付。当前唯一 HEAD 为 C2-B3 创建 MR 完整证明与原检查点恢复，尚未实施。当前事实与历史验收分别见 tasks.md 和本轮记录。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。C2-B2 已分组推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5；规范化建分支成功证明与 APPLIED 结果投影恢复已交付。当前唯一 HEAD 为 C2-B3 创建 MR 完整证明与原检查点恢复，实现与本地最终定向 403/403、API 48/48、普通 738 项及静态检查通过，源码复审与 TopN 处置完成；后端 d87dfa8 已本地提交，文档提交、推送与本片固定 SHA CI 尚待完成，未标 DONE。当前事实见 tasks.md 和本轮记录 16.4–16.5，中间 GREEN 与普通失败历史保留于 16.2–16.3。
 
 
 ## 0. 当前研发蓝图与授权（2026-11-21）
@@ -140,7 +140,7 @@ APPLIED 不是业务完整证明。[GitLab 创建分支契约](https://docs.gitl
 
 回滚先停派发，保留已提交投影、任务、证明及 guard；不重新发送、不清空证据或撤销已发生的分支。MR 的 APPLIED/FOUND 尚不足以构造完整检查点，不在本片取得投影或解除保护的授权。
 
-##### C2-B3：创建 MR 完整证明与原检查点恢复（当前子片 / HEAD，实施前契约）
+##### C2-B3：创建 MR 完整证明与原检查点恢复（当前子片 / HEAD）
 
 依赖 B2 的固定 SHA 验收，回连本设计的唯一任务执行、MR 检查点和结果原子提交。用户价值是 CREATE_MR 的完整成功响应已经持久化、原 ENSURE_MR 的业务结果未提交时，重启可补原检查点，再由原 TRY_MERGE 消费相同项目/IID/source SHA。此时只补历史创建事实，不宣称 MR 当前仍可合并。
 
@@ -148,13 +148,15 @@ APPLIED 不是业务完整证明。[GitLab 创建分支契约](https://docs.gitl
 
 CREATE/opened 只证明创建：正常创建和本片恢复的 MrEvidence.mergeSha 均为 null，CREATE event 的规范字段白名单不采用 merge_commit_sha，共用 metadata patch 清除旧 git.mergeSha。反例是附带无关 B 被当作本次合并 SHA：当 target 已包含原 A 时，既有 alreadyMerged 会额外查询 B，可能错误降为 UNKNOWN 或错误归因；先以真实消费者验证，不扩大 GET/MERGE 的解析契约。
 
+SHA 以合法十六进制摘要的值判断相等，事件和检查点保留响应原表示。正常创建或恢复接收大写 A 后，原 IID 的 GET/MERGE 若返回等值小写 a，后继不得误报检查点变化；TRY 的检查点比较和应用结果确认须一致，PUT 仍使用原检查点。先用真实 HTTP 两入口及独立应用消费者反例验证，只调整这条后继的摘要比较，不改变 GET/MERGE 解析、旧事实或其他动作的判定。
+
 官方 17.11 [响应实体](https://gitlab.com/gitlab-org/gitlab/-/blob/v17.11.0-ee/lib/api/entities/merge_request_basic.rb#L35)无条件输出 source/target project ID；[创建服务](https://gitlab.com/gitlab-org/gitlab/-/blob/v17.11.0-ee/app/services/merge_requests/create_service.rb#L53)固定 source 为请求项目，只有显式 target_project_id 才改变目标。[POST 入口](https://gitlab.com/gitlab-org/gitlab/-/blob/v17.11.0-ee/lib/api/merge_requests.rb#L331)默认目标为请求项目并输出该实体。ReleaseHub 不传 target_project_id，因此本片要求三个响应项目 ID 相同；请求参数的默认值不能变成响应字段缺失的默认值。原始核对留于 `.ai/reports/validation/c2-b3/baseline/gitlab-17-11-mr-producer.json`。
 
 查重后沿现有职责落地：
 
 | 原职责 | 本片变化与实际消费者 |
 |---|---|
-| GitLabMergeRequestAdapter / GitMergeWorkflow | 共用窄的创建证明与既有检查点判定；正常 create、HTTP 账本和 Journal 投影消费同一规则，不改变 read/reuse/merge 的契约 |
+| GitLabMergeRequestAdapter / GitMergeWorkflow | confirmedCreatedMr 供正常 create、HTTP 账本和 Journal 投影共用；创建检查点清除 mergeSha，TRY 与应用成功确认统一按 SHA 值比较，不改变 read/reuse/merge 的响应解析 |
 | GitWriteHttpInterceptor / event evidence_json | CREATE_MR 仅保存上述规范原响应字段及整数 httpStatus；保留 JSON 类型，不复制完整敏感响应或从意图填空 |
 | 原 operation.target | 已在 begin 前保存 source_branch、target_branch 和冻结 sha；直接消费，不新增第二份冻结字段 |
 | RunPort / RunAppService / RunJpaPersistenceAdapter | 原投影入口改名为 projectNextAppliedTask 并删除旧名；加入 ENSURE_MR 分支，沿 completeTask 提交 CREATED 和原检查点 |
