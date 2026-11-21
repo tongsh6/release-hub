@@ -216,7 +216,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Retry run with selected items */
+        /** Accept retry for selected items and return its run receipt */
         post: operations["retry"];
         delete?: never;
         options?: never;
@@ -375,7 +375,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start orchestration for window */
+        /** Accept orchestration for window and return its run receipt */
         post: operations["orchestrate"];
         delete?: never;
         options?: never;
@@ -3766,8 +3766,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Accepted */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4052,8 +4052,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
-            200: {
+            /** @description Accepted */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

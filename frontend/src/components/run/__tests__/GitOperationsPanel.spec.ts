@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import GitOperationsPanel from '../GitOperationsPanel.vue'
 import { gitOperationApi } from '@/api/gitOperationApi'
 
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('vue-i18n', async importOriginal => ({ ...await importOriginal<typeof import('vue-i18n')>(), useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('@/utils/error', () => ({ handleError: vi.fn() }))
 vi.mock('@/api/gitOperationApi', () => ({ gitOperationApi: { list: vi.fn(), listByRun: vi.fn(), get: vi.fn(), reconcile: vi.fn() } }))
 

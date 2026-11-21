@@ -7,6 +7,20 @@
         <el-button type="primary" @click="handleExport">{{ t('run.detail.exportJson') }}</el-button>
       </div>
     </div>
+    <section v-if="savedIntents.length" class="saved-requests" :aria-label="t('run.request.saved')">
+      <h3>{{ t('run.request.saved') }}</h3>
+      <div v-for="intent in savedIntents" :key="intent.key" class="saved-request">
+        <span>{{ intent.runId ?? t('run.request.unconfirmed') }} · {{ savedItemsLabel(intent) }}</span>
+        <el-button data-action="retrieve-receipt" :disabled="retryingItems" @click="retrieveReceipt(intent)">
+          {{ t(intent.runId ? 'run.request.openReceipt' : 'run.request.retrieve') }}
+        </el-button>
+      </div>
+    </section>
+    <p v-if="observationPaused" data-test="run-observation-paused">
+      {{ t('run.observation.paused') }}
+      <el-button :disabled="loading" @click="fetchTasks">{{ t('common.refresh') }}</el-button>
+    </p>
+    <p v-else-if="observationActive">{{ t('run.observation.active') }}</p>
     <el-card v-loading="loading">
       <el-descriptions :column="2" border>
         <el-descriptions-item :label="t('run.columns.type')">{{ detail ? t(runTypeKey(detail.runType)) : '' }}</el-descriptions-item>
@@ -148,6 +162,7 @@
         :title="missingRetryPredecessorsMessage"
       />
       <el-table
+        :key="runId"
         data-test="retry-items"
         :data="detail?.items || []"
         row-key="id"
@@ -155,7 +170,7 @@
         style="width: 100%"
         @selection-change="handleRetrySelectionChange"
       >
-        <el-table-column v-if="failedItemKeys.length > 0" type="selection" width="48" :selectable="isSelectableRetryItem" />
+        <el-table-column v-if="failedItemKeys.length > 0" type="selection" width="48" :reserve-selection="true" :selectable="isSelectableRetryItem" />
         <el-table-column prop="repoId" :label="t('run.filters.repo')" />
         <el-table-column prop="windowKey" :label="t('run.filters.windowKey')" />
         <el-table-column :label="t('run.detail.itemScope')" min-width="220">
@@ -208,14 +223,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { runApi, type RunDetail, type RunItem, type RunTask } from '@/api/runApi'
+import { runApi, type RunItem, type RunTask } from '@/api/runApi'
 import MRFirstTimeline from '@/components/run/MRFirstTimeline.vue'
 import EvidenceChainPanel from '@/components/common/EvidenceChainPanel.vue'
 import DiffViewer from '@/components/run/DiffViewer.vue'
 import { handleError } from '@/utils/error'
 import { hasPerm } from '@/utils/perm'
 import { useUserStore } from '@/stores/user'
-import { readExecutionIntent, saveExecutionIntent, acknowledgeExecutionIntent } from '@/utils/executionIntent'
+import { readExecutionIntents, saveExecutionIntent, acknowledgeExecutionIntent, forgetRejectedNewIntent, type ExecutionIntent } from '@/utils/executionIntent'
+import { useRunObservation } from '@/composables/useRunObservation'
 import { runPlanApi, type RunPlanPreview } from '@/api/runPlanApi'
 import RunPlanSnapshotView from '@/components/run/RunPlanSnapshotView.vue'
 import RunItemScope from '@/components/run/RunItemScope.vue'
@@ -228,11 +244,12 @@ const currentRunId = computed(() => typeof route.params.runId === 'string' ? rou
 let viewGeneration = 0
 let disposed = false
 const { t } = useI18n()
-const loading = ref(false)
-const tasksLoading = ref(false)
-const detail = ref<RunDetail>()
+const observation = useRunObservation(() => currentRunId.value, () => user.profile?.username)
+const { detail, tasks, loading, paused: observationPaused, active: observationActive } = observation
+const tasksLoading = loading
 const previewPlan = ref<RunPlanPreview>()
-const tasks = ref<RunTask[]>([])
+const savedIntents = ref<ExecutionIntent[]>([])
+let planRequestedFor: string | undefined
 const retryingItems = ref(false)
 const selectedRetryItemIds = ref<string[]>([])
 
@@ -316,49 +333,73 @@ async function loadPlan(id: string, generation: number) {
   }
 }
 
-async function loadTasks(id: string, generation: number, status: RunDetail['status']) {
-  if (status === 'PLANNED') return
-  if (isCurrentView(id, generation)) tasksLoading.value = true
-  try {
-    const result = await runApi.getTasks(id)
-    if (isCurrentView(id, generation)) tasks.value = result
-  } catch (error) {
-    if (isCurrentView(id, generation)) handleError(error)
-  } finally {
-    if (isCurrentView(id, generation)) tasksLoading.value = false
-  }
-}
-
-async function loadRun(id: string) {
-  const generation = ++viewGeneration
-  detail.value = undefined
-  previewPlan.value = undefined
-  tasks.value = []
-  selectedRetryItemIds.value = []
-  retryingItems.value = false
-  tasksLoading.value = false
-  loading.value = Boolean(id)
-  if (!id) return
-  try {
-    const result = await runApi.getRunById(id)
-    if (!isCurrentView(id, generation)) return
-    detail.value = result
-    const queries = [loadTasks(id, generation, result.status)]
-    if (result.executionVersion >= 2
-      && (result.runType === 'WINDOW_ORCHESTRATION' || result.runType === 'WINDOW_CLEANUP')) {
-      queries.push(loadPlan(id, generation))
-    }
-    await Promise.all(queries)
-  } catch (error) {
-    if (isCurrentView(id, generation)) handleError(error)
-  } finally {
-    if (isCurrentView(id, generation)) loading.value = false
-  }
-}
-
 async function fetchTasks() {
-  if (!detail.value || tasksLoading.value) return
-  await loadTasks(currentRunId.value, viewGeneration, detail.value.status)
+  await observation.refresh()
+}
+
+function loadSavedIntents(subject: string, sourceRunId: string) {
+  savedIntents.value = readExecutionIntents(subject, `RETRY:${sourceRunId}`)
+}
+
+function savedItems(intent: ExecutionIntent): string[] {
+  const value: unknown = JSON.parse(intent.payload)
+  if (!value || typeof value !== 'object' || !('items' in value)
+    || !Array.isArray(value.items) || !value.items.length
+    || value.items.some(item => typeof item !== 'string' || !item.trim())) {
+    throw new Error(t('run.request.invalidSaved'))
+  }
+  return value.items
+}
+
+function savedItemsLabel(intent: ExecutionIntent): string {
+  try { return t('run.request.items', { items: savedItems(intent).join(', ') }) }
+  catch { return t('run.request.invalidSaved') }
+}
+
+async function receiveRetryIntent(intent: ExecutionIntent, subject: string, sourceRunId: string, generation: number, firstAttempt = false) {
+  const operation = `RETRY:${sourceRunId}`
+  // Confirmation can outlive an earlier response from the previous view.
+  const saved = readExecutionIntents(subject, operation).find(value => value.key === intent.key)
+  if (!saved || saved.payload !== intent.payload) throw new Error(t('run.request.invalidSaved'))
+  let retryRunId = saved.runId
+  if (!retryRunId) {
+    try {
+      retryRunId = await runApi.retry(sourceRunId, savedItems(intent), intent.key)
+    } catch (error) {
+      if (firstAttempt && isCurrentView(sourceRunId, generation) && user.profile?.username === subject
+        && forgetRejectedNewIntent(subject, operation, intent.key, error)) loadSavedIntents(subject, sourceRunId)
+      throw error
+    }
+  }
+  acknowledgeExecutionIntent(subject, operation, intent.key, retryRunId)
+  if (!isCurrentView(sourceRunId, generation) || user.profile?.username !== subject) return
+  loadSavedIntents(subject, sourceRunId)
+  ElMessage.success(t('run.request.accepted'))
+  await router.push({ name: 'RunDetail', params: { runId: retryRunId } })
+}
+
+async function retrieveReceipt(saved: ExecutionIntent) {
+  const subject = user.profile?.username
+  if (disposed || retryingItems.value || !subject || !currentRunId.value) return
+  const sourceRunId = currentRunId.value
+  const generation = viewGeneration
+  retryingItems.value = true
+  try {
+    const intent = readExecutionIntents(subject, `RETRY:${sourceRunId}`).find(value => value.key === saved.key)
+    if (!intent) throw new Error(t('run.request.invalidSaved'))
+    if (!intent.runId) {
+      if (!hasPerm('run:write')) { ElMessage.warning(t('common.permissionDenied')); return }
+      await ElMessageBox.confirm(t('run.request.repeatUnconfirmed'), t('common.warning'), { type: 'warning' })
+    }
+    if (!isCurrentView(sourceRunId, generation) || user.profile?.username !== subject) return
+    if (!intent.runId && !hasPerm('run:write')) return
+    await receiveRetryIntent(intent, subject, sourceRunId, generation)
+  } catch (error) {
+    if (isCurrentView(sourceRunId, generation) && user.profile?.username === subject
+      && error !== 'cancel' && error !== 'close') handleError(error)
+  } finally {
+    if (isCurrentView(sourceRunId, generation)) retryingItems.value = false
+  }
 }
 
 async function handleRetrySelectedItems() {
@@ -383,10 +424,12 @@ async function handleRetrySelectedItems() {
   const operation = `RETRY:${sourceRunId}`
   retryingItems.value = true
   try {
-    const pending = readExecutionIntent(subject, operation)
-    const message = pending
-      ? t(pending.payload === payload ? 'run.request.repeatUnconfirmed' : 'run.request.replaceUnconfirmed')
-      : t('run.retrySelectionConfirm', { count: items.length })
+    const pending = readExecutionIntents(subject, operation).find(intent => !intent.runId)
+    if (pending && pending.payload !== payload) {
+      ElMessage.warning(t('run.request.pendingFirst'))
+      return
+    }
+    const message = pending ? t('run.request.repeatUnconfirmed') : t('run.retrySelectionConfirm', { count: items.length })
     await ElMessageBox.confirm(message, t('common.warning'), { type: 'warning' })
     if (!isCurrentView(sourceRunId, generation)) return
     if (user.profile?.username !== subject || !hasPerm('run:write') || missingRetryPredecessors.value.length > 0
@@ -394,20 +437,17 @@ async function handleRetrySelectedItems() {
       ElMessage.warning(t('run.request.changed'))
       return
     }
-    const intent = saveExecutionIntent(subject, operation, payload)
-    const retryRunId = await runApi.retry(sourceRunId, items, intent.key)
-    if (typeof retryRunId !== 'string' || !retryRunId.trim()) throw new Error(t('run.request.missingReceipt'))
-    acknowledgeExecutionIntent(subject, operation, intent.key)
-    if (!isCurrentView(sourceRunId, generation) || user.profile?.username !== subject) return
-    ElMessage.success(t('run.retrySuccess'))
-    await router.push({ name: 'RunDetail', params: { runId: retryRunId } })
-  } catch (err) {
-    if (isCurrentView(sourceRunId, generation) && err !== 'cancel' && err !== 'close') handleError(err)
+    const previousKey = readExecutionIntents(subject, operation)[0]?.key
+    const intent = pending ?? saveExecutionIntent(subject, operation, payload)
+    loadSavedIntents(subject, sourceRunId)
+    await receiveRetryIntent(intent, subject, sourceRunId, generation, !pending && intent.key !== previousKey)
+  } catch (error) {
+    if (isCurrentView(sourceRunId, generation) && user.profile?.username === subject
+      && error !== 'cancel' && error !== 'close') handleError(error)
   } finally {
     if (isCurrentView(sourceRunId, generation)) retryingItems.value = false
   }
 }
-
 function inheritedSource(task: RunTask): { runId: string; itemId: string } | null {
   if (task.status !== 'INHERITED') return null
   const metadata = detail.value?.items.find(item => item.id === task.itemId)?.metadata
@@ -476,7 +516,25 @@ function extractDiff(message: string): string | null {
   return null
 }
 
-watch(currentRunId, loadRun, { immediate: true })
+watch([currentRunId, () => user.profile?.username], ([id, subject]) => {
+  viewGeneration++
+  previewPlan.value = undefined
+  planRequestedFor = undefined
+  selectedRetryItemIds.value = []
+  retryingItems.value = false
+  savedIntents.value = []
+  if (id && subject) {
+    try { loadSavedIntents(subject, id) } catch (error) { handleError(error) }
+  }
+}, { immediate: true })
+watch(detail, value => {
+  if (!value || value.id !== currentRunId.value || !user.profile?.username
+    || value.executionVersion < 2
+    || (value.runType !== 'WINDOW_ORCHESTRATION' && value.runType !== 'WINDOW_CLEANUP')
+    || planRequestedFor === value.id) return
+  planRequestedFor = value.id
+  void loadPlan(value.id, viewGeneration)
+})
 onUnmounted(() => {
   disposed = true
   viewGeneration++
@@ -484,6 +542,8 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.saved-requests { margin: 16px 0; }
+.saved-request { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; overflow-wrap: anywhere; }
 /* 页面特定样式 - 通用样式已移至 index.css */
 .step-header {
   display: flex;

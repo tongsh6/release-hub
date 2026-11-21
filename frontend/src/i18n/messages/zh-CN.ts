@@ -553,11 +553,24 @@ export default {
       operator: '操作人'
     },
     request: {
-      repeatUnconfirmed: '上次请求尚未确认回执。继续查询或提交同一请求？系统会沿用原请求标识。',
-      replaceUnconfirmed: '上次请求尚未确认回执，当前选择已经改变。确认作为新的执行请求提交？原请求仍可能已受理，请先核对运行记录。',
+      repeatUnconfirmed: '上次请求尚未确认回执。使用同一执行请求取回原结果？',
+      pendingFirst: '上次请求尚未确认，请先取回原结果。确认后可重新选择范围并提交下一次执行。',
       changed: '确认期间登录身份或执行范围已改变，请重新确认。',
-      missingReceipt: '尚未取得运行回执；再次提交相同选择将沿用原请求标识。',
-      accepted: '已取得运行回执'
+      missingReceipt: '尚未取得运行回执；请先取回原结果，再提交下一次执行。',
+      accepted: '已取得运行回执',
+      saved: '本会话的执行请求',
+      unconfirmed: '尚未确认回执',
+      retrieve: '取回原请求',
+      openReceipt: '查看原运行',
+      scope: '仓库：{repos}；迭代：{iterations}',
+      items: '所选执行项：{items}',
+      invalidSaved: '保存的请求或执行证据无法核实，请检查原运行记录。',
+      receiptConflict: '同一请求返回了不同运行记录，已保留原回执并停止操作，请核对。'
+    },
+    observation: {
+      active: '正在刷新执行进度；部分仓库待核对时，其他仓库仍可能继续。',
+      paused: '自动刷新已暂停，运行状态未被改变。可手动刷新原运行。',
+      invalidEvidence: '运行任务证据不完整或属于另一运行，已暂停刷新。'
     },
     retrySelectionConfirm: '确认重试选中的 {count} 个执行项？',
     selectRetryItems: '请先勾选需要重试的执行项',
@@ -950,7 +963,7 @@ export default {
     closeoutNotice: '此处执行 feature → release 集成。发布后的默认分支合并、标签与可选 CI，请使用窗口“关闭并收尾”，并复核收尾运行结果。',
     scopeUnavailable: '发布计划尚未完整加载，暂不能执行。请刷新后重试。',
     scopeChanged: '确认期间范围或状态发生变化，请重新核对。',
-    latestRun: '最新 Run 复核',
+    latestRun: '当前运行复核',
     runItems: '执行项',
     failedItems: '失败项',
     failureContext: '失败上下文',

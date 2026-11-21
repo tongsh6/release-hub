@@ -8,7 +8,7 @@ import { gitOperationApi } from '@/api/gitOperationApi'
 vi.mock('@/api/gitOperationApi', () => ({ gitOperationApi: { list: vi.fn().mockResolvedValue([]), listByRun: vi.fn(), get: vi.fn(), reconcile: vi.fn() } }))
 vi.mock('@/utils/error', () => ({ handleError: vi.fn() }))
 
-vi.mock('vue-i18n', () => ({
+vi.mock('vue-i18n', async importOriginal => ({ ...await importOriginal<typeof import('vue-i18n')>(),
   useI18n: () => ({
     t: (key: string) => key
   })

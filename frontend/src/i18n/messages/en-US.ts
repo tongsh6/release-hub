@@ -553,11 +553,24 @@ export default {
       operator: 'Operator'
     },
     request: {
-      repeatUnconfirmed: 'The previous request has no confirmed receipt. Submit the same request again using its original request key?',
-      replaceUnconfirmed: 'The previous request has no confirmed receipt and the selection has changed. Submit a new execution request? The original may already have been accepted; review the runs first.',
+      repeatUnconfirmed: 'The previous request has no confirmed receipt. Retrieve its result using the same execution request?',
+      pendingFirst: 'Retrieve the previous result first. Once it is confirmed, you can select a scope and confirm another execution.',
       changed: 'The signed-in user or execution scope changed during confirmation. Confirm the request again.',
-      missingReceipt: 'No run receipt was received. Resubmitting the same selection will reuse the original request key.',
-      accepted: 'Run receipt received'
+      missingReceipt: 'No run receipt was received. Retrieve the previous result before starting another execution.',
+      accepted: 'Run receipt received',
+      saved: 'Execution requests in this session',
+      unconfirmed: 'Receipt not confirmed',
+      retrieve: 'Retrieve original request',
+      openReceipt: 'View original run',
+      scope: 'Repositories: {repos}; iterations: {iterations}',
+      items: 'Selected execution items: {items}',
+      invalidSaved: 'The saved request or execution evidence cannot be verified. Review the original run.',
+      receiptConflict: 'The same request returned a different run. The original receipt was retained and the action stopped.'
+    },
+    observation: {
+      active: 'Refreshing execution progress. Other repositories may continue while some require review.',
+      paused: 'Automatic refresh is paused. The run status has not changed. Refresh the original run manually.',
+      invalidEvidence: 'Task evidence is incomplete or belongs to another run. Refresh has paused.'
     },
     retrySelectionConfirm: 'Retry the {count} selected items?',
     selectRetryItems: 'Select the items to retry first',
@@ -950,7 +963,7 @@ export default {
     closeoutNotice: 'This action integrates feature into release. Use Close and Finalize for the default-branch merge, tags and optional CI, then review the closeout run.',
     scopeUnavailable: 'The complete release plan is unavailable. Refresh before executing.',
     scopeChanged: 'The scope or state changed during confirmation. Review it again.',
-    latestRun: 'Latest Run Review',
+    latestRun: 'Current Run Review',
     runItems: 'Run Items',
     failedItems: 'Failed Items',
     failureContext: 'Failure Context',

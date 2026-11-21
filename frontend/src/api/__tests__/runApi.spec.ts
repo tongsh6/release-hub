@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { InternalAxiosRequestConfig } from 'axios'
 import { http } from '@/api/http'
 import { runApi } from '@/api/runApi'
+import { orchestrate } from '@/api/modules/releaseWindow'
 
 const originalAdapter = http.defaults.adapter
-function respond(data: unknown) {
+function respond(data: unknown, status = 200) {
   const adapter = vi.fn(async (config: InternalAxiosRequestConfig) => ({
-    data, status: 200, statusText: 'OK', headers: {}, config
+    data, status, statusText: status === 202 ? 'Accepted' : 'OK', headers: {}, config
   }))
   http.defaults.adapter = adapter
   return adapter
@@ -63,12 +64,20 @@ describe('run API contract through the real HTTP client', () => {
   })
 
   it('unwraps the real retry receipt while sending only item IDs and the stable intent header', async () => {
-    const transport = respond(envelope('retry-1'))
+    const transport = respond(envelope('retry-1'), 202)
     expect(await runApi.retry('run-1', ['item-1'], 'retry-intent-1')).toBe('retry-1')
     expect(transport).toHaveBeenCalledTimes(1)
     const config = transport.mock.calls[0]![0]
     expect(config).toMatchObject({ method: 'post', url: '/v1/runs/run-1/retry' })
     expect(config.headers.get('Idempotency-Key')).toBe('retry-intent-1')
     expect(JSON.parse(config.data)).toEqual({ items: ['item-1'] })
+  })
+  it('unwraps the real 202 orchestration envelope and preserves the saved key and payload', async () => {
+    const request = { repoIds: ['repo-1'], iterationKeys: ['ITER-1'], failFast: true }
+    const transport = respond(envelope('accepted-run'), 202)
+    expect(await orchestrate('window-1', request, 'original-key')).toBe('accepted-run')
+    const config = transport.mock.calls[0]![0]
+    expect(config.headers.get('Idempotency-Key')).toBe('original-key')
+    expect(JSON.parse(config.data)).toEqual(request)
   })
 })

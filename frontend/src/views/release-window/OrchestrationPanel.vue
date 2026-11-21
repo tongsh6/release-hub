@@ -62,6 +62,23 @@
       </el-button>
     </div>
 
+    <section v-if="savedIntents.length" class="recent-runs" :aria-label="t('run.request.saved')">
+      <div class="section-title">{{ t('run.request.saved') }}</div>
+      <div v-for="intent in savedIntents" :key="intent.key" class="saved-request">
+        <span>{{ intent.runId ?? t('run.request.unconfirmed') }} · {{ savedScopeLabel(intent) }}</span>
+        <el-button
+          size="small" data-action="retrieve-receipt" :data-intent-key="intent.key"
+          :disabled="orchestrating" @click="retrieveReceipt(intent)">
+          {{ t(intent.runId ? 'run.request.openReceipt' : 'run.request.retrieve') }}
+        </el-button>
+      </div>
+    </section>
+    <p v-if="observationPaused" data-test="run-observation-paused">
+      {{ t('run.observation.paused') }}
+      <el-button size="small" @click="observation.refresh">{{ t('common.refresh') }}</el-button>
+    </p>
+    <p v-else-if="observationActive">{{ t('run.observation.active') }}</p>
+
     <p v-if="acceptedRunId && latestRunDetail?.id !== acceptedRunId" class="run-review-summary" data-test="accepted-run">
       {{ t('run.request.accepted') }}: {{ acceptedRunId }}
       <el-button link type="primary" @click="router.push(`/runs/${acceptedRunId}`)">{{ t('orchestration.viewRunDetail') }}</el-button>
@@ -115,12 +132,13 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { releaseWindowApi, type PlanItemView } from '@/api/modules/releaseWindow'
+import { releaseWindowApi, type PlanItemView, type OrchestrateRequest } from '@/api/modules/releaseWindow'
 import { runApi, type Run, type RunDetail } from '@/api/runApi'
 import { isFailedResult, runStatusTagType, runTypeKey } from '@/utils/runPresentation'
 import { handleError } from '@/utils/error'
 import { useUserStore } from '@/stores/user'
-import { readExecutionIntent, saveExecutionIntent, acknowledgeExecutionIntent } from '@/utils/executionIntent'
+import { readExecutionIntents, saveExecutionIntent, acknowledgeExecutionIntent, forgetRejectedNewIntent, type ExecutionIntent } from '@/utils/executionIntent'
+import { useRunObservation } from '@/composables/useRunObservation'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import RunPlanPreviewDialog from './RunPlanPreviewDialog.vue'
 
@@ -143,8 +161,13 @@ const failFast = computed(() => blockPolicy.value === 'FAIL_FAST')
 const orchestrating = ref(false)
 const savedPlanVisible = ref(false)
 const recentRuns = ref<Run[]>([])
-const latestRunDetail = ref<RunDetail>()
+const savedIntents = ref<ExecutionIntent[]>([])
 const acceptedRunId = ref<string>()
+const observedRunId = ref<string>()
+const observation = useRunObservation(() => observedRunId.value, () => user.profile?.username)
+const latestRunDetail = observation.detail
+const observationPaused = observation.paused
+const observationActive = observation.active
 let disposed = false
 let viewGeneration = 0
 let recentLoadGeneration = 0
@@ -178,18 +201,55 @@ watch([() => props.windowId, selectedRepoId, availableIterationKeys, () => props
       : [...keys]
     selectionContext = context
   }, { immediate: true })
-watch(() => props.windowId, () => {
-  viewGeneration++
-  orchestrating.value = false
-  selectedRepoId.value = ''
-  blockPolicy.value = 'FAIL_FAST'
-  latestRunDetail.value = undefined
-  acceptedRunId.value = undefined
-  recentRuns.value = []
-})
 
-function requestScope() {
+function requestScope(): OrchestrateRequest {
   return { repoIds: [...repoIds.value].sort(), iterationKeys: [...iterationKeys.value].sort(), failFast: failFast.value }
+}
+function storedScope(intent: ExecutionIntent): OrchestrateRequest {
+  const value: unknown = JSON.parse(intent.payload)
+  if (!value || typeof value !== 'object' || !('repoIds' in value) || !Array.isArray(value.repoIds)
+    || !value.repoIds.length || !value.repoIds.every(id => typeof id === 'string' && id.trim())
+    || !('iterationKeys' in value) || !Array.isArray(value.iterationKeys)
+    || !value.iterationKeys.every(key => typeof key === 'string' && key.trim())
+    || !('failFast' in value) || typeof value.failFast !== 'boolean') {
+    throw new Error(t('run.request.invalidSaved'))
+  }
+  return { repoIds: value.repoIds, iterationKeys: value.iterationKeys, failFast: value.failFast }
+}
+function savedScopeLabel(intent: ExecutionIntent): string {
+  try {
+    const scope = storedScope(intent)
+    return t('run.request.scope', { repos: scope.repoIds.join(', '), iterations: scope.iterationKeys.join(', ') })
+  } catch { return t('run.request.invalidSaved') }
+}
+function loadSavedIntents(subject: string, windowId: string) {
+  savedIntents.value = readExecutionIntents(subject, `ORCHESTRATE:${windowId}`)
+}
+async function receiveIntent(intent: ExecutionIntent, subject: string, windowId: string, generation: number, firstAttempt = false) {
+  const operation = `ORCHESTRATE:${windowId}`
+  // Confirmation can outlive an earlier response from the previous view.
+  const saved = readExecutionIntents(subject, operation).find(value => value.key === intent.key)
+  if (!saved || saved.payload !== intent.payload) throw new Error(t('run.request.invalidSaved'))
+  // A known receipt is only read. No current scope is used to reconstruct an old request.
+  let runId = saved.runId
+  if (!runId) {
+    try {
+      runId = await releaseWindowApi.orchestrate(windowId, storedScope(intent), intent.key)
+    } catch (error) {
+      if (firstAttempt && isCurrentView(windowId, generation) && user.profile?.username === subject
+        && forgetRejectedNewIntent(subject, operation, intent.key, error)) loadSavedIntents(subject, windowId)
+      throw error
+    }
+  }
+  acknowledgeExecutionIntent(subject, operation, intent.key, runId)
+  if (!isCurrentView(windowId, generation) || user.profile?.username !== subject) return
+  loadSavedIntents(subject, windowId)
+  acceptedRunId.value = runId
+  recentLoadGeneration++
+  if (observedRunId.value === runId) await observation.refresh()
+  else observedRunId.value = runId
+  await loadRecentRuns()
+  if (isCurrentView(windowId, generation) && user.profile?.username === subject) emit('refresh')
 }
 async function handleOrchestrate() {
   if (disposed || !canExecute.value) return
@@ -197,57 +257,83 @@ async function handleOrchestrate() {
   if (!subject) { ElMessage.warning(t('common.permissionDenied')); return }
   const windowId = props.windowId
   const generation = viewGeneration
-  const request = requestScope()
-  const payload = JSON.stringify(request)
+  const payload = JSON.stringify(requestScope())
   const operation = `ORCHESTRATE:${windowId}`
   orchestrating.value = true
   try {
-    const pending = readExecutionIntent(subject, operation)
-    const confirmKey = pending ? pending.payload === payload
-      ? 'run.request.repeatUnconfirmed' : 'run.request.replaceUnconfirmed'
-      : 'orchestration.confirmIntegrate'
+    const pending = readExecutionIntents(subject, operation).find(intent => !intent.runId)
+    if (pending && pending.payload !== payload) {
+      ElMessage.warning(t('run.request.pendingFirst'))
+      return
+    }
+    const confirmKey = pending ? 'run.request.repeatUnconfirmed' : 'orchestration.confirmIntegrate'
     await ElMessageBox.confirm(t(confirmKey), t('common.confirm'), { type: 'warning' })
     if (!isCurrentView(windowId, generation)) return
-    if (!scopeExecutable.value || props.windowId !== windowId || user.profile?.username !== subject
-      || payload !== JSON.stringify(requestScope())) {
+    if (!scopeExecutable.value || user.profile?.username !== subject || payload !== JSON.stringify(requestScope())) {
       ElMessage.warning(t('orchestration.scopeChanged'))
       return
     }
-    const intent = saveExecutionIntent(subject, operation, payload)
-    const runId = await releaseWindowApi.orchestrate(windowId, request, intent.key)
-    if (typeof runId !== 'string' || !runId.trim()) throw new Error(t('run.request.missingReceipt'))
-    acknowledgeExecutionIntent(subject, operation, intent.key)
-    if (!isCurrentView(windowId, generation) || user.profile?.username !== subject) return
-    acceptedRunId.value = runId
-    recentLoadGeneration++
-    const result = await runApi.getRunById(runId)
-    if (!isCurrentView(windowId, generation) || user.profile?.username !== subject) return
-    latestRunDetail.value = result
-    await loadRecentRuns()
-    if (isCurrentView(windowId, generation)) emit('refresh')
+    const previousKey = readExecutionIntents(subject, operation)[0]?.key
+    const intent = pending ?? saveExecutionIntent(subject, operation, payload)
+    loadSavedIntents(subject, windowId)
+    await receiveIntent(intent, subject, windowId, generation, !pending && intent.key !== previousKey)
   } catch (error) {
-    if (isCurrentView(windowId, generation) && error !== 'cancel' && error !== 'close') handleError(error)
+    if (isCurrentView(windowId, generation) && user.profile?.username === subject
+      && error !== 'cancel' && error !== 'close') handleError(error)
+  } finally { if (isCurrentView(windowId, generation)) orchestrating.value = false }
+}
+async function retrieveReceipt(saved: ExecutionIntent) {
+  const subject = user.profile?.username
+  if (disposed || orchestrating.value || !subject) return
+  const windowId = props.windowId
+  const generation = viewGeneration
+  orchestrating.value = true
+  try {
+    const intent = readExecutionIntents(subject, `ORCHESTRATE:${windowId}`).find(value => value.key === saved.key)
+    if (!intent) throw new Error(t('run.request.invalidSaved'))
+    if (!intent.runId) await ElMessageBox.confirm(t('run.request.repeatUnconfirmed'), t('common.confirm'), { type: 'warning' })
+    if (!isCurrentView(windowId, generation) || user.profile?.username !== subject) return
+    await receiveIntent(intent, subject, windowId, generation)
+  } catch (error) {
+    if (isCurrentView(windowId, generation) && user.profile?.username === subject
+      && error !== 'cancel' && error !== 'close') handleError(error)
   } finally { if (isCurrentView(windowId, generation)) orchestrating.value = false }
 }
 async function loadRecentRuns() {
+  const subject = user.profile?.username
+  if (!subject) return
   const windowId = props.windowId
   const windowKey = props.windowKey
   const generation = viewGeneration
   const requestGeneration = ++recentLoadGeneration
-  const isCurrent = () => isCurrentView(windowId, generation)
+  const isCurrent = () => isCurrentView(windowId, generation) && user.profile?.username === subject
     && props.windowKey === windowKey && requestGeneration === recentLoadGeneration
   try {
     const result = await runApi.list({ page: 1, pageSize: 5, windowKey })
     if (!isCurrent()) return
     recentRuns.value = result.list
-    if (result.list[0]?.id) {
-      const detail = await runApi.getRunById(result.list[0].id)
-      if (isCurrent()) latestRunDetail.value = detail
-    }
+    if (!acceptedRunId.value) observedRunId.value = result.list[0]?.id
   } catch (error) { if (isCurrent()) handleError(error) }
 }
 function viewRunDetail(run: Run | RunDetail) { router.push(`/runs/${run.id}`) }
-watch(() => props.windowKey, loadRecentRuns, { immediate: true })
+watch([() => props.windowId, () => props.windowKey, () => user.profile?.username], ([windowId, , subject]) => {
+  viewGeneration++
+  recentLoadGeneration++
+  orchestrating.value = false
+  selectedRepoId.value = ''
+  blockPolicy.value = 'FAIL_FAST'
+  acceptedRunId.value = undefined
+  observedRunId.value = undefined
+  recentRuns.value = []
+  savedIntents.value = []
+  if (!subject) return
+  try {
+    loadSavedIntents(subject, windowId)
+    acceptedRunId.value = savedIntents.value.find(intent => intent.runId)?.runId
+    observedRunId.value = acceptedRunId.value
+  } catch (error) { handleError(error) }
+  void loadRecentRuns()
+}, { immediate: true })
 </script>
 
 <style scoped>
@@ -263,5 +349,6 @@ watch(() => props.windowKey, loadRecentRuns, { immediate: true })
 .iteration-scope label { display: flex; align-items: center; gap: 8px; }
 .run-review-summary, .recent-runs { margin-top: 24px; border-top: 1px solid var(--el-border-color-lighter); padding-top: 16px; }
 .section-title { font-weight: 600; margin-bottom: 12px; }
+.saved-request { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; overflow-wrap: anywhere; }
 .failed-run-evidence { color: var(--el-color-danger); overflow-wrap: anywhere; }
 </style>

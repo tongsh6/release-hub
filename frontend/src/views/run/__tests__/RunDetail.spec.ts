@@ -2,7 +2,9 @@ vi.mock('@/api/gitOperationApi', () => ({ gitOperationApi: { list: vi.fn().mockR
 import { shallowMount, mount, flushPromises, enableAutoUnmount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
-import { http } from '@/api/http'
+import { http, ApiError } from '@/api/http'
+import { ref } from 'vue'
+import { saveExecutionIntent, readExecutionIntent, acknowledgeExecutionIntent } from '@/utils/executionIntent'
 import RunDetail from '../RunDetail.vue'
 import { runApi, type RunItem, type RunTask } from '@/api/runApi'
 import { runPlanApi, type RunPlanPreview } from '@/api/runPlanApi'
@@ -13,13 +15,18 @@ import { hasPerm } from '@/utils/perm'
 const confirmDialog = vi.hoisted(() => vi.fn<() => Promise<'confirm'>>())
 
 const authenticatedUser = vi.hoisted(() => ({ profile: { username: 'admin' } as { username: string } | null }))
+const authenticatedProfile = ref(authenticatedUser.profile)
+Object.defineProperty(authenticatedUser, 'profile', {
+  get: () => authenticatedProfile.value,
+  set: (value: { username: string } | null) => { authenticatedProfile.value = value }
+})
 vi.mock('@/stores/user', () => ({ useUserStore: () => authenticatedUser }))
 
 const routerPush = vi.fn<Router['push']>()
 let router: Router
 const originalAdapter = http.defaults.adapter
 enableAutoUnmount(afterEach)
-afterEach(() => { http.defaults.adapter = originalAdapter })
+afterEach(() => { http.defaults.adapter = originalAdapter; vi.useRealTimers() })
 
 vi.mock('vue-i18n', async importOriginal => ({
   ...await importOriginal<typeof import('vue-i18n')>(),
@@ -203,7 +210,7 @@ describe('RunDetail', () => {
     const actual = await vi.importActual<typeof import('@/api/runApi')>('@/api/runApi')
     vi.mocked(runApi.retry).mockImplementation(actual.runApi.retry)
     http.defaults.adapter = async config => ({
-      config, status: 200, statusText: 'OK', headers: {},
+      config, status: 202, statusText: 'Accepted', headers: {},
       data: { success: true, code: '0', message: 'OK', data: 'run-retry-1' }
     })
     const shell = mountThroughRouter()
@@ -214,7 +221,7 @@ describe('RunDetail', () => {
     await flushPromises()
     expect(router.currentRoute.value.params.runId).toBe('run-retry-1')
     expect(routerPush).toHaveBeenLastCalledWith({ name: 'RunDetail', params: { runId: 'run-retry-1' } })
-    expect(sessionStorage.length).toBe(0)
+    expect(readExecutionIntent('admin', 'RETRY:run-1')?.runId).toBe('run-retry-1')
     expect((shell.getComponent(RunDetail).vm as any).detail.id).toBe('run-retry-1')
   })
 
@@ -222,7 +229,7 @@ describe('RunDetail', () => {
     const actual = await vi.importActual<typeof import('@/api/runApi')>('@/api/runApi')
     vi.mocked(runApi.retry).mockImplementation(actual.runApi.retry)
     http.defaults.adapter = async config => ({
-      config, status: 200, statusText: 'OK', headers: {},
+      config, status: 202, statusText: 'Accepted', headers: {},
       data: { success: true, code: '0', message: 'OK', data: { runId: 'run-retry-1' } }
     })
     const shell = mountThroughRouter()
@@ -323,7 +330,7 @@ describe('RunDetail', () => {
     await flushPromises()
     receipt.resolve('run-retry-1')
     await flushPromises()
-    expect(sessionStorage.length).toBe(0)
+    expect(readExecutionIntent('admin', 'RETRY:run-1')?.runId).toBe('run-retry-1')
     expect(router.currentRoute.value.name).toBe('Runs')
     expect(runApi.getRunById).not.toHaveBeenCalledWith('run-retry-1')
   })
@@ -417,7 +424,7 @@ describe('RunDetail', () => {
     await flushPromises()
     expect(runApi.retry).toHaveBeenLastCalledWith('run-1', ['item-failed'], key)
     expect(confirmDialog).toHaveBeenLastCalledWith('run.request.repeatUnconfirmed', 'common.warning', { type: 'warning' })
-    expect(sessionStorage.length).toBe(0)
+    expect(readExecutionIntent('admin', 'RETRY:run-1')?.runId).toBe('run-retry-1')
   })
 
   it('acknowledges a retry receipt before a failed detail read without making another write', async () => {
@@ -428,7 +435,7 @@ describe('RunDetail', () => {
     await wrapper.findAll('button').find(button => button.text().includes('run.retrySelectedItems'))!.trigger('click')
     await flushPromises()
     expect(runApi.retry).toHaveBeenCalledTimes(1)
-    expect(sessionStorage.length).toBe(0)
+    expect(readExecutionIntent('admin', 'RETRY:run-1')?.runId).toBe('run-retry-1')
     expect(wrapper.text()).toContain('run-retry-1')
     expect(wrapper.findAll('button').some(button => button.text().includes('run.retrySelectedItems'))).toBe(false)
   })
@@ -494,7 +501,7 @@ describe('RunDetail', () => {
 
   it('never offers ordinary retries for a run with unresolved external effects', async () => {
     vi.mocked(runApi.getRunById).mockResolvedValue({
-      id: 'run-review', executionVersion: 3, runType: 'WINDOW_ORCHESTRATION', status: 'NEEDS_REVIEW',
+      id: 'run-1', executionVersion: 3, runType: 'WINDOW_ORCHESTRATION', status: 'NEEDS_REVIEW',
       startedAt: '', finishedAt: '', operator: 'tester',
       items: [
         { id: 'item-unknown', metadata: {}, windowKey: 'WK', repoId: 'repo-unknown', iterationKey: 'ITER-1', plannedOrder: 1, executedOrder: 1, finalResult: 'UNKNOWN', steps: [] },
@@ -502,7 +509,7 @@ describe('RunDetail', () => {
       ]
     })
     vi.mocked(runApi.getTasks).mockResolvedValue([{
-      taskId: 'task-unknown', runId: 'run-review', itemId: 'item-unknown', actionType: 'TRY_MERGE', taskOrder: 4,
+      taskId: 'task-unknown', runId: 'run-1', itemId: 'item-unknown', actionType: 'TRY_MERGE', taskOrder: 4,
       status: 'UNKNOWN', startedAt: null, finishedAt: null, errorMessage: 'response lost'
     }])
     const wrapper = mountRunDetail()
@@ -566,7 +573,7 @@ describe('RunDetail', () => {
 
   it('identifies cleanup runs and directs failed closeout to evidence review', async () => {
     vi.mocked(runApi.getRunById).mockResolvedValue({
-      id: 'run-cleanup', executionVersion: 2, runType: 'WINDOW_CLEANUP', status: 'FAILED',
+      id: 'run-1', executionVersion: 2, runType: 'WINDOW_CLEANUP', status: 'FAILED',
       startedAt: '', finishedAt: '', operator: 'tester',
       items: [{ id: 'cleanup-item', metadata: {}, windowKey: 'WK', repoId: 'repo-1',
         iterationKey: null, plannedOrder: 1, executedOrder: 1, finalResult: 'FAILED', steps: [] }]
@@ -577,4 +584,298 @@ describe('RunDetail', () => {
     expect(wrapper.text()).toContain('run.detail.cleanupReview')
     expect(wrapper.findAll('button').some(button => button.text().includes('run.retrySelectedItems'))).toBe(false)
   })
+  it('retrieves a saved retry without depending on a new selection or the current retry eligibility', async () => {
+    const pending = saveExecutionIntent('admin', 'RETRY:run-1', JSON.stringify({ items: ['item-failed'] }))
+    const original = await runApi.getRunById('run-1')
+    vi.mocked(runApi.getRunById).mockResolvedValue({ ...original, status: 'NEEDS_REVIEW' })
+    const page = mountRunDetail()
+    await flushPromises()
+    expect((page.vm as unknown as { selectedRetryItemKeys: string[] }).selectedRetryItemKeys).toEqual([])
+    const recover = page.find('[data-action="retrieve-receipt"]')
+    expect(recover.exists()).toBe(true)
+    await recover.trigger('click')
+    await flushPromises()
+    expect(runApi.retry).toHaveBeenCalledExactlyOnceWith('run-1', ['item-failed'], pending.key)
+  })
+
+  it.each(['PENDING', 'RUNNING'] as const)('continues observing NEEDS_REVIEW while another repository has %s work', async status => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const original = await runApi.getRunById('run-1')
+    vi.mocked(runApi.getRunById).mockResolvedValue({ ...original, status: 'NEEDS_REVIEW', finishedAt: null })
+    const unknown: RunTask = { ...taskFor('run-1'), taskId: 'unknown', itemId: 'item-failed', status: 'UNKNOWN' }
+    const active: RunTask = { ...taskFor('run-1'), taskId: 'other', itemId: 'item-success', status }
+    vi.mocked(runApi.getTasks).mockResolvedValueOnce([unknown, active])
+      .mockResolvedValue([unknown, { ...active, status: 'COMPLETED' }])
+    const page = mountRunDetail()
+    await flushPromises()
+    expect(page.text()).toContain('run.detail.needsReview')
+    expect(runApi.getTasks).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+    expect(runApi.getTasks).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(8000)
+    expect(runApi.getTasks).toHaveBeenCalledTimes(2)
+    expect(runApi.retry).not.toHaveBeenCalled()
+  })
+
+  it('refreshes the same Run without clearing the user selection or reloading its immutable plan', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    vi.mocked(runApi.getTasks).mockResolvedValue([{ ...taskFor('run-1'), status: 'PENDING' }])
+    const page = mountRunDetail()
+    await flushPromises()
+    await selectRetryItems(page, ['item-failed'])
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+    expect(runApi.getTasks).toHaveBeenCalledTimes(2)
+    expect((page.vm as unknown as { selectedRetryItemKeys: string[] }).selectedRetryItemKeys).toEqual(['item-failed'])
+    expect(runPlanApi.get).toHaveBeenCalledTimes(1)
+  })
+
+
+  it('keeps the real table selection when polling replaces item objects', async () => {
+    const { ElTable, ElTableColumn } = await vi.importActual<typeof import('element-plus')>('element-plus')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const original = await runApi.getRunById('run-1')
+    vi.mocked(runApi.getRunById).mockImplementation(async id => ({
+      ...original, id: String(id), items: original.items.map(item => ({ ...item }))
+    }))
+    vi.mocked(runApi.getTasks).mockResolvedValue([{ ...taskFor('run-1'), status: 'PENDING' }])
+    const page = mount(RunDetail, {
+      global: { plugins: [router], components: { ElTable, ElTableColumn },
+        stubs: { ...stubs, ElTable: false, ElTableColumn: false },
+        directives: { loading: {}, perm: {} } }
+    })
+    await flushPromises()
+    const table = page.getComponent('[data-test="retry-items"]') as VueWrapper
+    const failed = (page.vm as unknown as { detail: { items: RunItem[] } }).detail.items.find(item => item.id === 'item-failed')!
+    const tableVm = table.vm as unknown as { toggleRowSelection: (row: RunItem, selected: boolean) => void; getSelectionRows: () => RunItem[] }
+    tableVm.toggleRowSelection(failed, true)
+    await flushPromises()
+    expect(tableVm.getSelectionRows().map(item => item.id)).toEqual(['item-failed'])
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+    expect(runApi.getTasks).toHaveBeenCalledTimes(2)
+    expect(tableVm.getSelectionRows().map(item => item.id)).toEqual(['item-failed'])
+    expect((page.vm as unknown as { selectedRetryItemKeys: string[] }).selectedRetryItemKeys).toEqual(['item-failed'])
+    await router.push({ name: 'RunDetail', params: { runId: 'run-other' } })
+    await flushPromises()
+    expect((page.vm as unknown as { selectedRetryItemKeys: string[] }).selectedRetryItemKeys).toEqual([])
+    const nextTable = (page.getComponent('[data-test="retry-items"]') as VueWrapper).vm as unknown as { getSelectionRows: () => RunItem[] }
+    expect(nextTable.getSelectionRows()).toEqual([])
+  })
+
+  it('opens a confirmed retry receipt without submitting another request', async () => {
+    const pending = saveExecutionIntent('admin', 'RETRY:run-1', JSON.stringify({ items: ['item-failed'] }))
+    acknowledgeExecutionIntent('admin', 'RETRY:run-1', pending.key, 'run-retry-1')
+    const page = mountRunDetail()
+    await flushPromises()
+    await page.get('[data-action="retrieve-receipt"]').trigger('click')
+    await flushPromises()
+    expect(runApi.retry).not.toHaveBeenCalled()
+    expect(confirmDialog).not.toHaveBeenCalled()
+    expect(router.currentRoute.value.params.runId).toBe('run-retry-1')
+    expect(runApi.getRunById).toHaveBeenCalledWith('run-retry-1')
+  })
+
+  it.each(['retry', 'retrieve-receipt'])('uses a receipt acknowledged while the %s confirmation is open without sending again', async action => {
+    const receipt = deferred<string>()
+    vi.mocked(runApi.retry).mockReturnValueOnce(receipt.promise)
+    const first = mountRunDetail()
+    await flushPromises()
+    await selectRetryItems(first, ['item-failed'])
+    await first.findAll('button').find(button => button.text().includes('run.retrySelectedItems'))!.trigger('click')
+    await flushPromises()
+    const originalKey = vi.mocked(runApi.retry).mock.calls[0]![2]
+    first.unmount()
+    const confirmation = deferred<'confirm'>()
+    confirmDialog.mockReturnValueOnce(confirmation.promise)
+    const page = mountRunDetail()
+    await flushPromises()
+    if (action === 'retry') {
+      await selectRetryItems(page, ['item-failed'])
+      await page.findAll('button').find(button => button.text().includes('run.retrySelectedItems'))!.trigger('click')
+    } else await page.get('[data-action="retrieve-receipt"]').trigger('click')
+    receipt.resolve('run-retry-1')
+    await flushPromises()
+    confirmation.resolve('confirm')
+    await flushPromises()
+    expect(runApi.retry).toHaveBeenCalledTimes(1)
+    expect(readExecutionIntent('admin', 'RETRY:run-1')).toMatchObject({ key: originalKey, runId: 'run-retry-1' })
+    expect(router.currentRoute.value.params.runId).toBe('run-retry-1')
+  })
+
+  it('preserves the same-key retrieval in flight when a late first rejection arrives from the old page', async () => {
+    let rejectOriginal!: (reason: unknown) => void
+    const receipt = deferred<string>()
+    vi.mocked(runApi.retry)
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectOriginal = reject }))
+      .mockReturnValueOnce(receipt.promise)
+    const first = mountRunDetail()
+    await flushPromises()
+    await selectRetryItems(first, ['item-failed'])
+    await first.findAll('button').find(button => button.text().includes('run.retrySelectedItems'))!.trigger('click')
+    await flushPromises()
+    const originalKey = vi.mocked(runApi.retry).mock.calls[0]![2]
+    first.unmount()
+    const page = mountRunDetail()
+    await flushPromises()
+    await page.get('[data-action="retrieve-receipt"]').trigger('click')
+    await flushPromises()
+    expect(vi.mocked(runApi.retry).mock.calls.map(call => call[2])).toEqual([originalKey, originalKey])
+    rejectOriginal(new ApiError({ httpStatus: 400, code: 'RUN_006', message: 'scope was invalid' }))
+    await flushPromises()
+    const retainedBeforeReceipt = readExecutionIntent('admin', 'RETRY:run-1')
+    receipt.resolve('run-retry-1')
+    await flushPromises()
+    expect(retainedBeforeReceipt).toMatchObject({ key: originalKey })
+    expect(readExecutionIntent('admin', 'RETRY:run-1')).toMatchObject({ key: originalKey, runId: 'run-retry-1' })
+    expect(router.currentRoute.value.params.runId).toBe('run-retry-1')
+    expect(runApi.retry).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps an unresolved retry when a new selection has a different payload', async () => {
+    const pending = saveExecutionIntent('admin', 'RETRY:run-1', JSON.stringify({ items: ['item-blocked'] }))
+    const page = mountRunDetail()
+    await flushPromises()
+    await selectRetryItems(page, ['item-failed'])
+    await page.findAll('button').find(button => button.text().includes('run.retrySelectedItems'))!.trigger('click')
+    await flushPromises()
+    expect(runApi.retry).not.toHaveBeenCalled()
+    expect(confirmDialog).not.toHaveBeenCalled()
+    expect(readExecutionIntent('admin', 'RETRY:run-1')).toEqual(pending)
+    expect(page.find('[data-action="retrieve-receipt"]').exists()).toBe(true)
+  })
+
+  it('stops an active poll when routing away and discards the old Run response', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const original = await runApi.getRunById('run-1')
+    vi.mocked(runApi.getTasks).mockResolvedValue([{ ...taskFor('run-1'), status: 'PENDING' }])
+    const shell = mountThroughRouter()
+    await flushPromises()
+    const late = deferred<typeof original>()
+    vi.mocked(runApi.getRunById).mockImplementationOnce(() => late.promise)
+    await vi.advanceTimersByTimeAsync(2000)
+    await router.push({ name: 'Runs' })
+    await flushPromises()
+    late.resolve({ ...original, status: 'DONE' })
+    await flushPromises()
+    const reads = vi.mocked(runApi.getRunById).mock.calls.length
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(runApi.getRunById).toHaveBeenCalledTimes(reads)
+    expect(shell.findComponent(RunDetail).exists()).toBe(false)
+    expect(router.currentRoute.value.name).toBe('Runs')
+    expect(runApi.retry).not.toHaveBeenCalled()
+  })
+
+  it.each(['empty', 'wrong-run', 'read-error'])('pauses on %s task evidence without dispatching writes', async failure => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const original = await runApi.getRunById('run-1')
+    vi.mocked(runApi.getRunById).mockResolvedValue({ ...original, status: 'RUNNING' })
+    if (failure === 'empty') vi.mocked(runApi.getTasks).mockResolvedValue([])
+    if (failure === 'wrong-run') vi.mocked(runApi.getTasks).mockResolvedValue([taskFor('run-other')])
+    if (failure === 'read-error') vi.mocked(runApi.getTasks).mockRejectedValue(new Error('offline'))
+    const page = mountRunDetail()
+    await flushPromises()
+    expect(page.find('[data-test="run-observation-paused"]').exists()).toBe(true)
+    expect((page.vm as unknown as { detail: { status: string } }).detail.status).toBe('RUNNING')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(runApi.getTasks).toHaveBeenCalledTimes(1)
+    expect(runApi.retry).not.toHaveBeenCalled()
+  })
+
+  it('pauses bounded observation of a stuck RUNNING task without retrying or manufacturing failure', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const original = await runApi.getRunById('run-1')
+    vi.mocked(runApi.getRunById).mockResolvedValue({ ...original, status: 'RUNNING', finishedAt: null })
+    vi.mocked(runApi.getTasks).mockResolvedValue([{ ...taskFor('run-1'), status: 'RUNNING' }])
+    const page = mountRunDetail()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(300_000)
+    await flushPromises()
+    expect(page.find('[data-test="run-observation-paused"]').exists()).toBe(true)
+    expect((page.vm as unknown as { detail: { status: string } }).detail.status).toBe('RUNNING')
+    const reads = vi.mocked(runApi.getTasks).mock.calls.length
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(runApi.getTasks).toHaveBeenCalledTimes(reads)
+    expect(runApi.retry).not.toHaveBeenCalled()
+  })
+
+
+  it('permits an explicitly revised retry after its first new intent is rejected before admission', async () => {
+    vi.mocked(runApi.retry).mockRejectedValueOnce(new ApiError({ httpStatus: 400, code: 'RUN_006', message: '范围失效' }))
+    const page = mountRunDetail()
+    await flushPromises()
+    await selectRetryItems(page, ['item-failed'])
+    await page.findAll('button').find(button => button.text().includes('run.retrySelectedItems'))!.trigger('click')
+    await flushPromises()
+    const originalKey = vi.mocked(runApi.retry).mock.calls[0]?.[2]
+    expect(readExecutionIntent('admin', 'RETRY:run-1')).toBeNull()
+    await selectRetryItems(page, ['item-failed'])
+    await page.findAll('button').find(button => button.text().includes('run.retrySelectedItems'))!.trigger('click')
+    await flushPromises()
+    expect(runApi.retry).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(runApi.retry).mock.calls[1]?.[2]).not.toBe(originalKey)
+    expect(confirmDialog).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps a retry retrieval unresolved even when it receives RUN_006 after response loss', async () => {
+    vi.mocked(runApi.retry).mockRejectedValueOnce(new Error('lost'))
+      .mockRejectedValueOnce(new ApiError({ httpStatus: 400, code: 'RUN_006', message: '范围失效' }))
+    const page = mountRunDetail()
+    await flushPromises()
+    await selectRetryItems(page, ['item-failed'])
+    await page.findAll('button').find(button => button.text().includes('run.retrySelectedItems'))!.trigger('click')
+    await flushPromises()
+    const original = readExecutionIntent('admin', 'RETRY:run-1')
+    await page.get('[data-action="retrieve-receipt"]').trigger('click')
+    await flushPromises()
+    expect(readExecutionIntent('admin', 'RETRY:run-1')).toEqual(original)
+    expect(vi.mocked(runApi.retry).mock.calls.map(call => call[2])).toEqual([original?.key, original?.key])
+  })
+
+  it('resumes after visibility changes between an old RUNNING Run snapshot and completed Task snapshots', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    try {
+      const original = await runApi.getRunById('run-1')
+      vi.mocked(runApi.getRunById).mockResolvedValueOnce({ ...original, status: 'RUNNING' })
+        .mockResolvedValue({ ...original, status: 'DONE' })
+      vi.mocked(runApi.getTasks).mockResolvedValue([{ ...taskFor('run-1'), status: 'COMPLETED' }])
+      const page = mountRunDetail()
+      await flushPromises()
+      hidden.mockReturnValue(true)
+      document.dispatchEvent(new Event('visibilitychange'))
+      await flushPromises()
+      expect(page.find('[data-test="run-observation-paused"]').exists()).toBe(true)
+      hidden.mockReturnValue(false)
+      document.dispatchEvent(new Event('visibilitychange'))
+      await flushPromises()
+      expect(runApi.getTasks).toHaveBeenCalledTimes(2)
+      expect((page.vm as unknown as { detail: { status: string } }).detail.status).toBe('DONE')
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(runApi.getTasks).toHaveBeenCalledTimes(2)
+      expect(runApi.retry).not.toHaveBeenCalled()
+    } finally { hidden.mockRestore() }
+  })
+
+  it('stops polling and rejects its late response after the authenticated subject changes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    vi.mocked(runApi.getTasks).mockResolvedValue([{ ...taskFor('run-1'), status: 'PENDING' }])
+    const page = mountRunDetail()
+    await flushPromises()
+    const old = await runApi.getRunById('run-1')
+    const late = deferred<typeof old>()
+    vi.mocked(runApi.getRunById).mockImplementationOnce(() => late.promise)
+    await vi.advanceTimersByTimeAsync(2000)
+    authenticatedUser.profile = null
+    await flushPromises()
+    late.resolve({ ...old, status: 'DONE' })
+    await flushPromises()
+    expect((page.vm as unknown as { detail?: unknown }).detail).toBeUndefined()
+    const reads = vi.mocked(runApi.getRunById).mock.calls.length
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(runApi.getRunById).toHaveBeenCalledTimes(reads)
+    expect(runApi.retry).not.toHaveBeenCalled()
+  })
+
 })

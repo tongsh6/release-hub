@@ -4,7 +4,7 @@ import RunPlanPreviewDialog from '../RunPlanPreviewDialog.vue'
 import RunPlanSnapshotView from '@/components/run/RunPlanSnapshotView.vue'
 import { runPlanApi, type RunPlanPreview } from '@/api/runPlanApi'
 
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('vue-i18n', async importOriginal => ({ ...await importOriginal<typeof import('vue-i18n')>(), useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('@/utils/error', () => ({ handleError: vi.fn() }))
 vi.mock('@/api/runPlanApi', () => ({ runPlanApi: { list: vi.fn(), get: vi.fn(), create: vi.fn() } }))
 
