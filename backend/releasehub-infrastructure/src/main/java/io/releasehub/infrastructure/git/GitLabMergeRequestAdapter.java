@@ -27,19 +27,21 @@ final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
     private final RestTemplate http;
     private final String endpoint;
     private final String projectEndpoint;
+    private final String writeEndpoint;
     private final String token;
-    private String projectId;
+    private final String projectId;
 
-    GitLabMergeRequestAdapter(RestTemplate http, String endpoint, String token) {
+    GitLabMergeRequestAdapter(RestTemplate http, GitRemoteIdentityResolver.Identity identity, String token) {
         this.http = http;
-        this.endpoint = endpoint;
-        this.projectEndpoint = GitRemoteIdentityResolver.parse(URI.create(endpoint)).projectEndpoint();
+        this.projectId = identity.projectId();
+        this.projectEndpoint = identity.baseUrl() + "/api/v4/projects/" + projectId;
+        this.endpoint = projectEndpoint + "/merge_requests";
+        // The interceptor resolves the registered namespace again, checks expectedProjectId, then dispatches numerically.
+        this.writeEndpoint = identity.endpoint().projectEndpoint() + "/merge_requests";
         this.token = token;
     }
 
     @Override public GitReadResult<SourceRevision> readSource(String source) {
-        var project = resolveProject();
-        if (project.status() != GitReadResult.Status.FOUND) return new GitReadResult<>(project.status(), null);
         var branch = getMap(projectEndpoint + "/repository/branches/" + encode(source));
         if (branch.status() != GitReadResult.Status.FOUND) return new GitReadResult<>(branch.status(), null);
         var body = branch.evidence();
@@ -49,8 +51,6 @@ final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
     }
 
     @Override public GitReadResult<List<MergeRequest>> find(String source, String target, State state) {
-        var project = resolveProject();
-        if (project.status() != GitReadResult.Status.FOUND) return new GitReadResult<>(project.status(), null);
         if (state != State.OPENED && state != State.MERGED) return new GitReadResult<>(GitReadResult.Status.UNSUPPORTED, null);
         var pages = readPages(endpoint + "?scope=all&state=" + state.name().toLowerCase(Locale.ROOT)
                 + "&source_branch=" + encode(source) + "&target_branch=" + encode(target));
@@ -87,21 +87,25 @@ final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
         return GitReadResult.found(mr);
     }
 
-    @Override public GitWriteResult<MergeRequest> create(String source, String target, String title) {
-        return write(endpoint, HttpMethod.POST, Map.of("source_branch", source, "target_branch", target,
-                "title", title, "remove_source_branch", false), false);
+    @Override public GitWriteResult<MergeRequest> create(String source, String target, String expectedSourceSha, String title) {
+        if (!validSha(expectedSourceSha)) return GitWriteResult.rejected("SOURCE_REVISION_REQUIRED");
+        return write(writeEndpoint, HttpMethod.POST, Map.of("source_branch", source, "target_branch", target,
+                "title", title, "remove_source_branch", false), false, expectedSourceSha);
     }
 
     @Override public GitWriteResult<MergeRequest> merge(String id, String sourceSha, String message) {
         if (!validSha(sourceSha)) return GitWriteResult.rejected("SOURCE_REVISION_REQUIRED");
-        return write(endpoint + "/" + encode(id) + "/merge", HttpMethod.PUT,
+        return write(writeEndpoint + "/" + encode(id) + "/merge", HttpMethod.PUT,
                 Map.of("merge_commit_message", message == null ? "" : message, "sha", sourceSha,
-                        "should_remove_source_branch", false), true);
+                        "should_remove_source_branch", false), true, sourceSha);
     }
 
-    private GitWriteResult<MergeRequest> write(String uri, HttpMethod method, Map<String, ?> body, boolean merging) {
+    private GitWriteResult<MergeRequest> write(String uri, HttpMethod method, Map<String, ?> body, boolean merging, String sourceSha) {
         try {
-            var response = http.exchange(URI.create(uri), method, new HttpEntity<>(body, headers()),
+            var writeHeaders = headers();
+            writeHeaders.set(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID, projectId);
+            writeHeaders.set(GitRemoteIdentityResolver.EXPECTED_SHA, sourceSha);
+            var response = http.exchange(URI.create(uri), method, new HttpEntity<>(body, writeHeaders),
                     new ParameterizedTypeReference<Map<String, Object>>() {});
             var mr = evidence(response.getBody());
             if (!response.getStatusCode().is2xxSuccessful() || !complete(mr)
@@ -147,16 +151,6 @@ final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
     private static JsonNode rejectedBody(byte[] bytes) {
         try { return ERROR_JSON.readTree(bytes); }
         catch (java.io.IOException e) { return null; }
-    }
-
-    private GitReadResult<String> resolveProject() {
-        if (projectId != null) return GitReadResult.found(projectId);
-        var read = getMap(projectEndpoint);
-        if (read.status() != GitReadResult.Status.FOUND) return new GitReadResult<>(read.status(), null);
-        Object id = read.evidence().get("id");
-        if (!(id instanceof Number) || ((Number) id).longValue() <= 0) return incomplete();
-        projectId = string(id);
-        return GitReadResult.found(projectId);
     }
 
     private GitReadResult<Map<String, Object>> getMap(String uri) {
@@ -228,10 +222,13 @@ final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
     }
 
     private static boolean complete(MergeRequest mr) {
-        return mr != null && mr.id() != null && mr.projectId() != null && mr.sourceBranch() != null
-                && mr.targetBranch() != null && mr.url() != null && mr.state() != State.UNKNOWN;
+        return mr != null && mr.state() != State.UNKNOWN
+                && io.releasehub.application.gitoperation.GitMergeWorkflow.isValidCheckpoint(
+                        new io.releasehub.application.port.out.GitBranchPort.MrEvidence(mr.projectId(), mr.sourceBranch(),
+                                mr.targetBranch(), mr.id(), mr.url(), mr.sourceSha(), mr.mergeSha(),
+                                io.releasehub.application.port.out.GitBranchPort.MrDisposition.MR_REUSED, null));
     }
-    private static boolean validSha(String sha) { return sha != null && sha.matches("[0-9a-fA-F]{40,64}"); }
+    private static boolean validSha(String sha) { return GitLabGitBranchAdapter.validSha(sha); }
     private static String string(Object value) { return value == null ? null : String.valueOf(value); }
     private static Map<?, ?> map(Object value) { return value instanceof Map<?, ?> m ? m : Map.of(); }
     private static String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20"); }

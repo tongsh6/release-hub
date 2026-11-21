@@ -1,13 +1,17 @@
 package io.releasehub.application.gitoperation;
 
+import io.releasehub.application.run.RunPort;
+import io.releasehub.domain.run.RunItemResult;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-/** 实现方保证每次写调用使用独立短事务，不能加入业务外层事务。 */
+/** HTTP 意图、发送和响应事实独立提交；任务确认必须加入任务结果的同一事务。 */
 public interface GitOperationJournalPort {
     record Command(String operationId, String repoId, String repositoryMapping, String remoteKey, String provider, String baseUrl, String projectId,
-                   String action, String targetJson, String requestHash, String runId, String operator, String sessionId) {}
+                   String action, String targetJson, String requestHash, String runId, String operator, String sessionId,
+                   RunPort.TaskFence taskFence) {}
     record Operation(String id, String repoId, String remoteKey, String provider, String baseUrl, String projectId,
                      String action, String targetJson, String runId, String operator, String state, long version,
                      Instant createdAt, Instant updatedAt, String reason, boolean blocked) {}
@@ -23,6 +27,8 @@ public interface GitOperationJournalPort {
     void sending(String operationId);
     void finish(String operationId, GitWriteResult.Outcome outcome, String evidenceJson, String reason);
     void completeSession(String sessionId, boolean businessCommitted);
+    /** 仅在活动领取者的结果事务中确认；没有远端操作的任务不创建仓库保护。 */
+    void acknowledgeTask(RunPort.TaskFence fence, RunItemResult result);
     List<Operation> list(String repoId, int page, int size);
     List<Operation> listByRun(String runId, int page, int size);
     Optional<Detail> find(String operationId);

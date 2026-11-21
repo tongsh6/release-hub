@@ -29,6 +29,12 @@ public class RunController {
         return ApiResponse.success(runPort.findById(id).map(RunView::from).orElse(null));
     }
 
+    @GetMapping("/{id}/tasks")
+    @Operation(summary = "Get persisted execution tasks for run")
+    public ApiResponse<List<RunPort.TaskView>> tasks(@PathVariable("id") String id) {
+        return ApiResponse.success(runPort.findTasks(id));
+    }
+
     @GetMapping
     @Operation(summary = "List runs")
     public ApiResponse<List<RunView>> list() {
@@ -58,6 +64,7 @@ public class RunController {
     public record RunView(
             String id,
             String runType,
+            int executionVersion,
             String status,
             String startedAt,
             String finishedAt,
@@ -77,6 +84,7 @@ public class RunController {
             return new RunView(
                     run.getId().value(),
                     run.getRunType().name(),
+                    run.getExecutionVersion(),
                     status,
                     run.getStartedAt() != null ? run.getStartedAt().toString() : null,
                     run.getFinishedAt() != null ? run.getFinishedAt().toString() : null,

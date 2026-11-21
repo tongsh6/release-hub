@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,8 +28,10 @@ public class RunRetryController {
 
     @PostMapping("/{id}/retry")
     @Operation(summary = "Retry run with selected items")
-    public ApiResponse<String> retry(@PathVariable("id") String runId, @RequestBody RetryRequest request) {
-        var run = runAppService.retry(runId, request.getItems(), SecurityUtils.getCurrentUsername());
+    public ApiResponse<String> retry(@PathVariable("id") String runId,
+                                    @RequestHeader("Idempotency-Key") String key,
+                                    @RequestBody RetryRequest request) {
+        var run = runAppService.retry(runId, request.getItems(), SecurityUtils.getCurrentUsername(), key);
         return ApiResponse.success(run.getId().value());
     }
 

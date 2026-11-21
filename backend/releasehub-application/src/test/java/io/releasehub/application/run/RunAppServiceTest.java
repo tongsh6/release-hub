@@ -124,7 +124,7 @@ class RunAppServiceTest {
         lenient().when(codeRepositoryPort.findById(RepoId.of(repoId))).thenReturn(Optional.of(repository(repoId)));
         lenient().when(gitBranchAdapterFactory.getAdapter(GitProvider.GITLAB)).thenReturn(gitBranchPort);
         lenient().when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch)))
-                .thenReturn(GitBranchPort.BranchStatus.present(SOURCE_SHA));
+                .thenReturn(GitBranchPort.BranchStatus.present(PROJECT, SOURCE_SHA));
         lenient().when(gitBranchPort.mergeBranch(any(), any(), eq(releaseBranch), eq("main"), any()))
                 .thenReturn(confirmedMerge());
         lenient().when(gitBranchPort.readTag(any(), any(), eq(PROJECT), eq(TAG)))
@@ -175,67 +175,33 @@ class RunAppServiceTest {
     }
 
     @Nested
-    @DisplayName("retry 版本更新")
-    class VersionUpdateRetry {
-
+    @DisplayName("普通重试只接受持久编排协议")
+    class RetryScope {
         @Test
-        @DisplayName("只重试版本更新失败项，并保留来源追踪")
-        void shouldRetryOnlyFailedVersionUpdateItemsWithTraceability() {
-            Instant previousStartedAt = now.minusSeconds(60);
-            Run previous = Run.start(RunType.VERSION_UPDATE, "tester", previousStartedAt);
-
-            RunItem successItem = RunItem.createForRepository(windowKey, RepoId.of("repo-success"), 1, previousStartedAt);
-            successItem.putMetadata("versionUpdate.buildTool", BuildTool.MAVEN.name());
-            successItem.putMetadata("versionUpdate.branchName", releaseBranch);
-            successItem.putMetadata("versionUpdate.repoPath", "/tmp/success");
-            successItem.putMetadata("versionUpdate.targetVersion", "1.2.3");
-            successItem.putMetadata("versionUpdate.pomPath", "pom.xml");
-            successItem.finishWith(RunItemResult.VERSION_UPDATE_SUCCESS, previousStartedAt);
-            previous.addItem(successItem);
-
-            RunItem failedItem = RunItem.createForRepository(windowKey, RepoId.of(repoId), 2, previousStartedAt);
-            failedItem.putMetadata("versionUpdate.buildTool", BuildTool.MAVEN.name());
-            failedItem.putMetadata("versionUpdate.branchName", releaseBranch);
-            failedItem.putMetadata("versionUpdate.repoPath", "/tmp/repo");
-            failedItem.putMetadata("versionUpdate.targetVersion", "1.2.3");
-            failedItem.putMetadata("versionUpdate.pomPath", "pom.xml");
-            failedItem.finishWith(RunItemResult.VERSION_UPDATE_FAILED, previousStartedAt);
-            previous.addItem(failedItem);
-            previous.finish(previousStartedAt.plusSeconds(1));
-
+        void versionUpdateCannotReplayThroughTheOrchestrationRetryEndpoint() {
+            Run previous = Run.start(RunType.VERSION_UPDATE, "tester", now.minusSeconds(60));
+            RunItem failed = RunItem.createForRepository(windowKey, RepoId.of(repoId), 1, now.minusSeconds(60));
+            failed.putMetadata("versionUpdate.buildTool", BuildTool.MAVEN.name());
+            failed.putMetadata("versionUpdate.branchName", releaseBranch);
+            failed.putMetadata("versionUpdate.repoPath", "/tmp/repo");
+            failed.putMetadata("versionUpdate.targetVersion", "1.2.3");
+            failed.putMetadata("versionUpdate.pomPath", "pom.xml");
+            failed.finishWith(RunItemResult.VERSION_UPDATE_FAILED, now.minusSeconds(30));
+            previous.addItem(failed);
+            previous.finish(now.minusSeconds(30));
             when(runPort.findById(previous.getId().value())).thenReturn(Optional.of(previous));
-            when(codeRepositoryPort.findById(RepoId.of(repoId))).thenReturn(Optional.of(CodeRepository.rehydrate(
-                    RepoId.of(repoId), "Test Repo", "https://gitlab.com/test/repo.git",
-                    "main", "G001", RepoType.SERVICE, GitProvider.GITLAB, "token", false,
-                    0, 0, 0, 0, 0, 0, 0, null, now, now, 0L)));
-            when(versionUpdateAppService.updateVersion(any()))
-                    .thenReturn(VersionUpdateResult.success("1.0.0", "1.2.3", "<diff />", "pom.xml"));
 
-            Run result = service.retry(
-                    previous.getId().value(),
-                    List.of(failedItem.getId().value()),
-                    "retryer"
-            );
+            assertThatThrownBy(() -> service.retry(previous.getId().value(), List.of(failed.getId().value()),
+                    "retryer", "version-retry-intent"))
+                    .isInstanceOf(io.releasehub.common.exception.BusinessException.class)
+                    .satisfies(error -> assertThat(((io.releasehub.common.exception.BusinessException) error).getCode())
+                            .isEqualTo("RUN_007"));
 
-            assertThat(result.getRunType()).isEqualTo(RunType.VERSION_UPDATE);
-            assertThat(result.getItems()).hasSize(1);
-            RunItem retriedItem = result.getItems().get(0);
-            assertThat(retriedItem.getRepo().value()).isEqualTo(repoId);
-            assertThat(retriedItem.getFinalResult()).isEqualTo(RunItemResult.VERSION_UPDATE_SUCCESS);
-            assertThat(retriedItem.getMetadata())
-                    .containsEntry("retry.sourceRunId", previous.getId().value())
-                    .containsEntry("retry.sourceItemId", failedItem.getId().value())
-                    .containsEntry("versionUpdate.targetVersion", "1.2.3");
-
-            ArgumentCaptor<VersionUpdateRequest> requestCaptor = ArgumentCaptor.forClass(VersionUpdateRequest.class);
-            verify(versionUpdateAppService, times(1)).updateVersion(requestCaptor.capture());
-            assertThat(requestCaptor.getValue().repoId().value()).isEqualTo(repoId);
-            assertThat(requestCaptor.getValue().branchName()).isEqualTo(releaseBranch);
-            assertThat(requestCaptor.getValue().repoPath()).isEqualTo("/tmp/repo");
-            verify(runPort).save(any(Run.class));
+            verifyNoInteractions(versionUpdateAppService);
+            verify(runPort, never()).save(any());
+            verify(runPlanAppService, never()).admitRetry(any(), any(), any(), any());
         }
     }
-
     @Nested
     @DisplayName("窗口仓库收尾")
     class CleanupCi {
@@ -282,9 +248,9 @@ class RunAppServiceTest {
             verify(gitBranchPort, never()).triggerPipeline(any(), any(), any(), any(), any());
             verify(gitBranchPort, times(1)).readTag(any(), any(), any(), any());
             when(runPort.findById(result.getId().value())).thenReturn(Optional.of(result));
-            assertThatThrownBy(() -> service.retry(result.getId().value(), List.of(result.getItems().getFirst().getId().value()), "retryer"))
+            assertThatThrownBy(() -> service.retry(result.getId().value(), List.of(result.getItems().getFirst().getId().value()), "retryer", "cleanup-retry-intent"))
                     .isInstanceOf(io.releasehub.common.exception.BusinessException.class);
-            verify(runPlanAppService, never()).admitRetry(any(), any(), any());
+            verify(runPlanAppService, never()).admitRetry(any(), any(), any(), any());
         }
 
         @Test
@@ -315,7 +281,7 @@ class RunAppServiceTest {
         @Test
         void shouldRejectMissingReleaseWithoutPublishingDefaultBranch() {
             setupCleanupRun(true);
-            when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch))).thenReturn(GitBranchPort.BranchStatus.missing());
+            when(gitBranchPort.getBranchStatus(any(), any(), eq(releaseBranch))).thenReturn(GitBranchPort.BranchStatus.missing(PROJECT));
             Run result = service.executeCleanup(windowId, "system", true);
             assertThat(result.getExecutionStatus()).isEqualTo(RunExecutionStatus.FAILED);
             verify(gitBranchPort, never()).mergeBranch(any(), any(), any(), any(), any());

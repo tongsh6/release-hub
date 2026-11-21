@@ -75,7 +75,7 @@ public class IterationAppService {
         }
     }
 
-    private record RepoSetupPlan(RepoId repoId, CodeRepository repo, BranchCreationMode mode, String featureBranch) {
+    private record RepoSetupPlan(RepoId repoId, BranchCreationMode mode, String featureBranch) {
     }
 
     @Transactional
@@ -92,7 +92,7 @@ public class IterationAppService {
 
         Instant now = Instant.now(clock);
         for (var plan : plans) {
-            executeRepoSetup(it.getId(), plan, now);
+            initializeRepoMapping(it.getId(), plan, now);
         }
         return it;
     }
@@ -125,7 +125,7 @@ public class IterationAppService {
         ensureRepoScopeEditable(existing, newRepos, groupCode);
         ensureReposBelongToGroup(key, newRepos, groupCode);
 
-        // 检测新增的仓库：执行分支创建/映射
+        // 新增仓库只初始化分支来源和版本映射。
         var configs = resolveRepoConfigs(newRepos, repoConfigs);
         List<RepoSetupPlan> plans = new ArrayList<>();
         for (var config : configs) {
@@ -135,19 +135,8 @@ public class IterationAppService {
             }
         }
 
-        // 检测移除的仓库：归档 feature 分支
-        for (RepoId oldRepoId : existing.getRepos()) {
-            if (!newRepos.contains(oldRepoId)) {
-                try {
-                    archiveFeatureBranchForRepo(existing.getId(), oldRepoId);
-                } catch (Exception e) {
-                    log.error("Failed to archive branch for removed repo {}: {}", oldRepoId.value(), e.getMessage());
-                }
-            }
-        }
-
         for (var plan : plans) {
-            executeRepoSetup(existing.getId(), plan, now);
+            initializeRepoMapping(existing.getId(), plan, now);
         }
 
         Iteration updated = Iteration.rehydrate(existing.getId(), name, description, expectedReleaseAt, groupCode, newRepos, existing.getStatus(), existing.getCreatedAt(), now);
@@ -181,7 +170,7 @@ public class IterationAppService {
         }
 
         for (var plan : plans) {
-            executeRepoSetup(existing.getId(), plan, now);
+            initializeRepoMapping(existing.getId(), plan, now);
         }
 
         merged.addAll(toAdd);
@@ -191,7 +180,7 @@ public class IterationAppService {
     }
 
     /**
-     * 为迭代设置仓库：根据分支创建模式确定/创建 feature 分支，推导版本号，保存关联记录。
+     * 解析并校验仓库的 feature 分支来源；配置阶段不创建或归档远端分支。
      */
     private List<RepoSetupPlan> planRepoSetups(IterationKey iterationKey, List<RepoBranchConfig> configs) {
         List<RepoSetupPlan> plans = new ArrayList<>();
@@ -228,33 +217,20 @@ public class IterationAppService {
                 yield config.customBranchName;
             }
         };
-        return new RepoSetupPlan(repoId, repo, config.branchCreationMode, featureBranch);
+        return new RepoSetupPlan(repoId, config.branchCreationMode, featureBranch);
     }
 
-    private void executeRepoSetup(IterationKey iterationKey, RepoSetupPlan plan, Instant now) {
-        CodeRepository repo = plan.repo;
+    private void initializeRepoMapping(IterationKey iterationKey, RepoSetupPlan plan, Instant now) {
         RepoId repoId = plan.repoId;
         String featureBranch = plan.featureBranch;
 
-        if (plan.mode != BranchCreationMode.EXISTING) {
-            var gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-            try {
-                boolean branchCreated = gitPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), featureBranch, repo.getDefaultBranch());
-                if (!branchCreated) {
-                    log.warn("Feature branch {} already exists or failed to create for repo {}", featureBranch, repoId.value());
-                }
-            } catch (RuntimeException e) {
-                log.warn("Feature branch {} setup failed for repo {}: {}", featureBranch, repoId.value(), e.getMessage());
-            }
-        }
-
-        // 3. 推导版本
+        // 保留现有版本派生规则，供计划快照和显式执行使用。
         String baseVersion = codeRepositoryPort.getInitialVersion(repoId.value())
                 .orElse("1.0.0-SNAPSHOT");
         String devVersion = versionDeriverUseCase.deriveDevVersion(baseVersion);
         String targetVersion = versionDeriverUseCase.deriveTargetVersion(devVersion);
 
-        // 4. 写入 versionInfo（所有模式统一执行）
+        // 所有模式都保存名称、来源模式和版本映射。
         iterationRepoPort.saveWithVersion(
                 iterationKey.value(),
                 repoId.value(),
@@ -267,7 +243,7 @@ public class IterationAppService {
                 plan.mode
         );
 
-        log.info("Setup repo {} for iteration {}: mode={} featureBranch={} baseVersion={} devVersion={} targetVersion={}",
+        log.info("Configured repo {} for iteration {}: mode={} featureBranch={} baseVersion={} devVersion={} targetVersion={}",
                 repoId.value(), iterationKey.value(), plan.mode, featureBranch, baseVersion, devVersion, targetVersion);
     }
 
@@ -321,7 +297,7 @@ public class IterationAppService {
     }
 
     /**
-     * 将 repoIds 和可选的 repoConfigs 合并为统一的配置列表。
+     * 以 repoIds 为唯一范围，先拒绝越界或重复配置，再补齐缺省配置。
      * repoConfigs 中有配置的仓库使用指定模式，未配置的仓库默认 AUTO。
      * repoConfigs 为空时，全部仓库使用 AUTO 模式。
      */
@@ -333,7 +309,16 @@ public class IterationAppService {
             }
             return result;
         }
-        Set<String> configuredIds = repoConfigs.stream().map(RepoBranchConfig::repoId).collect(java.util.stream.Collectors.toSet());
+        Set<String> requestedIds = repos.stream().map(RepoId::value).collect(java.util.stream.Collectors.toSet());
+        Set<String> configuredIds = new java.util.HashSet<>();
+        for (var config : repoConfigs) {
+            if (config == null || !requestedIds.contains(config.repoId())) {
+                throw ValidationException.invalidParameter("分支配置包含未选中的仓库");
+            }
+            if (!configuredIds.add(config.repoId())) {
+                throw ValidationException.invalidParameter("同一仓库不能重复配置分支");
+            }
+        }
         List<RepoBranchConfig> merged = new ArrayList<>(repoConfigs);
         for (RepoId repoId : repos) {
             if (!configuredIds.contains(repoId.value())) {
@@ -341,19 +326,6 @@ public class IterationAppService {
             }
         }
         return merged;
-    }
-
-    private void archiveFeatureBranchForRepo(IterationKey iterationKey, RepoId repoId) {
-        String featureBranch = iterationRepoPort.getVersionInfo(iterationKey.value(), repoId.value())
-                .map(IterationRepoVersionInfo::getFeatureBranch)
-                .orElse("feature/" + iterationKey.value());
-        codeRepositoryPort.findById(repoId).ifPresent(repo -> {
-            var gitPort = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
-            boolean archived = gitPort.archiveBranch(repo.getCloneUrl(), repo.getGitAccessToken(), featureBranch, "unpublished");
-            if (!archived) {
-                log.warn("Failed to archive branch {} for repo {}", featureBranch, repoId.value());
-            }
-        });
     }
 
     @Transactional
@@ -367,15 +339,6 @@ public class IterationAppService {
         java.util.Set<RepoId> filtered = existing.getRepos().stream()
                                                  .filter(r -> !toRemove.contains(r.value()))
                                                  .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
-        for (RepoId repoId : existing.getRepos()) {
-            if (toRemove.contains(repoId.value())) {
-                try {
-                    archiveFeatureBranchForRepo(existing.getId(), repoId);
-                } catch (Exception e) {
-                    log.error("Failed to archive branch for repo {}: {}", repoId.value(), e.getMessage());
-                }
-            }
-        }
         Instant now = Instant.now(clock);
         Iteration updated = Iteration.rehydrate(existing.getId(), existing.getName(), existing.getDescription(), existing.getExpectedReleaseAt(), existing.getGroupCode(), filtered, existing.getStatus(), existing.getCreatedAt(), now);
         iterationPort.save(updated);

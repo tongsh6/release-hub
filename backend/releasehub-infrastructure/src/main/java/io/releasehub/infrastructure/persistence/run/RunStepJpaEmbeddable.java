@@ -25,4 +25,6 @@ public class RunStepJpaEmbeddable {
     private Instant endAt;
     @Column(name = "message", columnDefinition = "TEXT")
     private String message;
+    @Column(name = "task_id")
+    private String taskId;
 }

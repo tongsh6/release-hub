@@ -193,7 +193,7 @@ public class ConflictDetectionAppService {
         } catch (RuntimeException e) {
             log.warn("Git branch status check failed for repo {} branch {}: {}",
                     repo.getId().value(), sourceBranch, e.getMessage());
-            return new BranchStatusProbe(GitBranchPort.BranchStatus.missing(),
+            return new BranchStatusProbe(GitBranchPort.BranchStatus.missing(null),
                     Optional.of(buildGitAccessConflict(repo, iterationKey, sourceBranch, targetBranch, e)));
         }
     }

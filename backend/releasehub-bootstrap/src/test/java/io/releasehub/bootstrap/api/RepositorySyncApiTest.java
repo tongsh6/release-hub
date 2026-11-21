@@ -11,6 +11,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -18,8 +20,10 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -118,6 +122,33 @@ class RepositorySyncApiTest {
                 .andExpect(jsonPath("$.data.checkedPaths").isArray())
                 .andExpect(jsonPath("$.data.errorType").doesNotExist())
                 .andExpect(jsonPath("$.data.message").doesNotExist());
+
+        MvcResult unsupported = mockMvc.perform(post("/api/v1/repositories/" + repoId + "/initial-version")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":\"9.9.9\"}"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.code").value("COMMON_001"))
+                .andReturn();
+        HttpHeaders allowed = new HttpHeaders();
+        allowed.addAll(HttpHeaders.ALLOW, unsupported.getResponse().getHeaders(HttpHeaders.ALLOW));
+        assertThat(allowed.getAllow()).contains(HttpMethod.GET, HttpMethod.PUT).doesNotContain(HttpMethod.POST);
+        mockMvc.perform(get("/api/v1/repositories/" + repoId + "/initial-version")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value("1.2.3"));
+
+        mockMvc.perform(put("/api/v1/repositories/" + repoId + "/initial-version")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":\"2.0.0\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value("2.0.0"))
+                .andExpect(jsonPath("$.data.versionSource").value("MANUAL"));
+        mockMvc.perform(get("/api/v1/repositories/" + repoId + "/initial-version")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value("2.0.0"));
     }
 
     @Test

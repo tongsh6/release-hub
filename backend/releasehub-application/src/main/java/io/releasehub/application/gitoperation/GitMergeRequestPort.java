@@ -24,6 +24,7 @@ public interface GitMergeRequestPort {
     /** 确认当前 target 分支包含指定的不可变 source SHA；查询不完整时不能返回 false。 */
     GitReadResult<Boolean> contains(String target, String sourceSha);
     GitReadResult<MergeRequest> read(String id);
-    GitWriteResult<MergeRequest> create(String source, String target, String title);
+    /** expectedSourceSha is recorded as intent evidence; GitLab create does not offer an atomic SHA precondition. */
+    GitWriteResult<MergeRequest> create(String source, String target, String expectedSourceSha, String title);
     GitWriteResult<MergeRequest> merge(String id, String sourceSha, String message);
 }

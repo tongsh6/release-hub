@@ -63,6 +63,13 @@ public class RunPlanPersistenceAdapter implements RunPlanPort {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
+    public boolean hasUnresolvedExecutionForRepositories(String windowId, List<String> repoIds) {
+        if (repoIds == null || repoIds.isEmpty()) throw new IllegalArgumentException("仓库范围不能为空");
+        return repository.countUnresolvedExecutionsForRepositories(windowId, repoIds) > 0;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public void save(SavedRunPlan plan) {
         String snapshot;
         try {

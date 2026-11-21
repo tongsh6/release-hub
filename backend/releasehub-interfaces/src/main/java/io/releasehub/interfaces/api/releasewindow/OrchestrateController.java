@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,8 +25,11 @@ public class OrchestrateController {
 
     @PostMapping("/{id}/orchestrate")
     @Operation(summary = "Start orchestration for window")
-    public ApiResponse<String> orchestrate(@PathVariable("id") String windowId, @RequestBody OrchestrateRequest request) {
-        var run = runAppService.startOrchestrate(windowId, request.getRepoIds(), request.getIterationKeys(), request.isFailFast(), SecurityUtils.getCurrentUsername());
+    public ApiResponse<String> orchestrate(@PathVariable("id") String windowId,
+                                          @RequestHeader("Idempotency-Key") String key,
+                                          @RequestBody OrchestrateRequest request) {
+        var run = runAppService.startOrchestrate(windowId, request.getRepoIds(), request.getIterationKeys(),
+                request.isFailFast(), SecurityUtils.getCurrentUsername(), key);
         return ApiResponse.success(run.getId().value());
     }
 

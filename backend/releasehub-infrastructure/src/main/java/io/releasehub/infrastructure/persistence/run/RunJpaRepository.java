@@ -6,8 +6,15 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.util.List;
+import java.util.Optional;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 
 public interface RunJpaRepository extends JpaRepository<RunJpaEntity, String> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM RunJpaEntity r WHERE r.id = :id")
+    Optional<RunJpaEntity> findForUpdate(@Param("id") String id);
+
     @Query("""
             select distinct r from RunJpaEntity r
             left join fetch r.items i

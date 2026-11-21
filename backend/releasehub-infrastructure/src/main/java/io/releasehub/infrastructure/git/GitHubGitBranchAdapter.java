@@ -122,6 +122,17 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
     }
 
     @Override
+    public GitWriteResult<MrEvidence> ensureMergeRequest(String repoCloneUrl, String token, String sourceBranch,
+                                                        String targetBranch, String message) {
+        return GitWriteResult.rejected("PROVIDER_UNSUPPORTED");
+    }
+
+    @Override
+    public MergeResult tryMergeRequest(String repoCloneUrl, String token, MrEvidence checkpoint, String message) {
+        return MergeResult.failed("PROVIDER_UNSUPPORTED");
+    }
+
+    @Override
     public GitReadResult<TagEvidence> readTag(String repoCloneUrl, String token, String expectedProjectId, String tagName) {
         return new GitReadResult<>(GitReadResult.Status.UNSUPPORTED, null);
     }
@@ -189,16 +200,16 @@ public class GitHubGitBranchAdapter implements GitBranchPort {
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(endpoint, HttpMethod.GET, new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
             Map<String, Object> responseBody = response.getBody();
             if (!response.getStatusCode().is2xxSuccessful() || responseBody == null) {
-                return BranchStatus.missing();
+                return BranchStatus.missing(null);
             }
             Object commitObj = responseBody.get("commit");
             String latestCommit = null;
             if (commitObj instanceof Map<?, ?> commitMap && commitMap.get("sha") != null) {
                 latestCommit = String.valueOf(commitMap.get("sha"));
             }
-            return BranchStatus.present(latestCommit);
+            return BranchStatus.present(null, latestCommit);
         } catch (HttpClientErrorException.NotFound e) {
-            return BranchStatus.missing();
+            return BranchStatus.missing(null);
         }
     }
 

@@ -44,7 +44,7 @@ class GitOperationJournalIT {
     }
     private GitOperationJournalPort.Command command(String remote,String session,String server) {
         return new GitOperationJournalPort.Command(UUID.randomUUID().toString(),repoId,GitOperationJournalPort.mappingHash("GITLAB","https://gitlab.invalid/acme/repo.git"),GitOperationJournalPort.remoteKey("GITLAB",server,remote),"GITLAB",
-                server,remote,"CREATE_BRANCH","{}","a".repeat(64),null,"tester",session);
+                server,remote,"CREATE_BRANCH","{}","a".repeat(64),null,"tester",session,null);
     }
     private String remote(){return Long.toUnsignedString(UUID.randomUUID().getLeastSignificantBits());}
     @Test void shouldRejectStaleServerMappingBeforeAdmittingOperation() {

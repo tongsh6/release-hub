@@ -2,6 +2,7 @@ package io.releasehub.infrastructure.git;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.gitoperation.GitOperationContext;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.common.exception.ErrorCode;
 import io.releasehub.domain.repo.CodeRepository;
@@ -56,9 +57,20 @@ public class GitRemoteIdentityResolver {
             if(body==null || !body.path("id").isIntegralNumber() || !validProjectId(body.path("id").asText()))throw unavailable();
             String id=body.path("id").asText();
             if(expectedProjectId!=null&&!expectedProjectId.equals(id))throw unavailable();
-            return new Identity(repo.getId().value(),io.releasehub.application.gitoperation.GitOperationJournalPort.mappingHash(repo.getGitProvider().name(),repo.getCloneUrl()),io.releasehub.application.gitoperation.GitOperationJournalPort.remoteKey(endpoint.provider(),endpoint.baseUrl(),id),
-                    endpoint.provider(),endpoint.baseUrl(),id,endpoint);
+            return confirm(new Identity(repo.getId().value(),io.releasehub.application.gitoperation.GitOperationJournalPort.mappingHash(repo.getGitProvider().name(),repo.getCloneUrl()),io.releasehub.application.gitoperation.GitOperationJournalPort.remoteKey(endpoint.provider(),endpoint.baseUrl(),id),
+                    endpoint.provider(),endpoint.baseUrl(),id,endpoint), expectedProjectId);
         } catch(BusinessException e){throw e;}catch(RuntimeException e){throw unavailable();}
+    }
+    static Identity confirm(Identity identity,String expectedProjectId) {
+        if(identity==null||!validProjectId(identity.projectId())
+                ||expectedProjectId!=null&&!expectedProjectId.equals(identity.projectId())) {
+            throw BusinessException.of(ErrorCode.GIT_IDENTITY_UNAVAILABLE);
+        }
+        if(GitOperationContext.taskFence()!=null) {
+            if(!java.util.Objects.equals(GitOperationContext.repoId(),identity.repoId()))throw BusinessException.of(ErrorCode.GIT_IDENTITY_UNAVAILABLE);
+            GitOperationContext.bindProjectId(identity.projectId());
+        }
+        return identity;
     }
     public static Endpoint parse(URI uri) {
         if(uri.getUserInfo()!=null||uri.getFragment()!=null||uri.getHost()==null)throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);

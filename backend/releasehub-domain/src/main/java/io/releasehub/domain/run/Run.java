@@ -14,6 +14,7 @@ import java.util.List;
 @Getter
 @NoArgsConstructor
 public class Run extends BaseEntity<RunId> {
+    public static final int ORCHESTRATION_PROTOCOL_VERSION = 3;
     private RunType runType;
     private String operator;
     private Instant startedAt;
@@ -40,7 +41,9 @@ public class Run extends BaseEntity<RunId> {
 
     public static Run start(RunType runType, String operator, Instant now) {
         RunId id = RunId.generate(runType, now);
-        return new Run(id, runType, operator, now, null, null, now, now, 0);
+        Run run = new Run(id, runType, operator, now, null, null, now, now, 0);
+        if (runType == RunType.WINDOW_ORCHESTRATION) run.executionVersion = ORCHESTRATION_PROTOCOL_VERSION;
+        return run;
     }
 
     public static Run preview(String operator, Instant now) {
@@ -68,6 +71,16 @@ public class Run extends BaseEntity<RunId> {
         touch(now);
     }
 
+    /** 持久任务提交后依据当前数据库投影刷新进度；未决结果不冒充结束。 */
+    public void refreshTaskProgress(boolean hasPendingTasks, Instant now) {
+        if (executionStatus == RunExecutionStatus.PLANNED) throw new IllegalStateException("计划预览不可执行");
+        RunExecutionStatus result = aggregateStatus();
+        executionStatus = result == RunExecutionStatus.NEEDS_REVIEW ? result
+                : hasPendingTasks ? RunExecutionStatus.RUNNING : result;
+        finishedAt = hasPendingTasks || result == RunExecutionStatus.NEEDS_REVIEW ? null : now;
+        touch(now);
+    }
+
     private RunExecutionStatus aggregateStatus() {
         if (items.isEmpty()) return RunExecutionStatus.FAILED;
         if (items.stream().anyMatch(item -> item.getFinalResult() == RunItemResult.UNKNOWN
@@ -90,6 +103,22 @@ public class Run extends BaseEntity<RunId> {
             case VERSION_UPDATE -> result == RunItemResult.VERSION_UPDATE_SUCCESS;
             case WINDOW_CLEANUP -> result == RunItemResult.SUCCESS || result == RunItemResult.CI_NOT_CONFIGURED;
         };
+    }
+
+    /** 同一 Run 的仓库事实只有一个数字项目身份；重试不得从另一个 namespace 重新解释。 */
+    public java.util.Optional<String> repositoryProjectId(io.releasehub.domain.repo.RepoId repository) {
+        java.util.Objects.requireNonNull(repository, "repository");
+        String project = null;
+        for (RunItem item : items) {
+            if (!repository.equals(item.getRepo())) continue;
+            String candidate = item.getMetadata().get("git.projectId");
+            if (candidate == null) continue;
+            if (!candidate.matches("[1-9][0-9]*") || project != null && !project.equals(candidate)) {
+                throw new IllegalStateException("同仓库的已确认项目身份不一致");
+            }
+            project = candidate;
+        }
+        return java.util.Optional.ofNullable(project);
     }
 
     public List<RunItem> getItems() {

@@ -2,6 +2,7 @@ package io.releasehub.infrastructure.git;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.releasehub.application.gitoperation.GitReadResult;
+import io.releasehub.application.gitoperation.GitOperationContext;
 import io.releasehub.application.gitoperation.GitWriteResult;
 
 import io.releasehub.application.port.out.GitBranchPort;
@@ -96,7 +97,21 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
 
     @Override
     public MergeResult mergeBranch(String repoCloneUrl, String token, String sourceBranch, String targetBranch, String commitMessage) {
-        return mergeWorkflow(repoCloneUrl, token).merge(sourceBranch, targetBranch, commitMessage);
+        return mergeWorkflow(repoCloneUrl, token, null).merge(sourceBranch, targetBranch, commitMessage);
+    }
+
+    @Override
+    public GitWriteResult<MrEvidence> ensureMergeRequest(String repoCloneUrl, String token, String sourceBranch,
+                                                        String targetBranch, String message) {
+        return mergeWorkflow(repoCloneUrl, token, null).ensureMergeRequest(sourceBranch, targetBranch, message);
+    }
+
+    @Override
+    public MergeResult tryMergeRequest(String repoCloneUrl, String token, MrEvidence checkpoint, String message) {
+        if (!io.releasehub.application.gitoperation.GitMergeWorkflow.isValidCheckpoint(checkpoint)) {
+            return MergeResult.unknown("MR_CHECKPOINT_INVALID").withEvidence(checkpoint);
+        }
+        return mergeWorkflow(repoCloneUrl, token, checkpoint.projectId()).tryMergeRequest(checkpoint, message);
     }
 
     private String confirmedRefSha(ResponseEntity<Map<String, Object>> response, String expectedName, ErrorCode failureCode) {
@@ -109,10 +124,9 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
         return sha;
     }
 
-    private io.releasehub.application.gitoperation.GitMergeWorkflow mergeWorkflow(String cloneUrl, String token) {
-        RepoRef ref = parseRepoRef(cloneUrl);
-        var client = new GitLabMergeRequestAdapter(restTemplate,
-                ref.baseUrl + "/api/v4/projects/" + ref.encodedPath + "/merge_requests", token);
+    private io.releasehub.application.gitoperation.GitMergeWorkflow mergeWorkflow(String cloneUrl, String token, String expectedProjectId) {
+        var identity = resolveIdentity(cloneUrl, token, "/merge_requests", expectedProjectId);
+        var client = new GitLabMergeRequestAdapter(restTemplate, identity, token);
         return new io.releasehub.application.gitoperation.GitMergeWorkflow(client, MERGE_READINESS_MAX_ATTEMPTS, () -> {
             try { Thread.sleep(MERGE_READINESS_POLL_MILLIS); }
             catch (InterruptedException e) { Thread.currentThread().interrupt(); }
@@ -186,7 +200,7 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
 
     @Override
     public MergeabilityResult checkMergeability(String repoCloneUrl, String token, String sourceBranch, String targetBranch) {
-        return mergeWorkflow(repoCloneUrl, token).probe(sourceBranch, targetBranch);
+        return mergeWorkflow(repoCloneUrl, token, null).probe(sourceBranch, targetBranch);
     }
 
     @Override
@@ -295,16 +309,27 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
 
     @Override
     public BranchStatus getBranchStatus(String repoCloneUrl, String token, String branchName) {
+        String suffix="/repository/branches/"+urlEncode(branchName);
+        var identity=resolveIdentity(repoCloneUrl,token,suffix,null);
         try {
-            RepoRef repoRef = parseRepoRef(repoCloneUrl);
-            String endpoint = String.format("%s/api/v4/projects/%s/repository/branches/%s", repoRef.baseUrl, repoRef.encodedPath, urlEncode(branchName));
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(uri(endpoint), HttpMethod.GET, new HttpEntity<>(headers(token)), new ParameterizedTypeReference<>() {});
-            return BranchStatus.present(confirmedRefSha(response, branchName, ErrorCode.GIT_IDENTITY_UNAVAILABLE));
+            String endpoint=identity.baseUrl()+"/api/v4/projects/"+identity.projectId()+suffix;
+            ResponseEntity<Map<String,Object>> response=restTemplate.exchange(uri(endpoint),HttpMethod.GET,
+                    new HttpEntity<>(headers(token)),new ParameterizedTypeReference<>() {});
+            return BranchStatus.present(identity.projectId(),confirmedRefSha(response,branchName,ErrorCode.GIT_IDENTITY_UNAVAILABLE));
         } catch (HttpClientErrorException.NotFound e) {
-            return BranchStatus.missing();
+            return BranchStatus.missing(identity.projectId());
         } catch (RestClientException e) {
             throw BusinessException.of(ErrorCode.GIT_IDENTITY_UNAVAILABLE);
         }
+    }
+
+    private GitRemoteIdentityResolver.Identity resolveIdentity(String cloneUrl,String token,String suffix,String expectedProjectId) {
+        RepoRef ref=parseRepoRef(cloneUrl);
+        HttpHeaders headers=headers(token);
+        String expected=expectedProjectId==null?GitOperationContext.expectedProjectId():expectedProjectId;
+        if(expected!=null)headers.set(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID,expected);
+        return GitRemoteIdentityResolver.confirm(identities.resolve(
+                uri(ref.baseUrl+"/api/v4/projects/"+ref.encodedPath+suffix),headers),expected);
     }
 
     private HttpHeaders headers(String token) {

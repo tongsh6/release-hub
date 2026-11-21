@@ -54,6 +54,7 @@ class RunPagedApiTest {
     @Autowired private RunPlanPort runPlanPort;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PlatformTransactionManager transactions;
+    @org.springframework.boot.test.mock.mockito.MockBean private io.releasehub.application.port.out.GitBranchAdapterFactory gitBranches;
     @Autowired private io.releasehub.application.releasewindow.ReleaseWindowPort releaseWindowPort;
 
     private String token;
@@ -86,6 +87,7 @@ class RunPagedApiTest {
         assertThat(actual.path("id").asText()).isEqualTo(expected.getId().value());
         assertThat(actual.path("status").asText()).isEqualTo(expectedStatus.name());
         assertThat(actual.path("operator").asText()).isEqualTo(operator);
+        assertThat(actual.path("executionVersion").asInt()).isEqualTo(expected.getExecutionVersion());
         assertThat(actual.path("items")).hasSize(expected.getItems().size());
     }
 
@@ -233,6 +235,44 @@ class RunPagedApiTest {
         assertThat(runPort.findById(run.getId().value()).orElseThrow().getItems().getFirst().getIterationKey()).isNull();
     }
 
+    @ParameterizedTest
+    @EnumSource(value = RunType.class, names = {"VERSION_UPDATE", "WINDOW_CLEANUP", "ATTACH_ITERATION"})
+    void ordinaryRetryRejectsOtherExecutionTypesWithoutCreatingAnIntentOrCallingGit(RunType type) throws Exception {
+        Instant now = Instant.now();
+        Run run = Run.start(type, operator, now);
+        RunItem item = type == RunType.ATTACH_ITERATION
+                ? RunItem.create("WK-UNSUPPORTED-" + UUID.randomUUID(), RepoId.of("repo-unsupported"), IterationKey.of("IT-UNSUPPORTED"), 1, now)
+                : RunItem.createForRepository("WK-UNSUPPORTED-" + UUID.randomUUID(), RepoId.of("repo-unsupported"), 1, now);
+        finishItem(item, type == RunType.VERSION_UPDATE ? RunItemResult.VERSION_UPDATE_FAILED : RunItemResult.FAILED, now);
+        run.addItem(item);
+        run.finish(now.plusSeconds(2));
+        runPort.save(run);
+        assertUnsupportedRetry(run, item);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {1, 2})
+    void ordinaryRetryKeepsHistoricalWindowProtocolsReadOnly(int executionVersion) throws Exception {
+        Run run = createRun(RunExecutionStatus.FAILED, operator, "WK-LEGACY-" + UUID.randomUUID(), Instant.now());
+        jdbc.update("update run set execution_version = ? where id = ?", executionVersion, run.getId().value());
+        assertUnsupportedRetry(run, run.getItems().getFirst());
+    }
+
+    private void assertUnsupportedRetry(Run run, RunItem item) throws Exception {
+        int before = jdbc.queryForObject("select count(*) from run", Integer.class);
+        String requestKey = UUID.randomUUID().toString();
+        org.mockito.Mockito.clearInvocations(gitBranches);
+        var response = mockMvc.perform(post("/api/v1/runs/{id}/retry", run.getId().value())
+                        .header("Authorization", "Bearer " + token).header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of("items", List.of(item.getId().value())))))
+                .andExpect(status().isConflict()).andReturn();
+        assertThat(objectMapper.readTree(response.getResponse().getContentAsString()).path("code").asText()).isEqualTo("RUN_007");
+        assertThat(jdbc.queryForObject("select count(*) from run", Integer.class)).isEqualTo(before);
+        assertThat(jdbc.queryForObject("select count(*) from run_plan where idempotency_key = ?", Integer.class, requestKey)).isZero();
+        org.mockito.Mockito.verifyNoInteractions(gitBranches);
+    }
+
     @Test
     void documentsRepositoryScopeAndOptionalCleanupValuesAsNullable() throws Exception {
         var response = mockMvc.perform(get("/v3/api-docs"))
@@ -254,6 +294,21 @@ class RunPagedApiTest {
         }
         assertThat(schemas.path("RunView").path("properties").path("finishedAt").path("type"))
                 .containsExactlyInAnyOrder(objectMapper.getNodeFactory().textNode("string"), objectMapper.getNodeFactory().textNode("null"));
+        for (String field : List.of("startedAt", "finishedAt", "errorMessage")) {
+            assertThat(schemas.path("TaskView").path("properties").path(field).path("type"))
+                    .as("TaskView." + field + " preserves absent or inherited execution values")
+                    .containsExactlyInAnyOrder(objectMapper.getNodeFactory().textNode("string"), objectMapper.getNodeFactory().textNode("null"));
+        }
+        assertThat(schemas.path("TaskView").path("properties").has("claimToken")).isFalse();
+        for (String path : List.of("/api/v1/release-windows/{id}/orchestrate", "/api/v1/runs/{id}/retry")) {
+            List<JsonNode> keyHeaders = new ArrayList<>();
+            document.path("paths").path(path).path("post").path("parameters").forEach(parameter -> {
+                if ("Idempotency-Key".equals(parameter.path("name").asText())) keyHeaders.add(parameter);
+            });
+            assertThat(keyHeaders).as(path + " requires one request key header").hasSize(1);
+            assertThat(keyHeaders.getFirst().path("in").asText()).isEqualTo("header");
+            assertThat(keyHeaders.getFirst().path("required").asBoolean()).isTrue();
+        }
         JsonNode close = document.path("paths").path("/api/v1/release-windows/{id}/close").path("post");
         assertThat(close.path("requestBody").path("required").asBoolean()).isFalse();
         assertThat(schemas.path("CloseRequest").path("properties").path("triggerCi").path("type").asText()).isEqualTo("boolean");
@@ -263,9 +318,9 @@ class RunPagedApiTest {
     }
 
     @Test
-    void appliesV37AndV38OnTheIsolatedH2Database() {
-        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where version in ('37', '38') and success = true",
-                Integer.class)).isEqualTo(2);
+    void appliesV37ThroughV39OnTheIsolatedH2Database() {
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where version in ('37', '38', '39') and success = true",
+                Integer.class)).isEqualTo(3);
     }
 
     private JsonNode page(String statusFilter, String windowKey, String groupCode, int page, int size) throws Exception {
@@ -313,8 +368,11 @@ class RunPagedApiTest {
     }
 
     private Run createRun(RunExecutionStatus state, String actor, String windowKey, Instant now) {
+        // These fixtures exercise stored historical projections, not protocol-3 task execution.
+        Run seed = Run.start(RunType.WINDOW_ORCHESTRATION, actor, now);
         Run run = state == RunExecutionStatus.PLANNED ? Run.preview(actor, now)
-                : Run.start(RunType.WINDOW_ORCHESTRATION, actor, now);
+                : Run.rehydrate(seed.getId(), RunType.WINDOW_ORCHESTRATION, actor, now, null,
+                        List.of(), now, now, 0, 2, RunExecutionStatus.RUNNING);
         RunItem item = RunItem.create(windowKey, RepoId.of("repo-primary"), IterationKey.of("IT-" + UUID.randomUUID()), 1, now);
         item.putMetadata("test.fixture", "persisted");
         run.addItem(item);

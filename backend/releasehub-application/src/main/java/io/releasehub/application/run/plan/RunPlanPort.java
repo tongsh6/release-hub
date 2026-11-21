@@ -12,6 +12,8 @@ public interface RunPlanPort {
     Optional<SavedRunPlan> findCleanupByWindowId(String windowId);
     /** 持有窗口行锁时检查已受理但未完成或待核查的执行；预览不计入。 */
     boolean hasUnresolvedExecutionByWindowId(String windowId);
+    /** 持有同一窗口行锁时拒绝与活跃计划重叠的仓库；互不相交的仓库仍可受理。 */
+    boolean hasUnresolvedExecutionForRepositories(String windowId, List<String> repoIds);
     void save(SavedRunPlan plan);
     List<RunPlanSummary> listByWindow(String windowId, int limit);
 }

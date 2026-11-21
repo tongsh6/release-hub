@@ -18,12 +18,16 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
 class GitLabMergeRequestAdapterTest {
-    private static final String PROJECT = "https://gitlab.test/api/v4/projects/acme%2Frepo";
+    private static final String PROJECT = "https://gitlab.test/api/v4/projects/7";
+    private static final String NAMESPACE = "https://gitlab.test/api/v4/projects/acme%2Frepo";
+    private static final String WRITE_ENDPOINT = NAMESPACE + "/merge_requests";
     private static final String ENDPOINT = PROJECT + "/merge_requests";
     private static final String SHA = "a".repeat(40);
     private final RestTemplate http = new RestTemplate();
     private final MockRestServiceServer server = MockRestServiceServer.bindTo(http).build();
-    private final GitLabMergeRequestAdapter adapter = new GitLabMergeRequestAdapter(http, ENDPOINT, "token");
+    private final GitLabMergeRequestAdapter adapter = new GitLabMergeRequestAdapter(http,
+            new GitRemoteIdentityResolver.Identity("repo", "mapping", "remote", "GITLAB", "https://gitlab.test", "7",
+                    GitRemoteIdentityResolver.parse(java.net.URI.create(WRITE_ENDPOINT))), "token");
 
     @ParameterizedTest
     @CsvSource({
@@ -81,7 +85,6 @@ class GitLabMergeRequestAdapterTest {
     }
 
     @Test void shouldReadStableProjectIdAndExactSourceRevision() {
-        projectLookup();
         server.expect(requestTo(PROJECT + "/repository/branches/feature%2FIT-1")).andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("{\"name\":\"feature/IT-1\",\"commit\":{\"id\":\"" + SHA + "\"}}", MediaType.APPLICATION_JSON));
         var result = adapter.readSource("feature/IT-1");
@@ -91,7 +94,6 @@ class GitLabMergeRequestAdapterTest {
     }
 
     @Test void shouldReadAllPagesBeforeDeterminingOpenedMrIdentity() {
-        projectLookup();
         server.expect(requestTo(listUri(1))).andRespond(withSuccess("[]", MediaType.APPLICATION_JSON).header("X-Next-Page", "2"));
         server.expect(requestTo(listUri(2))).andRespond(withSuccess("[" + mr(17, "mergeable", "success") + "]",
                 MediaType.APPLICATION_JSON).header("X-Next-Page", ""));
@@ -102,7 +104,6 @@ class GitLabMergeRequestAdapterTest {
     }
 
     @Test void shouldDiscardPartialLookupWhenLaterPageFails() {
-        projectLookup();
         server.expect(requestTo(listUri(1))).andRespond(withSuccess("[" + mr(17, "mergeable", "success") + "]",
                 MediaType.APPLICATION_JSON).header("X-Next-Page", "2"));
         server.expect(requestTo(listUri(2))).andRespond(withServerError());
@@ -113,7 +114,6 @@ class GitLabMergeRequestAdapterTest {
     }
 
     @Test void shouldStopAtPaginationLimitWithoutClaimingLookupComplete() {
-        projectLookup();
         for (int page = 1; page <= 20; page++) {
             server.expect(requestTo(listUri(page))).andRespond(withSuccess("[]", MediaType.APPLICATION_JSON)
                     .header("X-Next-Page", Integer.toString(page + 1)));
@@ -124,7 +124,6 @@ class GitLabMergeRequestAdapterTest {
     }
 
     @Test void shouldNotReuseSameNamedSourceFromAFork() {
-        projectLookup();
         server.expect(requestTo(listUri(1))).andRespond(withSuccess(
                 "[" + mr(17, "mergeable", "success").replace("\"source_project_id\":7", "\"source_project_id\":8") + "]",
                 MediaType.APPLICATION_JSON));
@@ -135,7 +134,6 @@ class GitLabMergeRequestAdapterTest {
     }
 
     @Test void shouldRejectIncompleteMrIdentityInsteadOfTreatingItAsAbsent() {
-        projectLookup();
         server.expect(requestTo(listUri(1))).andRespond(withSuccess("[{\"iid\":17}]", MediaType.APPLICATION_JSON));
         assertEquals(GitReadResult.Status.INCOMPLETE,
                 adapter.find("feature/IT-1", "release/RW-1", GitMergeRequestPort.State.OPENED).status());
@@ -162,7 +160,7 @@ class GitLabMergeRequestAdapterTest {
     }
 
     @Test void shouldReturnUnknownAfterLostWriteResponseWithoutResending() {
-        server.expect(requestTo(ENDPOINT + "/17/merge")).andExpect(method(HttpMethod.PUT))
+        server.expect(requestTo(WRITE_ENDPOINT + "/17/merge")).andExpect(method(HttpMethod.PUT))
                 .andExpect(request -> assertEquals(SHA, new com.fasterxml.jackson.databind.ObjectMapper()
                         .readTree(((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString())
                         .path("sha").asText()))
@@ -172,9 +170,9 @@ class GitLabMergeRequestAdapterTest {
     }
 
     @Test void shouldKeepPartialRequestIdWhenCreationResponseIsIncomplete() {
-        server.expect(requestTo(ENDPOINT)).andExpect(method(HttpMethod.POST))
+        server.expect(requestTo(WRITE_ENDPOINT)).andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("{\"iid\":17}", MediaType.APPLICATION_JSON));
-        var result = adapter.create("feature/IT-1", "release/RW-1", "merge");
+        var result = adapter.create("feature/IT-1", "release/RW-1", SHA, "merge");
         assertEquals(GitWriteResult.Outcome.UNKNOWN, result.outcome());
         assertEquals("17", result.evidence().id());
         server.verify();
@@ -186,7 +184,7 @@ class GitLabMergeRequestAdapterTest {
     }
 
     @Test void shouldClassifyProtectedBranchRejection() {
-        server.expect(requestTo(ENDPOINT + "/17/merge")).andRespond(withForbiddenRequest()
+        server.expect(requestTo(WRITE_ENDPOINT + "/17/merge")).andRespond(withForbiddenRequest()
                 .body("{\"message\":\"You are not allowed to merge into this protected branch\"}"));
         var result = adapter.merge("17", SHA, "merge");
         assertEquals(GitWriteResult.Outcome.REJECTED, result.outcome());
@@ -199,7 +197,7 @@ class GitLabMergeRequestAdapterTest {
     void shouldRejectUnallowlistedCanonicalReasonWithoutEchoingIt(String untrustedReason) throws Exception {
         String body = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(java.util.Map.of(
                 "message", "REMOTE_WRITE_REJECTED", "reason", untrustedReason));
-        server.expect(requestTo(ENDPOINT + "/17/merge")).andExpect(method(HttpMethod.PUT))
+        server.expect(requestTo(WRITE_ENDPOINT + "/17/merge")).andExpect(method(HttpMethod.PUT))
                 .andRespond(withStatus(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY)
                         .contentType(MediaType.APPLICATION_JSON).body(body));
 
@@ -210,10 +208,6 @@ class GitLabMergeRequestAdapterTest {
         server.verify();
     }
 
-    private void projectLookup() {
-        server.expect(requestTo(PROJECT)).andExpect(method(HttpMethod.GET))
-                .andRespond(withSuccess("{\"id\":7}", MediaType.APPLICATION_JSON));
-    }
     private static String listUri(int page) {
         return ENDPOINT + "?scope=all&state=opened&source_branch=feature%2FIT-1&target_branch=release%2FRW-1&per_page=100&page=" + page;
     }

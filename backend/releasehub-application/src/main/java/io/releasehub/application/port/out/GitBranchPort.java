@@ -18,6 +18,16 @@ public interface GitBranchPort {
 
     MergeResult mergeBranch(String repoCloneUrl, String token, String sourceBranch, String targetBranch, String commitMessage);
 
+    /**
+     * Confirms the ENSURE_MR goal with at most one create request.
+     * APPLIED may mean read-only reuse or verified containment; only TRY_MERGE may complete a merge task.
+     */
+    GitWriteResult<MrEvidence> ensureMergeRequest(String repoCloneUrl, String token, String sourceBranch,
+                                                  String targetBranch, String message);
+
+    /** Uses the committed MR checkpoint and its expected numeric project identity; never creates an MR. */
+    MergeResult tryMergeRequest(String repoCloneUrl, String token, MrEvidence checkpoint, String message);
+
     /** Only a confirmed numeric project identity and full commit SHA may authorize a release tag. */
     GitReadResult<TagEvidence> readTag(String repoCloneUrl, String token, String expectedProjectId, String tagName);
 
@@ -79,13 +89,14 @@ public interface GitBranchPort {
         }
     }
 
-    record BranchStatus(boolean exists, String latestCommit, int ahead, int behind) {
-        public static BranchStatus missing() {
-            return new BranchStatus(false, null, 0, 0);
+    /** GitLab reads carry the confirmed numeric project identity even for a genuine branch 404. */
+    record BranchStatus(boolean exists, String latestCommit, int ahead, int behind, String projectId) {
+        public static BranchStatus missing(String projectId) {
+            return new BranchStatus(false, null, 0, 0, projectId);
         }
 
-        public static BranchStatus present(String latestCommit) {
-            return new BranchStatus(true, latestCommit, 0, 0);
+        public static BranchStatus present(String projectId, String latestCommit) {
+            return new BranchStatus(true, latestCommit, 0, 0, projectId);
         }
     }
 

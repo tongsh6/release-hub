@@ -122,8 +122,8 @@ class RunPlanAppServiceTest {
 
     @Test
     void admissionSavesRunningRunAndTheSameItemIdentitiesBeforeExecution() {
-        Run run = service.admit(windowId.value(), List.of("repo-b", "repo-a", "repo-a"),
-                List.of("ITER-B", "ITER-A", "ITER-B"), false, "operator");
+        Run run = admittedRun(service.admit(windowId.value(), List.of("repo-b", "repo-a", "repo-a"),
+                List.of("ITER-B", "ITER-A", "ITER-B"), false, "operator", java.util.UUID.randomUUID().toString()));
         ArgumentCaptor<SavedRunPlan> saved = ArgumentCaptor.forClass(SavedRunPlan.class);
         verify(plans).save(saved.capture());
         verify(runs).save(run);
@@ -152,7 +152,7 @@ class RunPlanAppServiceTest {
     void draftAndPublishedWindowsCanBeExplicitlyAdmitted() {
         for (var status : List.of(ReleaseWindowStatus.DRAFT, ReleaseWindowStatus.PUBLISHED)) {
             when(windows.findById(windowId)).thenReturn(Optional.of(window(status, false)));
-            assertThat(service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator")
+            assertThat(admittedRun(service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator", java.util.UUID.randomUUID().toString()))
                     .getExecutionStatus()).isEqualTo(RunExecutionStatus.RUNNING);
         }
     }
@@ -162,7 +162,7 @@ class RunPlanAppServiceTest {
         for (var window : List.of(window(ReleaseWindowStatus.CLOSED, false), window(ReleaseWindowStatus.DRAFT, true),
                 window(ReleaseWindowStatus.PUBLISHED, true))) {
             when(windows.findById(windowId)).thenReturn(Optional.of(window));
-            assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator"))
+            assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator", java.util.UUID.randomUUID().toString()))
                     .isInstanceOf(BusinessException.class);
         }
         verify(runs, never()).save(any());
@@ -172,13 +172,13 @@ class RunPlanAppServiceTest {
     @Test
     void invalidSelectionRejectsTheWholeAdmissionBeforeSavingAnyItem() {
         for (var repos : List.of(List.<String>of(), List.of("repo-a", "missing-repo"))) {
-            assertThatThrownBy(() -> service.admit(windowId.value(), repos, List.of("ITER-A"), true, "operator"))
+            assertThatThrownBy(() -> service.admit(windowId.value(), repos, List.of("ITER-A"), true, "operator", java.util.UUID.randomUUID().toString()))
                     .isInstanceOf(BusinessException.class);
         }
-        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A", "NOT-ATTACHED"), true, "operator"))
+        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A", "NOT-ATTACHED"), true, "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class);
         when(iterations.findByKey(IterationKey.of("ITER-B"))).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of(), true, "operator"))
+        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of(), true, "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class).satisfies(error -> assertThat(((BusinessException) error).getArgs()[0].toString()).contains("绑定迭代不存在"));
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
@@ -190,7 +190,7 @@ class RunPlanAppServiceTest {
                 "https://gitlab.invalid/acme/repo-b.git", "main", "OTHER", RepoType.SERVICE, GitProvider.GITLAB,
                 null, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0);
         when(repositories.findById(RepoId.of("repo-b"))).thenReturn(Optional.of(crossGroup));
-        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a", "repo-b"), List.of(), true, "operator"))
+        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a", "repo-b"), List.of(), true, "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class).satisfies(error -> assertThat(((BusinessException) error).getArgs()[0].toString()).contains("仓库与窗口不在同一分组"));
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
@@ -201,7 +201,7 @@ class RunPlanAppServiceTest {
         when(iterations.findByKey(IterationKey.of("ITER-B"))).thenReturn(Optional.of(Iteration.rehydrate(
                 IterationKey.of("ITER-B"), "B", null, null, "G001", Set.of(RepoId.of("repo-b")),
                 IterationStatus.ACTIVE, now, now)));
-        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A", "ITER-B"), true, "operator"))
+        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A", "ITER-B"), true, "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class).satisfies(error -> assertThat(((BusinessException) error).getArgs()[0].toString()).contains("所选迭代不包含任何所选仓库"));
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
@@ -210,7 +210,7 @@ class RunPlanAppServiceTest {
     @Test
     void allBindingsContributeTheOneReleaseTargetEvenForAnIterationSubset() {
         when(bindings.listByWindow(windowId)).thenReturn(List.of(recordedBinding("ITER-B", "release/recorded"), binding("ITER-A")));
-        var run = service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator");
+        var run = admittedRun(service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator", java.util.UUID.randomUUID().toString()));
         assertThat(run.getItems()).singleElement().satisfies(item ->
                 assertThat(item.getMetadata()).containsEntry("plan.releaseBranch", "release/recorded"));
     }
@@ -219,7 +219,7 @@ class RunPlanAppServiceTest {
     void conflictingTargetsOnASharedRepositoryAreRejectedBeforeSaving() {
         when(bindings.listByWindow(windowId)).thenReturn(List.of(
                 recordedBinding("ITER-A", "release/one"), recordedBinding("ITER-B", "release/two")));
-        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator"))
+        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class).satisfies(error -> assertThat(((BusinessException) error).getArgs()[0].toString()).contains("多个 release 目标"));
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
@@ -230,11 +230,11 @@ class RunPlanAppServiceTest {
         var named = version("repo-a", "feature/custom");
         named.setBranchCreationMode(BranchCreationMode.NAMED);
         when(versions.listVersionInfo("ITER-A")).thenReturn(List.of(named));
-        assertThat(service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator").getItems())
+        assertThat(admittedRun(service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator", java.util.UUID.randomUUID().toString())).getItems())
                 .singleElement().satisfies(item -> assertThat(item.getMetadata()).containsEntry("plan.featureBranch", "feature/custom"));
         clearInvocations(runs, plans);
         named.setFeatureBranch(null);
-        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator"))
+        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class).satisfies(error -> assertThat(((BusinessException) error).getArgs()[0].toString()).contains("自定义迭代分支缺少名称"));
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
@@ -259,7 +259,7 @@ class RunPlanAppServiceTest {
     void anEmptyWindowCanBeDisplayedButCannotCreateAnExecution() {
         when(bindings.listByWindow(windowId)).thenReturn(List.of());
         assertThat(service.previewWindow(windowId.value())).isEmpty();
-        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of(), true, "operator"))
+        assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of(), true, "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class);
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
@@ -280,7 +280,7 @@ class RunPlanAppServiceTest {
         List<String> selected = List.of(previous.getItems().get(3).getId().value(), previous.getItems().get(0).getId().value());
         List<String> originalIds = previous.getItems().stream().map(item -> item.getId().value()).toList();
 
-        Run retry = service.admitRetry(previous, selected, "operator");
+        Run retry = admittedRun(service.admitRetry(previous, selected, "operator", java.util.UUID.randomUUID().toString()));
         ArgumentCaptor<SavedRunPlan> saved = ArgumentCaptor.forClass(SavedRunPlan.class);
         verify(plans).save(saved.capture());
         assertThat(retry.getId()).isNotEqualTo(previous.getId());
@@ -310,7 +310,7 @@ class RunPlanAppServiceTest {
         when(versions.listVersionInfo("ITER-A")).thenReturn(List.of(version("repo-a", "feature/new")));
         clearInvocations(versions);
 
-        Run retry = service.admitRetry(previous, List.of(previous.getItems().get(0).getId().value()), "operator");
+        Run retry = admittedRun(service.admitRetry(previous, List.of(previous.getItems().get(0).getId().value()), "operator", java.util.UUID.randomUUID().toString()));
 
         assertThat(retry.getItems()).singleElement().satisfies(item -> assertThat(item.getMetadata())
                 .containsEntry("plan.featureBranch", "feature/ITER-A")
@@ -326,12 +326,12 @@ class RunPlanAppServiceTest {
         previous.getItems().get(1).finishWith(RunItemResult.SKIPPED_DUE_TO_BLOCK, now);
         previous.getItems().get(2).finishWith(RunItemResult.MERGED, now);
         previous.finish(now);
-        Run retry = service.admitRetry(previous, List.of(
-                previous.getItems().get(0).getId().value(), previous.getItems().get(1).getId().value()), "operator");
+        Run retry = admittedRun(service.admitRetry(previous, List.of(
+                previous.getItems().get(0).getId().value(), previous.getItems().get(1).getId().value()), "operator", java.util.UUID.randomUUID().toString()));
         assertThat(retry.getItems()).hasSize(2);
         clearInvocations(runs, plans);
 
-        assertThatThrownBy(() -> service.admitRetry(previous, List.of(previous.getItems().get(2).getId().value()), "operator"))
+        assertThatThrownBy(() -> service.admitRetry(previous, List.of(previous.getItems().get(2).getId().value()), "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class);
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
@@ -341,10 +341,10 @@ class RunPlanAppServiceTest {
     void retryRejectsMissingPlanUnknownIdsAndOldTupleKeysBeforeSaving() {
         Run previous = failedSource();
         for (var ids : List.of(List.<String>of(), List.of("unknown-item"), List.of("RW-1::repo-a::ITER-A"))) {
-            assertThatThrownBy(() -> service.admitRetry(previous, ids, "operator")).isInstanceOf(BusinessException.class);
+            assertThatThrownBy(() -> service.admitRetry(previous, ids, "operator", java.util.UUID.randomUUID().toString())).isInstanceOf(BusinessException.class);
         }
         when(plans.findByRunId(previous.getId().value())).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.admitRetry(previous, List.of(previous.getItems().get(0).getId().value()), "operator"))
+        assertThatThrownBy(() -> service.admitRetry(previous, List.of(previous.getItems().get(0).getId().value()), "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class);
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
@@ -355,14 +355,14 @@ class RunPlanAppServiceTest {
         Run previous = failedSource();
         String selected = previous.getItems().get(0).getId().value();
         when(bindings.listByWindow(windowId)).thenReturn(List.of(binding("ITER-B")));
-        assertThatThrownBy(() -> service.admitRetry(previous, List.of(selected), "operator"))
+        assertThatThrownBy(() -> service.admitRetry(previous, List.of(selected), "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class);
         when(bindings.listByWindow(windowId)).thenReturn(List.of(binding("ITER-A"), binding("ITER-B")));
         CodeRepository redirected = CodeRepository.rehydrate(RepoId.of("repo-a"), "repo-a",
                 "https://gitlab.invalid/different/project.git", "main", "G001", RepoType.SERVICE, GitProvider.GITLAB,
                 null, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0);
         when(repositories.findById(RepoId.of("repo-a"))).thenReturn(Optional.of(redirected));
-        assertThatThrownBy(() -> service.admitRetry(previous, List.of(selected), "operator"))
+        assertThatThrownBy(() -> service.admitRetry(previous, List.of(selected), "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class);
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
@@ -373,12 +373,12 @@ class RunPlanAppServiceTest {
         Run previous = failedSource();
         String selected = previous.getItems().get(0).getId().value();
         when(windows.findById(windowId)).thenReturn(Optional.of(window(ReleaseWindowStatus.DRAFT, true)));
-        assertThatThrownBy(() -> service.admitRetry(previous, List.of(selected), "operator"))
+        assertThatThrownBy(() -> service.admitRetry(previous, List.of(selected), "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class);
         when(windows.findById(windowId)).thenReturn(Optional.of(window(ReleaseWindowStatus.DRAFT, false)));
         previous.getItems().get(0).finishWith(RunItemResult.UNKNOWN, now);
         previous.finish(now);
-        assertThatThrownBy(() -> service.admitRetry(previous, List.of(selected), "operator"))
+        assertThatThrownBy(() -> service.admitRetry(previous, List.of(selected), "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class);
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
@@ -394,23 +394,23 @@ class RunPlanAppServiceTest {
         String blockedId = previous.getItems().get(0).getId().value();
         String skippedId = previous.getItems().get(1).getId().value();
 
-        assertThatThrownBy(() -> service.admitRetry(previous, List.of(skippedId), "operator"))
+        assertThatThrownBy(() -> service.admitRetry(previous, List.of(skippedId), "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class);
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
 
-        assertThat(service.admitRetry(previous, List.of(skippedId, blockedId), "operator").getItems())
+        assertThat(admittedRun(service.admitRetry(previous, List.of(skippedId, blockedId), "operator", java.util.UUID.randomUUID().toString())).getItems())
                 .hasSize(2).allSatisfy(item -> assertThat(item.getRepo().value()).isEqualTo("repo-a"));
     }
 
     @Test
     void featureCreationModeIsRecordedAndChangesThePlanFingerprint() {
-        service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator");
+        service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator", java.util.UUID.randomUUID().toString());
         var existing = version("repo-a", "feature/ITER-A");
         existing.setBranchCreationMode(BranchCreationMode.EXISTING);
         when(versions.listVersionInfo("ITER-A")).thenReturn(List.of(existing));
 
-        Run run = service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator");
+        Run run = admittedRun(service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator", java.util.UUID.randomUUID().toString()));
         assertThat(run.getItems()).singleElement().satisfies(item ->
                 assertThat(item.getMetadata()).containsEntry("plan.featureBranchMode", "EXISTING"));
         ArgumentCaptor<SavedRunPlan> saved = ArgumentCaptor.forClass(SavedRunPlan.class);
@@ -422,7 +422,7 @@ class RunPlanAppServiceTest {
     void retryDoesNotGuessMissingFeatureCreationModeFromLiveConfiguration() {
         Run previous = failedSource();
         previous.getItems().get(0).putMetadata("plan.featureBranchMode", "");
-        assertThatThrownBy(() -> service.admitRetry(previous, List.of(previous.getItems().get(0).getId().value()), "operator"))
+        assertThatThrownBy(() -> service.admitRetry(previous, List.of(previous.getItems().get(0).getId().value()), "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class);
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
@@ -435,7 +435,7 @@ class RunPlanAppServiceTest {
                 "https://gitlab.invalid/acme/repo-a.git?token=fixture-secret",
                 "https://gitlab.invalid/acme/repo-a.git#fixture-secret")) {
             when(repositories.findById(RepoId.of("repo-a"))).thenReturn(Optional.of(repository(url)));
-            assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator"))
+            assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator", java.util.UUID.randomUUID().toString()))
                     .isInstanceOf(BusinessException.class).satisfies(error -> {
                         assertThat(error.getMessage()).doesNotContain("fixture-secret");
                         assertThat(java.util.Arrays.toString(((BusinessException) error).getArgs())).doesNotContain("fixture-secret");
@@ -449,7 +449,7 @@ class RunPlanAppServiceTest {
     void standardSshCloneUrlsRemainAvailableWithoutEmbeddingCredentials() {
         for (String url : List.of("git@gitlab.invalid:acme/repo-a.git", "ssh://git@gitlab.invalid/acme/repo-a.git")) {
             when(repositories.findById(RepoId.of("repo-a"))).thenReturn(Optional.of(repository(url)));
-            assertThat(service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator").getItems())
+            assertThat(admittedRun(service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-A"), true, "operator", java.util.UUID.randomUUID().toString())).getItems())
                     .singleElement().satisfies(item -> assertThat(item.getMetadata()).containsEntry("plan.cloneUrl", url));
         }
     }
@@ -461,7 +461,7 @@ class RunPlanAppServiceTest {
             when(repositories.findById(RepoId.of("repo-b"))).thenReturn(Optional.of(CodeRepository.rehydrate(
                     RepoId.of("repo-b"), "repo-b", "https://git.example/acme/repo-b.git", "main", "G001",
                     RepoType.SERVICE, provider, null, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0)));
-            assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a", "repo-b"), List.of(), true, "operator"))
+            assertThatThrownBy(() -> service.admit(windowId.value(), List.of("repo-a", "repo-b"), List.of(), true, "operator", java.util.UUID.randomUUID().toString()))
                     .isInstanceOf(BusinessException.class);
         }
         verify(runs, never()).save(any());
@@ -492,7 +492,7 @@ class RunPlanAppServiceTest {
                 RepoId.of("repo-a"), "repo-a", cloneUrl, "main", "G001", RepoType.SERVICE, GitProvider.GITHUB,
                 null, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0)));
 
-        assertThatThrownBy(() -> service.admitRetry(previous, List.of(previous.getItems().get(0).getId().value()), "operator"))
+        assertThatThrownBy(() -> service.admitRetry(previous, List.of(previous.getItems().get(0).getId().value()), "operator", java.util.UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class);
         verify(runs, never()).save(any());
         verify(plans, never()).save(any());
@@ -509,7 +509,7 @@ class RunPlanAppServiceTest {
         when(versions.listVersionInfo("ITER-B")).thenReturn(List.of());
         when(settings.getNaming()).thenReturn(Optional.of(new SettingsPort.SettingsNaming(null, "candidate/{key}")));
         when(adapters.getAdapter(GitProvider.GITLAB)).thenReturn(git);
-        when(git.getBranchStatus(any(), any(), any())).thenReturn(GitBranchPort.BranchStatus.present("actual-sha"));
+        when(git.getBranchStatus(any(), any(), any())).thenReturn(GitBranchPort.BranchStatus.present("17", "actual-sha"));
 
         BranchStatusView status = branchStatusService().getBranchStatus(windowId.value());
 
@@ -529,7 +529,7 @@ class RunPlanAppServiceTest {
     void branchStatusReusesTheRecordedSharedReleaseTarget() {
         when(bindings.listByWindow(windowId)).thenReturn(List.of(recordedBinding("ITER-B", "release/shared"), binding("ITER-A")));
         when(adapters.getAdapter(GitProvider.GITLAB)).thenReturn(git);
-        when(git.getBranchStatus(any(), any(), any())).thenReturn(GitBranchPort.BranchStatus.missing());
+        when(git.getBranchStatus(any(), any(), any())).thenReturn(GitBranchPort.BranchStatus.missing("17"));
 
         var status = branchStatusService().getBranchStatus(windowId.value());
 
@@ -585,7 +585,7 @@ class RunPlanAppServiceTest {
             RuntimeException failure = new IllegalStateException("remote read failed");
             when(git.getBranchStatus(any(), any(), any())).thenAnswer(call -> {
                 if (failingBranch.equals(call.getArgument(2))) throw failure;
-                return GitBranchPort.BranchStatus.present("sha");
+                return GitBranchPort.BranchStatus.present("17", "sha");
             });
 
             assertThatThrownBy(() -> branchStatusService().getBranchStatus(windowId.value())).isSameAs(failure);
@@ -617,15 +617,75 @@ class RunPlanAppServiceTest {
                 GitProvider.GITLAB, null, false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0);
     }
 
+    @Test
+    void retryKeepsTheProjectIdentityWhenOnlyTheFeaturePrefixSucceeded() {
+        Run previous = failedSource();
+        var selected = previous.getItems().getFirst();
+        selected.putMetadata("git.projectId", "17");
+        var sourceTasks = runs.findTasks(previous.getId().value()).stream().map(task -> {
+            if (!task.itemId().equals(selected.getId().value())) return task;
+            String status = task.actionType() == io.releasehub.domain.run.ActionType.ENSURE_FEATURE ? "COMPLETED"
+                    : task.actionType() == io.releasehub.domain.run.ActionType.ENSURE_RELEASE ? "FAILED" : "SKIPPED";
+            return new RunPort.TaskView(task.taskId(), task.runId(), task.itemId(), task.actionType(),
+                    task.taskOrder(), status, task.startedAt(), task.finishedAt(), task.errorMessage());
+        }).toList();
+        when(runs.findTasks(previous.getId().value())).thenReturn(sourceTasks);
+
+        Run retry = admittedRun(service.admitRetry(previous, List.of(selected.getId().value()), "operator", "retry-project-prefix"));
+
+        assertThat(retry.getItems()).singleElement()
+                .satisfies(item -> assertThat(item.getMetadata()).containsEntry("git.projectId", "17"));
+    }
+
+    @Test
+    void retryInheritsTheIdentityConfirmedByAnotherItemOfTheSameRepository() {
+        Run previous = failedSource();
+        var selected = previous.getItems().getFirst();
+        previous.getItems().stream().filter(item -> item.getRepo().equals(selected.getRepo()) && item != selected)
+                .findFirst().orElseThrow().putMetadata("git.projectId", "17");
+
+        Run retry = admittedRun(service.admitRetry(previous, List.of(selected.getId().value()), "operator", "retry-project-sibling"));
+
+        assertThat(retry.getItems()).singleElement()
+                .satisfies(item -> assertThat(item.getMetadata()).containsEntry("git.projectId", "17"));
+    }
+
+    @Test
+    void retryRejectsContradictoryProjectIdentitiesBeforeSavingAnyIntent() {
+        Run previous = failedSource();
+        var selected = previous.getItems().getFirst();
+        selected.putMetadata("git.projectId", "17");
+        previous.getItems().stream().filter(item -> item.getRepo().equals(selected.getRepo()) && item != selected)
+                .findFirst().orElseThrow().putMetadata("git.projectId", "18");
+
+        assertThatThrownBy(() -> service.admitRetry(previous, List.of(selected.getId().value()),
+                "operator", "retry-project-conflict")).isInstanceOf(BusinessException.class);
+        verify(runs, never()).save(any());
+        verify(plans, never()).save(any());
+    }
+
+    private Run admittedRun(RunPlanAppService.OrchestrationAdmission admission) {
+        var saved = ArgumentCaptor.forClass(Run.class);
+        verify(runs, atLeastOnce()).save(saved.capture());
+        return saved.getAllValues().stream()
+                .filter(run -> run.getId().value().equals(admission.runId()))
+                .findFirst().orElseThrow();
+    }
+
     private Run failedSource() {
         return failedSource(false);
     }
 
     private Run failedSource(boolean failFast) {
-        Run previous = service.admit(windowId.value(), List.of("repo-a", "repo-b"), List.of(), failFast, "operator");
+        Run previous = admittedRun(service.admit(windowId.value(), List.of("repo-a", "repo-b"), List.of(), failFast, "operator", java.util.UUID.randomUUID().toString()));
         ArgumentCaptor<SavedRunPlan> saved = ArgumentCaptor.forClass(SavedRunPlan.class);
         verify(plans).save(saved.capture());
         when(plans.findByRunId(previous.getId().value())).thenReturn(Optional.of(saved.getValue()));
+        when(runs.findTasks(previous.getId().value())).thenReturn(previous.getItems().stream()
+                .flatMap(item -> java.util.stream.IntStream.range(0, 4).mapToObj(index -> new RunPort.TaskView(
+                        "task-" + item.getId().value() + "-" + index, previous.getId().value(), item.getId().value(),
+                        io.releasehub.domain.run.ActionType.orchestrationSequence().get(index),
+                        item.getPlannedOrder() * 4 + index, index == 0 ? "FAILED" : "SKIPPED", now, now, null))).toList());
         previous.getItems().forEach(item -> item.finishWith(RunItemResult.FAILED, now));
         previous.finish(now);
         clearInvocations(runs, plans);

@@ -39,7 +39,7 @@ public class GitSafetyBeanDecorator implements BeanPostProcessor {
             String method=invocation.getMethod().getName();
             if(!properties.getObject().isEnabled())return invocation.proceed();
             Class<?> type=org.springframework.aop.support.AopUtils.getTargetClass(bean);
-            if(type==GitHubGitBranchAdapter.class&&java.util.Set.of("createBranch","deleteBranch","mergeBranch","createTag","archiveBranch","triggerPipeline","checkMergeability").contains(method)) {
+            if(type==GitHubGitBranchAdapter.class&&java.util.Set.of("createBranch","deleteBranch","mergeBranch","ensureMergeRequest","tryMergeRequest","createTag","archiveBranch","triggerPipeline","checkMergeability").contains(method)) {
                 throw BusinessException.of(ErrorCode.GIT_PROVIDER_UNSUPPORTED);
             }
             if(!method.equals("supports")&&(type==MockGitBranchAdapter.class||type==InMemoryGitLabBranchAdapter.class

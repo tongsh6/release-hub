@@ -4,6 +4,11 @@ import io.releasehub.application.gitoperation.*;
 import io.releasehub.application.port.out.*;
 import io.releasehub.application.repo.CodeRepositoryPort;
 import io.releasehub.application.settings.SettingsPort;
+import io.releasehub.application.run.RunPort;
+import io.releasehub.application.run.plan.RunPlanAppService;
+import io.releasehub.domain.run.ActionType;
+import io.releasehub.domain.run.RunItemResult;
+import io.releasehub.domain.run.RunStep;
 import io.releasehub.application.version.*;
 import io.releasehub.common.exception.BusinessException;
 import io.releasehub.domain.repo.*;
@@ -27,6 +32,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.LinkedHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.*;
 
@@ -34,7 +43,7 @@ import static org.assertj.core.api.Assertions.*;
 class GitWriteSafetyIT {
     private static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:18.1")
             .withDatabaseName("git_safety_test").withUsername("safety_test").withPassword("isolated-safety-db");
-    private static final FixtureServer SERVER=new FixtureServer();
+    private static final GitLabHttpFixture SERVER=new GitLabHttpFixture();
     private static final AtomicInteger PROJECT=new AtomicInteger(100);
     static {DB.start();SERVER.start();}
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
@@ -50,6 +59,13 @@ class GitWriteSafetyIT {
     @Autowired PlatformTransactionManager transactions;
     @Autowired ApplicationContext context;
     @Autowired java.util.List<VersionUpdaterPort> versionUpdaters;
+    @Autowired RunPort taskRuns;
+    @Autowired RunPlanAppService taskPlans;
+    @Autowired io.releasehub.application.releasewindow.ReleaseWindowPort taskWindows;
+    @Autowired io.releasehub.application.iteration.IterationPort taskIterations;
+    @Autowired io.releasehub.application.iteration.IterationRepoPort taskVersions;
+    @Autowired io.releasehub.application.window.WindowIterationPort taskBindings;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     private CodeRepository repo;
     private String path,endpoint,canonicalEndpoint,sha;
     private int project;
@@ -128,8 +144,8 @@ class GitWriteSafetyIT {
     }
     @Test void shouldProbeExistingMergeRequestWithoutAnyWrite() {
         sourceBranch();
-        SERVER.reply("GET",endpoint+"/merge_requests",200,"["+mergeRequest("opened")+"]");
-        SERVER.reply("GET",endpoint+"/merge_requests/7",200,mergeRequest("opened"));
+        SERVER.reply("GET",canonicalEndpoint+"/merge_requests",200,"["+mergeRequest("opened")+"]");
+        SERVER.reply("GET",canonicalEndpoint+"/merge_requests/7",200,mergeRequest("opened"));
         assertThat(factory.getAdapter(GitProvider.GITLAB).checkMergeability(repo.getCloneUrl(),"fixture-token","feature","main").canMerge()).isTrue();
         assertThat(journal.list(repo.getId().value(),0,20)).isEmpty();
         assertThat(SERVER.requests).isNotEmpty().allMatch(event->event.method().equals("GET"));
@@ -183,8 +199,9 @@ class GitWriteSafetyIT {
     }
     @Test void shouldPreserveUnconfirmedMergeWithoutClosingOrResending() {
         sourceBranch();
-        SERVER.reply("GET",endpoint+"/merge_requests",200,"[]");
-        SERVER.reply("GET",endpoint+"/repository/commits/"+sha+"/refs",200,"[]");
+        SERVER.reply("GET",canonicalEndpoint+"/merge_requests",200,"[]");
+        SERVER.reply("GET",canonicalEndpoint+"/repository/commits/"+sha+"/refs",200,"[]");
+        SERVER.reply("GET",canonicalEndpoint+"/merge_requests/7",200,mergeRequest("opened"));
         SERVER.reply("POST",canonicalEndpoint+"/merge_requests",201,mergeRequest("opened"));
         SERVER.reply("PUT",canonicalEndpoint+"/merge_requests/7/merge",500,"{}");
         var result=factory.getAdapter(GitProvider.GITLAB).mergeBranch(repo.getCloneUrl(),"fixture-token","feature","main","fixture");
@@ -249,7 +266,7 @@ class GitWriteSafetyIT {
     }
 
     @Test void shouldNotCreateGuardForUnknownReadBeforeAnyWrite() {
-        SERVER.reply("GET",endpoint+"/repository/branches/feature",200,"{}");
+        SERVER.reply("GET",canonicalEndpoint+"/repository/branches/feature",200,"{}");
 
         assertThat(merge().status()).isEqualTo(io.releasehub.domain.run.MergeStatus.UNKNOWN);
         assertThat(journal.list(repo.getId().value(),0,20)).isEmpty();
@@ -274,7 +291,7 @@ class GitWriteSafetyIT {
         assertThat(result.evidence().id()).isEqualTo("321");
         assertThat(result.evidence().projectId()).isEqualTo(String.valueOf(project));
         assertThat(result.evidence().sha()).isEqualTo(sha);
-        assertThat(SERVER.requests).noneMatch(FixtureServer.Request::internalHeaders);
+        assertThat(SERVER.requests).noneMatch(GitLabHttpFixture.Request::internalHeaders);
         SERVER.verify("GET",endpoint,1);
         SERVER.verify("POST",canonicalEndpoint+"/pipeline",1);
         assertThat(SERVER.query("POST",canonicalEndpoint+"/pipeline")).isEqualTo("ref=release%2Fevidence%2Bgate");
@@ -304,7 +321,7 @@ class GitWriteSafetyIT {
         assertThat(SERVER.body("POST",canonicalEndpoint+"/repository/tags").path("ref").asText()).isEqualTo(sha);
         assertThat(SERVER.writeCount()).isEqualTo(1);
         assertNoNamespaceWrites();
-        assertThat(SERVER.requests).noneMatch(FixtureServer.Request::internalHeaders);
+        assertThat(SERVER.requests).noneMatch(GitLabHttpFixture.Request::internalHeaders);
         assertThat(journal.list(repo.getId().value(),0,20)).hasSize(1)
                 .allMatch(operation->operation.state().equals("APPLIED")&&!operation.blocked());
     }
@@ -321,7 +338,7 @@ class GitWriteSafetyIT {
         assertThat(SERVER.writeCount()).isEqualTo(1);
         SERVER.verify("POST",canonicalEndpoint+"/pipeline",1);
         assertNoNamespaceWrites();
-        assertThat(SERVER.requests).noneMatch(FixtureServer.Request::internalHeaders);
+        assertThat(SERVER.requests).noneMatch(GitLabHttpFixture.Request::internalHeaders);
     }
 
     @Test void shouldKeepPipelineWithoutResponseIdBlocked() {
@@ -349,13 +366,295 @@ class GitWriteSafetyIT {
         assertThat(repos.findById(repo.getId()).orElseThrow().getCloneUrl()).isEqualTo(original);
     }
 
+    @Test void shouldHoldCreatedMrUntilTaskCheckpointCommits() {
+        var claim = claimedMergeTask();
+        readyForNewMerge();
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, mergeRequest("opened"));
+        var result = ensureTaskMr(claim);
+        assertThat(result.outcome()).isEqualTo(GitWriteResult.Outcome.APPLIED);
+        assertThat(result.evidence().disposition()).isEqualTo(GitBranchPort.MrDisposition.CREATED);
+        assertTaskStatus(claim, "RUNNING");
+        assertThat(journal.list(repo.getId().value(), 0, 20)).hasSize(1)
+                .allMatch(operation -> operation.state().equals("APPLIED") && operation.blocked());
+        branchSuccess();
+        assertThatThrownBy(this::write).isInstanceOf(BusinessException.class);
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        assertThat(SERVER.writeCount()).isEqualTo(1);
+
+        taskRuns.completeTask(claim, taskStep(claim, RunItemResult.CREATED), checkpointMetadata(result.evidence()));
+        assertTaskStatus(claim, "COMPLETED");
+        assertThat(journal.list(repo.getId().value(), 0, 20)).noneMatch(GitOperationJournalPort.Operation::blocked);
+        var mergeClaim = taskRuns.claimNextTask(claim.runId()).orElseThrow();
+        assertThat(mergeClaim.actionType()).isEqualTo(ActionType.TRY_MERGE);
+        assertThat(mergeClaim.metadata()).containsEntry("git.projectId", String.valueOf(project))
+                .containsEntry("git.mrIid", "7").containsEntry("git.sourceSha", sha);
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 200, mergedRequest());
+        GitBranchPort.MergeResult merged;
+        try (var scope = GitOperationContext.withTask(mergeClaim)) {
+            merged = factory.getAdapter(GitProvider.GITLAB).tryMergeRequest(
+                    repo.getCloneUrl(), "fixture-token", checkpoint(mergeClaim), "fixture merge");
+        }
+        assertThat(merged.status()).isEqualTo(io.releasehub.domain.run.MergeStatus.SUCCESS);
+        var completed = taskRuns.completeTask(mergeClaim, taskStep(mergeClaim, RunItemResult.MERGED),
+                Map.of("git.mergeSha", merged.mrEvidence().mergeSha()));
+        assertThat(completed.getExecutionStatus().name()).isEqualTo("DONE");
+        assertThat(taskRuns.findTasks(claim.runId())).hasSize(4).allMatch(task -> task.status().equals("COMPLETED"));
+        assertThat(completed.getItems().getFirst().getSteps()).hasSize(4);
+        assertThat(journal.list(repo.getId().value(), 0, 20)).hasSize(2)
+                .allMatch(operation -> operation.state().equals("APPLIED") && !operation.blocked());
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 1);
+        assertNoNamespaceWrites();
+    }
+
+    @Test void shouldRollBackTaskProjectionAndGuardAcknowledgementTogether() {
+        var claim = claimedMergeTask();
+        readyForNewMerge();
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, mergeRequest("opened"));
+        var result = ensureTaskMr(claim);
+        assertThat(result.outcome()).isEqualTo(GitWriteResult.Outcome.APPLIED);
+        assertThatThrownBy(() -> new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            taskRuns.completeTask(claim, taskStep(claim, RunItemResult.CREATED), checkpointMetadata(result.evidence()));
+            throw new IllegalStateException("fixture result transaction rollback");
+        })).isInstanceOf(IllegalStateException.class).hasMessage("fixture result transaction rollback");
+
+        assertTaskStatus(claim, "RUNNING");
+        var item = taskRuns.findById(claim.runId()).orElseThrow().getItems().getFirst();
+        assertThat(item.getSteps()).hasSize(2).noneMatch(step -> step.actionType() == ActionType.ENSURE_MR);
+        assertThat(item.getMetadata()).doesNotContainKey("git.mrIid");
+        assertThat(taskRuns.claimNextTask(claim.runId())).isEmpty();
+        assertThat(journal.list(repo.getId().value(), 0, 20)).hasSize(1)
+                .allMatch(operation -> operation.state().equals("APPLIED") && operation.blocked());
+        branchSuccess();
+        assertThatThrownBy(this::write).isInstanceOf(BusinessException.class);
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        assertThat(SERVER.writeCount()).isEqualTo(1);
+    }
+
+    @Test void shouldRejectExpiredTaskClaimBeforeSendingRemoteWrite() {
+        var claim = claimedMergeTask();
+        readyForNewMerge();
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, mergeRequest("opened"));
+        branchSuccess();
+        try (var scope = GitOperationContext.withTask(claim)) {
+            assertThatThrownBy(this::write).as("ENSURE_MR claim cannot issue CREATE_BRANCH")
+                    .isInstanceOf(BusinessException.class);
+        }
+        try (var scope = GitOperationContext.withRun(claim.runId())) {
+            assertThatThrownBy(this::write).as("durable task Run cannot omit its fence")
+                    .isInstanceOf(BusinessException.class);
+        }
+        assertThat(SERVER.writeCount()).isZero();
+        assertThat(journal.list(repo.getId().value(), 0, 20)).isEmpty();
+        assertThat(jdbc.update("update run_task set claim_token = ? where id = ?",
+                UUID.randomUUID().toString(), claim.fence().taskId())).isEqualTo(1);
+        SERVER.resetRequests();
+        assertThatThrownBy(() -> ensureTaskMr(claim)).isInstanceOf(BusinessException.class);
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 0);
+        assertThat(SERVER.writeCount()).isZero();
+        assertThat(journal.list(repo.getId().value(), 0, 20)).isEmpty();
+        assertTaskStatus(claim, "RUNNING");
+    }
+
+    @Test void shouldNotReplayTaskAfterSendStartedHasUnknownResult() {
+        var claim = claimedMergeTask();
+        readyForNewMerge();
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 500, "{}");
+        var result = ensureTaskMr(claim);
+        assertThat(result.outcome()).isEqualTo(GitWriteResult.Outcome.UNKNOWN);
+        var operation = journal.list(repo.getId().value(), 0, 20).getFirst();
+        assertThat(operation.state()).isEqualTo("UNKNOWN");
+        assertThat(operation.blocked()).isTrue();
+        assertThat(journal.find(operation.id()).orElseThrow().events())
+                .anyMatch(event -> event.type().equals("SEND_STARTED"));
+        assertThatThrownBy(() -> ensureTaskMr(claim)).isInstanceOf(BusinessException.class);
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        assertThat(SERVER.writeCount()).isEqualTo(1);
+
+        var unresolved = taskRuns.completeTask(claim, taskStep(claim, RunItemResult.UNKNOWN),
+                Map.of("git.blockReason", "UNKNOWN"));
+        assertThat(unresolved.getExecutionStatus().name()).isEqualTo("NEEDS_REVIEW");
+        assertTaskStatus(claim, "UNKNOWN");
+        assertThat(taskRuns.claimNextTask(claim.runId())).isEmpty();
+        assertThat(journal.find(operation.id()).orElseThrow().operation().blocked()).isTrue();
+        assertNoNamespaceWrites();
+    }
+
+    @Test void shouldRejectProjectRebindingAfterDurableMrCheckpoint() {
+        var claim = claimedMergeTask();
+        readyForNewMerge();
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, mergeRequest("opened"));
+        var result = ensureTaskMr(claim);
+        assertThat(result.outcome()).isEqualTo(GitWriteResult.Outcome.APPLIED);
+        taskRuns.completeTask(claim, taskStep(claim, RunItemResult.CREATED), checkpointMetadata(result.evidence()));
+        var mergeClaim = taskRuns.claimNextTask(claim.runId()).orElseThrow();
+        assertThat(mergeClaim.actionType()).isEqualTo(ActionType.TRY_MERGE);
+        SERVER.reply("GET", endpoint, 200, "{\"id\":" + (project + 1) + "}");
+        try (var scope = GitOperationContext.withTask(mergeClaim)) {
+            assertThatThrownBy(() -> factory.getAdapter(GitProvider.GITLAB).tryMergeRequest(
+                    repo.getCloneUrl(), "fixture-token", checkpoint(mergeClaim), "fixture merge"))
+                    .isInstanceOf(BusinessException.class);
+        }
+        assertThat(SERVER.requests).noneMatch(request -> request.method().equals("PUT"));
+        assertThat(SERVER.writeCount()).isEqualTo(1);
+        var unresolved = taskRuns.completeTask(mergeClaim, taskStep(mergeClaim, RunItemResult.UNKNOWN),
+                Map.of("git.blockReason", "UNKNOWN"));
+        assertThat(unresolved.getExecutionStatus().name()).isEqualTo("NEEDS_REVIEW");
+        assertThat(unresolved.getItems().getFirst().getMetadata()).containsEntry("git.projectId", String.valueOf(project));
+        assertThat(journal.list(repo.getId().value(), 0, 20)).hasSize(1);
+        assertNoNamespaceWrites();
+    }
+
+    @Test void shouldCompleteContainedSourceWithoutInventingMrOrGuard() {
+        var claim = claimedMergeTask();
+        readyForNewMerge();
+        SERVER.reply("GET", canonicalEndpoint + "/repository/commits/" + sha + "/refs", 200,
+                "[{\"type\":\"branch\",\"name\":\"main\"}]");
+        var result = ensureTaskMr(claim);
+        assertThat(result.outcome()).isEqualTo(GitWriteResult.Outcome.APPLIED);
+        assertThat(result.evidence().disposition()).isEqualTo(GitBranchPort.MrDisposition.ALREADY_MERGED);
+        assertThat(result.evidence().iid()).isNull();
+        assertThat(result.evidence().url()).isNull();
+        taskRuns.completeTask(claim, taskStep(claim, RunItemResult.ALREADY_MERGED), checkpointMetadata(result.evidence()));
+        var mergeClaim = taskRuns.claimNextTask(claim.runId()).orElseThrow();
+        GitBranchPort.MergeResult merged;
+        try (var scope = GitOperationContext.withTask(mergeClaim)) {
+            merged = factory.getAdapter(GitProvider.GITLAB).tryMergeRequest(
+                    repo.getCloneUrl(), "fixture-token", checkpoint(mergeClaim), "fixture merge");
+        }
+        assertThat(merged.status()).isEqualTo(io.releasehub.domain.run.MergeStatus.SUCCESS);
+        assertThat(merged.mrEvidence().disposition()).isEqualTo(GitBranchPort.MrDisposition.ALREADY_MERGED);
+        var completed = taskRuns.completeTask(mergeClaim, taskStep(mergeClaim, RunItemResult.ALREADY_MERGED), Map.of());
+        assertThat(completed.getExecutionStatus().name()).isEqualTo("DONE");
+        assertThat(journal.list(repo.getId().value(), 0, 20)).isEmpty();
+        assertThat(SERVER.writeCount()).isZero();
+        assertThat(taskRuns.findTasks(claim.runId())).hasSize(4).allMatch(task -> task.status().equals("COMPLETED"));
+    }
+
+    @Test void shouldReleaseConfirmedTaskBlockOnlyAfterResultCommits() {
+        var claim = claimedMergeTask();
+        readyForNewMerge();
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, mergeRequest("opened"));
+        var result = ensureTaskMr(claim);
+        assertThat(result.outcome()).isEqualTo(GitWriteResult.Outcome.APPLIED);
+        taskRuns.completeTask(claim, taskStep(claim, RunItemResult.CREATED), checkpointMetadata(result.evidence()));
+        var mergeClaim = taskRuns.claimNextTask(claim.runId()).orElseThrow();
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 422, "{\"message\":\"Approval is required\"}");
+        GitBranchPort.MergeResult blocked;
+        try (var scope = GitOperationContext.withTask(mergeClaim)) {
+            blocked = factory.getAdapter(GitProvider.GITLAB).tryMergeRequest(
+                    repo.getCloneUrl(), "fixture-token", checkpoint(mergeClaim), "fixture merge");
+        }
+        assertThat(blocked.status()).isEqualTo(io.releasehub.domain.run.MergeStatus.BLOCKED);
+        assertThat(blocked.mrEvidence().blockReason()).isEqualTo(GitBranchPort.MergeBlockReason.APPROVAL_REQUIRED);
+        assertThat(journal.list(repo.getId().value(), 0, 20))
+                .anyMatch(operation -> operation.state().equals("REJECTED") && operation.blocked());
+        var failed = taskRuns.completeTask(mergeClaim, taskStep(mergeClaim, RunItemResult.MERGE_BLOCKED),
+                Map.of("git.blockReason", "APPROVAL_REQUIRED"));
+        assertThat(failed.getExecutionStatus().name()).isEqualTo("FAILED");
+        assertThat(journal.list(repo.getId().value(), 0, 20)).hasSize(2)
+                .noneMatch(GitOperationJournalPort.Operation::blocked);
+        branchSuccess();
+        assertThat(write()).isTrue();
+        assertThat(SERVER.writeCount()).isEqualTo(3);
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 1);
+        assertNoNamespaceWrites();
+    }
+
+    /** 真实受理并领取任务；前置分支事实来自本地 HTTP fixture，不手工构造领取权。 */
+    private RunPort.TaskClaim claimedMergeTask() {
+        String windowId = UUID.randomUUID().toString();
+        String iterationKey = "ITER-" + UUID.randomUUID();
+        Instant now = Instant.now();
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            taskWindows.save(io.releasehub.domain.releasewindow.ReleaseWindow.rehydrate(
+                    io.releasehub.domain.releasewindow.ReleaseWindowId.of(windowId), "RW-" + windowId,
+                    "任务写证据", "", now, "G001", io.releasehub.domain.releasewindow.ReleaseWindowStatus.DRAFT,
+                    now, now, false, null));
+            taskIterations.save(io.releasehub.domain.iteration.Iteration.rehydrate(
+                    io.releasehub.domain.iteration.IterationKey.of(iterationKey), "任务迭代", "", null, "G001",
+                    Set.of(repo.getId()), io.releasehub.domain.iteration.IterationStatus.ACTIVE, now, now));
+            taskVersions.saveWithVersion(iterationKey, repo.getId().value(), "1.0.0", "1.1.0-SNAPSHOT", "1.1.0",
+                    "feature", "SYSTEM", now, io.releasehub.domain.iteration.BranchCreationMode.AUTO);
+            taskBindings.attach(io.releasehub.domain.releasewindow.ReleaseWindowId.of(windowId),
+                    io.releasehub.domain.iteration.IterationKey.of(iterationKey), now);
+            taskBindings.updateReleaseBranch(windowId, iterationKey, "main", now);
+        });
+        var admission = taskPlans.admit(windowId, List.of(repo.getId().value()), List.of(iterationKey),
+                true, "fixture-task-operator", UUID.randomUUID().toString());
+        var run = taskRuns.findById(admission.runId()).orElseThrow();
+        for (ActionType action : List.of(ActionType.ENSURE_FEATURE, ActionType.ENSURE_RELEASE)) {
+            var claim = taskRuns.claimNextTask(run.getId().value()).orElseThrow();
+            assertThat(claim.actionType()).isEqualTo(action);
+            String branch = action == ActionType.ENSURE_FEATURE ? "feature" : "main";
+            SERVER.reply("GET", canonicalEndpoint + "/repository/branches/" + branch, 200,
+                    "{\"name\":\"" + branch + "\",\"commit\":{\"id\":\"" + sha + "\"}}");
+            GitBranchPort.BranchStatus observed;
+            try (var scope = GitOperationContext.withTask(claim)) {
+                observed = factory.getAdapter(GitProvider.GITLAB).getBranchStatus(repo.getCloneUrl(), "fixture-token", branch);
+            }
+            assertThat(observed.exists()).isTrue();
+            assertThat(observed.latestCommit()).isEqualTo(sha);
+            assertThat(observed.projectId()).isEqualTo(String.valueOf(project));
+            taskRuns.completeTask(claim, taskStep(claim, RunItemResult.ALREADY_EXISTS),
+                    Map.of("git.projectId", observed.projectId()));
+        }
+        var claim = taskRuns.claimNextTask(run.getId().value()).orElseThrow();
+        assertThat(claim.actionType()).isEqualTo(ActionType.ENSURE_MR);
+        return claim;
+    }
+
+    private GitWriteResult<GitBranchPort.MrEvidence> ensureTaskMr(RunPort.TaskClaim claim) {
+        try (var scope = GitOperationContext.withTask(claim)) {
+            return factory.getAdapter(GitProvider.GITLAB).ensureMergeRequest(
+                    repo.getCloneUrl(), "fixture-token", "feature", "main", "fixture MR");
+        }
+    }
+
+    private RunStep taskStep(RunPort.TaskClaim claim, RunItemResult result) {
+        return new RunStep(claim.actionType(), result, claim.startedAt(), claim.startedAt().plusMillis(1), "fixture task result");
+    }
+
+    private void assertTaskStatus(RunPort.TaskClaim claim, String status) {
+        assertThat(taskRuns.findTasks(claim.runId()).stream()
+                .filter(task -> task.taskId().equals(claim.fence().taskId())).findFirst().orElseThrow().status()).isEqualTo(status);
+    }
+
+    private Map<String, String> checkpointMetadata(GitBranchPort.MrEvidence evidence) {
+        Map<String, String> values = new LinkedHashMap<>();
+        values.put("git.projectId", evidence.projectId());
+        values.put("git.sourceBranch", evidence.sourceBranch());
+        values.put("git.targetBranch", evidence.targetBranch());
+        values.put("git.sourceSha", evidence.sourceSha());
+        values.put("git.mrDisposition", evidence.disposition().name());
+        if (evidence.iid() != null) values.put("git.mrIid", evidence.iid());
+        if (evidence.url() != null) values.put("git.mrUrl", evidence.url());
+        if (evidence.mergeSha() != null) values.put("git.mergeSha", evidence.mergeSha());
+        return values;
+    }
+
+    private GitBranchPort.MrEvidence checkpoint(RunPort.TaskClaim claim) {
+        var facts = claim.metadata();
+        return new GitBranchPort.MrEvidence(facts.get("git.projectId"), facts.get("git.sourceBranch"),
+                facts.get("git.targetBranch"), facts.get("git.mrIid"), facts.get("git.mrUrl"),
+                facts.get("git.sourceSha"), facts.get("git.mergeSha"),
+                GitBranchPort.MrDisposition.valueOf(facts.get("git.mrDisposition")), null);
+    }
+
+    private String mergedRequest() {
+        String opened = mergeRequest("merged");
+        return opened.substring(0, opened.length() - 1) + ",\"merge_commit_sha\":\"" + "b".repeat(40) + "\"}";
+    }
+
     private GitBranchPort.MergeResult merge() {
         return factory.getAdapter(GitProvider.GITLAB).mergeBranch(repo.getCloneUrl(),"fixture-token","feature","main","fixture");
     }
     private void readyForNewMerge() {
         sourceBranch();
-        SERVER.reply("GET",endpoint+"/merge_requests",200,"[]");
-        SERVER.reply("GET",endpoint+"/repository/commits/"+sha+"/refs",200,"[]");
+        SERVER.reply("GET",canonicalEndpoint+"/merge_requests",200,"[]");
+        SERVER.reply("GET",canonicalEndpoint+"/repository/commits/"+sha+"/refs",200,"[]");
+        SERVER.reply("GET",canonicalEndpoint+"/merge_requests/7",200,mergeRequest("opened"));
     }
     private void assertReviewRequired(int count) {
         var operations=journal.list(repo.getId().value(),0,20);
@@ -376,12 +675,12 @@ class GitWriteSafetyIT {
                 .allMatch(GitOperationJournalPort.Operation::blocked);
     }
     private void assertNoNamespaceWrites() {
-        assertThat(SERVER.requests).noneMatch(request->FixtureServer.isWrite(request.method())
+        assertThat(SERVER.requests).noneMatch(request->GitLabHttpFixture.isWrite(request.method())
                 &&request.path().startsWith(endpoint+"/"));
     }
 
     private void sourceBranch() {
-        SERVER.reply("GET",endpoint+"/repository/branches/feature",200,
+        SERVER.reply("GET",canonicalEndpoint+"/repository/branches/feature",200,
                 "{\"name\":\"feature\",\"commit\":{\"id\":\""+sha+"\"}}");
     }
     private String pipeline(String ref,String commitSha) {
@@ -394,42 +693,5 @@ class GitWriteSafetyIT {
                 +"\",\"sha\":\""+sha+"\",\"web_url\":\""+SERVER.baseUrl()+"/acme/project/-/merge_requests/7\",\"detailed_merge_status\":\"mergeable\"}";
     }
 
-    /** 使用 JDK 自带 HTTP fixture，避免为 bootstrap 新增测试依赖。 */
-    private static final class FixtureServer {
-        private record Response(int status,String body) {}
-        private record Request(String method,String path,String query,String body,boolean internalHeaders) {}
-        private final java.util.Map<String,Response> responses=new java.util.concurrent.ConcurrentHashMap<>();
-        private final java.util.List<Request> requests=new java.util.concurrent.CopyOnWriteArrayList<>();
-        private final com.sun.net.httpserver.HttpServer server;
-        private FixtureServer() {
-            try {
-                server=com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
-                server.createContext("/",exchange->{
-                    String method=exchange.getRequestMethod();String path=exchange.getRequestURI().getRawPath();
-                    boolean internalHeaders=exchange.getRequestHeaders().keySet().stream()
-                            .anyMatch(name->name.toLowerCase(java.util.Locale.ROOT).startsWith("x-releasehub-expected-"));
-                    requests.add(new Request(method,path,exchange.getRequestURI().getRawQuery(),new String(exchange.getRequestBody().readAllBytes(),StandardCharsets.UTF_8),internalHeaders));
-                    Response response=responses.getOrDefault(method+" "+path,new Response(404,"{}"));
-                    byte[] body=response.body().getBytes(StandardCharsets.UTF_8);
-                    exchange.getResponseHeaders().set("Content-Type","application/json");
-                    exchange.sendResponseHeaders(response.status(),body.length);
-                    try(var output=exchange.getResponseBody()){output.write(body);}
-                });
-            }catch(java.io.IOException e){throw new IllegalStateException(e);}
-        }
-        void start(){server.start();}
-        void stop(){server.stop(0);}
-        String baseUrl(){return "http://127.0.0.1:"+server.getAddress().getPort();}
-        void resetAll(){responses.clear();requests.clear();}
-        void resetRequests(){requests.clear();}
-        void reply(String method,String path,int status,String body){responses.put(method+" "+path,new Response(status,body));}
-        void verify(String method,String path,int count){assertThat(requests.stream().filter(r->r.method().equals(method)&&r.path().equals(path)).count()).isEqualTo(count);}
-        private static boolean isWrite(String method){return java.util.Set.of("POST","PUT","PATCH","DELETE").contains(method);}
-        long writeCount(){return requests.stream().filter(request->isWrite(request.method())).count();}
-        String query(String method,String path){return requests.stream().filter(request->request.method().equals(method)&&request.path().equals(path)).findFirst().orElseThrow().query();}
-        com.fasterxml.jackson.databind.JsonNode body(String method,String path) {
-            try{return new com.fasterxml.jackson.databind.ObjectMapper().readTree(requests.stream().filter(r->r.method().equals(method)&&r.path().equals(path)).findFirst().orElseThrow().body());}
-            catch(java.io.IOException e){throw new IllegalStateException(e);}
-        }
-    }
+
 }

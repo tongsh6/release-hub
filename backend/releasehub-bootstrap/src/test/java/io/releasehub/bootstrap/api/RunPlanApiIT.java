@@ -20,6 +20,8 @@ import io.releasehub.application.run.plan.SavedRunPlan;
 import io.releasehub.bootstrap.ReleaseHubApplication;
 import io.releasehub.domain.run.Run;
 import io.releasehub.domain.run.RunItem;
+import io.releasehub.domain.run.RunStep;
+import io.releasehub.domain.run.RunItemResult;
 import io.releasehub.domain.run.RunPlanSnapshot;
 import io.releasehub.domain.iteration.BranchCreationMode;
 import io.releasehub.domain.iteration.Iteration;
@@ -140,6 +142,148 @@ class RunPlanApiIT {
         clearInvocations(gitLab, gitFiles, gitBranches);
     }
 
+
+    @Test
+    void executionRequiresIdempotencyHeaderBeforeAdmission() throws Exception {
+        GitBranchPort git = orchestrationGit();
+        mvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
+                        .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                        .content(body(List.of(repoId), true)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+        mvc.perform(post("/api/v1/runs/{id}/retry", UUID.randomUUID())
+                        .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("items", List.of("unadmitted-item")))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_001"));
+        assertThat(persistedPlans.listByWindow(windowId, 20)).isEmpty();
+        verifyNoInteractions(git);
+    }
+
+    @Test
+    void executionReplayReturnsOriginalReceiptWithoutRepeatingGit() throws Exception {
+        GitBranchPort git = orchestrationGit();
+        String first = executeRequest(requestKey, true);
+        String repeated = executeRequest(requestKey, true);
+        assertThat(repeated).isEqualTo(first);
+        assertThat(persistedPlans.listByWindow(windowId, 20)).hasSize(1);
+        assertThat(runs.findById(first).orElseThrow().getOperator()).isEqualTo("admin");
+        verify(git, times(1)).ensureMergeRequest(anyString(), anyString(), anyString(), anyString(), anyString());
+        verify(git, times(1)).tryMergeRequest(anyString(), anyString(), any(GitBranchPort.MrEvidence.class), anyString());
+        verify(git, never()).mergeBranch(anyString(), anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void executionKeyRejectsChangedPayloadWithoutAdditionalGit() throws Exception {
+        GitBranchPort git = orchestrationGit();
+        executeRequest(requestKey, true);
+        mvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
+                        .header("Authorization", "Bearer " + token).header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON).content(body(List.of(repoId), false)))
+                .andExpect(status().isConflict());
+        assertThat(persistedPlans.listByWindow(windowId, 20)).hasSize(1);
+        verify(git, times(1)).ensureMergeRequest(anyString(), anyString(), anyString(), anyString(), anyString());
+        verify(git, times(1)).tryMergeRequest(anyString(), anyString(), any(GitBranchPort.MrEvidence.class), anyString());
+        verify(git, never()).mergeBranch(anyString(), anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void previewKeyCannotBeReusedForExecution() throws Exception {
+        create(requestKey, List.of(repoId), true);
+        GitBranchPort git = orchestrationGit();
+        mvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
+                        .header("Authorization", "Bearer " + token).header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON).content(body(List.of(repoId), true)))
+                .andExpect(status().isConflict());
+        assertThat(persistedPlans.listByWindow(windowId, 20)).hasSize(1);
+        verifyNoInteractions(git);
+    }
+
+    @Test
+    void executionTasksExposePersistedFourActionsWithoutClaimsOrCredentials() throws Exception {
+        orchestrationGit();
+        String runId = executeRequest(requestKey, true);
+        JsonNode response = json.readTree(mvc.perform(get("/api/v1/runs/{id}/tasks", runId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        JsonNode taskRows = response.path("data");
+        assertThat(taskRows).hasSize(4);
+        List<String> actions = List.of("ENSURE_FEATURE", "ENSURE_RELEASE", "ENSURE_MR", "TRY_MERGE");
+        String itemId = runs.findById(runId).orElseThrow().getItems().getFirst().getId().value();
+        var taskIds = new java.util.HashSet<String>();
+        for (int i = 0; i < actions.size(); i++) {
+            JsonNode task = taskRows.get(i);
+            assertThat(task.path("taskId").asText()).isNotBlank();
+            taskIds.add(task.path("taskId").asText());
+            assertThat(task.path("runId").asText()).isEqualTo(runId);
+            assertThat(task.path("itemId").asText()).isEqualTo(itemId);
+            assertThat(task.path("actionType").asText()).isEqualTo(actions.get(i));
+            assertThat(task.path("taskOrder").asInt()).isEqualTo(i + 1);
+            assertThat(task.path("status").asText()).isEqualTo("COMPLETED");
+        }
+        assertThat(taskIds).hasSize(4);
+        assertThat(response.toString()).doesNotContain("secret-fixture-token", "claimToken", "claim_token");
+    }
+
+    @Test
+    void retryReplayReturnsOriginalReceiptAndKeepsActualSourceItem() throws Exception {
+        GitBranchPort git = orchestrationGit();
+        when(git.tryMergeRequest(anyString(), anyString(), any(GitBranchPort.MrEvidence.class), anyString()))
+                .thenReturn(GitBranchPort.MergeResult.conflict("fixture conflict")
+                        .withEvidence(orchestrationCheckpoint()), GitBranchPort.MergeResult.success()
+                        .withEvidence(orchestrationEvidence()));
+        String sourceRun = executeRequest(requestKey, true);
+        String itemId = runs.findById(sourceRun).orElseThrow().getItems().getFirst().getId().value();
+        String key = UUID.randomUUID().toString();
+        String request = json.writeValueAsString(Map.of("items", List.of(itemId)));
+        String first = json.readTree(mvc.perform(post("/api/v1/runs/{id}/retry", sourceRun)
+                        .header("Authorization", "Bearer " + token).header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data").asText();
+        String repeated = json.readTree(mvc.perform(post("/api/v1/runs/{id}/retry", sourceRun)
+                        .header("Authorization", "Bearer " + token).header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data").asText();
+        assertThat(repeated).isEqualTo(first).isNotEqualTo(sourceRun);
+        assertThat(persistedPlans.listByWindow(windowId, 20)).hasSize(2);
+        assertThat(runs.findById(first).orElseThrow().getItems().getFirst().getMetadata())
+                .containsEntry("retry.sourceItemId", itemId).containsEntry("retry.sourceRunId", sourceRun);
+        verify(git, times(1)).ensureMergeRequest(anyString(), anyString(), anyString(), anyString(), anyString());
+        verify(git, times(2)).tryMergeRequest(anyString(), anyString(), any(GitBranchPort.MrEvidence.class), anyString());
+        verify(git, never()).mergeBranch(anyString(), anyString(), anyString(), anyString(), anyString());
+    }
+
+    private GitBranchPort orchestrationGit() {
+        GitBranchPort git = mock(GitBranchPort.class);
+        when(gitBranches.getAdapter(GitProvider.GITLAB)).thenReturn(git);
+        when(git.getBranchStatus(anyString(), anyString(), anyString()))
+                .thenReturn(GitBranchPort.BranchStatus.present("101", "a".repeat(40)));
+        when(git.ensureMergeRequest(anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(GitWriteResult.applied(orchestrationCheckpoint()));
+        when(git.tryMergeRequest(anyString(), anyString(), any(GitBranchPort.MrEvidence.class), anyString()))
+                .thenReturn(GitBranchPort.MergeResult.success().withEvidence(orchestrationEvidence()));
+        return git;
+    }
+
+    private GitBranchPort.MrEvidence orchestrationCheckpoint() {
+        return new GitBranchPort.MrEvidence("101", "feature/original", "release/original", "17",
+                "https://gitlab.invalid/acme/repo/-/merge_requests/17", "a".repeat(40), null,
+                GitBranchPort.MrDisposition.MR_REUSED, null);
+    }
+
+    private GitBranchPort.MrEvidence orchestrationEvidence() {
+        return new GitBranchPort.MrEvidence("101", "feature/original", "release/original", "17",
+                "https://gitlab.invalid/acme/repo/-/merge_requests/17", "a".repeat(40), "b".repeat(40),
+                GitBranchPort.MrDisposition.MR_REUSED, null);
+    }
+
+    private String executeRequest(String key, boolean failFast) throws Exception {
+        return json.readTree(mvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
+                        .header("Authorization", "Bearer " + token).header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON).content(body(List.of(repoId), failFast)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data").asText();
+    }
+
     @Test
     void createsAndQueriesPlanWithoutAnyGitCall() throws Exception {
         JsonNode plan = create(requestKey, List.of(repoId), true);
@@ -160,9 +304,12 @@ class RunPlanApiIT {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.page.total").value(0));
         mvc.perform(get(path()).header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].runId").value(id));
+        String plannedItemId = runs.findById(id).orElseThrow().getItems().getFirst().getId().value();
         mvc.perform(post("/api/v1/runs/{id}/retry", id).header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"items\":[],\"operator\":\"mallory\"}"))
-                .andExpect(status().isBadRequest());
+                        .header("Idempotency-Key", UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("items", List.of(plannedItemId)))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("RUN_007"));
         verifyNoInteractions(gitLab, gitFiles, gitBranches);
     }
 
@@ -266,7 +413,9 @@ class RunPlanApiIT {
 
     @Test
     void admissionPersistsOneRunningSnapshotAndRollsBackWhenSnapshotPersistenceFails() {
-        Run admitted = planService.admit(windowId, List.of(repoId), List.of(iterationKey), true, "admission-success");
+        var admission = planService.admit(windowId, List.of(repoId), List.of(iterationKey), true,
+                "admission-success", UUID.randomUUID().toString());
+        Run admitted = runs.findById(admission.runId()).orElseThrow();
         assertThat(admitted.getExecutionStatus().name()).isEqualTo("RUNNING");
         SavedRunPlan persisted = persistedPlans.findByRunId(admitted.getId().value()).orElseThrow();
         assertThat(persisted.snapshot().items().stream().map(RunPlanSnapshot.Item::itemId).toList())
@@ -274,13 +423,29 @@ class RunPlanApiIT {
         assertThat(jdbc.queryForObject("select count(*) from run_item where run_id = ?", Integer.class,
                 admitted.getId().value())).isEqualTo(1);
 
+        assertThat(runs.findTasks(admitted.getId().value())).hasSize(4);
+        // 使用另一真实绑定窗口，使失败来自快照约束，而不是首个 RUNNING 意图的范围互斥。
+        String rollbackWindowId = UUID.randomUUID().toString();
+        Instant now = Instant.now();
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            windows.save(ReleaseWindow.rehydrate(ReleaseWindowId.of(rollbackWindowId), "RW-" + rollbackWindowId,
+                    "受理回滚测试", "", now, "G001", ReleaseWindowStatus.DRAFT, now, now, false, null));
+            bindings.attach(ReleaseWindowId.of(rollbackWindowId), IterationKey.of(iterationKey), now);
+            bindings.updateReleaseBranch(rollbackWindowId, iterationKey, "release/rollback-" + rollbackWindowId, now);
+        });
         Integer before = jdbc.queryForObject("select count(*) from run", Integer.class);
+        Integer tasksBefore = jdbc.queryForObject("select count(*) from run_task", Integer.class);
         jdbc.execute("alter table run_plan add constraint reject_fixture_admission check(operator <> 'admission-rollback')");
         try {
-            assertThatThrownBy(() -> planService.admit(windowId, List.of(repoId), List.of(iterationKey), true, "admission-rollback"))
-                    .isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> planService.admit(rollbackWindowId, List.of(repoId), List.of(iterationKey), true,
+                    "admission-rollback", UUID.randomUUID().toString()))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
             assertThat(jdbc.queryForObject("select count(*) from run", Integer.class)).isEqualTo(before);
-            assertThat(jdbc.queryForObject("select count(*) from run_plan where operator = 'admission-rollback'", Integer.class)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from run_task", Integer.class)).isEqualTo(tasksBefore);
+            assertThat(jdbc.queryForObject("select count(*) from run_item where window_key = ?", Integer.class,
+                    "RW-" + rollbackWindowId)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from run_plan where window_id = ?", Integer.class,
+                    rollbackWindowId)).isZero();
         } finally {
             jdbc.execute("alter table run_plan drop constraint reject_fixture_admission");
         }
@@ -328,7 +493,8 @@ class RunPlanApiIT {
                             .isEqualTo("CLOSED");
                 }
                 mvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
-                                .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                                .header("Authorization", "Bearer " + token).header("Idempotency-Key", requestKey)
+                                .contentType(MediaType.APPLICATION_JSON)
                                 .content(json.writeValueAsString(Map.of("repoIds", List.of(repoId),
                                         "iterationKeys", List.of(iterationKey), "failFast", true))))
                         .andExpect(status().isBadRequest());
@@ -417,9 +583,10 @@ class RunPlanApiIT {
         assertThat(run.path("items").get(0).path("finalResult").asText()).isEqualTo("UNKNOWN");
         assertThat(closeRequest("{\"triggerCi\":true}").path("id").asText()).isEqualTo(runId);
         mvc.perform(post("/api/v1/runs/{id}/retry", runId).header("Authorization", "Bearer " + token)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(
                                 Map.of("items", List.of(run.path("items").get(0).path("id").asText())))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isConflict());
         verify(git, times(1)).mergeBranch(anyString(), anyString(), anyString(), anyString(), anyString());
         verify(git, times(1)).triggerPipeline(anyString(), anyString(), anyString(), anyString(), anyString());
     }
@@ -458,24 +625,19 @@ class RunPlanApiIT {
     @Test
     void runningOrchestrationPausedInGitPreventsCleanupAdmission() throws Exception {
         publishFixture();
-        GitBranchPort git = mock(GitBranchPort.class);
-        when(gitBranches.getAdapter(GitProvider.GITLAB)).thenReturn(git);
-        when(git.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.present("a".repeat(40)));
+        GitBranchPort git = orchestrationGit();
         var enteredGit = new CountDownLatch(1);
         var releaseGit = new CountDownLatch(1);
-        when(git.mergeBranch(anyString(), anyString(), anyString(), anyString(), anyString())).thenAnswer(invocation -> {
+        doAnswer(invocation -> {
             assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             enteredGit.countDown();
             assertThat(releaseGit.await(20, TimeUnit.SECONDS)).isTrue();
-            return GitBranchPort.MergeResult.success().withEvidence(new GitBranchPort.MrEvidence("101",
-                    invocation.getArgument(2), invocation.getArgument(3), "8",
-                    "https://gitlab.invalid/acme/repo/-/merge_requests/8", "a".repeat(40), "b".repeat(40),
-                    GitBranchPort.MrDisposition.CREATED, null));
-        });
+            return GitBranchPort.MergeResult.success().withEvidence(orchestrationEvidence());
+        }).when(git).tryMergeRequest(anyString(), anyString(), any(GitBranchPort.MrEvidence.class), anyString());
         try (var pool = Executors.newSingleThreadExecutor()) {
             var execution = pool.submit(() -> mvc.perform(post("/api/v1/release-windows/{id}/orchestrate", windowId)
-                            .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                            .header("Authorization", "Bearer " + token).header("Idempotency-Key", requestKey)
+                            .contentType(MediaType.APPLICATION_JSON)
                             .content(json.writeValueAsString(Map.of("repoIds", List.of(repoId),
                                     "iterationKeys", List.of(iterationKey), "failFast", true))))
                     .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
@@ -494,7 +656,9 @@ class RunPlanApiIT {
             String executionId = json.readTree(execution.get(20, TimeUnit.SECONDS)).path("data").asText();
             assertThat(runs.findById(executionId).orElseThrow().getExecutionStatus().name()).isEqualTo("DONE");
         }
-        verify(git, times(1)).mergeBranch(anyString(), anyString(), anyString(), anyString(), anyString());
+        verify(git, times(1)).ensureMergeRequest(anyString(), anyString(), anyString(), anyString(), anyString());
+        verify(git, times(1)).tryMergeRequest(anyString(), anyString(), any(GitBranchPort.MrEvidence.class), anyString());
+        verify(git, never()).mergeBranch(anyString(), anyString(), anyString(), anyString(), anyString());
         verify(git, never()).readTag(anyString(), anyString(), anyString(), anyString());
         verify(git, never()).createTag(anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
         verify(git, never()).triggerPipeline(anyString(), anyString(), anyString(), anyString(), anyString());
@@ -504,10 +668,14 @@ class RunPlanApiIT {
     @Test
     void unresolvedOrchestrationPreventsCloseBeforeAnyCleanupGit() throws Exception {
         publishFixture();
-        Run source = planService.admit(windowId, List.of(repoId), List.of(iterationKey), true, "admin");
-        source.getItems().getFirst().finishWith(io.releasehub.domain.run.RunItemResult.UNKNOWN, Instant.now());
-        source.finish(Instant.now());
-        runs.save(source);
+        var admission = planService.admit(windowId, List.of(repoId), List.of(iterationKey), true,
+                "admin", UUID.randomUUID().toString());
+        Run source = runs.findById(admission.runId()).orElseThrow();
+        RunPort.TaskClaim claim = runs.claimNextTask(source.getId().value()).orElseThrow();
+        Run unresolved = runs.completeTask(claim, new RunStep(claim.actionType(), RunItemResult.UNKNOWN,
+                claim.startedAt(), claim.startedAt().plusMillis(1), "fixture unknown result"), Map.of());
+        assertThat(unresolved.getExecutionStatus().name()).isEqualTo("NEEDS_REVIEW");
+        assertThat(runs.findTasks(source.getId().value()).getFirst().status()).isEqualTo("UNKNOWN");
         mvc.perform(post(closePath()).header("Authorization", "Bearer " + token))
                 .andExpect(status().isConflict());
         assertThat(jdbc.queryForObject("select status from release_window where id = ?", String.class, windowId)).isEqualTo("PUBLISHED");
@@ -552,7 +720,7 @@ class RunPlanApiIT {
         GitBranchPort git = mock(GitBranchPort.class);
         when(gitBranches.getAdapter(GitProvider.GITLAB)).thenReturn(git);
         when(git.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.present("a".repeat(40)));
+                .thenReturn(GitBranchPort.BranchStatus.present("101", "a".repeat(40)));
         when(git.mergeBranch(anyString(), anyString(), anyString(), anyString(), anyString())).thenAnswer(invocation -> {
             assertCleanupCommittedBeforeGit();
             return cleanupMerge();

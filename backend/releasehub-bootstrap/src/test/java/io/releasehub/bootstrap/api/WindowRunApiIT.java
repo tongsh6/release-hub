@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
+import io.releasehub.application.gitoperation.GitWriteResult;
 import io.releasehub.domain.repo.GitProvider;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -13,6 +15,9 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.PostgreSQLContainer;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -34,10 +39,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:window-run-api;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1")
+@SpringBootTest(properties = "spring.jpa.open-in-view=false")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class WindowRunApiTest {
+class WindowRunApiIT {
+    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:18.1")
+            .withDatabaseName("window_run_test").withUsername("window_test").withPassword("isolated-window-db");
+    static { DB.start(); }
+
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry properties) {
+        properties.add("spring.datasource.url", DB::getJdbcUrl);
+        properties.add("spring.datasource.username", DB::getUsername);
+        properties.add("spring.datasource.password", DB::getPassword);
+        properties.add("spring.datasource.driver-class-name", DB::getDriverClassName);
+    }
+
+    @AfterAll static void stopDatabase() { DB.stop(); }
 
     @Autowired
     private MockMvc mockMvc;
@@ -66,7 +84,7 @@ class WindowRunApiTest {
         GitBranchPort git = mock(GitBranchPort.class);
         when(gitFactory.getAdapter(GitProvider.GITLAB)).thenReturn(git);
         when(git.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.present("a".repeat(40)));
+                .thenReturn(GitBranchPort.BranchStatus.present("101", "a".repeat(40)));
         when(git.createBranch(anyString(), anyString(), anyString(), anyString())).thenReturn(true);
         String token = loginAndGetToken();
         String groupCode = createGroupAndGetCode(token);
@@ -127,16 +145,22 @@ class WindowRunApiTest {
         // 同批 attachAt 相同；执行顺序以权威计划的稳定 tie-break 为准。
         String firstIteration = plannedItems.get(0).path("iterationKey").asText();
         String secondIteration = plannedItems.get(1).path("iterationKey").asText();
-        when(git.mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + firstIteration), eq(releaseBranch), anyString()))
-                .thenReturn(GitBranchPort.MergeResult.conflict("Fixture conflict").withEvidence(
-                        evidence("feature/" + firstIteration, releaseBranch, "11")));
+        var firstCheckpoint = evidence("feature/" + firstIteration, releaseBranch, "11");
+        var laterCheckpoint = evidence("feature/" + secondIteration, releaseBranch, "12");
+        when(git.ensureMergeRequest(eq(repo1.cloneUrl()), anyString(), anyString(), eq(releaseBranch), anyString()))
+                .thenAnswer(invocation -> GitWriteResult.applied(
+                        invocation.getArgument(2).equals(firstCheckpoint.sourceBranch()) ? firstCheckpoint : laterCheckpoint));
+        when(git.tryMergeRequest(eq(repo1.cloneUrl()), anyString(), eq(firstCheckpoint), anyString()))
+                .thenReturn(GitBranchPort.MergeResult.conflict("Fixture conflict").withEvidence(firstCheckpoint));
 
         String orchestrationRequest = objectMapper.writeValueAsString(Map.of(
                 "repoIds", java.util.List.of(repo1.id()), "iterationKeys", java.util.List.of(), "failFast", true));
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/orchestrate")
+                .header("Idempotency-Key", "orchestrate-" + windowId)
                         .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
                         .content(orchestrationRequest))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("RUN_006"));
         verifyNoInteractions(git);
         mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/unfreeze")
                         .header("Authorization", "Bearer " + token))
@@ -146,6 +170,7 @@ class WindowRunApiTest {
                 .andExpect(status().isNotFound());
 
         MvcResult orch = mockMvc.perform(post("/api/v1/release-windows/" + windowId + "/orchestrate")
+                .header("Idempotency-Key", "orchestrate-" + windowId)
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(orchestrationRequest))
@@ -158,7 +183,8 @@ class WindowRunApiTest {
         mockMvc.perform(get("/api/v1/runs/" + runId)
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.runType").value("WINDOW_ORCHESTRATION"));
+            .andExpect(jsonPath("$.data.runType").value("WINDOW_ORCHESTRATION"))
+            .andExpect(jsonPath("$.data.executionVersion").value(3));
 
         MvcResult exported = mockMvc.perform(get("/api/v1/runs/" + runId + "/export.json")
                 .header("Authorization", "Bearer " + token))
@@ -174,7 +200,8 @@ class WindowRunApiTest {
         assertThat(exportJson.path("items").get(0).path("finalResult").asText()).isEqualTo("MERGE_BLOCKED");
         assertThat(exportJson.path("items").get(1).path("finalResult").asText()).isEqualTo("SKIPPED_DUE_TO_BLOCK");
         assertThat(exportJson.path("items").get(0).path("metadata").path("git.blockReason").asText()).isEqualTo("CONFLICT");
-        verify(git, never()).mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + secondIteration), anyString(), anyString());
+        verify(git, never()).tryMergeRequest(eq(repo1.cloneUrl()), anyString(), eq(laterCheckpoint), anyString());
+        verify(git, never()).ensureMergeRequest(eq(repo1.cloneUrl()), anyString(), eq(laterCheckpoint.sourceBranch()), anyString(), anyString());
 
         MvcResult windowReport = mockMvc.perform(get("/api/v1/release-windows/" + windowId + "/report.json")
                 .header("Authorization", "Bearer " + token))
@@ -232,16 +259,18 @@ class WindowRunApiTest {
         String legacyTriple = windowKey + "::" + repo1.id() + "::" + firstIteration;
         for (String invalidSelection : java.util.List.of(legacyTriple, skippedItemId)) {
             mockMvc.perform(post("/api/v1/runs/" + runId + "/retry")
+                        .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
                             .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(Map.of("items", java.util.List.of(invalidSelection)))))
                     .andExpect(status().isBadRequest());
         }
 
-        when(git.mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + firstIteration), eq(releaseBranch), anyString()))
-                .thenReturn(GitBranchPort.MergeResult.success().withEvidence(evidence("feature/" + firstIteration, releaseBranch, "11")));
-        when(git.mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + secondIteration), eq(releaseBranch), anyString()))
-                .thenReturn(GitBranchPort.MergeResult.success().withEvidence(evidence("feature/" + secondIteration, releaseBranch, "12")));
+        when(git.tryMergeRequest(eq(repo1.cloneUrl()), anyString(), eq(firstCheckpoint), anyString()))
+                .thenReturn(GitBranchPort.MergeResult.success().withEvidence(mergedEvidence(firstCheckpoint)));
+        when(git.tryMergeRequest(eq(repo1.cloneUrl()), anyString(), eq(laterCheckpoint), anyString()))
+                .thenReturn(GitBranchPort.MergeResult.success().withEvidence(mergedEvidence(laterCheckpoint)));
         MvcResult retry = mockMvc.perform(post("/api/v1/runs/" + runId + "/retry")
+                        .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
                         .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("items", java.util.List.of(firstItemId, skippedItemId)))))
                 .andExpect(status().isOk()).andReturn();
@@ -260,8 +289,22 @@ class WindowRunApiTest {
         assertThat(retryJson.path("items").get(1).path("metadata").path("retry.sourceItemId").asText()).isEqualTo(skippedItemId);
         assertThat(retryJson.path("items").get(0).path("executedOrder").asInt()).isEqualTo(1);
         assertThat(retryJson.path("items").get(1).path("executedOrder").asInt()).isEqualTo(2);
-        verify(git, times(2)).mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + firstIteration), eq(releaseBranch), anyString());
-        verify(git, times(1)).mergeBranch(eq(repo1.cloneUrl()), anyString(), eq("feature/" + secondIteration), eq(releaseBranch), anyString());
+        verify(git, times(2)).tryMergeRequest(eq(repo1.cloneUrl()), anyString(), eq(firstCheckpoint), anyString());
+        verify(git, times(1)).tryMergeRequest(eq(repo1.cloneUrl()), anyString(), eq(laterCheckpoint), anyString());
+        verify(git, times(1)).ensureMergeRequest(eq(repo1.cloneUrl()), anyString(), eq(firstCheckpoint.sourceBranch()), eq(releaseBranch), anyString());
+        verify(git, times(1)).ensureMergeRequest(eq(repo1.cloneUrl()), anyString(), eq(laterCheckpoint.sourceBranch()), eq(releaseBranch), anyString());
+        verify(git, never()).mergeBranch(anyString(), anyString(), anyString(), anyString(), anyString());
+        JsonNode tasks = objectMapper.readTree(mockMvc.perform(get("/api/v1/runs/{id}/tasks", retryRunId)
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString()).path("data");
+        assertThat(tasks).hasSize(8);
+        for (int index = 0; index < 3; index++) {
+            assertThat(tasks.get(index).path("status").asText()).isEqualTo("INHERITED");
+            assertThat(tasks.get(index).path("startedAt").isNull()).isTrue();
+            assertThat(tasks.get(index).path("finishedAt").isNull()).isTrue();
+        }
+        assertThat(retryJson.path("items").get(0).path("steps")).hasSize(1);
+        assertThat(retryJson.path("items").get(0).path("steps").get(0).path("actionType").asText()).isEqualTo("TRY_MERGE");
     }
 
     private Map<String, byte[]> readZipEntries(byte[] zipBytes) throws IOException {
@@ -291,7 +334,12 @@ class WindowRunApiTest {
 
     private GitBranchPort.MrEvidence evidence(String source, String target, String iid) {
         return new GitBranchPort.MrEvidence("101", source, target, iid, "https://gitlab.invalid/project/-/merge_requests/" + iid,
-                "a".repeat(40), "b".repeat(40), GitBranchPort.MrDisposition.MR_REUSED, null);
+                "a".repeat(40), null, GitBranchPort.MrDisposition.MR_REUSED, null);
+    }
+
+    private GitBranchPort.MrEvidence mergedEvidence(GitBranchPort.MrEvidence checkpoint) {
+        return new GitBranchPort.MrEvidence(checkpoint.projectId(), checkpoint.sourceBranch(), checkpoint.targetBranch(),
+                checkpoint.iid(), checkpoint.url(), checkpoint.sourceSha(), "b".repeat(40), checkpoint.disposition(), null);
     }
 
     private CreatedRepo createRepo(String token, String groupCode, String suffix) throws Exception {

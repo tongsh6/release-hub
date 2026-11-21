@@ -51,14 +51,15 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
         }
     }
     private ClientHttpResponse write(HttpRequest request,byte[] original,ClientHttpRequestExecution execution,String session) throws IOException {
-        var identity=identities.resolve(request.getURI(),request.getHeaders());
+        var identity=GitRemoteIdentityResolver.confirm(identities.resolve(request.getURI(),request.getHeaders()),
+                request.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID));
         String suffix=identity.endpoint().suffix();String action=action(request.getMethod(),suffix);
         String expectedProjectId=request.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID);
         String expectedSha=request.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_SHA);
-        if(Set.of("CREATE_TAG","TRIGGER_PIPELINE").contains(action)
+        if(Set.of("CREATE_TAG","TRIGGER_PIPELINE","CREATE_MR","MERGE_MR").contains(action)
                 &&!GitRemoteIdentityResolver.validProjectId(expectedProjectId))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
         if(expectedProjectId!=null&&!expectedProjectId.equals(identity.projectId()))throw BusinessException.of(ErrorCode.GIT_IDENTITY_UNAVAILABLE);
-        if(action.equals("TRIGGER_PIPELINE")&&!GitLabGitBranchAdapter.validSha(expectedSha))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
+        if(Set.of("TRIGGER_PIPELINE","CREATE_MR","MERGE_MR").contains(action)&&!GitLabGitBranchAdapter.validSha(expectedSha))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
         // 当前 Provider 删除分支 API 没有已验证的原子 SHA 前置条件；不把一次读取误当 CAS。
         if(action.equals("DELETE_BRANCH"))throw BusinessException.of(ErrorCode.GIT_WRITE_BLOCKED);
         String rawQuery=request.getURI().getRawQuery();
@@ -66,6 +67,7 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
                 +(rawQuery==null?"":"?"+rawQuery));
         String id=UUID.randomUUID().toString();byte[] body=original;
         ObjectNode input=original.length==0?json.createObjectNode():(ObjectNode)json.readTree(original);
+        if(action.equals("MERGE_MR")&&!expectedSha.equals(input.path("sha").asText()))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
         ObjectNode target=json.createObjectNode();
         if(action.equals("CREATE_BRANCH")||action.equals("CREATE_TAG")) {
             String ref=input.path("ref").asText();
@@ -103,12 +105,14 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
                 if(parts.length==2&&Set.of("ref","branch").contains(parts[0]))target.put(parts[0],GitRemoteIdentityResolver.decode(parts[1]));
             }
         }
-        if(action.equals("TRIGGER_PIPELINE"))target.put("sha",expectedSha);
+        if(action.equals("TRIGGER_PIPELINE")||action.equals("CREATE_MR"))target.put("sha",expectedSha);
         String requestHash=GitRemoteIdentityResolver.hash(request.getMethod()+"|"+identity.remoteKey()+"|"+suffix+"|"
                 +(rawQuery==null?"":rawQuery)+"|"+GitRemoteIdentityResolver.hash(body)+"|"+target.path("sha").asText());
-        var auth=SecurityContextHolder.getContext().getAuthentication();String operator=auth==null?"system":auth.getName();
+        var auth=SecurityContextHolder.getContext().getAuthentication();
+        String operator=GitOperationContext.operator();
+        if(operator==null)operator=auth==null?"system":auth.getName();
         journal.begin(new GitOperationJournalPort.Command(id,identity.repoId(),identity.repositoryMapping(),identity.remoteKey(),identity.provider(),identity.baseUrl(),identity.projectId(),
-                action,json.writeValueAsString(target),requestHash,GitOperationContext.runId(),operator,session));
+                action,json.writeValueAsString(target),requestHash,GitOperationContext.runId(),operator,session,GitOperationContext.taskFence()));
         journal.sending(id);
         HttpHeaders headers=GitRemoteIdentityResolver.externalHeaders(request.getHeaders());headers.setContentLength(body.length);
         HttpRequest wrapped=new HttpRequestWrapper(request) {

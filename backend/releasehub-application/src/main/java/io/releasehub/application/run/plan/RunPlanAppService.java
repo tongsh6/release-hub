@@ -42,7 +42,7 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class RunPlanAppService {
-    private static final List<String> STEPS = List.of("ENSURE_FEATURE", "ENSURE_RELEASE", "ENSURE_MR", "TRY_MERGE");
+    private static final List<String> STEPS = io.releasehub.domain.run.ActionType.orchestrationSequence().stream().map(Enum::name).toList();
     private static final List<String> CLEANUP_STEPS = List.of("MERGE_TO_MASTER", "CREATE_TAG", "TRIGGER_CI");
     private final RunPlanPort plans;
     private final RunPort runs;
@@ -58,12 +58,12 @@ public class RunPlanAppService {
     @Transactional
     public SavedRunPlan create(String windowId, List<String> repoIds, List<String> iterationKeys,
                                boolean failFast, String operator, String key) {
-        if (key == null || !key.matches("[A-Za-z0-9._:-]{8,128}")) throw invalid("幂等键需为 8 至 128 位字母、数字或 ._:-");
+        validateRequestKey(key);
         validateIdentity(windowId, operator);
         List<String> repos = normalize(repoIds);
         List<String> selectedIterations = normalize(iterationKeys);
         if (repos.isEmpty()) throw invalid("请至少选择一个仓库");
-        String requestHash = requestHash(windowId, repos, selectedIterations, failFast);
+        String requestHash = requestHash("LOCAL_PREVIEW_V1", windowId, repos, selectedIterations, failFast);
         plans.lockRequest(operator, key);
         var existing = plans.findByRequest(operator, key);
         if (existing.isPresent()) {
@@ -76,17 +76,23 @@ public class RunPlanAppService {
 
     /** 短事务仅保存已完整校验的执行计划；Git 写操作在事务返回后由执行器进行。 */
     @Transactional
-    public Run admit(String windowId, List<String> repoIds, List<String> iterationKeys,
-                     boolean failFast, String operator) {
+    public OrchestrationAdmission admit(String windowId, List<String> repoIds, List<String> iterationKeys,
+                                        boolean failFast, String operator, String key) {
         validateIdentity(windowId, operator);
+        validateRequestKey(key);
         List<String> repos = normalize(repoIds);
         List<String> selectedIterations = normalize(iterationKeys);
         if (repos.isEmpty()) throw invalid("请至少选择一个仓库");
+        String fingerprint = requestHash("WINDOW_ORCHESTRATION_V1", windowId, repos, selectedIterations, failFast);
+        var replay = replayAdmission(operator, key, fingerprint);
+        if (replay.isPresent()) return replay.get();
         Prepared prepared = prepare(lockWindow(windowId), repos, selectedIterations, failFast, operator, true, false);
-        save(prepared, windowId, "execute:" + prepared.run().getId().value(),
-                requestHash(windowId, repos, selectedIterations, failFast));
-        return prepared.run();
+        rejectOverlappingExecution(windowId, prepared.run());
+        save(prepared, windowId, key, fingerprint);
+        return new OrchestrationAdmission(prepared.run().getId().value(), true);
     }
+
+    public record OrchestrationAdmission(String runId, boolean created) {}
 
     /** 关闭受理返回已有或首次创建的仓库级 Run；执行器只消费首次受理。 */
     @Transactional
@@ -257,8 +263,19 @@ public class RunPlanAppService {
 
     /** 重试复制源快照的精确 Item 集合，不从当前仓库和迭代重新计算交叉范围。 */
     @Transactional
-    public Run admitRetry(Run previous, List<String> selectedItemIds, String operator) {
-        if (previous == null || previous.getRunType() != RunType.WINDOW_ORCHESTRATION
+    public OrchestrationAdmission admitRetry(Run previous, List<String> selectedItemIds, String operator, String key) {
+        if (previous == null) throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        validateIdentity(previous.getId().value(), operator);
+        validateRequestKey(key);
+        List<String> selectedIds = normalize(selectedItemIds);
+        if (selectedIds.isEmpty()) throw invalid("请至少选择一个待重试 Item");
+        List<String> request = new ArrayList<>(List.of("WINDOW_ORCHESTRATION_RETRY_V1", previous.getId().value(),
+                Integer.toString(selectedIds.size())));
+        request.addAll(selectedIds);
+        String requestHash = PlanFingerprint.of(request);
+        var replay = replayAdmission(operator, key, requestHash);
+        if (replay.isPresent()) return replay.get();
+        if (previous.getRunType() != RunType.WINDOW_ORCHESTRATION
                 || previous.getExecutionStatus() == RunExecutionStatus.PLANNED
                 || previous.getExecutionStatus() == RunExecutionStatus.RUNNING
                 || previous.getExecutionStatus() == RunExecutionStatus.NEEDS_REVIEW
@@ -267,8 +284,9 @@ public class RunPlanAppService {
         SavedRunPlan source = plans.findByRunId(previous.getId().value())
                 .orElseThrow(() -> invalid("源 Run 没有不可变执行计划，不能重试"));
         validateIdentity(source.windowId(), operator);
-        List<String> selectedIds = normalize(selectedItemIds);
-        if (selectedIds.isEmpty()) throw invalid("请至少选择一个待重试 Item");
+        List<RunPort.TaskView> sourceTasks = requireTaskProtocol(previous);
+        if (sourceTasks.stream().anyMatch(task -> Set.of("RUNNING", "UNKNOWN").contains(task.status())))
+            throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
         RunPlanSnapshot snapshot = source.snapshot();
         var selected = snapshot.items().stream().filter(item -> selectedIds.contains(item.itemId()))
                 .sorted(Comparator.comparingInt(RunPlanSnapshot.Item::plannedOrder)).toList();
@@ -329,6 +347,12 @@ public class RunPlanAppService {
                     "plan.failFast", "plan.cloneUrl", "plan.gitProvider", "plan.featureBranchMode")) item.putMetadata(field, metadata.get(field));
             item.putMetadata("retry.sourceRunId", previous.getId().value());
             item.putMetadata("retry.sourceItemId", original.getId().value());
+            try {
+                previous.repositoryProjectId(original.getRepo()).ifPresent(project -> item.putMetadata("git.projectId", project));
+            } catch (IllegalStateException error) {
+                throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+            }
+            copyRetryCheckpoint(original, item, sourceTasks);
             run.addItem(item);
             retryItems.add(new RunPlanSnapshot.Item(item.getId().value(), item.getPlannedOrder(), planned.repoId(), planned.repoName(),
                     planned.iterationKey(), planned.gitProvider(), planned.defaultBranch(), planned.featureBranch(), planned.featureBranchMode(), planned.releaseBranch(),
@@ -337,10 +361,75 @@ public class RunPlanAppService {
         }
         var retrySnapshot = new RunPlanSnapshot(snapshot.windowKey(), snapshot.groupCode(), window.getStatus().name(),
                 window.isFrozen(), snapshot.failFast(), retryItems);
-        List<String> request = new ArrayList<>(List.of("RUN_RETRY_V1", previous.getId().value()));
-        selected.forEach(item -> request.add(item.itemId()));
-        save(new Prepared(run, retrySnapshot), source.windowId(), "retry:" + run.getId().value(), PlanFingerprint.of(request));
-        return run;
+        rejectOverlappingExecution(source.windowId(), run);
+        save(new Prepared(run, retrySnapshot), source.windowId(), key, requestHash);
+        return new OrchestrationAdmission(run.getId().value(), true);
+    }
+
+    private Optional<OrchestrationAdmission> replayAdmission(String operator, String key, String requestHash) {
+        plans.lockRequest(operator, key);
+        var found = plans.findByRequest(operator, key);
+        if (found.isEmpty()) return Optional.empty();
+        SavedRunPlan saved = found.get();
+        if (!Objects.equals(saved.operator(), operator) || !Objects.equals(saved.idempotencyKey(), key)
+                || !Objects.equals(saved.requestHash(), requestHash))
+            throw BusinessException.of(ErrorCode.RUN_PLAN_KEY_CONFLICT);
+        Run run = runs.findById(saved.runId()).orElseThrow(() -> BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE));
+        if (run.getRunType() != RunType.WINDOW_ORCHESTRATION || run.getExecutionStatus() == RunExecutionStatus.PLANNED
+                || !Objects.equals(run.getOperator(), operator)
+                || !Objects.equals(saved.planHash(), planHash(run, saved.snapshot())))
+            throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        requireTaskProtocol(run);
+        return Optional.of(new OrchestrationAdmission(run.getId().value(), false));
+    }
+
+    private List<RunPort.TaskView> requireTaskProtocol(Run run) {
+        if (run.getExecutionVersion() != Run.ORCHESTRATION_PROTOCOL_VERSION || run.getItems().isEmpty())
+            throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        var tasks = runs.findTasks(run.getId().value());
+        Map<String, Set<io.releasehub.domain.run.ActionType>> actions = new HashMap<>();
+        run.getItems().forEach(item -> actions.put(item.getId().value(), new HashSet<>()));
+        for (var task : tasks) {
+            var itemActions = actions.get(task.itemId());
+            if (!Objects.equals(task.runId(), run.getId().value()) || itemActions == null
+                    || !io.releasehub.domain.run.ActionType.orchestrationSequence().contains(task.actionType())
+                    || !itemActions.add(task.actionType()))
+                throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        }
+        if (actions.values().stream().anyMatch(value -> value.size() != STEPS.size()))
+            throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        return tasks;
+    }
+
+    private void copyRetryCheckpoint(RunItem source, RunItem target, List<RunPort.TaskView> tasks) {
+        boolean ensured = tasks.stream().anyMatch(task -> task.itemId().equals(source.getId().value())
+                && task.actionType() == io.releasehub.domain.run.ActionType.ENSURE_MR
+                && Set.of("COMPLETED", "INHERITED").contains(task.status()));
+        Map<String, String> metadata = source.getMetadata();
+        if (!ensured) {
+            if (metadata.get("git.mrIid") != null) throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+            return;
+        }
+        for (String field : List.of("git.projectId", "git.sourceBranch", "git.targetBranch", "git.sourceSha")) {
+            if (metadata.get(field) == null || metadata.get(field).isBlank())
+                throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        }
+        if (!"ALREADY_MERGED".equals(metadata.get("git.mrDisposition"))
+                && (metadata.get("git.mrIid") == null || metadata.get("git.mrUrl") == null))
+            throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+        for (String field : List.of("git.projectId", "git.sourceBranch", "git.targetBranch", "git.mrIid", "git.mrUrl",
+                "git.sourceSha", "git.mergeSha", "git.mrDisposition")) target.putMetadata(field, metadata.get(field));
+    }
+
+    private void rejectOverlappingExecution(String windowId, Run run) {
+        List<String> repoIds = run.getItems().stream().map(item -> item.getRepo().value()).distinct().toList();
+        if (plans.hasUnresolvedExecutionForRepositories(windowId, repoIds))
+            throw BusinessException.of(ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
+    }
+
+    private void validateRequestKey(String key) {
+        if (key == null || !key.matches("[A-Za-z0-9._:-]{8,128}"))
+            throw invalid("幂等键需为 8 至 128 位字母、数字或 ._:-");
     }
 
     private boolean isRetryable(RunItemResult result) {
@@ -492,6 +581,7 @@ public class RunPlanAppService {
                 planHash(run, snapshot), run.getStartedAt(), snapshot);
         runs.save(run);
         plans.save(saved);
+        if (run.getExecutionVersion() == Run.ORCHESTRATION_PROTOCOL_VERSION) runs.createTasks(run);
         return saved;
     }
 
@@ -520,8 +610,8 @@ public class RunPlanAppService {
     @Transactional(readOnly = true)
     public List<RunPlanSummary> list(String windowId) { return plans.listByWindow(windowId, 20); }
 
-    private String requestHash(String windowId, List<String> repos, List<String> selectedIterations, boolean failFast) {
-        List<String> input = new ArrayList<>(List.of("LOCAL_PREVIEW_V1", windowId, Boolean.toString(failFast), Integer.toString(repos.size())));
+    private String requestHash(String operation, String windowId, List<String> repos, List<String> selectedIterations, boolean failFast) {
+        List<String> input = new ArrayList<>(List.of(operation, windowId, Boolean.toString(failFast), Integer.toString(repos.size())));
         input.addAll(repos);
         input.add(Integer.toString(selectedIterations.size()));
         input.addAll(selectedIterations);

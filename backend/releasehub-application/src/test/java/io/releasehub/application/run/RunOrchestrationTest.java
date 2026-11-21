@@ -1,288 +1,387 @@
 package io.releasehub.application.run;
 
+import io.releasehub.application.branchrule.BranchRuleUseCase;
 import io.releasehub.application.conflict.ConflictDetectionAppService;
-import io.releasehub.application.iteration.IterationPort;
-import io.releasehub.application.iteration.IterationRepoPort;
-import io.releasehub.application.iteration.IterationRepoVersionInfo;
+import io.releasehub.application.gitoperation.GitOperationContext;
+import io.releasehub.application.gitoperation.GitWriteResult;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.run.plan.RunPlanAppService;
 import io.releasehub.application.settings.SettingsPort;
-import io.releasehub.application.version.VersionDeriverUseCase;
 import io.releasehub.application.version.VersionUpdateAppService;
 import io.releasehub.application.window.WindowIterationPort;
-import io.releasehub.domain.conflict.ConflictReport;
-import io.releasehub.domain.iteration.Iteration;
 import io.releasehub.domain.iteration.IterationKey;
-import io.releasehub.domain.iteration.IterationStatus;
-import io.releasehub.domain.releasewindow.ReleaseWindow;
-import io.releasehub.domain.releasewindow.ReleaseWindowId;
-import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
 import io.releasehub.domain.repo.CodeRepository;
 import io.releasehub.domain.repo.GitProvider;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.repo.RepoType;
 import io.releasehub.domain.run.*;
-import io.releasehub.domain.window.WindowIteration;
-import io.releasehub.domain.window.WindowIterationId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/** 只验证协调器的动作边界；任务顺序、失败传播和 CAS 由真实存储测试负责。 */
 class RunOrchestrationTest {
     private static final Instant NOW = Instant.parse("2026-11-21T00:00:00Z");
     private static final String WINDOW = "window-1";
-    private static final String RELEASE = "release/W1";
+    private static final String KEY = "orchestrate-intent-1";
+    private static final String URL = "https://gitlab.example/group/repository.git";
+    private static final String SOURCE = "feature/I1";
+    private static final String TARGET = "release/W1";
+    private static final String SHA = "a".repeat(40);
     private final RunPort runs = mock(RunPort.class);
-    private final ReleaseWindowPort windows = mock(ReleaseWindowPort.class);
-    private final WindowIterationPort bindings = mock(WindowIterationPort.class);
-    private final IterationPort iterations = mock(IterationPort.class);
-    private final IterationRepoPort versions = mock(IterationRepoPort.class);
-    private final CodeRepositoryPort repos = mock(CodeRepositoryPort.class);
+    private final RunPlanAppService planner = mock(RunPlanAppService.class);
+    private final CodeRepositoryPort repositories = mock(CodeRepositoryPort.class);
     private final GitBranchAdapterFactory adapters = mock(GitBranchAdapterFactory.class);
     private final GitBranchPort git = mock(GitBranchPort.class);
-    private final ConflictDetectionAppService conflicts = mock(ConflictDetectionAppService.class);
-    private final SettingsPort settings = mock(SettingsPort.class);
-    private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-    private final io.releasehub.application.branchrule.BranchRuleUseCase rules = mock(io.releasehub.application.branchrule.BranchRuleUseCase.class);
+    private final BranchRuleUseCase rules = mock(BranchRuleUseCase.class);
+    private final Map<String, String> facts = new LinkedHashMap<>();
+    private final Deque<ActionType> pending = new ArrayDeque<>();
+    private final List<RunStep> committed = new ArrayList<>();
+    private final Map<ActionType, RunPort.TaskFence> fences = new EnumMap<>(ActionType.class);
+    private Run run;
+    private RunItem item;
     private RunAppService service;
+    private boolean stopped;
 
     @BeforeEach
     void setUp() {
-        var planner = new io.releasehub.application.run.plan.RunPlanAppService(
-                mock(io.releasehub.application.run.plan.RunPlanPort.class), runs, windows, bindings,
-                iterations, versions, repos, settings, clock, mock(VersionDeriverUseCase.class));
-        service = new RunAppService(runs, windows, bindings, repos, adapters,
-                mock(VersionUpdateAppService.class), conflicts, settings, clock, planner, rules);
-        when(rules.isCompliant(anyString(), anyString(), anyString())).thenReturn(true);
-        when(settings.getNaming()).thenReturn(Optional.empty());
-        when(windows.findById(ReleaseWindowId.of(WINDOW))).thenReturn(Optional.of(window(false)));
-        when(windows.findByIdForUpdate(any())).thenAnswer(invocation -> windows.findById(invocation.getArgument(0)));
-        when(conflicts.getLatestReport(WINDOW)).thenReturn(Optional.of(ConflictReport.empty(WINDOW)));
-        when(bindings.listByWindow(ReleaseWindowId.of(WINDOW))).thenReturn(List.of(binding("I2", 2), binding("I1", 1)));
-        when(iterations.findByKey(IterationKey.of("I1"))).thenReturn(Optional.of(iteration("I1", Set.of("r1", "r2"))));
-        when(iterations.findByKey(IterationKey.of("I2"))).thenReturn(Optional.of(iteration("I2", Set.of("r1"))));
-        for (String id : List.of("r1", "r2")) {
-            when(repos.findById(RepoId.of(id))).thenReturn(Optional.of(repo(id)));
-        }
-        when(adapters.getAdapter(GitProvider.GITLAB)).thenReturn(git);
-        when(git.getBranchStatus(any(), any(), any())).thenReturn(GitBranchPort.BranchStatus.present("known-sha"));
-        when(git.mergeBranch(any(), any(), any(), any(), any())).thenAnswer(inv -> merged(inv.getArgument(2), inv.getArgument(3)));
-    }
-
-    @Test
-    void failFastStopsOnlyTheBlockedRepositoryAndRecordsEveryPlannedItem() {
-        when(git.mergeBranch(eq(url("r1")), any(), eq("feature/I1"), eq(RELEASE), any()))
-                .thenReturn(GitBranchPort.MergeResult.conflict("conflict"));
-        Run run = service.startOrchestrate(WINDOW, List.of("r2", "r1", "r1"), List.of(), true, "tester");
-        assertThat(run.getItems()).hasSize(3);
-        assertThat(item(run, "r1", "I1").getFinalResult()).isEqualTo(RunItemResult.MERGE_BLOCKED);
-        assertThat(item(run, "r1", "I2").getFinalResult()).isEqualTo(RunItemResult.SKIPPED_DUE_TO_BLOCK);
-        assertThat(item(run, "r1", "I2").getExecutedOrder()).isZero();
-        assertThat(item(run, "r2", "I1").getFinalResult()).isEqualTo(RunItemResult.MERGED);
-        assertThat(item(run, "r2", "I1").getPlannedOrder()).isEqualTo(3);
-        assertThat(item(run, "r2", "I1").getExecutedOrder()).isEqualTo(2);
-        assertThat(run.getExecutionStatus()).isEqualTo(RunExecutionStatus.PARTIAL_FAILED);
-        verify(git, never()).mergeBranch(eq(url("r1")), any(), eq("feature/I2"), any(), any());
-        verify(git, times(1)).mergeBranch(eq(url("r2")), any(), eq("feature/I1"), any(), any());
-    }
-
-    @Test
-    void explicitContinueRunsLaterItemsOfTheSameRepository() {
-        when(git.mergeBranch(eq(url("r1")), any(), eq("feature/I1"), eq(RELEASE), any()))
-                .thenReturn(GitBranchPort.MergeResult.conflict("conflict"));
-        Run run = service.startOrchestrate(WINDOW, List.of("r1", "r2"), List.of(), false, "tester");
-        assertThat(run.getItems()).hasSize(3);
-        assertThat(item(run, "r1", "I2").getFinalResult()).isEqualTo(RunItemResult.MERGED);
-        assertThat(run.getExecutionStatus()).isEqualTo(RunExecutionStatus.PARTIAL_FAILED);
-    }
-
-    @Test
-    void unknownResultAlwaysStopsTheSameRepositoryEvenWithContinueSelected() {
-        when(git.mergeBranch(eq(url("r1")), any(), eq("feature/I1"), eq(RELEASE), any()))
-                .thenReturn(GitBranchPort.MergeResult.unknown("response lost"));
-        Run run = service.startOrchestrate(WINDOW, List.of("r1", "r2"), List.of(), false, "tester");
-        assertThat(item(run, "r1", "I1").getFinalResult()).isEqualTo(RunItemResult.UNKNOWN);
-        assertThat(item(run, "r1", "I2").getFinalResult()).isEqualTo(RunItemResult.SKIPPED_DUE_TO_BLOCK);
-        assertThat(item(run, "r2", "I1").getFinalResult()).isEqualTo(RunItemResult.MERGED);
-        assertThat(run.getExecutionStatus()).isEqualTo(RunExecutionStatus.NEEDS_REVIEW);
+        item = RunItem.create("W1", RepoId.of("r1"), IterationKey.of("I1"), 1, NOW);
+        run = Run.rehydrate(RunId.generate(RunType.WINDOW_ORCHESTRATION, NOW),
+                RunType.WINDOW_ORCHESTRATION, "admitted-actor", NOW, null,
+                List.of(item), NOW, NOW, 0L, 3, RunExecutionStatus.RUNNING);
+        service = new RunAppService(runs, mock(ReleaseWindowPort.class), mock(WindowIterationPort.class),
+                repositories, adapters, mock(VersionUpdateAppService.class),
+                mock(ConflictDetectionAppService.class), mock(SettingsPort.class),
+                Clock.fixed(NOW, ZoneOffset.UTC), planner, rules);
+        when(planner.admit(WINDOW, List.of("r1"), List.of("I1"), true, "admitted-actor", KEY))
+                .thenReturn(new RunPlanAppService.OrchestrationAdmission(run.getId().value(), true));
         when(runs.findById(run.getId().value())).thenReturn(Optional.of(run));
-        clearInvocations(git);
-        assertThatThrownBy(() -> service.retry(run.getId().value(), List.of(item(run, "r1", "I1").getId().value()), "tester"))
-                .isInstanceOf(RuntimeException.class);
-        verifyNoInteractions(git);
-    }
-
-    @Test
-    void validatesAllRepositorySelectionsBeforeAnyGitOperation() {
-        assertThatThrownBy(() -> service.startOrchestrate(WINDOW, List.of("r1", "missing"), List.of(), true, "tester"))
-                .isInstanceOf(RuntimeException.class);
-        verifyNoInteractions(git);
-    }
-
-    @Test
-    void rejectsAnUnboundIterationWithoutSilentlyShrinkingScope() {
-        assertThatThrownBy(() -> service.startOrchestrate(WINDOW, List.of("r1"), List.of("I1", "missing"), true, "tester"))
-                .isInstanceOf(RuntimeException.class);
-        verifyNoInteractions(git);
-    }
-
-    @Test
-    void rejectsAnEmptySelectionWithoutGit() {
-        assertThatThrownBy(() -> service.startOrchestrate(WINDOW, List.of(), List.of(), true, "tester"))
-                .isInstanceOf(RuntimeException.class);
-        verifyNoInteractions(git);
-    }
-
-    @Test
-    void createsMissingFeatureFromThePlannedBaseBeforeMerging() {
-        when(git.getBranchStatus(any(), any(), eq("feature/I1"))).thenReturn(GitBranchPort.BranchStatus.missing());
-        when(git.createBranch(any(), any(), eq("feature/I1"), eq("main"))).thenReturn(true);
-        Run run = service.startOrchestrate(WINDOW, List.of("r1"), List.of("I1"), true, "tester");
-        assertThat(run.getItems()).singleElement().extracting(RunItem::getFinalResult).isEqualTo(RunItemResult.MERGED);
-        verify(git).createBranch(url("r1"), "token", "feature/I1", "main");
-    }
-
-    @Test
-    void persistsIntentBeforeTheFirstRemoteWrite() {
-        when(git.mergeBranch(any(), any(), any(), any(), any())).thenAnswer(inv -> {
-            verify(runs, atLeastOnce()).save(any(Run.class));
-            return merged(inv.getArgument(2), inv.getArgument(3));
+        facts.putAll(Map.of("plan.windowId", WINDOW, "plan.featureBranch", SOURCE,
+                "plan.releaseBranch", TARGET, "plan.defaultBranch", "main",
+                "plan.featureBranchMode", "AUTO", "plan.cloneUrl", URL,
+                "plan.gitProvider", "GITLAB", "plan.failFast", "true"));
+        pending.addAll(List.of(ActionType.ENSURE_FEATURE, ActionType.ENSURE_RELEASE,
+                ActionType.ENSURE_MR, ActionType.TRY_MERGE));
+        for (ActionType action : pending) fences.put(action,
+                new RunPort.TaskFence(UUID.randomUUID().toString(), UUID.randomUUID().toString()));
+        when(runs.claimNextTask(run.getId().value())).thenAnswer(invocation -> {
+            if (stopped || pending.isEmpty()) return Optional.empty();
+            var action = pending.removeFirst();
+            return Optional.of(new RunPort.TaskClaim(fences.get(action), run.getId().value(),
+                    item.getId().value(), item.getRepo(), action, NOW, run.getOperator(), Map.copyOf(facts)));
         });
-        Run run = service.startOrchestrate(WINDOW, List.of("r1"), List.of("I1"), true, "tester");
-        assertThat(run.getExecutionStatus()).isEqualTo(RunExecutionStatus.DONE);
+        when(runs.completeTask(any(), any(), any())).thenAnswer(invocation -> commit(
+                invocation.getArgument(0), invocation.getArgument(1), invocation.getArgument(2)));
+        when(repositories.findById(item.getRepo())).thenReturn(Optional.of(CodeRepository.rehydrate(
+                item.getRepo(), "repository", URL, "main", "G1", RepoType.SERVICE, GitProvider.GITLAB,
+                "token", false, 0, 0, 0, 0, 0, 0, 0, null, NOW, NOW, 0L)));
+        when(adapters.getAdapter(GitProvider.GITLAB)).thenReturn(git);
+        when(rules.isCompliant(anyString(), anyString(), anyString())).thenReturn(true);
+        when(git.getBranchStatus(any(), any(), any())).thenReturn(GitBranchPort.BranchStatus.present("17", SHA));
+        when(git.ensureMergeRequest(any(), any(), any(), any(), any()))
+                .thenReturn(GitWriteResult.applied(evidence(GitBranchPort.MrDisposition.CREATED)));
+        when(git.tryMergeRequest(any(), any(), any(), any()))
+                .thenReturn(GitBranchPort.MergeResult.success()
+                        .withEvidence(mergedEvidence()));
     }
 
     @Test
-    void frozenWindowCannotWriteGit() {
-        when(windows.findById(ReleaseWindowId.of(WINDOW))).thenReturn(Optional.of(window(true)));
-        assertThatThrownBy(() -> service.startOrchestrate(WINDOW, List.of("r1"), List.of(), true, "tester"))
-                .isInstanceOf(RuntimeException.class);
-        verifyNoInteractions(git);
-    }
-
-    @Test
-    void repositoryExceptionIsRecordedAndDoesNotAbortOtherRepositories() {
-        when(git.getBranchStatus(eq(url("r1")), any(), any())).thenThrow(new IllegalStateException("provider unavailable"));
-        Run run = service.startOrchestrate(WINDOW, List.of("r1", "r2"), List.of(), true, "tester");
-        assertThat(run.getItems()).hasSize(3);
-        assertThat(item(run, "r1", "I1").getFinalResult()).isEqualTo(RunItemResult.FAILED);
-        assertThat(item(run, "r1", "I2").getFinalResult()).isEqualTo(RunItemResult.SKIPPED_DUE_TO_BLOCK);
-        assertThat(item(run, "r2", "I1").getFinalResult()).isEqualTo(RunItemResult.MERGED);
-        assertThat(run.getExecutionStatus()).isEqualTo(RunExecutionStatus.PARTIAL_FAILED);
-    }
-
-    @Test
-    void exceptionAfterBranchWriteIsUnknownAndStopsTheRepositoryEvenWhenContinueWasSelected() {
-        when(git.getBranchStatus(eq(url("r1")), any(), eq("feature/I1")))
-                .thenReturn(GitBranchPort.BranchStatus.missing());
-        var remoteWriteAccepted = new java.util.concurrent.atomic.AtomicBoolean();
-        when(git.createBranch(eq(url("r1")), any(), eq("feature/I1"), eq("main"))).thenAnswer(inv -> {
-            remoteWriteAccepted.set(true);
-            throw new IllegalStateException("journal commit failed after remote acceptance");
+    void commitsEachActionBeforeTheNextAndNeverUsesTheCompoundMergePath() {
+        when(git.tryMergeRequest(any(), any(), any(), any())).thenAnswer(invocation -> {
+            assertThat(committed).extracting(RunStep::actionType)
+                    .containsExactly(ActionType.ENSURE_FEATURE, ActionType.ENSURE_RELEASE, ActionType.ENSURE_MR);
+            assertThat(invocation.<GitBranchPort.MrEvidence>getArgument(2).iid()).isEqualTo("7");
+            assertThat(GitOperationContext.operator()).isEqualTo("admitted-actor");
+            assertThat(GitOperationContext.taskFence()).isEqualTo(fences.get(ActionType.TRY_MERGE));
+            return GitBranchPort.MergeResult.success().withEvidence(mergedEvidence());
         });
 
-        Run run = service.startOrchestrate(WINDOW, List.of("r1", "r2"), List.of(), false, "tester");
+        execute();
 
-        assertThat(remoteWriteAccepted).isTrue();
-        assertThat(item(run, "r1", "I1").getFinalResult()).isEqualTo(RunItemResult.UNKNOWN);
-        assertThat(item(run, "r1", "I2").getFinalResult()).isEqualTo(RunItemResult.SKIPPED_DUE_TO_BLOCK);
-        assertThat(item(run, "r2", "I1").getFinalResult()).isEqualTo(RunItemResult.MERGED);
-        assertThat(run.getExecutionStatus()).isEqualTo(RunExecutionStatus.NEEDS_REVIEW);
-        verify(git, never()).mergeBranch(eq(url("r1")), any(), any(), any(), any());
-    }
-
-    @Test
-    void unexpectedExceptionDuringMrWorkflowCannotBeRetriedAsConfirmedFailure() {
-        when(git.mergeBranch(eq(url("r1")), any(), eq("feature/I1"), eq(RELEASE), any()))
-                .thenThrow(new IllegalStateException("local persistence failed after remote merge"));
-        Run run = service.startOrchestrate(WINDOW, List.of("r1", "r2"), List.of(), false, "tester");
-        assertThat(item(run, "r1", "I1").getFinalResult()).isEqualTo(RunItemResult.UNKNOWN);
-        assertThat(item(run, "r1", "I2").getFinalResult()).isEqualTo(RunItemResult.SKIPPED_DUE_TO_BLOCK);
-        assertThat(item(run, "r2", "I1").getFinalResult()).isEqualTo(RunItemResult.MERGED);
-        assertThat(run.getExecutionStatus()).isEqualTo(RunExecutionStatus.NEEDS_REVIEW);
-    }
-
-    @Test
-    void missingExistingFeatureCannotBeRecreatedOrMerged() {
-        when(versions.listVersionInfo("I1")).thenReturn(List.of(IterationRepoVersionInfo.builder()
-                .repoId("r1").featureBranch("feature/external")
-                .branchCreationMode(io.releasehub.domain.iteration.BranchCreationMode.EXISTING).build()));
-        when(git.getBranchStatus(eq(url("r1")), any(), eq("feature/external")))
-                .thenReturn(GitBranchPort.BranchStatus.missing());
-        when(git.createBranch(any(), any(), any(), any())).thenReturn(true);
-
-        Run run = service.startOrchestrate(WINDOW, List.of("r1"), List.of("I1"), true, "tester");
-
-        assertThat(run.getExecutionStatus()).isEqualTo(RunExecutionStatus.FAILED);
-        assertThat(run.getItems()).singleElement().extracting(RunItem::getFinalResult).isEqualTo(RunItemResult.FAILED);
-        verify(git, never()).createBranch(any(), any(), any(), any());
+        assertThat(committed).extracting(RunStep::actionType).containsExactly(
+                ActionType.ENSURE_FEATURE, ActionType.ENSURE_RELEASE, ActionType.ENSURE_MR, ActionType.TRY_MERGE);
+        assertThat(committed).extracting(RunStep::result).containsExactly(
+                RunItemResult.ALREADY_EXISTS, RunItemResult.ALREADY_EXISTS, RunItemResult.CREATED, RunItemResult.MERGED);
         verify(git, never()).mergeBranch(any(), any(), any(), any(), any());
+        verify(runs, never()).save(any());
+        assertThat(GitOperationContext.runId()).isNull();
+        assertThat(GitOperationContext.taskFence()).isNull();
     }
 
     @Test
-    void successWithoutMergeRequestIdentityIsUnknown() {
-        when(git.mergeBranch(any(), any(), any(), any(), any())).thenReturn(GitBranchPort.MergeResult.success()
-                .withEvidence(new GitBranchPort.MrEvidence("17", "feature/I1", RELEASE, null, null,
-                        "a".repeat(40), "b".repeat(40), GitBranchPort.MrDisposition.MR_REUSED, null)));
-        Run run = service.startOrchestrate(WINDOW, List.of("r1"), List.of("I1"), true, "tester");
-        assertThat(run.getExecutionStatus()).isEqualTo(RunExecutionStatus.NEEDS_REVIEW);
-        assertThat(run.getItems()).singleElement().extracting(RunItem::getFinalResult).isEqualTo(RunItemResult.UNKNOWN);
+    void aRepeatedAdmissionReturnsItsReceiptWithoutClaimingOrCallingGit() {
+        when(planner.admit(WINDOW, List.of("r1"), List.of("I1"), true, "admitted-actor", KEY))
+                .thenReturn(new RunPlanAppService.OrchestrationAdmission(run.getId().value(), false));
+        assertThat(execute()).isSameAs(run);
+        verify(runs).findById(run.getId().value());
+        verify(runs, never()).claimNextTask(any());
+        verifyNoInteractions(git);
     }
 
     @Test
-    void provenTargetContainmentMayCompleteWithoutCreatingAnEmptyMergeRequest() {
-        when(git.mergeBranch(any(), any(), any(), any(), any())).thenReturn(GitBranchPort.MergeResult.success()
-                .withEvidence(new GitBranchPort.MrEvidence("17", "feature/I1", RELEASE, null, null,
-                        "a".repeat(40), null, GitBranchPort.MrDisposition.ALREADY_MERGED, null)));
-        Run run = service.startOrchestrate(WINDOW, List.of("r1"), List.of("I1"), true, "tester");
-        assertThat(run.getExecutionStatus()).isEqualTo(RunExecutionStatus.DONE);
-        assertThat(run.getItems()).singleElement().extracting(RunItem::getFinalResult).isEqualTo(RunItemResult.ALREADY_MERGED);
-        assertThat(run.getItems().getFirst().getSteps()).extracting(RunStep::actionType)
-                .contains(ActionType.ENSURE_MR, ActionType.TRY_MERGE);
+    void aFailedMrCheckpointCommitStopsBeforeTryMergeAndLeavesTheFailureVisible() {
+        doAnswer(invocation -> {
+            RunPort.TaskClaim claim = invocation.getArgument(0);
+            if (claim.actionType() == ActionType.ENSURE_MR) throw new IllegalStateException("checkpoint commit failed");
+            return commit(claim, invocation.getArgument(1), invocation.getArgument(2));
+        }).when(runs).completeTask(any(), any(), any());
+
+        assertThatThrownBy(this::execute).isInstanceOf(IllegalStateException.class)
+                .hasMessage("checkpoint commit failed");
+
+        verify(git, times(1)).ensureMergeRequest(any(), any(), any(), any(), any());
+        verify(git, never()).tryMergeRequest(any(), any(), any(), any());
+        assertThat(committed).extracting(RunStep::actionType)
+                .containsExactly(ActionType.ENSURE_FEATURE, ActionType.ENSURE_RELEASE);
+        assertThat(GitOperationContext.taskFence()).isNull();
     }
 
-    private GitBranchPort.MergeResult merged(String source, String target) {
-        return GitBranchPort.MergeResult.success().withEvidence(new GitBranchPort.MrEvidence(
-                "17", source, target, "7", "https://gitlab.example/group/project/-/merge_requests/7",
-                "a".repeat(40), "b".repeat(40), GitBranchPort.MrDisposition.MR_REUSED, null));
+    @Test
+    void aFailedBranchCheckpointCommitStopsBeforeAnyMrAction() {
+        doThrow(new IllegalStateException("database unavailable")).when(runs).completeTask(any(), any(), any());
+        assertThatThrownBy(this::execute).isInstanceOf(IllegalStateException.class);
+        verify(git, never()).ensureMergeRequest(any(), any(), any(), any(), any());
+        verify(git, never()).tryMergeRequest(any(), any(), any(), any());
     }
 
-    private ReleaseWindow window(boolean frozen) {
-        return ReleaseWindow.rehydrate(ReleaseWindowId.of(WINDOW), "W1", "Window", "", NOW, "G1",
-                ReleaseWindowStatus.DRAFT, NOW, NOW, frozen, null);
+    @Test
+    void tryMergeConsumesThePersistedCheckpointWithoutRecreatingTheMr() {
+        pending.clear();
+        pending.add(ActionType.TRY_MERGE);
+        checkpoint(evidence(GitBranchPort.MrDisposition.MR_REUSED));
+
+        execute();
+
+        verify(git, never()).ensureMergeRequest(any(), any(), any(), any(), any());
+        verify(git).tryMergeRequest(eq(URL), eq("token"),
+                eq(evidence(GitBranchPort.MrDisposition.MR_REUSED)), anyString());
+        assertThat(committed).singleElement().extracting(RunStep::result).isEqualTo(RunItemResult.MERGED);
     }
 
-    private WindowIteration binding(String key, int seconds) {
-        return WindowIteration.rehydrate(WindowIterationId.generate(ReleaseWindowId.of(WINDOW), IterationKey.of(key)),
-                ReleaseWindowId.of(WINDOW), IterationKey.of(key), NOW.plusSeconds(seconds), null, false, null, NOW, NOW);
+    @Test
+    void anIncompletePersistedMrCheckpointCannotAuthorizeMerge() {
+        pending.clear();
+        pending.add(ActionType.TRY_MERGE);
+        checkpoint(evidence(GitBranchPort.MrDisposition.MR_REUSED));
+        facts.remove("git.sourceSha");
+
+        execute();
+
+        verify(git, never()).tryMergeRequest(any(), any(), any(), any());
+        verify(git, never()).ensureMergeRequest(any(), any(), any(), any(), any());
+        assertThat(committed).singleElement().extracting(RunStep::result).isEqualTo(RunItemResult.UNKNOWN);
     }
 
-    private Iteration iteration(String key, Set<String> repoIds) {
-        return Iteration.rehydrate(IterationKey.of(key), key, "", null, "G1",
-                repoIds.stream().map(RepoId::of).collect(java.util.stream.Collectors.toSet()), IterationStatus.ACTIVE, NOW, NOW);
+    @Test
+    void incompleteEnsureEvidenceIsUnknownAndCannotAuthorizeTryMerge() {
+        when(git.ensureMergeRequest(any(), any(), any(), any(), any()))
+                .thenReturn(GitWriteResult.applied(new GitBranchPort.MrEvidence(
+                        "17", SOURCE, TARGET, "7", null, SHA, null, GitBranchPort.MrDisposition.CREATED, null)));
+
+        execute();
+
+        assertThat(committed.getLast().result()).isEqualTo(RunItemResult.UNKNOWN);
+        verify(git, never()).tryMergeRequest(any(), any(), any(), any());
     }
 
-    private CodeRepository repo(String id) {
-        return CodeRepository.rehydrate(RepoId.of(id), id, url(id), "main", "G1", RepoType.SERVICE,
-                GitProvider.GITLAB, "token", false, 0, 0, 0, 0, 0, 0, 0, null, NOW, NOW, 0L);
+    @Test
+    void anExceptionAfterMrCreationIsUnknownAndNeverContinues() {
+        when(git.ensureMergeRequest(any(), any(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("journal failed after remote acceptance"));
+
+        execute();
+
+        assertThat(committed.getLast().result()).isEqualTo(RunItemResult.UNKNOWN);
+        verify(git, never()).tryMergeRequest(any(), any(), any(), any());
     }
 
-    private static String url(String repo) { return "https://gitlab.example/group/" + repo + ".git"; }
+    @Test
+    void anUnknownTryResponsePreservesThePersistedMrIdentity() {
+        pending.clear();
+        pending.add(ActionType.TRY_MERGE);
+        checkpoint(evidence(GitBranchPort.MrDisposition.MR_REUSED));
+        when(git.tryMergeRequest(any(), any(), any(), any()))
+                .thenReturn(GitBranchPort.MergeResult.unknown("response lost"));
 
-    private RunItem item(Run run, String repo, String iteration) {
-        return run.getItems().stream().filter(i -> i.getRepo().value().equals(repo)
-                && i.getIterationKey().value().equals(iteration)).findFirst().orElseThrow();
+        execute();
+
+        assertThat(committed).singleElement().extracting(RunStep::result).isEqualTo(RunItemResult.UNKNOWN);
+        assertThat(facts).containsEntry("git.projectId", "17").containsEntry("git.mrIid", "7")
+                .containsEntry("git.sourceSha", SHA).containsEntry("git.blockReason", "UNKNOWN");
+    }
+
+    @Test
+    void successForAnotherMrCannotReplaceThePersistedIdentity() {
+        pending.clear();
+        pending.add(ActionType.TRY_MERGE);
+        checkpoint(evidence(GitBranchPort.MrDisposition.MR_REUSED));
+        when(git.tryMergeRequest(any(), any(), any(), any())).thenReturn(GitBranchPort.MergeResult.success()
+                .withEvidence(new GitBranchPort.MrEvidence("17", SOURCE, TARGET, "8",
+                        "https://gitlab.example/group/repository/-/merge_requests/8",
+                        SHA, "b".repeat(40), GitBranchPort.MrDisposition.MR_REUSED, null)));
+
+        execute();
+
+        assertThat(committed).singleElement().extracting(RunStep::result).isEqualTo(RunItemResult.UNKNOWN);
+        assertThat(facts).containsEntry("git.projectId", "17").containsEntry("git.mrIid", "7");
+    }
+
+    @Test
+    void containmentIsConfirmedByTryAndDoesNotInventAMergeRequest() {
+        var contained = new GitBranchPort.MrEvidence("17", SOURCE, TARGET, null, null, SHA, null,
+                GitBranchPort.MrDisposition.ALREADY_MERGED, null);
+        when(git.ensureMergeRequest(any(), any(), any(), any(), any())).thenReturn(GitWriteResult.applied(contained));
+        when(git.tryMergeRequest(any(), any(), any(), any()))
+                .thenReturn(GitBranchPort.MergeResult.success().withEvidence(contained));
+
+        execute();
+
+        assertThat(committed.get(2).result()).isEqualTo(RunItemResult.ALREADY_MERGED);
+        assertThat(committed.get(3).result()).isEqualTo(RunItemResult.ALREADY_MERGED);
+        verify(git).tryMergeRequest(eq(URL), eq("token"), eq(contained), anyString());
+    }
+
+    @Test
+    void aDeletedInheritedFeatureIsNotRecreatedWhileEnsuringRelease() {
+        pending.clear();
+        pending.add(ActionType.ENSURE_RELEASE);
+        facts.put("retry.sourceRunId", "previous-run");
+        when(git.getBranchStatus(URL, "token", SOURCE)).thenReturn(GitBranchPort.BranchStatus.missing("17"));
+
+        execute();
+
+        assertThat(committed).singleElement().extracting(RunStep::result).isEqualTo(RunItemResult.FAILED);
+        verify(git, never()).createBranch(any(), any(), any(), any());
+    }
+
+    @Test
+    void existingFeatureOwnershipNeverAuthorizesRecreation() {
+        facts.put("plan.featureBranchMode", "EXISTING");
+        when(git.getBranchStatus(URL, "token", SOURCE)).thenReturn(GitBranchPort.BranchStatus.missing("17"));
+
+        execute();
+
+        assertThat(committed).singleElement().extracting(RunStep::result).isEqualTo(RunItemResult.FAILED);
+        verify(git, never()).createBranch(any(), any(), any(), any());
+    }
+
+    @Test
+    void aChangedRepositoryMappingCannotWriteGit() {
+        facts.put("plan.cloneUrl", "https://gitlab.example/other/repository.git");
+        execute();
+        assertThat(committed).singleElement().extracting(RunStep::result).isEqualTo(RunItemResult.FAILED);
+        verifyNoInteractions(git);
+    }
+
+    @Test
+    void aMissingClaimDoesNotReplayThePlanFromMemory() {
+        pending.clear();
+        assertThat(execute()).isSameAs(run);
+        verifyNoInteractions(git);
+        verify(runs, never()).save(any());
+    }
+
+    @Test
+    void aReadOnlyFeaturePinsTheProjectBeforeTheNextTaskCanWrite() {
+        when(git.getBranchStatus(URL, "token", SOURCE))
+                .thenReturn(GitBranchPort.BranchStatus.present("17", SHA),
+                        GitBranchPort.BranchStatus.present("18", SHA));
+
+        execute();
+
+        assertThat(committed).extracting(RunStep::result)
+                .containsExactly(RunItemResult.ALREADY_EXISTS, RunItemResult.FAILED);
+        assertThat(facts).containsEntry("git.projectId", "17");
+        verify(git, never()).createBranch(any(), any(), any(), any());
+        verify(git, never()).ensureMergeRequest(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aMissingBranchWithoutProjectIdentityCannotAuthorizeCreate() {
+        pending.clear();
+        pending.add(ActionType.ENSURE_FEATURE);
+        when(git.getBranchStatus(URL, "token", SOURCE)).thenReturn(GitBranchPort.BranchStatus.missing(null));
+
+        execute();
+
+        assertThat(committed).singleElement().extracting(RunStep::result).isEqualTo(RunItemResult.FAILED);
+        verify(git, never()).createBranch(any(), any(), any(), any());
+        assertThat(facts).doesNotContainKey("git.projectId");
+    }
+
+    @Test
+    void aMissingBranchPinsItsProjectBeforeTheFirstWrite() {
+        pending.clear();
+        pending.add(ActionType.ENSURE_FEATURE);
+        when(git.getBranchStatus(URL, "token", SOURCE)).thenReturn(GitBranchPort.BranchStatus.missing("17"));
+        when(git.createBranch(URL, "token", SOURCE, "main")).thenAnswer(invocation -> {
+            assertThat(GitOperationContext.expectedProjectId()).isEqualTo("17");
+            return true;
+        });
+
+        execute();
+
+        assertThat(committed).singleElement().extracting(RunStep::result).isEqualTo(RunItemResult.CREATED);
+        assertThat(facts).containsEntry("git.projectId", "17");
+        assertThat(GitOperationContext.expectedProjectId()).isNull();
+    }
+
+    @Test
+    void anMrFromAnotherProjectCannotReplaceThePriorReadEvidence() {
+        when(git.ensureMergeRequest(any(), any(), any(), any(), any()))
+                .thenReturn(GitWriteResult.applied(new GitBranchPort.MrEvidence(
+                        "18", SOURCE, TARGET, "7", "https://gitlab.example/other/project/-/merge_requests/7",
+                        SHA, null, GitBranchPort.MrDisposition.CREATED, null)));
+
+        execute();
+
+        assertThat(committed.getLast().result()).isEqualTo(RunItemResult.UNKNOWN);
+        assertThat(facts).containsEntry("git.projectId", "17").doesNotContainKey("git.mrIid");
+        verify(git, never()).tryMergeRequest(any(), any(), any(), any());
+    }
+
+    private Run execute() {
+        return service.startOrchestrate(WINDOW, List.of("r1"), List.of("I1"), true, "admitted-actor", KEY);
+    }
+
+    private Run commit(RunPort.TaskClaim claim, RunStep step, Map<String, String> updates) {
+        assertThat(step.actionType()).isEqualTo(claim.actionType());
+        committed.add(step);
+        updates.forEach((key, value) -> { if (value == null) facts.remove(key); else facts.put(key, value); });
+        stopped = step.result().isFailure() || step.result() == RunItemResult.UNKNOWN;
+        return run;
+    }
+
+    private GitBranchPort.MrEvidence evidence(GitBranchPort.MrDisposition disposition) {
+        return new GitBranchPort.MrEvidence("17", SOURCE, TARGET, "7",
+                "https://gitlab.example/group/repository/-/merge_requests/7", SHA, null, disposition, null);
+    }
+
+    private GitBranchPort.MrEvidence mergedEvidence() {
+        return new GitBranchPort.MrEvidence("17", SOURCE, TARGET, "7",
+                "https://gitlab.example/group/repository/-/merge_requests/7", SHA, "b".repeat(40),
+                GitBranchPort.MrDisposition.MR_REUSED, null);
+    }
+
+    private void checkpoint(GitBranchPort.MrEvidence evidence) {
+        facts.put("git.projectId", evidence.projectId());
+        facts.put("git.sourceBranch", evidence.sourceBranch());
+        facts.put("git.targetBranch", evidence.targetBranch());
+        if (evidence.iid() != null) facts.put("git.mrIid", evidence.iid());
+        if (evidence.url() != null) facts.put("git.mrUrl", evidence.url());
+        facts.put("git.sourceSha", evidence.sourceSha());
+        if (evidence.mergeSha() != null) facts.put("git.mergeSha", evidence.mergeSha());
+        facts.put("git.mrDisposition", evidence.disposition().name());
     }
 }

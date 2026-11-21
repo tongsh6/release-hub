@@ -23,7 +23,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 class GitSafetyBeanDecoratorTest {
     private static final String CLONE = "https://gitlab.test/acme/repo.git";
-    private static final String PROJECT = "https://gitlab.test/api/v4/projects/acme%2Frepo";
+    private static final String PROJECT = "https://gitlab.test/api/v4/projects/17";
     private static final String SOURCE = "feature/IT-1";
     private static final String TARGET = "release/RW-1";
     private static final String SHA = "a".repeat(40);
@@ -78,12 +78,18 @@ class GitSafetyBeanDecoratorTest {
         openedRead();
         server.expect(requestTo(PROJECT + "/repository/commits/" + SHA + "/refs?type=branch&per_page=100&page=1"))
                 .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
-        server.expect(method(HttpMethod.POST)).andRespond(withSuccess("""
+        String blockedMr = """
                 {"iid":7,"project_id":17,"source_project_id":17,"target_project_id":17,
                  "source_branch":"feature/IT-1","target_branch":"release/RW-1","state":"opened",
                  "web_url":"https://gitlab.test/acme/repo/-/merge_requests/7","sha":"%s",
                  "detailed_merge_status":"not_approved"}
-                """.formatted(SHA), MediaType.APPLICATION_JSON));
+                """.formatted(SHA);
+        server.expect(requestTo(PROJECT + "/merge_requests")).andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(blockedMr, MediaType.APPLICATION_JSON));
+        server.expect(requestTo(PROJECT + "/repository/commits/" + SHA + "/refs?type=branch&per_page=100&page=1"))
+                .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(PROJECT + "/merge_requests/7"))
+                .andRespond(withSuccess(blockedMr, MediaType.APPLICATION_JSON));
 
         var result = adapter.mergeBranch(CLONE, "token", SOURCE, TARGET, "merge");
 
@@ -157,7 +163,6 @@ class GitSafetyBeanDecoratorTest {
     }
 
     private void sourceRead() {
-        server.expect(requestTo(PROJECT)).andRespond(withSuccess("{\"id\":17}", MediaType.APPLICATION_JSON));
         server.expect(requestTo(PROJECT + "/repository/branches/feature%2FIT-1"))
                 .andRespond(withSuccess("{\"name\":\"feature/IT-1\",\"commit\":{\"id\":\"" + SHA + "\"}}",
                         MediaType.APPLICATION_JSON));

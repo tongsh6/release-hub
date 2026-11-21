@@ -57,6 +57,8 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -147,8 +149,8 @@ class IterationAppServiceTest {
     }
 
     @Test
-    @DisplayName("addRepos 时创建 feature 分支并保存版本信息")
-    void shouldCreateFeatureBranchAndSaveVersionInfoWhenAddRepos() {
+    @DisplayName("addRepos 只初始化 feature 映射和版本，不访问 Git")
+    void shouldInitializeFeatureMappingWithoutGitWhenAddRepos() {
         Instant now = Instant.now();
         Iteration existing = Iteration.rehydrate(
                 IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.<RepoId>of(), IterationStatus.ACTIVE, now, now);
@@ -162,22 +164,21 @@ class IterationAppServiceTest {
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
         when(branchRuleUseCase.isCompliant("feature/ITER-1", "G001", "repo-1")).thenReturn(true);
-        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
-        when(gitBranchPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/ITER-1", "master")).thenReturn(true);
+        lenient().when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
 
         iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.AUTO, null);
 
         verify(branchRuleUseCase).isCompliant("feature/ITER-1", "G001", "repo-1");
-        verify(gitBranchPort).createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/ITER-1", "master");
         verify(iterationRepoPort).saveWithVersion(
                 eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
                 eq("feature/ITER-1"), eq("SYSTEM"), any(Instant.class), eq(BranchCreationMode.AUTO));
         verify(iterationPort).save(any(Iteration.class));
+        verifyNoInteractions(gitBranchAdapterFactory, gitBranchPort);
     }
 
     @Test
-    @DisplayName("addRepos 时 Git 建分支异常不阻断版本信息保存")
-    void shouldSaveVersionInfoWhenFeatureBranchSetupThrows() {
+    @DisplayName("Git 不可用时 addRepos 仍只保存配置，不尝试远端写入")
+    void shouldInitializeMappingWithoutContactingAnUnavailableGitProvider() {
         Instant now = Instant.now();
         Iteration existing = Iteration.rehydrate(
                 IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.<RepoId>of(), IterationStatus.ACTIVE, now, now);
@@ -191,8 +192,8 @@ class IterationAppServiceTest {
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
         when(branchRuleUseCase.isCompliant("feature/ITER-1", "G001", "repo-1")).thenReturn(true);
-        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
-        when(gitBranchPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/ITER-1", "master"))
+        lenient().when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
+        lenient().when(gitBranchPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/ITER-1", "master"))
                 .thenThrow(new RuntimeException("I/O error"));
 
         iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.AUTO, null);
@@ -201,6 +202,7 @@ class IterationAppServiceTest {
                 eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
                 eq("feature/ITER-1"), eq("SYSTEM"), any(Instant.class), eq(BranchCreationMode.AUTO));
         verify(iterationPort).save(any(Iteration.class));
+        verifyNoInteractions(gitBranchAdapterFactory, gitBranchPort);
     }
 
     @Test
@@ -249,8 +251,8 @@ class IterationAppServiceTest {
     }
 
     @Test
-    @DisplayName("removeRepos 时归档 feature 分支，原因 unpublished")
-    void shouldArchiveFeatureBranchWithReasonUnpublishedWhenRemoveRepos() {
+    @DisplayName("removeRepos 仅解除仓库关联，Git 不可用也不归档 feature")
+    void shouldRemoveRepoMappingWithoutArchivingFeatureWhenGitIsUnavailable() {
         Instant now = Instant.now();
         Iteration existing = Iteration.rehydrate(
                 IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
@@ -263,15 +265,18 @@ class IterationAppServiceTest {
                                                                        .repoId("repo-1")
                                                                        .featureBranch("feature/ITER-1")
                                                                        .build();
-        when(iterationRepoPort.getVersionInfo("ITER-1", "repo-1"))
+        lenient().when(iterationRepoPort.getVersionInfo("ITER-1", "repo-1"))
                 .thenReturn(Optional.of(versionInfo));
-        when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
-        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
+        lenient().when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
+        lenient().when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
+        lenient().when(gitBranchPort.archiveBranch(anyString(), any(), anyString(), anyString()))
+                .thenThrow(new IllegalStateException("Git unavailable"));
 
-        iterationAppService.removeRepos("ITER-1", Set.of("repo-1"));
+        Iteration updated = iterationAppService.removeRepos("ITER-1", Set.of("repo-1"));
 
-        verify(gitBranchPort).archiveBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/ITER-1", "unpublished");
-        verify(iterationPort).save(any(Iteration.class));
+        assertThat(updated.getRepos()).isEmpty();
+        verify(iterationPort).save(updated);
+        verifyNoInteractions(gitBranchAdapterFactory, gitBranchPort);
     }
 
     @Test
@@ -467,6 +472,78 @@ class IterationAppServiceTest {
         verify(iterationPort).deleteByKey(IterationKey.of("ITER-1"));
     }
 
+    @Test
+    @DisplayName("update 新增仓库只初始化映射，保留自定义分支名和版本")
+    void shouldInitializeNewRepoMappingWithoutGitWhenUpdatingIteration() {
+        Iteration existing = Iteration.rehydrate(IterationKey.of("ITER-1"), "Iter", "Desc", null,
+                "G001", Set.of(), IterationStatus.ACTIVE, now, now);
+        CodeRepository repo = createRepo("repo-1", "git@gitlab.com:test/repo.git");
+        when(iterationPort.findByKey(existing.getId())).thenReturn(Optional.of(existing));
+        when(groupPort.findByCode("G001")).thenReturn(Optional.of(
+                Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, now, now, 0L)));
+        when(groupPort.countChildren("G001")).thenReturn(0L);
+        when(codeRepositoryPort.findById(repo.getId())).thenReturn(Optional.of(repo));
+        when(codeRepositoryPort.getInitialVersion("repo-1")).thenReturn(Optional.of("1.0.0"));
+        when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
+        when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
+        lenient().when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
+
+        Iteration updated = iterationAppService.update("ITER-1", "Updated", "Desc", null, "G001",
+                Set.of("repo-1"), List.of(new IterationAppService.RepoBranchConfig(
+                        "repo-1", BranchCreationMode.NAMED, "feature/planned-change")));
+
+        assertThat(updated.getRepos()).containsExactly(RepoId.of("repo-1"));
+        verify(iterationRepoPort).saveWithVersion(eq("ITER-1"), eq("repo-1"), eq("1.0.0"),
+                eq("1.0.1-SNAPSHOT"), eq("1.0.1"), eq("feature/planned-change"),
+                eq("SYSTEM"), eq(now), eq(BranchCreationMode.NAMED));
+        verify(iterationPort).save(updated);
+        verifyNoInteractions(gitBranchAdapterFactory, gitBranchPort);
+    }
+
+    @Test
+    @DisplayName("update 移除仓库只保存保留的关联，不归档已有 feature")
+    void shouldRemoveOnlyRepoMappingWithoutGitWhenUpdatingIteration() {
+        Iteration existing = Iteration.rehydrate(IterationKey.of("ITER-1"), "Iter", "Desc", null,
+                "G001", Set.of(RepoId.of("repo-1"), RepoId.of("repo-2")), IterationStatus.ACTIVE, now, now);
+        CodeRepository removed = createRepo("repo-1", "git@gitlab.com:test/removed.git");
+        CodeRepository retained = createRepo("repo-2", "git@gitlab.com:test/retained.git");
+        when(iterationPort.findByKey(existing.getId())).thenReturn(Optional.of(existing));
+        when(groupPort.findByCode("G001")).thenReturn(Optional.of(
+                Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, now, now, 0L)));
+        when(groupPort.countChildren("G001")).thenReturn(0L);
+        when(codeRepositoryPort.findById(retained.getId())).thenReturn(Optional.of(retained));
+        lenient().when(codeRepositoryPort.findById(removed.getId())).thenReturn(Optional.of(removed));
+        lenient().when(gitBranchAdapterFactory.getAdapter(removed.getGitProvider())).thenReturn(gitBranchPort);
+
+        Iteration updated = iterationAppService.update("ITER-1", "Updated", "Desc", null, "G001",
+                Set.of("repo-2"), null);
+
+        assertThat(updated.getRepos()).containsExactly(RepoId.of("repo-2"));
+        verify(iterationPort).save(updated);
+        verifyNoInteractions(gitBranchAdapterFactory, gitBranchPort, iterationRepoPort);
+    }
+
+    @Test
+    @DisplayName("EXISTING 读取失败不转成新建分支或保存映射")
+    void shouldPropagateExistingBranchReadFailureWithoutSavingOrWritingGit() {
+        Iteration existing = Iteration.rehydrate(IterationKey.of("ITER-1"), "Iter", "Desc", null,
+                "G001", Set.of(), IterationStatus.ACTIVE, now, now);
+        CodeRepository repo = createRepo("repo-1", "git@gitlab.com:test/repo.git");
+        when(iterationPort.findByKey(existing.getId())).thenReturn(Optional.of(existing));
+        when(codeRepositoryPort.findById(repo.getId())).thenReturn(Optional.of(repo));
+        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
+        var failure = new IllegalStateException("Git read unavailable");
+        when(gitBranchPort.getBranchStatus(repo.getCloneUrl(), null, "feature/existing")).thenThrow(failure);
+
+        assertThatThrownBy(() -> iterationAppService.addRepos("ITER-1", Set.of("repo-1"),
+                BranchCreationMode.EXISTING, "feature/existing")).isSameAs(failure);
+
+        verify(iterationPort, never()).save(any());
+        verifyNoInteractions(iterationRepoPort);
+        verify(gitBranchPort).getBranchStatus(repo.getCloneUrl(), null, "feature/existing");
+        verifyNoMoreInteractions(gitBranchPort);
+    }
+
     // ==== 分支创建模式测试 ====
 
     @Test
@@ -490,8 +567,8 @@ class IterationAppServiceTest {
     }
 
     @Test
-    @DisplayName("NAMED 模式 — 分支名符合规则时创建成功")
-    void shouldCreateNamedBranchWhenValid() {
+    @DisplayName("NAMED 模式 — 保存自定义名称和版本，等待显式编排创建")
+    void shouldPreserveNamedBranchConfigurationWithoutGit() {
         Instant now = Instant.now();
         Iteration existing = Iteration.rehydrate(
                 IterationKey.of("ITER-1"), "Iter", "Desc", null, "G001", Set.of(), IterationStatus.ACTIVE, now, now);
@@ -502,15 +579,16 @@ class IterationAppServiceTest {
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
         when(branchRuleUseCase.isCompliant("feature/upgrade-guava", "G001", "repo-1")).thenReturn(true);
-        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
-        when(gitBranchPort.createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/upgrade-guava", "master")).thenReturn(true);
+        lenient().when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
 
         iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.NAMED, "feature/upgrade-guava");
 
-        verify(gitBranchPort).createBranch(repo.getCloneUrl(), repo.getGitAccessToken(), "feature/upgrade-guava", "master");
         verify(iterationRepoPort).saveWithVersion(
                 eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
                 eq("feature/upgrade-guava"), eq("SYSTEM"), any(Instant.class), eq(BranchCreationMode.NAMED));
+        verify(branchRuleUseCase).isCompliant("feature/upgrade-guava", "G001", "repo-1");
+        verify(iterationPort).save(any(Iteration.class));
+        verifyNoInteractions(gitBranchAdapterFactory, gitBranchPort);
     }
 
     @Test
@@ -527,13 +605,15 @@ class IterationAppServiceTest {
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
         when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
         when(gitBranchPort.getBranchStatus(repo.getCloneUrl(), null, "feature/JIRA-4521"))
-                .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
+                .thenReturn(GitBranchPort.BranchStatus.present("17", "abc123"));
 
         iterationAppService.addRepos("ITER-1", Set.of("repo-1"), BranchCreationMode.EXISTING, "feature/JIRA-4521");
 
         verify(iterationRepoPort).saveWithVersion(
                 eq("ITER-1"), eq("repo-1"), eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"),
                 eq("feature/JIRA-4521"), eq("SYSTEM"), any(Instant.class), eq(BranchCreationMode.EXISTING));
+        verify(gitBranchPort).getBranchStatus(repo.getCloneUrl(), null, "feature/JIRA-4521");
+        verifyNoMoreInteractions(gitBranchPort);
     }
 
     @Test
@@ -547,7 +627,7 @@ class IterationAppServiceTest {
         when(codeRepositoryPort.findById(RepoId.of("repo-1"))).thenReturn(Optional.of(repo));
         when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
         when(gitBranchPort.getBranchStatus(repo.getCloneUrl(), null, "feature/nonexistent"))
-                .thenReturn(GitBranchPort.BranchStatus.missing());
+                .thenReturn(GitBranchPort.BranchStatus.missing("17"));
 
         assertThatThrownBy(() -> iterationAppService.addRepos(
                 "ITER-1", Set.of("repo-1"), BranchCreationMode.EXISTING, "feature/nonexistent"))
@@ -559,8 +639,8 @@ class IterationAppServiceTest {
     }
 
     @Test
-    @DisplayName("create 带 repoConfigs 时为每个仓库调用 setupRepoForIteration")
-    void shouldCallSetupForEachRepoWhenCreateWithRepoConfigs() {
+    @DisplayName("create 部分配置保留 NAMED，未配置仓库初始化为 AUTO，零 Git 调用")
+    void shouldInitializeEachRepoConfigurationWithoutGitWhenCreatingIteration() {
         CodeRepository repo1 = createRepo("repo-1", "git@gitlab.com:test/repo1.git");
         CodeRepository repo2 = createRepo("repo-2", "git@gitlab.com:test/repo2.git");
         Group group = Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L);
@@ -572,22 +652,27 @@ class IterationAppServiceTest {
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
         when(branchRuleUseCase.isCompliant(anyString(), any(), any())).thenReturn(true);
-        when(gitBranchAdapterFactory.getAdapter(any())).thenReturn(gitBranchPort);
-        when(gitBranchPort.createBranch(anyString(), any(), anyString(), anyString())).thenReturn(true);
+        lenient().when(gitBranchAdapterFactory.getAdapter(any())).thenReturn(gitBranchPort);
 
         List<IterationAppService.RepoBranchConfig> configs = List.of(
-                new IterationAppService.RepoBranchConfig("repo-1", BranchCreationMode.AUTO, null),
                 new IterationAppService.RepoBranchConfig("repo-2", BranchCreationMode.NAMED, "feature/custom-fix")
         );
-        iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", Set.of("repo-1", "repo-2"), configs);
+        Iteration created = iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", Set.of("repo-1", "repo-2"), configs);
 
-        verify(iterationRepoPort, times(2)).saveWithVersion(anyString(), anyString(),
-                anyString(), anyString(), anyString(), anyString(), anyString(), any(Instant.class), any());
+        assertThat(created.getRepos()).containsExactlyInAnyOrder(RepoId.of("repo-1"), RepoId.of("repo-2"));
+        verify(iterationRepoPort).saveWithVersion(eq(created.getId().value()), eq("repo-1"),
+                eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"), eq("feature/" + created.getId().value()),
+                eq("SYSTEM"), eq(now), eq(BranchCreationMode.AUTO));
+        verify(iterationRepoPort).saveWithVersion(eq(created.getId().value()), eq("repo-2"),
+                eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"), eq("feature/custom-fix"),
+                eq("SYSTEM"), eq(now), eq(BranchCreationMode.NAMED));
+        verify(iterationPort).save(created);
+        verifyNoInteractions(gitBranchAdapterFactory, gitBranchPort);
     }
 
     @Test
-    @DisplayName("create 无 repoConfigs 时默认 AUTO 模式")
-    void shouldDefaultToAutoWhenNoRepoConfigs() {
+    @DisplayName("create 无 repoConfigs 时只保存 AUTO 分支规划")
+    void shouldDefaultToAutoConfigurationWithoutGitWhenCreatingIteration() {
         CodeRepository repo = createRepo("repo-1", "git@gitlab.com:test/repo.git");
         Group group = Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, Instant.now(), Instant.now(), 0L);
         when(groupPort.findByCode("G001")).thenReturn(Optional.of(group));
@@ -597,14 +682,17 @@ class IterationAppServiceTest {
         when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
         when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
         when(branchRuleUseCase.isCompliant(anyString(), any(), any())).thenReturn(true);
-        when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
-        when(gitBranchPort.createBranch(eq(repo.getCloneUrl()), any(), anyString(), eq("master"))).thenReturn(true);
+        lenient().when(gitBranchAdapterFactory.getAdapter(repo.getGitProvider())).thenReturn(gitBranchPort);
 
-        iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", Set.of("repo-1"), null);
+        Iteration created = iterationAppService.create("Iter", "Desc", LocalDate.now(), "G001", Set.of("repo-1"), null);
 
         ArgumentCaptor<String> branchCaptor = ArgumentCaptor.forClass(String.class);
-        verify(gitBranchPort).createBranch(eq(repo.getCloneUrl()), any(), branchCaptor.capture(), eq("master"));
-        assertThat(branchCaptor.getValue()).startsWith("feature/ITER-");
+        verify(iterationRepoPort).saveWithVersion(eq(created.getId().value()), eq("repo-1"),
+                eq("1.0.0"), eq("1.0.1-SNAPSHOT"), eq("1.0.1"), branchCaptor.capture(),
+                eq("SYSTEM"), eq(now), eq(BranchCreationMode.AUTO));
+        assertThat(branchCaptor.getValue()).isEqualTo("feature/" + created.getId().value());
+        verify(iterationPort).save(created);
+        verifyNoInteractions(gitBranchAdapterFactory, gitBranchPort);
     }
 
     @Test
@@ -682,6 +770,133 @@ class IterationAppServiceTest {
                 );
         verify(codeRepositoryPort, never()).findById(RepoId.of("repo-01"));
         verify(iterationRepoPort, never()).getVersionInfo("ITER-1", "repo-01");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"G001", "OTHER"})
+    @DisplayName("create 拒绝 repoIds 之外的同组或跨组分支配置")
+    void shouldRejectUndeclaredRepoConfigurationBeforeCreatingIteration(String extraGroup) {
+        stubConfigurationGroup();
+        CodeRepository selected = createRepo("repo-1", "git@gitlab.com:test/selected.git");
+        CodeRepository extra = CodeRepository.rehydrate(RepoId.of("repo-extra"), "Extra",
+                "git@gitlab.com:test/extra.git", "master", extraGroup, RepoType.SERVICE,
+                false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+        when(codeRepositoryPort.findById(selected.getId())).thenReturn(Optional.of(selected));
+        lenient().when(codeRepositoryPort.findById(extra.getId())).thenReturn(Optional.of(extra));
+
+        assertThatThrownBy(() -> iterationAppService.create("Iter", "Desc", null, "G001",
+                Set.of("repo-1"), List.of(new IterationAppService.RepoBranchConfig(
+                        "repo-extra", BranchCreationMode.AUTO, null))))
+                .isInstanceOf(ValidationException.class);
+
+        verify(iterationPort, never()).save(any());
+        verify(codeRepositoryPort, never()).findById(extra.getId());
+        verifyNoInteractions(iterationRepoPort, gitBranchAdapterFactory, gitBranchPort);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    @DisplayName("create 拒绝重复仓库配置，不按相同或不同模式静默覆盖")
+    void shouldRejectDuplicateRepoConfigurationsBeforeCreatingIteration(boolean conflictingMode) {
+        stubConfigurationGroup();
+        CodeRepository repo = createRepo("repo-1", "git@gitlab.com:test/repo.git");
+        when(codeRepositoryPort.findById(repo.getId())).thenReturn(Optional.of(repo));
+        var first = new IterationAppService.RepoBranchConfig("repo-1", BranchCreationMode.AUTO, null);
+        var second = conflictingMode
+                ? new IterationAppService.RepoBranchConfig("repo-1", BranchCreationMode.NAMED, "feature/custom")
+                : first;
+
+        assertThatThrownBy(() -> iterationAppService.create("Iter", "Desc", null, "G001",
+                Set.of("repo-1"), List.of(first, second))).isInstanceOf(ValidationException.class);
+
+        verify(iterationPort, never()).save(any());
+        verifyNoInteractions(iterationRepoPort, gitBranchAdapterFactory, gitBranchPort);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"G001", "OTHER"})
+    @DisplayName("update 拒绝完整目标仓库集合之外的分支配置")
+    void shouldRejectUndeclaredRepoConfigurationBeforeUpdatingIteration(String extraGroup) {
+        stubConfigurationGroup();
+        Iteration existing = Iteration.rehydrate(IterationKey.of("ITER-1"), "Iter", "Desc", null,
+                "G001", Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
+        CodeRepository selected = createRepo("repo-1", "git@gitlab.com:test/selected.git");
+        CodeRepository extra = CodeRepository.rehydrate(RepoId.of("repo-extra"), "Extra",
+                "git@gitlab.com:test/extra.git", "master", extraGroup, RepoType.SERVICE,
+                false, 0, 0, 0, 0, 0, 0, 0, null, now, now, 0L);
+        when(iterationPort.findByKey(existing.getId())).thenReturn(Optional.of(existing));
+        when(codeRepositoryPort.findById(selected.getId())).thenReturn(Optional.of(selected));
+        lenient().when(codeRepositoryPort.findById(extra.getId())).thenReturn(Optional.of(extra));
+
+        assertThatThrownBy(() -> iterationAppService.update("ITER-1", "Updated", "Desc", null, "G001",
+                Set.of("repo-1"), List.of(new IterationAppService.RepoBranchConfig(
+                        "repo-extra", BranchCreationMode.NAMED, "feature/extra"))))
+                .isInstanceOf(ValidationException.class);
+
+        verify(iterationPort, never()).save(any());
+        verify(codeRepositoryPort, never()).findById(extra.getId());
+        verifyNoInteractions(iterationRepoPort, gitBranchAdapterFactory, gitBranchPort);
+    }
+
+    @Test
+    @DisplayName("update 对已有仓库的重复配置也在筛选新增仓库前拒绝")
+    void shouldRejectDuplicateConfigurationForAnAlreadyBoundRepository() {
+        stubConfigurationGroup();
+        Iteration existing = Iteration.rehydrate(IterationKey.of("ITER-1"), "Iter", "Desc", null,
+                "G001", Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
+        CodeRepository repo = createRepo("repo-1", "git@gitlab.com:test/repo.git");
+        when(iterationPort.findByKey(existing.getId())).thenReturn(Optional.of(existing));
+        when(codeRepositoryPort.findById(repo.getId())).thenReturn(Optional.of(repo));
+        var repeated = new IterationAppService.RepoBranchConfig("repo-1", BranchCreationMode.NAMED, "feature/recorded");
+
+        assertThatThrownBy(() -> iterationAppService.update("ITER-1", "Updated", "Desc", null, "G001",
+                Set.of("repo-1"), List.of(repeated, repeated))).isInstanceOf(ValidationException.class);
+
+        verify(iterationPort, never()).save(any());
+        verifyNoInteractions(iterationRepoPort, gitBranchAdapterFactory, gitBranchPort);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"ALL", "EXISTING_ONLY", "OMITTED"})
+    @DisplayName("update 接收全量或部分配置，仅初始化新增仓库，缺省配置为 AUTO")
+    void shouldPreserveExistingMappingAndDefaultOnlyNewUnconfiguredRepositories(String configuration) {
+        stubConfigurationGroup();
+        Iteration existing = Iteration.rehydrate(IterationKey.of("ITER-1"), "Iter", "Desc", null,
+                "G001", Set.of(RepoId.of("repo-1")), IterationStatus.ACTIVE, now, now);
+        CodeRepository retained = createRepo("repo-1", "git@gitlab.com:test/retained.git");
+        CodeRepository added = createRepo("repo-2", "git@gitlab.com:test/added.git");
+        when(iterationPort.findByKey(existing.getId())).thenReturn(Optional.of(existing));
+        when(codeRepositoryPort.findById(retained.getId())).thenReturn(Optional.of(retained));
+        when(codeRepositoryPort.findById(added.getId())).thenReturn(Optional.of(added));
+        when(codeRepositoryPort.getInitialVersion("repo-2")).thenReturn(Optional.of("1.0.0"));
+        when(versionDeriverUseCase.deriveDevVersion("1.0.0")).thenReturn("1.0.1-SNAPSHOT");
+        when(versionDeriverUseCase.deriveTargetVersion("1.0.1-SNAPSHOT")).thenReturn("1.0.1");
+        var retainedConfig = new IterationAppService.RepoBranchConfig(
+                "repo-1", BranchCreationMode.EXISTING, "feature/recorded");
+        List<IterationAppService.RepoBranchConfig> configs = switch (configuration) {
+            case "ALL" -> List.of(retainedConfig, new IterationAppService.RepoBranchConfig(
+                    "repo-2", BranchCreationMode.NAMED, "feature/new-config"));
+            case "EXISTING_ONLY" -> List.of(retainedConfig);
+            default -> null;
+        };
+
+        Iteration updated = iterationAppService.update("ITER-1", "Updated", "Desc", null, "G001",
+                Set.of("repo-1", "repo-2"), configs);
+
+        boolean named = configuration.equals("ALL");
+        assertThat(updated.getRepos()).containsExactlyInAnyOrder(retained.getId(), added.getId());
+        verify(iterationRepoPort).saveWithVersion(eq("ITER-1"), eq("repo-2"), eq("1.0.0"),
+                eq("1.0.1-SNAPSHOT"), eq("1.0.1"), eq(named ? "feature/new-config" : "feature/ITER-1"),
+                eq("SYSTEM"), eq(now), eq(named ? BranchCreationMode.NAMED : BranchCreationMode.AUTO));
+        verifyNoMoreInteractions(iterationRepoPort);
+        verify(iterationPort).save(updated);
+        verifyNoInteractions(gitBranchAdapterFactory, gitBranchPort);
+    }
+
+    private void stubConfigurationGroup() {
+        when(groupPort.findByCode("G001")).thenReturn(Optional.of(
+                Group.rehydrate(GroupId.of("G001"), "Group", "G001", null, now, now, 0L)));
+        when(groupPort.countChildren("G001")).thenReturn(0L);
     }
 
     // ==== 辅助方法 ====

@@ -83,7 +83,7 @@ class ConflictDetectionAppServiceTest {
                 .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.1.0", null)));
         when(versionDeriverUseCase.compareVersions("1.0.0", "1.1.0")).thenReturn(0);
         when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.missing());
+                .thenReturn(GitBranchPort.BranchStatus.missing("17"));
 
         // When
         ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
@@ -103,7 +103,7 @@ class ConflictDetectionAppServiceTest {
                 .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.2.0-SNAPSHOT", null)));
         when(versionDeriverUseCase.compareVersions("1.1.0-SNAPSHOT", "1.2.0-SNAPSHOT")).thenReturn(-1);
         when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.missing());
+                .thenReturn(GitBranchPort.BranchStatus.missing("17"));
 
         ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
 
@@ -122,7 +122,7 @@ class ConflictDetectionAppServiceTest {
                 .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0-SNAPSHOT", null)));
         when(versionDeriverUseCase.compareVersions("1.1.0-SNAPSHOT", "1.0.0-SNAPSHOT")).thenReturn(1);
         when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.missing());
+                .thenReturn(GitBranchPort.BranchStatus.missing("17"));
 
         ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
 
@@ -141,7 +141,7 @@ class ConflictDetectionAppServiceTest {
         when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
                 .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0", null)));
         when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
+                .thenReturn(GitBranchPort.BranchStatus.present("17", "abc123"));
         when(gitBranchPort.checkMergeability(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(GitBranchPort.MergeabilityResult.mergeable());
         when(branchRuleUseCase.isCompliant("feature/" + ITERATION_KEY, "default", "R001")).thenReturn(false);
@@ -165,7 +165,7 @@ class ConflictDetectionAppServiceTest {
         when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
                 .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0", null)));
         when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
+                .thenReturn(GitBranchPort.BranchStatus.present("17", "abc123"));
         when(gitBranchPort.checkMergeability(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(GitBranchPort.MergeabilityResult.mergeable());
 
@@ -188,7 +188,7 @@ class ConflictDetectionAppServiceTest {
 
         // feature 和 release 分支都存在
         when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.present("abc"));
+                .thenReturn(GitBranchPort.BranchStatus.present("17", "abc"));
 
         // checkMergeability 返回冲突
         when(gitBranchPort.checkMergeability(anyString(), anyString(), anyString(), anyString()))
@@ -245,7 +245,7 @@ class ConflictDetectionAppServiceTest {
         when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
                 .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0", null)));
         when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.present("abc"));
+                .thenReturn(GitBranchPort.BranchStatus.present("17", "abc"));
         when(gitBranchPort.checkMergeability(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(GitBranchPort.MergeabilityResult.permissionDenied("403 Forbidden"));
 
@@ -265,7 +265,7 @@ class ConflictDetectionAppServiceTest {
         when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
                 .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0", null)));
         when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.present("abc"));
+                .thenReturn(GitBranchPort.BranchStatus.present("17", "abc"));
         when(gitBranchPort.checkMergeability(anyString(), anyString(), anyString(), anyString()))
                 .thenThrow(new RuntimeException("Connection refused"));
 
@@ -286,7 +286,7 @@ class ConflictDetectionAppServiceTest {
         when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
                 .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0", null)));
         when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.missing());
+                .thenReturn(GitBranchPort.BranchStatus.missing("17"));
 
         // When
         ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
@@ -304,7 +304,7 @@ class ConflictDetectionAppServiceTest {
         when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
                 .thenThrow(new RuntimeException("Invalid parameter: cloneUrl"));
         when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.missing());
+                .thenReturn(GitBranchPort.BranchStatus.missing("17"));
 
         // When
         ConflictReport report = service.checkWindowConflicts(WINDOW_ID);
@@ -325,7 +325,7 @@ class ConflictDetectionAppServiceTest {
         when(versionExtractorUseCase.extractVersion(anyString(), anyString()))
                 .thenReturn(Optional.of(new VersionExtractorUseCase.VersionInfo("1.0.0", null)));
         when(gitBranchPort.getBranchStatus(anyString(), anyString(), anyString()))
-                .thenReturn(GitBranchPort.BranchStatus.missing());
+                .thenReturn(GitBranchPort.BranchStatus.missing("17"));
 
         // When
         ConflictReport report = service.checkWindowConflicts(WINDOW_ID);

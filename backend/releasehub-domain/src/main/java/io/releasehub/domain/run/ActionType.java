@@ -10,5 +10,9 @@ public enum ActionType {
     ARCHIVE_BRANCH,
     MERGE_TO_MASTER,
     CREATE_TAG,
-    TRIGGER_CI
+    TRIGGER_CI;
+
+    public static java.util.List<ActionType> orchestrationSequence() {
+        return java.util.List.of(ENSURE_FEATURE, ENSURE_RELEASE, ENSURE_MR, TRY_MERGE);
+    }
 }

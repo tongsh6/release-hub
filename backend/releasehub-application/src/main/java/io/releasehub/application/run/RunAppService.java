@@ -1,6 +1,7 @@
 package io.releasehub.application.run;
 
 import io.releasehub.application.conflict.ConflictDetectionAppService;
+import io.releasehub.application.gitoperation.GitOperationContext;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
 import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
@@ -36,7 +37,6 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @Slf4j
 @Service
@@ -60,91 +60,191 @@ public class RunAppService {
     private static final String META_VERSION_TARGET_VERSION = "versionUpdate.targetVersion";
     private static final String META_VERSION_POM_PATH = "versionUpdate.pomPath";
     private static final String META_VERSION_GRADLE_PROPERTIES_PATH = "versionUpdate.gradlePropertiesPath";
-    private static final String META_RETRY_SOURCE_RUN_ID = "retry.sourceRunId";
-    private static final String META_RETRY_SOURCE_ITEM_ID = "retry.sourceItemId";
 
     private String deriveReleaseBranch(String windowKey) {
         return io.releasehub.application.window.ReleaseBranchNaming.resolve(windowKey, settingsPort.getNaming().orElse(null));
     }
 
-    public Run startOrchestrate(String windowId, List<String> repoIds, List<String> iterationKeys, boolean failFast, String operator) {
-        Run run = runPlanAppService.admit(windowId, repoIds, iterationKeys, failFast, operator);
-        return executeOrchestration(run, failFast);
+    public Run startOrchestrate(String windowId, List<String> repoIds, List<String> iterationKeys,
+                                boolean failFast, String operator, String key) {
+        var admission = runPlanAppService.admit(windowId, repoIds, iterationKeys, failFast, operator, key);
+        return admission.created() ? executeOrchestration(admission.runId()) : loadRun(admission.runId());
     }
 
-    private Run executeOrchestration(Run run, boolean failFast) {
-        Map<String, String> blockedRepositories = new java.util.HashMap<>();
-        int executedOrder = 0;
-        try (var operationScope = io.releasehub.application.gitoperation.GitOperationContext.withRun(run.getId().value())) {
-            for (RunItem item : run.getItems().stream().sorted(Comparator.comparingInt(RunItem::getPlannedOrder)).toList()) {
-                String blockedBy = blockedRepositories.get(item.getRepo().value());
-                if (blockedBy != null) {
-                    item.putMetadata("blockedBy.itemId", blockedBy);
-                    item.addStep(new RunStep(ActionType.TRY_MERGE, RunItemResult.SKIPPED_DUE_TO_BLOCK,
-                            clock.instant(), clock.instant(), "同仓库前序执行项阻塞: " + blockedBy));
-                    item.finishWith(RunItemResult.SKIPPED_DUE_TO_BLOCK, clock.instant());
-                    runPort.save(run);
-                    continue;
+    /** 请求线程仅驱动已受理的持久任务；进度和仓库队列资格均来自存储。 */
+    private Run executeOrchestration(String runId) {
+        while (true) {
+            var next = runPort.claimNextTask(runId);
+            if (next.isEmpty()) break;
+            var claim = next.get();
+            try (var scope = GitOperationContext.withTask(claim)) {
+                TaskResult result = executeTask(claim);
+                Map<String, String> updates = new java.util.LinkedHashMap<>(result.metadata());
+                // 即使分支已存在、没有 HTTP 写入，也必须把首次确认的项目身份交给后继任务。
+                if ((claim.actionType() == ActionType.ENSURE_FEATURE || claim.actionType() == ActionType.ENSURE_RELEASE)
+                        && GitOperationContext.expectedProjectId() != null) {
+                    updates.put("git.projectId", GitOperationContext.expectedProjectId());
                 }
-                item.setExecutedOrder(++executedOrder);
-                runPort.save(run);
-                executeOrchestrationItem(run, item);
-                if (item.getFinalResult() == RunItemResult.UNKNOWN
-                        || (failFast && item.getFinalResult().isFailure())) {
-                    blockedRepositories.put(item.getRepo().value(), item.getId().value());
-                }
+                // 业务投影失败必须向外传播；不能被 Git 异常处理转换后派发后继。
+                runPort.completeTask(claim, result.step(), updates);
             }
-            run.finish(clock.instant());
-            runPort.save(run);
-            return run;
         }
+        return loadRun(runId);
     }
 
-    private void executeOrchestrationItem(Run run, RunItem item) {
+    private Run loadRun(String runId) {
+        return runPort.findById(runId).orElseThrow(() ->
+                BusinessException.of(io.releasehub.common.exception.ErrorCode.RUN_NOT_FOUND, runId));
+    }
+
+    private TaskResult executeTask(RunPort.TaskClaim claim) {
+        var metadata = claim.metadata();
+        String source = metadata.get("plan.featureBranch");
+        String target = metadata.get("plan.releaseBranch");
+        String base = metadata.get("plan.defaultBranch");
+        String featureMode = metadata.get("plan.featureBranchMode");
         CodeRepository repo;
         GitBranchPort git;
-        String source = item.getMetadata().get("plan.featureBranch");
-        String target = item.getMetadata().get("plan.releaseBranch");
-        String base = item.getMetadata().get("plan.defaultBranch");
-        String featureMode = item.getMetadata().get("plan.featureBranchMode");
         try {
-            repo = codeRepositoryPort.findById(item.getRepo()).orElseThrow(() -> invalidRunScope("计划仓库已不存在"));
+            repo = codeRepositoryPort.findById(claim.repo()).orElseThrow(() -> invalidRunScope("计划仓库已不存在"));
             if (repo.getGitProvider() != io.releasehub.domain.repo.GitProvider.GITLAB
-                    || !java.util.Objects.equals(item.getMetadata().get("plan.cloneUrl"), repo.getCloneUrl())
-                    || !java.util.Objects.equals(item.getMetadata().get("plan.gitProvider"), repo.getGitProvider().name())
-                    || isBlank(source) || isBlank(target) || isBlank(base) || isBlank(featureMode)
-                    || !java.util.Set.of("AUTO", "NAMED", "EXISTING").contains(featureMode)) {
+                    || !java.util.Objects.equals(metadata.get("plan.cloneUrl"), repo.getCloneUrl())
+                    || !java.util.Objects.equals(metadata.get("plan.gitProvider"), repo.getGitProvider().name())
+                    || isBlank(source) || isBlank(target) || isBlank(base)
+                    || !java.util.Set.of("AUTO", "NAMED", "EXISTING").contains(featureMode == null ? "" : featureMode)) {
                 throw invalidRunScope("仓库映射或计划前置条件已改变");
             }
             git = gitBranchAdapterFactory.getAdapter(repo.getGitProvider());
         } catch (RuntimeException error) {
-            saveFailedStep(run, item, ActionType.ENSURE_FEATURE, error);
-            return;
+            return taskResult(claim, failedResult(error), safeFailureMessage(error), Map.of("git.blockReason", "UNKNOWN"));
         }
-        if (!saveBranchStep(run, item, ensureBranch(repo, git, source, base, ActionType.ENSURE_FEATURE,
-                !"EXISTING".equals(featureMode)))) return;
-        if (!saveBranchStep(run, item, ensureBranch(repo, git, target, base, ActionType.ENSURE_RELEASE, true))) return;
-        String windowId = item.getMetadata().get("plan.windowId");
-        windowIterationPort.updateReleaseBranch(windowId, item.getIterationKey().value(), target, clock.instant());
 
-        Instant started = clock.instant();
-        GitBranchPort.MergeResult result = executeMerge(repo, git, source, target);
-        GitBranchPort.MrEvidence evidence = result.mrEvidence();
-        recordMergeEvidence(item, result);
-        RunItemResult outcome = mergeOutcome(result);
-        boolean hasMergeRequest = evidence != null && !isBlank(evidence.iid());
-        RunItemResult ensuredMr = hasMergeRequest
-                ? (evidence.disposition() == GitBranchPort.MrDisposition.CREATED ? RunItemResult.CREATED : RunItemResult.MR_REUSED)
-                : outcome == RunItemResult.ALREADY_MERGED ? RunItemResult.ALREADY_MERGED : outcome;
-        String message = result.detail() == null ? source + " → " + target : result.detail();
-        item.addStep(new RunStep(ActionType.ENSURE_MR, ensuredMr, started, clock.instant(), message));
-        if (hasMergeRequest || outcome == RunItemResult.ALREADY_MERGED) {
-            item.addStep(new RunStep(ActionType.TRY_MERGE, outcome, started, clock.instant(), message));
+        return switch (claim.actionType()) {
+            case ENSURE_FEATURE -> new TaskResult(
+                    ensureBranch(repo, git, source, base, claim.actionType(), !"EXISTING".equals(featureMode)), Map.of());
+            case ENSURE_RELEASE -> {
+                // 前置成功也可能来自 retry 的继承事实；分支已被外部删除时禁止重建它。
+                try {
+                    var feature = readTaskBranch(repo, git, source);
+                    if (feature == null || !feature.exists() || !isCommitSha(feature.latestCommit())) {
+                        yield taskResult(claim, RunItemResult.FAILED, "前置 feature 分支不存在或缺少提交证据", Map.of());
+                    }
+                    yield new TaskResult(ensureBranch(repo, git, target, base, claim.actionType(), true), Map.of());
+                } catch (RuntimeException error) {
+                    yield taskResult(claim, failedResult(error), safeFailureMessage(error), Map.of("git.blockReason", "UNKNOWN"));
+                }
+            }
+            case ENSURE_MR -> ensureTaskMergeRequest(claim, repo, git, source, target);
+            case TRY_MERGE -> tryTaskMergeRequest(claim, repo, git, source, target);
+            default -> throw invalidRunScope("任务动作不属于窗口编排协议");
+        };
+    }
+
+    private TaskResult ensureTaskMergeRequest(RunPort.TaskClaim claim, CodeRepository repo,
+                                               GitBranchPort git, String source, String target) {
+        try {
+            var result = git.ensureMergeRequest(repo.getCloneUrl(), repo.getGitAccessToken(), source, target,
+                    "Merge " + source + " into " + target);
+            if (result == null) return taskResult(claim, RunItemResult.UNKNOWN, "缺少 MR 受理结果", Map.of("git.blockReason", "UNKNOWN"));
+            var evidence = result.evidence();
+            if (evidence != null && evidence.projectId() != null) {
+                // MR 响应可以补足证据，不能把前置读取已确认的仓库改向另一个项目。
+                GitOperationContext.bindProjectId(evidence.projectId());
+            }
+            var facts = taskMergeEvidence(evidence, null);
+            RunItemResult outcome;
+            if (result.outcome() == io.releasehub.application.gitoperation.GitWriteResult.Outcome.UNKNOWN) {
+                outcome = RunItemResult.UNKNOWN;
+            } else if (result.outcome() == io.releasehub.application.gitoperation.GitWriteResult.Outcome.REJECTED) {
+                outcome = evidence != null && evidence.blockReason() != null
+                        && evidence.blockReason() != GitBranchPort.MergeBlockReason.UNKNOWN
+                        ? RunItemResult.MERGE_BLOCKED : RunItemResult.FAILED;
+            } else if (!hasConfirmedMergeEvidence(evidence, source, target)) {
+                outcome = RunItemResult.UNKNOWN;
+            } else {
+                outcome = switch (evidence.disposition()) {
+                    case CREATED -> RunItemResult.CREATED;
+                    case MR_REUSED -> RunItemResult.MR_REUSED;
+                    case ALREADY_MERGED -> RunItemResult.ALREADY_MERGED;
+                };
+            }
+            if (outcome == RunItemResult.UNKNOWN) facts.put("git.blockReason", "UNKNOWN");
+            return taskResult(claim, outcome, result.reason() == null ? source + " → " + target : result.reason(), facts);
+        } catch (RuntimeException error) {
+            // 窄动作可能已发出创建请求，异常不能证明远端未写入。
+            return taskResult(claim, RunItemResult.UNKNOWN, safeFailureMessage(error), Map.of("git.blockReason", "UNKNOWN"));
         }
-        item.finishWith(outcome, clock.instant());
-        runPort.save(run);
-        if (outcome == RunItemResult.MERGED || outcome == RunItemResult.ALREADY_MERGED) {
-            windowIterationPort.updateLastMergeAt(windowId, item.getIterationKey().value(), clock.instant());
+    }
+
+    private TaskResult tryTaskMergeRequest(RunPort.TaskClaim claim, CodeRepository repo,
+                                            GitBranchPort git, String source, String target) {
+        GitBranchPort.MrEvidence checkpoint;
+        try {
+            var facts = claim.metadata();
+            checkpoint = new GitBranchPort.MrEvidence(facts.get("git.projectId"), facts.get("git.sourceBranch"),
+                    facts.get("git.targetBranch"), facts.get("git.mrIid"), facts.get("git.mrUrl"),
+                    facts.get("git.sourceSha"), facts.get("git.mergeSha"),
+                    GitBranchPort.MrDisposition.valueOf(facts.getOrDefault("git.mrDisposition", "")), null);
+        } catch (IllegalArgumentException error) {
+            return taskResult(claim, RunItemResult.UNKNOWN, "持久 MR 检查点缺少身份或提交证据", Map.of("git.blockReason", "UNKNOWN"));
+        }
+        if (!hasConfirmedMergeEvidence(checkpoint, source, target)) {
+            return taskResult(claim, RunItemResult.UNKNOWN, "持久 MR 检查点不完整", Map.of("git.blockReason", "UNKNOWN"));
+        }
+        try {
+            var result = git.tryMergeRequest(repo.getCloneUrl(), repo.getGitAccessToken(), checkpoint,
+                    "Merge " + source + " into " + target);
+            if (result == null) return taskResult(claim, RunItemResult.UNKNOWN, "缺少合并结果", Map.of("git.blockReason", "UNKNOWN"));
+            if (result.status() == MergeStatus.SUCCESS
+                    && (!hasConfirmedMergeEvidence(result.mrEvidence(), source, target)
+                    || !checkpoint.projectId().equals(result.mrEvidence().projectId())
+                    || !checkpoint.sourceSha().equals(result.mrEvidence().sourceSha())
+                    || !java.util.Objects.equals(checkpoint.iid(), result.mrEvidence().iid()))) {
+                result = GitBranchPort.MergeResult.unknown("合并结果与持久 MR 检查点不一致").withEvidence(checkpoint);
+            }
+            // TRY 拥有合并结果，不能用部分响应覆盖 ENSURE_MR 已封存的身份。
+            Map<String, String> updates = new java.util.LinkedHashMap<>();
+            updates.put("git.requestId", result.remoteRequestId());
+            var evidence = result.mrEvidence();
+            updates.put("git.blockReason", evidence == null || evidence.blockReason() == null
+                    ? (result.status() == MergeStatus.UNKNOWN ? "UNKNOWN" : null) : evidence.blockReason().name());
+            if (result.status() == MergeStatus.SUCCESS) {
+                updates.put("git.mergeSha", evidence.mergeSha());
+                updates.put("git.mrDisposition", evidence.disposition().name());
+            }
+            return taskResult(claim, mergeOutcome(result),
+                    result.detail() == null ? source + " → " + target : result.detail(), updates);
+        } catch (RuntimeException error) {
+            return taskResult(claim, RunItemResult.UNKNOWN, safeFailureMessage(error), Map.of("git.blockReason", "UNKNOWN"));
+        }
+    }
+
+    private TaskResult taskResult(RunPort.TaskClaim claim, RunItemResult result,
+                                  String message, Map<String, String> metadata) {
+        return new TaskResult(new RunStep(claim.actionType(), result, claim.startedAt(), clock.instant(), message), metadata);
+    }
+
+    private Map<String, String> taskMergeEvidence(GitBranchPort.MrEvidence evidence, String requestId) {
+        Map<String, String> metadata = new java.util.LinkedHashMap<>();
+        metadata.put("git.requestId", requestId);
+        metadata.put("git.blockReason", evidence == null || evidence.blockReason() == null ? null : evidence.blockReason().name());
+        if (evidence != null) {
+            if (evidence.projectId() != null) metadata.put("git.projectId", evidence.projectId());
+            metadata.put("git.sourceBranch", evidence.sourceBranch());
+            metadata.put("git.targetBranch", evidence.targetBranch());
+            metadata.put("git.mrIid", evidence.iid());
+            metadata.put("git.mrUrl", evidence.url());
+            metadata.put("git.sourceSha", evidence.sourceSha());
+            metadata.put("git.mergeSha", evidence.mergeSha());
+            metadata.put("git.mrDisposition", evidence.disposition() == null ? null : evidence.disposition().name());
+        }
+        return metadata;
+    }
+
+    private record TaskResult(RunStep step, Map<String, String> metadata) {
+        private TaskResult {
+            // null patch 值表示删除过期字段，不能用会拒绝 null 的 Map.copyOf。
+            metadata = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(metadata));
         }
     }
 
@@ -179,11 +279,17 @@ public class RunAppService {
     }
 
     private boolean hasConfirmedMergeEvidence(GitBranchPort.MrEvidence evidence, String source, String target) {
-        if (evidence == null || isBlank(evidence.projectId()) || !isCommitSha(evidence.sourceSha())
-                || !source.equals(evidence.sourceBranch()) || !target.equals(evidence.targetBranch())
-                || evidence.disposition() == null) return false;
-        return evidence.disposition() == GitBranchPort.MrDisposition.ALREADY_MERGED
-                || (!isBlank(evidence.iid()) && !isBlank(evidence.url()));
+        return io.releasehub.application.gitoperation.GitMergeWorkflow.isValidCheckpoint(evidence)
+                && source.equals(evidence.sourceBranch()) && target.equals(evidence.targetBranch());
+    }
+    private GitBranchPort.BranchStatus readTaskBranch(CodeRepository repo, GitBranchPort git, String branch) {
+        var status = git.getBranchStatus(repo.getCloneUrl(), repo.getGitAccessToken(), branch);
+        if (status == null) throw BusinessException.of(io.releasehub.common.exception.ErrorCode.GIT_IDENTITY_UNAVAILABLE);
+        GitOperationContext.bindProjectId(status.projectId());
+        if (status.exists() && !isCommitSha(status.latestCommit())) {
+            throw BusinessException.of(io.releasehub.common.exception.ErrorCode.GIT_IDENTITY_UNAVAILABLE);
+        }
+        return status;
     }
 
     private RunStep ensureBranch(CodeRepository repo, GitBranchPort git, String branch, String base,
@@ -195,7 +301,7 @@ public class RunAppService {
                 throw invalidRunScope("分支名称不符合当前仓库规则: " + branch);
             }
             RunItemResult result;
-            if (git.getBranchStatus(repo.getCloneUrl(), repo.getGitAccessToken(), branch).exists()) {
+            if (readTaskBranch(repo, git, branch).exists()) {
                 result = RunItemResult.ALREADY_EXISTS;
             } else if (!allowCreate) {
                 return new RunStep(action, RunItemResult.FAILED, started, clock.instant(),
@@ -206,7 +312,7 @@ public class RunAppService {
                 // A returned false is a confirmed rejection; a thrown exception carries no such proof.
                 writeAttempted = false;
                 result = created ? RunItemResult.CREATED
-                        : git.getBranchStatus(repo.getCloneUrl(), repo.getGitAccessToken(), branch).exists()
+                        : readTaskBranch(repo, git, branch).exists()
                         ? RunItemResult.ALREADY_EXISTS : RunItemResult.FAILED;
             }
             return new RunStep(action, result, started, clock.instant(), branch);
@@ -216,16 +322,6 @@ public class RunAppService {
         }
     }
 
-    private boolean saveBranchStep(Run run, RunItem item, RunStep step) {
-        item.addStep(step);
-        boolean failed = step.result().isFailure() || step.result() == RunItemResult.UNKNOWN;
-        if (failed) {
-            item.putMetadata("git.blockReason", "UNKNOWN");
-            item.finishWith(step.result(), clock.instant());
-        }
-        runPort.save(run);
-        return !failed;
-    }
 
     private void saveFailedStep(Run run, RunItem item, ActionType action, RuntimeException error) {
         RunItemResult result = failedResult(error);
@@ -266,32 +362,16 @@ public class RunAppService {
         if (evidence.blockReason() != null) item.putMetadata("git.blockReason", evidence.blockReason().name());
     }
 
-    public Run retry(String runId, List<String> items, String operator) {
+    public Run retry(String runId, List<String> items, String operator, String key) {
         Run previous = runPort.findById(runId).orElseThrow(() ->
                 BusinessException.of(io.releasehub.common.exception.ErrorCode.RUN_NOT_FOUND, runId));
-        if (items == null || items.isEmpty() || items.stream().anyMatch(this::isBlank)) {
-            throw invalidRunScope("请选择明确的失败执行项 ID");
+        if (previous.getRunType() != RunType.WINDOW_ORCHESTRATION
+                || previous.getExecutionVersion() != Run.ORCHESTRATION_PROTOCOL_VERSION) {
+            throw BusinessException.of(io.releasehub.common.exception.ErrorCode.RUN_PLAN_NOT_EXECUTABLE);
         }
-        var selectedIds = java.util.Set.copyOf(items);
-        var selected = previous.getItems().stream().filter(item -> selectedIds.contains(item.getId().value())).toList();
-        if (selected.size() != selectedIds.size()) throw invalidRunScope("执行项不属于指定 Run");
-        if (previous.getExecutionStatus() == io.releasehub.domain.run.RunExecutionStatus.PLANNED
-                || previous.getExecutionStatus() == io.releasehub.domain.run.RunExecutionStatus.RUNNING
-                || previous.getExecutionStatus() == io.releasehub.domain.run.RunExecutionStatus.NEEDS_REVIEW
-                || selected.stream().anyMatch(item -> item.getFinalResult() == null || !item.getFinalResult().isFailure())) {
-            throw invalidRunScope("只能重试已确认失败或因阻塞跳过的执行项，未决结果须先核对");
-        }
-        if (previous.getRunType() == RunType.VERSION_UPDATE) {
-            return retryVersionUpdate(previous, items, operator, clock.instant());
-        }
-        if (previous.getRunType() != RunType.WINDOW_ORCHESTRATION) {
-            throw invalidRunScope("该动作尚未具备逐步安全重试条件");
-        }
-        Run run = runPlanAppService.admitRetry(previous, items, operator);
-        boolean failFast = Boolean.parseBoolean(run.getItems().getFirst().getMetadata().get("plan.failFast"));
-        return executeOrchestration(run, failFast);
+        var admission = runPlanAppService.admitRetry(previous, items, operator, key);
+        return admission.created() ? executeOrchestration(admission.runId()) : loadRun(admission.runId());
     }
-
     private BusinessException invalidRunScope(String reason) {
         return BusinessException.of(io.releasehub.common.exception.ErrorCode.RUN_PLAN_INVALID_SCOPE, reason);
     }
@@ -623,100 +703,6 @@ public class RunAppService {
         }
     }
 
-    private Run retryVersionUpdate(Run previous, List<String> items, String operator, Instant now) {
-        Run run = Run.start(RunType.VERSION_UPDATE, operator, now);
-        try (var operationScope = io.releasehub.application.gitoperation.GitOperationContext.withRun(run.getId().value())) {
-
-        for (RunItem prevItem : previous.getItems()) {
-            String key = prevItem.getId().value();
-            if (items.stream().noneMatch(sel -> sel.equals(key))) {
-                continue;
-            }
-            if (prevItem.getFinalResult() != RunItemResult.VERSION_UPDATE_FAILED) {
-                continue;
-            }
-
-            RunItem item = RunItem.createForRepository(prevItem.getWindowKey(), prevItem.getRepo(), prevItem.getPlannedOrder(), now);
-            addRetryTrace(item, previous, prevItem);
-
-            Optional<VersionUpdateRequest> requestOpt = buildVersionUpdateRequest(prevItem);
-            if (requestOpt.isEmpty()) {
-                Instant failedAt = Instant.now(clock);
-                item.addStep(new RunStep(
-                        ActionType.UPDATE_VERSION,
-                        RunItemResult.VERSION_UPDATE_FAILED,
-                        failedAt,
-                        failedAt,
-                        "Missing version update retry metadata"
-                ));
-                item.setExecutedOrder(prevItem.getPlannedOrder());
-                item.finishWith(RunItemResult.VERSION_UPDATE_FAILED, failedAt);
-                run.addItem(item);
-                continue;
-            }
-
-            VersionUpdateRequest request = requestOpt.get();
-            addVersionUpdateMetadata(item, request);
-
-            if (codeRepositoryPort.findById(request.repoId()).isEmpty()) {
-                Instant failedAt = Instant.now(clock);
-                item.addStep(new RunStep(
-                        ActionType.UPDATE_VERSION,
-                        RunItemResult.VERSION_UPDATE_FAILED,
-                        failedAt,
-                        failedAt,
-                        "Repository not found: " + request.repoId().value()
-                ));
-                item.setExecutedOrder(prevItem.getPlannedOrder());
-                item.finishWith(RunItemResult.VERSION_UPDATE_FAILED, failedAt);
-                run.addItem(item);
-                continue;
-            }
-
-            Instant stepStart = Instant.now(clock);
-            VersionUpdateResult result = versionUpdateAppService.updateVersion(request);
-            Instant stepEnd = Instant.now(clock);
-
-            RunItemResult stepResult = result.success()
-                    ? RunItemResult.VERSION_UPDATE_SUCCESS
-                    : RunItemResult.VERSION_UPDATE_FAILED;
-
-            item.addStep(new RunStep(ActionType.UPDATE_VERSION, stepResult, stepStart, stepEnd, buildVersionUpdateStepMessage(result)));
-            item.setExecutedOrder(prevItem.getPlannedOrder());
-            item.finishWith(stepResult, stepEnd);
-            run.addItem(item);
-        }
-
-        run.finish(Instant.now(clock));
-        runPort.save(run);
-        return run;
-        }
-    }
-
-    private Optional<VersionUpdateRequest> buildVersionUpdateRequest(RunItem item) {
-        Map<String, String> metadata = item.getMetadata();
-        try {
-            String buildToolValue = metadata.get(META_VERSION_BUILD_TOOL);
-            String branchName = metadata.get(META_VERSION_BRANCH_NAME);
-            String repoPath = metadata.get(META_VERSION_REPO_PATH);
-            String targetVersion = metadata.get(META_VERSION_TARGET_VERSION);
-            if (isBlank(buildToolValue) || isBlank(branchName) || isBlank(repoPath) || isBlank(targetVersion)) {
-                return Optional.empty();
-            }
-
-            BuildTool buildTool = BuildTool.valueOf(buildToolValue);
-            if (buildTool == BuildTool.MAVEN) {
-                return Optional.of(VersionUpdateRequest.forMaven(item.getRepo(), branchName, repoPath, targetVersion, metadata.get(META_VERSION_POM_PATH)));
-            }
-            if (buildTool == BuildTool.GRADLE) {
-                return Optional.of(VersionUpdateRequest.forGradle(item.getRepo(), branchName, repoPath, targetVersion, metadata.get(META_VERSION_GRADLE_PROPERTIES_PATH)));
-            }
-            return Optional.empty();
-        } catch (IllegalArgumentException ex) {
-            return Optional.empty();
-        }
-    }
-
     private void addVersionUpdateMetadata(RunItem item, VersionUpdateRequest request) {
         item.putMetadata(META_VERSION_BUILD_TOOL, request.buildTool().name());
         item.putMetadata(META_VERSION_BRANCH_NAME, request.branchName());
@@ -724,23 +710,6 @@ public class RunAppService {
         item.putMetadata(META_VERSION_TARGET_VERSION, request.targetVersion());
         item.putMetadata(META_VERSION_POM_PATH, request.pomPath());
         item.putMetadata(META_VERSION_GRADLE_PROPERTIES_PATH, request.gradlePropertiesPath());
-    }
-
-    private void addRetryTrace(RunItem item, Run previous, RunItem prevItem) {
-        item.putMetadata(META_RETRY_SOURCE_RUN_ID, previous.getId().value());
-        item.putMetadata(META_RETRY_SOURCE_ITEM_ID, prevItem.getId().value());
-    }
-
-    private String buildVersionUpdateStepMessage(VersionUpdateResult result) {
-        if (!result.success()) {
-            return result.errorMessage();
-        }
-        String baseMessage = String.format("Version updated from %s to %s. File: %s",
-                result.oldVersion(), result.newVersion(), result.filePath());
-        if (result.diff() != null && !result.diff().isBlank()) {
-            return baseMessage + "\n--- Diff ---\n" + result.diff();
-        }
-        return baseMessage;
     }
 
     private boolean isBlank(String value) {

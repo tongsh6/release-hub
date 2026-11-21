@@ -312,9 +312,9 @@ class ReleaseWindowAppServiceTest {
             GitBranchPort mockAdapter = org.mockito.Mockito.mock(GitBranchPort.class);
             when(gitBranchAdapterFactory.getAdapter(GitProvider.GITLAB)).thenReturn(mockAdapter);
             when(mockAdapter.getBranchStatus(any(), any(), eq("feature/" + iterKey)))
-                    .thenReturn(GitBranchPort.BranchStatus.present("abc123"));
+                    .thenReturn(GitBranchPort.BranchStatus.present("17", "abc123"));
             when(mockAdapter.getBranchStatus(any(), any(), eq("release/" + windowKey)))
-                    .thenReturn(GitBranchPort.BranchStatus.missing());
+                    .thenReturn(GitBranchPort.BranchStatus.missing("17"));
 
             BranchStatusView result = releaseWindowAppService.getBranchStatus(windowId);
 

@@ -21,68 +21,114 @@ public final class GitMergeWorkflow {
         this.pollWait = pollWait;
     }
 
+    /** Cleanup keeps the same policy by composing the two actions without creating another merge path. */
     public MergeResult merge(String source, String target, String message) {
+        var ensured = ensureMergeRequest(source, target, message);
+        if (ensured.outcome() == GitWriteResult.Outcome.APPLIED) return tryMergeRequest(ensured.evidence(), message);
+        if (ensured.outcome() == GitWriteResult.Outcome.UNKNOWN) {
+            return MergeResult.unknown(ensured.reason()).withEvidence(ensured.evidence());
+        }
+        var reason = ensured.evidence() == null ? null : ensured.evidence().blockReason();
+        return MergeResult.blocked(reason == null ? MergeBlockReason.UNKNOWN : reason, ensured.reason())
+                .withEvidence(ensured.evidence());
+    }
+
+    /** APPLIED confirms this ensure action, including read-only reuse; it does not mean the MR was merged. */
+    public GitWriteResult<MrEvidence> ensureMergeRequest(String source, String target, String message) {
         var sourceRead = port.readSource(source);
         var context = evidence(null, source, target, null, null);
         if (!found(sourceRead) || !validSha(sourceRead.evidence().sha())
-                || sourceRead.evidence().projectId() == null) {
-            return readFailure(sourceRead, "SOURCE_REVISION_UNCONFIRMED", context);
+                || !numericId(sourceRead.evidence().projectId())) {
+            return ensureResult(readFailure(sourceRead, "SOURCE_REVISION_UNCONFIRMED", context));
         }
         var revision = sourceRead.evidence();
         context = new MrEvidence(revision.projectId(), source, target, null, null, revision.sha(), null, null, null);
         var opened = port.find(source, target, State.OPENED);
         if (!validList(opened, revision.projectId(), source, target, State.OPENED)) {
-            return readFailure(opened, "MR_LOOKUP_UNCONFIRMED", context);
+            return ensureResult(readFailure(opened, "MR_LOOKUP_UNCONFIRMED", context));
         }
-        if (opened.evidence().size() > 1) return MergeResult.unknown("MULTIPLE_OPEN_MRS").withEvidence(context);
+        if (opened.evidence().size() > 1) {
+            return ensureResult(MergeResult.unknown("MULTIPLE_OPEN_MRS").withEvidence(context));
+        }
         MergeRequest mr = opened.evidence().isEmpty() ? null : opened.evidence().get(0);
         if (mr != null) context = evidence(mr, source, target, MrDisposition.MR_REUSED, null);
 
-        // 历史 merged 状态不能证明 target 未被重置；必须读取当前包含关系。
         var contained = port.contains(target, revision.sha());
-        if (!found(contained)) return readFailure(contained, "TARGET_CONTAINMENT_UNCONFIRMED", context);
+        if (!found(contained)) return ensureResult(readFailure(contained, "TARGET_CONTAINMENT_UNCONFIRMED", context));
         if (Boolean.TRUE.equals(contained.evidence())) {
             var merged = port.find(source, target, State.MERGED);
             if (!validList(merged, revision.projectId(), source, target, State.MERGED)) {
-                return readFailure(merged, "MERGED_MR_LOOKUP_UNCONFIRMED", context);
+                return ensureResult(readFailure(merged, "MERGED_MR_LOOKUP_UNCONFIRMED", context));
             }
             var previous = merged.evidence().stream()
                     .filter(candidate -> revision.sha().equals(candidate.sourceSha())).findFirst().orElse(null);
             boolean exactOpened = mr != null && revision.sha().equals(mr.sourceSha());
-            return MergeResult.success().withEvidence(previous == null
+            var checkpoint = previous == null
                     ? new MrEvidence(revision.projectId(), source, target, exactOpened ? mr.id() : null,
                             exactOpened ? mr.url() : null, revision.sha(), null, MrDisposition.ALREADY_MERGED, null)
-                    : evidence(previous, source, target, MrDisposition.ALREADY_MERGED, null));
+                    : evidence(previous, source, target, MrDisposition.ALREADY_MERGED, null);
+            return isValidCheckpoint(checkpoint) ? GitWriteResult.applied(checkpoint)
+                    : ensureResult(MergeResult.unknown("MR_CHECKPOINT_UNCONFIRMED").withEvidence(checkpoint));
         }
 
         MrDisposition disposition;
         if (mr == null) {
-            var created = port.create(source, target, message);
-            if (created.outcome() != GitWriteResult.Outcome.APPLIED) {
-                return failedWrite(created, context);
-            }
+            var created = port.create(source, target, revision.sha(), message);
+            if (created == null) return ensureResult(MergeResult.unknown("CREATE_RESULT_UNCONFIRMED").withEvidence(context));
+            if (created.outcome() != GitWriteResult.Outcome.APPLIED) return ensureResult(failedWrite(created, context));
             mr = created.evidence();
             disposition = MrDisposition.CREATED;
         } else {
             disposition = MrDisposition.MR_REUSED;
             var observed = port.read(mr.id());
-            if (!found(observed)) return readFailure(observed, "MR_READ_UNCONFIRMED", context);
+            if (!found(observed)) return ensureResult(readFailure(observed, "MR_READ_UNCONFIRMED", context));
             if (!Objects.equals(mr.id(), observed.evidence().id())) {
-                return MergeResult.unknown("MR_IDENTITY_CHANGED").withEvidence(context);
+                return ensureResult(MergeResult.unknown("MR_IDENTITY_CHANGED").withEvidence(context));
             }
             mr = observed.evidence();
         }
         if (!matches(mr, revision.projectId(), source, target)) {
-            return MergeResult.unknown("MR_IDENTITY_UNCONFIRMED").withEvidence(context);
+            return ensureResult(MergeResult.unknown("MR_IDENTITY_UNCONFIRMED").withEvidence(context));
         }
-        mr = awaitReadiness(mr);
         context = evidence(mr, source, target, disposition, null);
         if (!revision.sha().equals(mr.sourceSha())) {
-            return MergeResult.unknown("SOURCE_REVISION_CHANGED").withEvidence(context);
+            return ensureResult(MergeResult.unknown("SOURCE_REVISION_CHANGED").withEvidence(context));
         }
-        if (mr.state() != State.OPENED) {
-            return MergeResult.unknown("MR_STATE_CHANGED").withEvidence(context);
+        if (mr.state() != State.OPENED || !isValidCheckpoint(context)) {
+            return ensureResult(MergeResult.unknown("MR_STATE_UNCONFIRMED").withEvidence(context));
         }
+        // Readiness is checked by TRY_MERGE after this checkpoint has been durably committed.
+        return GitWriteResult.applied(context);
+    }
+
+    public MergeResult tryMergeRequest(MrEvidence checkpoint, String message) {
+        if (!isValidCheckpoint(checkpoint)) return MergeResult.unknown("MR_CHECKPOINT_INVALID").withEvidence(checkpoint);
+        var contained = port.contains(checkpoint.targetBranch(), checkpoint.sourceSha());
+        if (!found(contained)) return readFailure(contained, "TARGET_CONTAINMENT_UNCONFIRMED", checkpoint);
+        if (Boolean.TRUE.equals(contained.evidence())) return alreadyMerged(checkpoint);
+        if (checkpoint.disposition() == MrDisposition.ALREADY_MERGED) {
+            return MergeResult.unknown("TARGET_CONTAINMENT_CHANGED").withEvidence(checkpoint);
+        }
+
+        var observed = port.read(checkpoint.iid());
+        if (!found(observed)) return readFailure(observed, "MR_READ_UNCONFIRMED", checkpoint);
+        var mr = observed.evidence();
+        if (!matchesCheckpoint(mr, checkpoint)) return MergeResult.unknown("MR_CHECKPOINT_CHANGED").withEvidence(checkpoint);
+        if (mr.state() == State.MERGED) {
+            var current = port.contains(checkpoint.targetBranch(), checkpoint.sourceSha());
+            if (!found(current)) return readFailure(current, "TARGET_CONTAINMENT_UNCONFIRMED", checkpoint);
+            if (!Boolean.TRUE.equals(current.evidence())) {
+                return MergeResult.unknown("TARGET_CONTAINMENT_CHANGED").withEvidence(checkpoint);
+            }
+            return alreadyMerged(evidence(mr, checkpoint.sourceBranch(), checkpoint.targetBranch(),
+                    MrDisposition.ALREADY_MERGED, null));
+        }
+        if (mr.state() != State.OPENED) return MergeResult.unknown("MR_STATE_CHANGED").withEvidence(checkpoint);
+        mr = awaitReadiness(mr);
+        if (!matchesCheckpoint(mr, checkpoint) || mr.state() != State.OPENED) {
+            return MergeResult.unknown("MR_CHECKPOINT_CHANGED").withEvidence(checkpoint);
+        }
+        var context = evidence(mr, checkpoint.sourceBranch(), checkpoint.targetBranch(), checkpoint.disposition(), null);
         if (mr.readiness() == Readiness.BLOCKED) {
             return MergeResult.blocked(mr.blockReason() == null ? MergeBlockReason.UNKNOWN : mr.blockReason(),
                     mr.detail()).withEvidence(context);
@@ -90,16 +136,48 @@ public final class GitMergeWorkflow {
         if (mr.readiness() != Readiness.MERGEABLE) {
             return MergeResult.unknown(mr.detail() == null ? "MERGE_READINESS_UNKNOWN" : mr.detail()).withEvidence(context);
         }
-
-        var merged = port.merge(mr.id(), revision.sha(), message);
+        var merged = port.merge(checkpoint.iid(), checkpoint.sourceSha(), message);
+        if (merged == null) return MergeResult.unknown("MERGE_RESULT_UNCONFIRMED").withEvidence(context);
         if (merged.outcome() != GitWriteResult.Outcome.APPLIED) return failedWrite(merged, context);
         var confirmed = merged.evidence();
-        if (!matches(confirmed, revision.projectId(), source, target)
-                || !Objects.equals(mr.id(), confirmed.id()) || confirmed.state() != State.MERGED
-                || !revision.sha().equals(confirmed.sourceSha())) {
+        if (!matchesCheckpoint(confirmed, checkpoint) || confirmed.state() != State.MERGED) {
             return MergeResult.unknown("MERGE_RESULT_UNCONFIRMED").withEvidence(context);
         }
-        return MergeResult.success().withEvidence(evidence(confirmed, source, target, disposition, null));
+        return MergeResult.success().withEvidence(evidence(confirmed, checkpoint.sourceBranch(),
+                checkpoint.targetBranch(), checkpoint.disposition(), null));
+    }
+
+    private MergeResult alreadyMerged(MrEvidence checkpoint) {
+        String mergeSha = checkpoint.mergeSha();
+        if (mergeSha != null && !mergeSha.equals(checkpoint.sourceSha())) {
+            var contained = port.contains(checkpoint.targetBranch(), mergeSha);
+            if (!found(contained)) return readFailure(contained, "MERGE_COMMIT_CONTAINMENT_UNCONFIRMED", checkpoint);
+            if (!Boolean.TRUE.equals(contained.evidence())) mergeSha = null;
+        }
+        return MergeResult.success().withEvidence(new MrEvidence(checkpoint.projectId(), checkpoint.sourceBranch(),
+                checkpoint.targetBranch(), checkpoint.iid(), checkpoint.url(), checkpoint.sourceSha(), mergeSha,
+                MrDisposition.ALREADY_MERGED, null));
+    }
+
+    private GitWriteResult<MrEvidence> ensureResult(MergeResult result) {
+        return new GitWriteResult<>(result.status() == io.releasehub.domain.run.MergeStatus.UNKNOWN
+                ? GitWriteResult.Outcome.UNKNOWN : GitWriteResult.Outcome.REJECTED, result.mrEvidence(), result.detail());
+    }
+
+    /** Shape validation only; TRY_MERGE still verifies the recorded identity and current remote state. */
+    public static boolean isValidCheckpoint(MrEvidence checkpoint) {
+        if (checkpoint == null || !numericId(checkpoint.projectId()) || !validSha(checkpoint.sourceSha())
+                || !nonBlank(checkpoint.sourceBranch()) || !nonBlank(checkpoint.targetBranch())
+                || checkpoint.disposition() == null
+                || checkpoint.mergeSha() != null && !validSha(checkpoint.mergeSha())) return false;
+        boolean completeMr = numericId(checkpoint.iid()) && validUrl(checkpoint.url());
+        return completeMr || checkpoint.disposition() == MrDisposition.ALREADY_MERGED
+                && checkpoint.iid() == null && checkpoint.url() == null;
+    }
+
+    private boolean matchesCheckpoint(MergeRequest mr, MrEvidence checkpoint) {
+        return matches(mr, checkpoint.projectId(), checkpoint.sourceBranch(), checkpoint.targetBranch())
+                && checkpoint.iid().equals(mr.id()) && checkpoint.sourceSha().equals(mr.sourceSha());
     }
 
     /** 检查只读：没有现存 MR 时无法由 MR API 确认可合并性。 */
@@ -188,15 +266,27 @@ public final class GitMergeWorkflow {
     }
 
     private boolean matches(MergeRequest mr, String projectId, String source, String target) {
-        return mr != null && mr.id() != null && !mr.id().isBlank() && projectId != null
-                && projectId.equals(mr.projectId()) && source.equals(mr.sourceBranch()) && target.equals(mr.targetBranch());
+        return mr != null && numericId(mr.id()) && validUrl(mr.url()) && validSha(mr.sourceSha())
+                && numericId(projectId) && projectId.equals(mr.projectId())
+                && source.equals(mr.sourceBranch()) && target.equals(mr.targetBranch());
     }
 
     private static boolean found(GitReadResult<?> result) {
         return result != null && result.status() == GitReadResult.Status.FOUND && result.evidence() != null;
     }
 
-    private static boolean validSha(String sha) { return sha != null && sha.matches("[0-9a-fA-F]{40,64}"); }
+    private static boolean validSha(String sha) { return sha != null && sha.matches("(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})"); }
+    private static boolean numericId(String value) { return value != null && value.matches("[1-9][0-9]*"); }
+    private static boolean nonBlank(String value) { return value != null && !value.isBlank(); }
+    private static boolean validUrl(String value) {
+        if (!nonBlank(value)) return false;
+        try {
+            var uri = java.net.URI.create(value);
+            return ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
+                    && uri.getHost() != null && nonBlank(uri.getPath()) && uri.getUserInfo() == null
+                    && uri.getQuery() == null && uri.getFragment() == null;
+        } catch (IllegalArgumentException ignored) { return false; }
+    }
 
     private MrEvidence evidence(MergeRequest mr, String source, String target,
                                 MrDisposition disposition, MergeBlockReason reason) {

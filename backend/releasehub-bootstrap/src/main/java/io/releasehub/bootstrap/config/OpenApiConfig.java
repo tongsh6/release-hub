@@ -34,7 +34,8 @@ public class OpenApiConfig {
                 "ItemReport", List.of("iterationKey"),
                 "Item", List.of("iterationKey", "featureBranch", "featureBranchMode",
                         "baseVersion", "devVersion", "targetVersion", "tagName", "ciRef"),
-                "RunView", List.of("finishedAt"));
+                "RunView", List.of("finishedAt"),
+                "TaskView", List.of("startedAt", "finishedAt", "errorMessage"));
         return openApi -> {
             if (openApi.getComponents() == null || openApi.getComponents().getSchemas() == null) return;
             var schemas = openApi.getComponents().getSchemas();

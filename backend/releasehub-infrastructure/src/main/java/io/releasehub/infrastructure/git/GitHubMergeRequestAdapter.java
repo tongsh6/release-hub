@@ -90,7 +90,7 @@ final class GitHubMergeRequestAdapter implements GitMergeRequestPort {
         return complete(mr) && id.equals(mr.id()) ? GitReadResult.found(mr) : incomplete();
     }
 
-    @Override public GitWriteResult<MergeRequest> create(String source, String target, String title) {
+    @Override public GitWriteResult<MergeRequest> create(String source, String target, String expectedSourceSha, String title) {
         return GitWriteResult.rejected("UNSUPPORTED");
     }
 

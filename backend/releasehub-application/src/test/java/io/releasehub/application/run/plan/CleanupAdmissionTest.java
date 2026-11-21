@@ -306,7 +306,7 @@ class CleanupAdmissionTest {
 
     @Test
     void aPausedAdmittedOrchestrationPreventsCleanupBeforeAnyNewIntentIsSaved() {
-        Run source = service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-EARLY"), true, "alice");
+        Run source = admittedRun(service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-EARLY"), true, "alice", java.util.UUID.randomUUID().toString()));
         assertThat(source.getExecutionStatus()).isEqualTo(RunExecutionStatus.RUNNING);
         when(plans.hasUnresolvedExecutionByWindowId(windowId.value())).thenReturn(true);
         clearInvocations(plans, runs, windows);
@@ -318,7 +318,7 @@ class CleanupAdmissionTest {
 
     @Test
     void aNeedsReviewOrchestrationAlsoPreventsClosingAndPublishingItsRelease() {
-        Run source = service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-EARLY"), true, "alice");
+        Run source = admittedRun(service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-EARLY"), true, "alice", java.util.UUID.randomUUID().toString()));
         source.getItems().getFirst().finishWith(io.releasehub.domain.run.RunItemResult.UNKNOWN, now);
         source.finish(now);
         assertThat(source.getExecutionStatus()).isEqualTo(RunExecutionStatus.NEEDS_REVIEW);
@@ -345,7 +345,7 @@ class CleanupAdmissionTest {
 
     @Test
     void orchestrationAdmissionUsesTheSameWindowLockBeforeSavingIntent() {
-        Run run = service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-EARLY"), true, "alice");
+        Run run = admittedRun(service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-EARLY"), true, "alice", java.util.UUID.randomUUID().toString()));
 
         var order = inOrder(windows, runs);
         order.verify(windows).findByIdForUpdate(windowId);
@@ -354,18 +354,31 @@ class CleanupAdmissionTest {
 
     @Test
     void retryAdmissionUsesTheSameWindowLockBeforeSavingIntent() {
-        Run source = service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-EARLY"), true, "alice");
+        Run source = admittedRun(service.admit(windowId.value(), List.of("repo-a"), List.of("ITER-EARLY"), true, "alice", java.util.UUID.randomUUID().toString()));
         SavedRunPlan saved = savedPlan();
         source.getItems().getFirst().finishWith(io.releasehub.domain.run.RunItemResult.FAILED, now);
         source.finish(now);
         when(plans.findByRunId(source.getId().value())).thenReturn(Optional.of(saved));
+        when(runs.findTasks(source.getId().value())).thenReturn(source.getItems().stream()
+                .flatMap(item -> java.util.stream.IntStream.range(0, 4).mapToObj(index -> new RunPort.TaskView(
+                        "task-" + item.getId().value() + "-" + index, source.getId().value(), item.getId().value(),
+                        io.releasehub.domain.run.ActionType.orchestrationSequence().get(index),
+                        item.getPlannedOrder() * 4 + index, index == 0 ? "FAILED" : "SKIPPED", now, now, null))).toList());
         clearInvocations(plans, runs, windows);
 
-        Run retry = service.admitRetry(source, List.of(source.getItems().getFirst().getId().value()), "bob");
+        Run retry = admittedRun(service.admitRetry(source, List.of(source.getItems().getFirst().getId().value()), "bob", java.util.UUID.randomUUID().toString()));
 
         var order = inOrder(windows, runs);
         order.verify(windows).findByIdForUpdate(windowId);
         order.verify(runs).save(retry);
+    }
+
+    private Run admittedRun(RunPlanAppService.OrchestrationAdmission admission) {
+        var saved = ArgumentCaptor.forClass(Run.class);
+        verify(runs, atLeastOnce()).save(saved.capture());
+        return saved.getAllValues().stream()
+                .filter(run -> run.getId().value().equals(admission.runId()))
+                .findFirst().orElseThrow();
     }
 
     private SavedRunPlan savedPlan() {

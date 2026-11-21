@@ -18,6 +18,9 @@ public interface RunPlanJpaRepository extends JpaRepository<RunPlanJpaEntity, St
     @Query("SELECT COUNT(p) FROM RunPlanJpaEntity p WHERE p.windowId = :windowId AND p.run.executionStatus IN ('RUNNING', 'NEEDS_REVIEW')")
     long countUnresolvedExecutionsByWindowId(@Param("windowId") String windowId);
 
+    @Query("SELECT COUNT(p) FROM RunPlanJpaEntity p JOIN p.run.items i WHERE p.windowId = :windowId AND p.run.executionStatus IN ('RUNNING', 'NEEDS_REVIEW') AND i.repoId IN :repoIds")
+    long countUnresolvedExecutionsForRepositories(@Param("windowId") String windowId, @Param("repoIds") List<String> repoIds);
+
     @Query("""
             select new io.releasehub.application.run.plan.RunPlanSummary(p.runId, p.operator, p.createdAt, p.itemCount)
             from RunPlanJpaEntity p where p.windowId = :windowId order by p.createdAt desc, p.runId desc

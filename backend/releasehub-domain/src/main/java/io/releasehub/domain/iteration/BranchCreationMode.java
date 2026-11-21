@@ -3,13 +3,13 @@ package io.releasehub.domain.iteration;
 /**
  * Feature 分支创建模式。
  *
- * <p>定义在迭代关联仓库时，feature 分支的来源方式。
- * 第一层选择仓库，第二层确定分支名，第三层决定分支的创建方式。
+ * <p>迭代关联仓库时保存 feature 分支的名称和来源模式。
+ * AUTO/NAMED 的远端分支由显式 Orchestrate 确保存在；EXISTING 仅只读验证并复用。
  */
 public enum BranchCreationMode {
-    /** 系统自动创建 {@code feature/{iterationKey}} */
+    /** 使用 {@code feature/{iterationKey}}，在显式编排时创建缺失分支 */
     AUTO,
-    /** 用户自定义分支名（必须在 {@code feature/} 路径下），系统创建 */
+    /** 保存自定义分支名（必须在 {@code feature/} 路径下），在显式编排时创建缺失分支 */
     NAMED,
     /** 关联 GitLab 上已存在的分支（必须在 {@code feature/} 路径下），系统不创建 */
     EXISTING

@@ -1,0 +1,272 @@
+package io.releasehub.bootstrap.api;
+
+import io.releasehub.application.branchrule.BranchRuleUseCase;
+import io.releasehub.application.conflict.ConflictDetectionAppService;
+import io.releasehub.application.iteration.IterationPort;
+import io.releasehub.application.iteration.IterationRepoPort;
+import io.releasehub.application.port.out.GitBranchAdapterFactory;
+import io.releasehub.application.releasewindow.ReleaseWindowPort;
+import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.run.RunAppService;
+import io.releasehub.application.run.RunPort;
+import io.releasehub.application.run.plan.RunPlanAppService;
+import io.releasehub.application.settings.SettingsPort;
+import io.releasehub.application.version.VersionUpdateAppService;
+import io.releasehub.application.window.WindowIterationPort;
+import io.releasehub.bootstrap.ReleaseHubApplication;
+import io.releasehub.domain.iteration.BranchCreationMode;
+import io.releasehub.domain.iteration.Iteration;
+import io.releasehub.domain.iteration.IterationKey;
+import io.releasehub.domain.iteration.IterationStatus;
+import io.releasehub.domain.releasewindow.ReleaseWindow;
+import io.releasehub.domain.releasewindow.ReleaseWindowId;
+import io.releasehub.domain.releasewindow.ReleaseWindowStatus;
+import io.releasehub.domain.repo.CodeRepository;
+import io.releasehub.domain.repo.GitProvider;
+import io.releasehub.domain.repo.RepoId;
+import io.releasehub.domain.repo.RepoType;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.containers.PostgreSQLContainer;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
+
+/** 独立 JVM + 真实 PostgreSQL/HTTP fixture；不冒充 UI 旅程或自动恢复验收。 */
+class RunTaskProcessKillIT {
+    private static final String PROJECT_ID = "101";
+    private static final String ITERATION = "ITER-C1-RESTART";
+    private static final String WINDOW_KEY = "RW-C1-RESTART";
+    private static final String SOURCE = "feature/" + ITERATION;
+    private static final String TARGET = "release/" + WINDOW_KEY;
+    private static final String SOURCE_SHA = "a".repeat(40);
+    private static final String ACTOR = "process-kill-fixture";
+    private static final String INTENT = "after-mr-before-merge";
+    @TempDir Path temporary;
+
+    @Test
+    @Timeout(180)
+    void killingAfterMrCheckpointDoesNotReplayOrMergeOnRestart() throws Exception {
+        GitLabHttpFixture server = new GitLabHttpFixture();
+        Process first = null;
+        Process restarted = null;
+        try (var db = new PostgreSQLContainer<>("postgres:18.1")
+                .withDatabaseName("process_kill_test").withUsername("process_test").withPassword("isolated-process-db")) {
+            db.start();
+            server.start();
+            routes(server);
+            String windowId = UUID.randomUUID().toString();
+            String repoId = UUID.randomUUID().toString();
+            Path marker = temporary.resolve("checkpoint.txt");
+            Path receipt = temporary.resolve("receipt.txt");
+            Path firstLog = temporary.resolve("first.log");
+            first = launch("first", db, server, windowId, repoId, marker, receipt, firstLog);
+            awaitCheckpoint(first, marker, firstLog);
+
+            JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                    db.getJdbcUrl(), db.getUsername(), db.getPassword()));
+            String runId = Files.readString(marker).trim();
+            var before = tasks(jdbc, runId);
+            assertThat(before).extracting(row -> row.get("status"))
+                    .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "PENDING");
+            assertThat(metadata(jdbc, runId)).containsEntry("git.projectId", PROJECT_ID)
+                    .containsEntry("git.mrIid", "7").containsEntry("git.sourceSha", SOURCE_SHA)
+                    .containsEntry("git.sourceBranch", SOURCE).containsEntry("git.targetBranch", TARGET);
+            assertThat(jdbc.queryForObject("select execution_status from run where id=?", String.class, runId))
+                    .isEqualTo("RUNNING");
+            server.verify("POST", "/api/v4/projects/" + PROJECT_ID + "/merge_requests", 1);
+            assertThat(server.writeCount()).isEqualTo(1);
+
+            long killedPid = first.pid();
+            first.destroyForcibly();
+            assertThat(first.waitFor(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(first.exitValue()).isNotZero();
+            int requestsBeforeRestart = server.requests.size();
+
+            Path restartedLog = temporary.resolve("restarted.log");
+            restarted = launch("replay", db, server, windowId, repoId, marker, receipt, restartedLog);
+            boolean finished = restarted.waitFor(55, TimeUnit.SECONDS);
+            assertThat(finished).withFailMessage("Replay JVM did not finish: %s", tail(restartedLog)).isTrue();
+            assertThat(restarted.exitValue()).withFailMessage("Replay JVM failed: %s", tail(restartedLog)).isZero();
+            assertThat(Files.readString(receipt).trim()).isEqualTo(runId);
+            assertThat(tasks(jdbc, runId)).isEqualTo(before);
+            assertThat(metadata(jdbc, runId)).containsEntry("git.projectId", PROJECT_ID)
+                    .containsEntry("git.mrIid", "7").containsEntry("git.sourceSha", SOURCE_SHA);
+            assertThat(jdbc.queryForObject("select count(*) from run where id=?", Integer.class, runId)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select count(*) from run_step where run_item_id in "
+                    + "(select id from run_item where run_id=?)", Integer.class, runId)).isEqualTo(3);
+            assertThat(server.requests).hasSize(requestsBeforeRestart)
+                    .noneMatch(request -> request.method().equals("PUT") || request.internalHeaders());
+            System.out.printf("PROCESS_KILL_CHECKPOINT run=%s killedPid=%d exit=%d replayPid=%d "
+                    + "mrPost=1 mergePut=0 replayHttp=0 tasks=COMPLETED,COMPLETED,COMPLETED,PENDING%n",
+                    runId, killedPid, first.exitValue(), restarted.pid());
+        } finally {
+            stopOwnedProcess(first);
+            stopOwnedProcess(restarted);
+            server.stop();
+        }
+    }
+
+    private Process launch(String mode, PostgreSQLContainer<?> db, GitLabHttpFixture server,
+                           String windowId, String repoId, Path marker, Path receipt, Path log) throws Exception {
+        String classpath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
+        var command = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-cp", classpath, Child.class.getName(), mode, marker.toString(), receipt.toString());
+        command.environment().putAll(Map.of(
+                "RH_C1_DB_URL", db.getJdbcUrl(), "RH_C1_DB_USER", db.getUsername(),
+                "RH_C1_DB_PASSWORD", db.getPassword(), "RH_C1_GITLAB_URL", server.baseUrl(),
+                "RH_C1_WINDOW_ID", windowId, "RH_C1_REPO_ID", repoId));
+        return command.redirectErrorStream(true).redirectOutput(log.toFile()).start();
+    }
+
+    private static void awaitCheckpoint(Process process, Path marker, Path log) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(55);
+        while (!Files.exists(marker)) {
+            if (!process.isAlive()) fail("First JVM exited before the committed MR checkpoint: " + tail(log));
+            if (System.nanoTime() >= deadline) fail("MR checkpoint was not committed: " + tail(log));
+            Thread.sleep(100);
+        }
+    }
+
+    private static void stopOwnedProcess(Process process) throws InterruptedException {
+        if (process != null && process.isAlive()) {
+            process.destroyForcibly();
+            process.waitFor(10, TimeUnit.SECONDS);
+        }
+    }
+
+    private static String tail(Path path) throws Exception {
+        if (!Files.exists(path)) return "(no child output)";
+        String text = Files.readString(path);
+        return text.substring(Math.max(0, text.length() - 9000));
+    }
+
+    private static List<Map<String, Object>> tasks(JdbcTemplate jdbc, String runId) {
+        return jdbc.queryForList("select id, task_type, status, claim_token, started_at, finished_at "
+                + "from run_task where run_id=? order by task_order", runId);
+    }
+
+    private static Map<String, String> metadata(JdbcTemplate jdbc, String runId) {
+        Map<String, String> facts = new java.util.LinkedHashMap<>();
+        jdbc.query("select metadata_key, metadata_value from run_item_metadata where run_item_id in "
+                        + "(select id from run_item where run_id=?)",
+                row -> { facts.put(row.getString(1), row.getString(2)); }, runId);
+        return facts;
+    }
+
+    private static void routes(GitLabHttpFixture server) {
+        String root = "/api/v4/projects/" + PROJECT_ID;
+        server.reply("GET", "/api/v4/projects/acme%2Frestart", 200, "{\"id\":101}");
+        for (String branch : List.of(SOURCE, TARGET)) {
+            server.reply("GET", root + "/repository/branches/" + URLEncoder.encode(branch, StandardCharsets.UTF_8),
+                    200, "{\"name\":\"" + branch + "\",\"commit\":{\"id\":\""
+                            + (branch.equals(SOURCE) ? SOURCE_SHA : "b".repeat(40)) + "\"}}");
+        }
+        server.reply("GET", root + "/merge_requests", 200, "[]");
+        server.reply("GET", root + "/repository/commits/" + SOURCE_SHA + "/refs", 200, "[]");
+        String mr = "{\"iid\":7,\"project_id\":101,\"source_project_id\":101,\"target_project_id\":101,"
+                + "\"source_branch\":\"" + SOURCE + "\",\"target_branch\":\"" + TARGET
+                + "\",\"state\":\"opened\",\"sha\":\"" + SOURCE_SHA + "\",\"web_url\":\""
+                + server.baseUrl() + "/acme/restart/-/merge_requests/7\",\"detailed_merge_status\":\"mergeable\"}";
+        server.reply("POST", root + "/merge_requests", 201, mr);
+        server.reply("GET", root + "/merge_requests/7", 200, mr);
+    }
+
+    /** 只装饰测试中的 RunPort 以定位已提交边界；所有业务和持久化方法仍使用生产实现。 */
+    public static final class Child {
+        private Child() {}
+        public static void main(String[] args) throws Exception {
+            boolean first = "first".equals(args[0]);
+            Path marker = Path.of(args[1]);
+            Path receipt = Path.of(args[2]);
+            try (ConfigurableApplicationContext context = new SpringApplicationBuilder(ReleaseHubApplication.class)
+                    .run("--spring.profiles.active=e2e", "--server.port=0", "--spring.jpa.open-in-view=false",
+                            "--spring.datasource.url=" + environment("RH_C1_DB_URL"),
+                            "--spring.datasource.username=" + environment("RH_C1_DB_USER"),
+                            "--spring.datasource.password=" + environment("RH_C1_DB_PASSWORD"),
+                            "--releasehub.gitlab.base-url=" + environment("RH_C1_GITLAB_URL"))) {
+                String windowId = environment("RH_C1_WINDOW_ID");
+                String repoId = environment("RH_C1_REPO_ID");
+                if (first) fixtures(context, windowId, repoId);
+                RunPort original = context.getBean(RunPort.class);
+                JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
+                RunPort observed = (RunPort) Proxy.newProxyInstance(RunPort.class.getClassLoader(),
+                        new Class<?>[]{RunPort.class}, (proxy, method, arguments) -> {
+                            if (first && method.getName().equals("claimNextTask")) {
+                                String runId = (String) arguments[0];
+                                Integer count = jdbc.queryForObject("select count(*) from run_task where run_id=? "
+                                        + "and task_type='ENSURE_MR' and status='COMPLETED'", Integer.class, runId);
+                                if (count != null && count == 1) {
+                                    Files.writeString(marker, runId);
+                                    new CountDownLatch(1).await();
+                                    throw new IllegalStateException("Checkpoint pause unexpectedly ended");
+                                }
+                            }
+                            try { return method.invoke(original, arguments); }
+                            catch (InvocationTargetException error) { throw error.getCause(); }
+                        });
+                var service = new RunAppService(observed, context.getBean(ReleaseWindowPort.class),
+                        context.getBean(WindowIterationPort.class), context.getBean(CodeRepositoryPort.class),
+                        context.getBean(GitBranchAdapterFactory.class), context.getBean(VersionUpdateAppService.class),
+                        context.getBean(ConflictDetectionAppService.class), context.getBean(SettingsPort.class),
+                        context.getBean(Clock.class), context.getBean(RunPlanAppService.class),
+                        context.getBean(BranchRuleUseCase.class));
+                var run = service.startOrchestrate(windowId, List.of(repoId), List.of(ITERATION), true, ACTOR, INTENT);
+                if (first) throw new IllegalStateException("Execution returned without a committed MR checkpoint: "
+                        + run.getExecutionStatus() + " " + run.getItems().getFirst().getSteps());
+                Files.writeString(receipt, run.getId().value());
+            }
+        }
+
+        private static void fixtures(ConfigurableApplicationContext context, String windowId, String repoId) {
+            var windows = context.getBean(ReleaseWindowPort.class);
+            var repositories = context.getBean(CodeRepositoryPort.class);
+            var iterations = context.getBean(IterationPort.class);
+            var versions = context.getBean(IterationRepoPort.class);
+            var bindings = context.getBean(WindowIterationPort.class);
+            context.getBean(SettingsPort.class).saveGitLab(new SettingsPort.SettingsGitLab(
+                    environment("RH_C1_GITLAB_URL"), "fixture-token"));
+            Instant now = Instant.now();
+            new TransactionTemplate(context.getBean(PlatformTransactionManager.class)).executeWithoutResult(tx -> {
+                windows.save(ReleaseWindow.rehydrate(ReleaseWindowId.of(windowId), WINDOW_KEY,
+                        "进程重启验证", "", now, "G001", ReleaseWindowStatus.DRAFT, now, now, false, null));
+                repositories.save(CodeRepository.rehydrate(RepoId.of(repoId), "进程验证仓库",
+                        environment("RH_C1_GITLAB_URL") + "/acme/restart.git", "main", "G001",
+                        RepoType.SERVICE, GitProvider.GITLAB, "fixture-token", false,
+                        0, 0, 0, 0, 0, 0, 0, null, now, now, 0));
+                iterations.save(Iteration.rehydrate(IterationKey.of(ITERATION), ITERATION, "", null, "G001",
+                        Set.of(RepoId.of(repoId)), IterationStatus.ACTIVE, now, now));
+                versions.saveWithVersion(ITERATION, repoId, "1.0.0", "1.1.0-SNAPSHOT", "1.1.0",
+                        SOURCE, "SYSTEM", now, BranchCreationMode.AUTO);
+                bindings.attach(ReleaseWindowId.of(windowId), IterationKey.of(ITERATION), now);
+                bindings.updateReleaseBranch(windowId, ITERATION, TARGET, now);
+            });
+        }
+
+        private static String environment(String name) {
+            return java.util.Objects.requireNonNull(System.getenv(name), name);
+        }
+    }
+}

@@ -29,6 +29,7 @@ public class InMemoryGitLabBranchAdapter implements GitBranchPort {
     private final java.util.concurrent.atomic.AtomicLong projectSequence = new java.util.concurrent.atomic.AtomicLong();
     private final java.util.concurrent.atomic.AtomicLong mergeRequestIds = new java.util.concurrent.atomic.AtomicLong();
     private final Map<String, Map<List<String>, MrEvidence>> mergeRequests = new ConcurrentHashMap<>();
+    private final Set<String> completedMerges = ConcurrentHashMap.newKeySet();
 
     @Override
     public boolean supports(GitProvider provider) {
@@ -57,25 +58,50 @@ public class InMemoryGitLabBranchAdapter implements GitBranchPort {
 
     @Override
     public MergeResult mergeBranch(String repoCloneUrl, String token, String sourceBranch, String targetBranch, String commitMessage) {
-        Set<String> branchSet = branches.computeIfAbsent(repoCloneUrl, k -> ConcurrentHashMap.newKeySet());
-        branchSet.add("main");
-        branchSet.add("master");
-        if (!branchSet.contains(sourceBranch)) {
-            return MergeResult.failed("source branch not found");
-        }
-        if (!branchSet.contains(targetBranch)) {
-            return MergeResult.failed("target branch not found");
-        }
+        var ensured = ensureMergeRequest(repoCloneUrl, token, sourceBranch, targetBranch, commitMessage);
+        if (ensured.outcome() != GitWriteResult.Outcome.APPLIED) return ensured.outcome() == GitWriteResult.Outcome.UNKNOWN
+                ? MergeResult.unknown(ensured.reason()).withEvidence(ensured.evidence()) : MergeResult.failed(ensured.reason());
+        return tryMergeRequest(repoCloneUrl, token, ensured.evidence(), commitMessage);
+    }
+
+    @Override
+    public GitWriteResult<MrEvidence> ensureMergeRequest(String repoCloneUrl, String token, String sourceBranch,
+                                                        String targetBranch, String message) {
+        if (!getBranchStatus(repoCloneUrl, token, sourceBranch).exists()) return GitWriteResult.rejected("SOURCE_BRANCH_NOT_FOUND");
+        if (!getBranchStatus(repoCloneUrl, token, targetBranch).exists()) return GitWriteResult.rejected("TARGET_BRANCH_NOT_FOUND");
         String projectId = projectId(repoCloneUrl);
         String iid = String.valueOf(mergeRequestIds.incrementAndGet());
         var created = new MrEvidence(projectId, sourceBranch, targetBranch, iid,
                 "https://in-memory.invalid/projects/" + projectId + "/merge_requests/" + iid,
-                FIXTURE_COMMIT_SHA, FIXTURE_COMMIT_SHA, MrDisposition.CREATED, null);
+                FIXTURE_COMMIT_SHA, null, MrDisposition.CREATED, null);
         var previous = mergeRequests.computeIfAbsent(repoCloneUrl, ignored -> new ConcurrentHashMap<>())
                 .putIfAbsent(List.of(sourceBranch, targetBranch), created);
-        var evidence = previous == null ? created : new MrEvidence(previous.projectId(), sourceBranch, targetBranch,
-                previous.iid(), previous.url(), previous.sourceSha(), previous.mergeSha(), MrDisposition.ALREADY_MERGED, null);
-        return MergeResult.success().withEvidence(evidence);
+        if (previous == null) return GitWriteResult.applied(created);
+        boolean merged = completedMerges.contains(previous.iid());
+        return GitWriteResult.applied(new MrEvidence(previous.projectId(), sourceBranch, targetBranch,
+                previous.iid(), previous.url(), previous.sourceSha(), merged ? FIXTURE_COMMIT_SHA : null,
+                merged ? MrDisposition.ALREADY_MERGED : MrDisposition.MR_REUSED, null));
+    }
+
+    @Override
+    public MergeResult tryMergeRequest(String repoCloneUrl, String token, MrEvidence checkpoint, String message) {
+        if (!io.releasehub.application.gitoperation.GitMergeWorkflow.isValidCheckpoint(checkpoint)
+                || !projectId(repoCloneUrl).equals(checkpoint.projectId())) return MergeResult.unknown("MR_CHECKPOINT_INVALID");
+        var stored = mergeRequests.getOrDefault(repoCloneUrl, Map.of())
+                .get(List.of(checkpoint.sourceBranch(), checkpoint.targetBranch()));
+        if (stored == null || !stored.iid().equals(checkpoint.iid()) || !stored.url().equals(checkpoint.url())
+                || !stored.sourceSha().equals(checkpoint.sourceSha())
+                || !getBranchStatus(repoCloneUrl, token, checkpoint.sourceBranch()).exists()
+                || !getBranchStatus(repoCloneUrl, token, checkpoint.targetBranch()).exists()) {
+            return MergeResult.unknown("MR_CHECKPOINT_CHANGED").withEvidence(checkpoint);
+        }
+        if (checkpoint.disposition() == MrDisposition.ALREADY_MERGED && !completedMerges.contains(stored.iid())) {
+            return MergeResult.unknown("MR_STATE_CHANGED").withEvidence(checkpoint);
+        }
+        boolean firstMerge = completedMerges.add(stored.iid());
+        return MergeResult.success().withEvidence(new MrEvidence(stored.projectId(), stored.sourceBranch(),
+                stored.targetBranch(), stored.iid(), stored.url(), stored.sourceSha(), FIXTURE_COMMIT_SHA,
+                firstMerge ? checkpoint.disposition() : MrDisposition.ALREADY_MERGED, null));
     }
 
     @Override
@@ -152,6 +178,6 @@ public class InMemoryGitLabBranchAdapter implements GitBranchPort {
         if (!exists && ("main".equals(branchName) || "master".equals(branchName))) {
             exists = true;
         }
-        return exists ? BranchStatus.present(FIXTURE_COMMIT_SHA) : BranchStatus.missing();
+        return exists ? BranchStatus.present(projectId(repoCloneUrl), FIXTURE_COMMIT_SHA) : BranchStatus.missing(projectId(repoCloneUrl));
     }
 }

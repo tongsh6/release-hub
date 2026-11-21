@@ -24,7 +24,9 @@ class RunRepositoryScopePersistenceTest {
         run.addItem(RunItem.rehydrate(RunItemId.of("cleanup-item"), "RW", RepoId.of("repo"), null,
                 1, 0, null, List.of(), Map.of("plan.participatingIterationKeys", "[\"ITER-A\",\"ITER-B\"]"), now, now, 0));
         RunJpaRepository repository = mock(RunJpaRepository.class);
-        var adapter = new RunJpaPersistenceAdapter(repository);
+        var adapter = new RunJpaPersistenceAdapter(repository, mock(RunTaskJpaRepository.class), mock(jakarta.persistence.EntityManager.class),
+                java.time.Clock.systemUTC(), mock(io.releasehub.application.window.WindowIterationPort.class),
+                mock(io.releasehub.application.gitoperation.GitOperationJournalPort.class));
 
         assertDoesNotThrow(() -> adapter.save(run));
 
@@ -62,7 +64,9 @@ class RunRepositoryScopePersistenceTest {
         var repository = mock(RunJpaRepository.class);
         when(repository.findById("cleanup-run")).thenReturn(Optional.of(entity));
 
-        Run restored = new RunJpaPersistenceAdapter(repository).findById("cleanup-run").orElseThrow();
+        Run restored = new RunJpaPersistenceAdapter(repository, mock(RunTaskJpaRepository.class), mock(jakarta.persistence.EntityManager.class),
+                java.time.Clock.systemUTC(), mock(io.releasehub.application.window.WindowIterationPort.class),
+                mock(io.releasehub.application.gitoperation.GitOperationJournalPort.class)).findById("cleanup-run").orElseThrow();
 
         assertEquals(1, restored.getItems().size());
         var restoredItem = restored.getItems().get(0);

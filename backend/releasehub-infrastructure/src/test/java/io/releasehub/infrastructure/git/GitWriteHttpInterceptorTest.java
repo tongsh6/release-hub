@@ -53,7 +53,12 @@ class GitWriteHttpInterceptorTest {
         verify(journal).completeSession(anyString(), eq(false));
     }
 
-    private MockClientHttpRequest request(){return new MockClientHttpRequest(HttpMethod.POST,URI.create("https://gitlab.invalid/api/v4/projects/acme%2Frepo/merge_requests"));}
+    private MockClientHttpRequest request(){
+        var request=new MockClientHttpRequest(HttpMethod.POST,URI.create("https://gitlab.invalid/api/v4/projects/acme%2Frepo/merge_requests"));
+        request.getHeaders().set(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID,"17");
+        request.getHeaders().set(GitRemoteIdentityResolver.EXPECTED_SHA,"a".repeat(40));
+        return request;
+    }
     @ParameterizedTest
     @ValueSource(strings = {"POST", "PUT", "PATCH", "DELETE"})
     void shouldBlockEveryWriteWhenSafetyDispatchIsDisabled(String method) throws Exception {
@@ -288,7 +293,9 @@ class GitWriteHttpInterceptorTest {
                 .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators
                         .withStatus(HttpStatusCode.valueOf(status)).contentType(MediaType.APPLICATION_JSON).body(rawBody));
 
-        var adapter = new GitLabMergeRequestAdapter(http, endpoint.projectEndpoint() + "/merge_requests", "sensitive-token-fixture");
+        var adapter = new GitLabMergeRequestAdapter(http,
+                new GitRemoteIdentityResolver.Identity("repo", "mapping", "a".repeat(64), "GITLAB",
+                        "https://gitlab.invalid", "17", endpoint), "sensitive-token-fixture");
         var result = adapter.merge("7", "a".repeat(40), "merge");
 
         assertEquals(GitWriteResult.Outcome.REJECTED, result.outcome());
@@ -312,7 +319,10 @@ class GitWriteHttpInterceptorTest {
         var endpoint=new GitRemoteIdentityResolver.Endpoint("GITLAB","https://gitlab.invalid","acme/repo","https://gitlab.invalid/api/v4/projects/17","/merge_requests/7/merge");
         when(identities.resolve(any(),any())).thenReturn(new GitRemoteIdentityResolver.Identity("repo","mapping","a".repeat(64),"GITLAB","https://gitlab.invalid","17",endpoint));
         var request=new MockClientHttpRequest(HttpMethod.PUT,URI.create(endpoint.projectEndpoint()+endpoint.suffix()));
-        assertThrows(IOException.class,()->interceptor.intercept(request,new byte[0],(r,b)->new MockClientHttpResponse(
+        request.getHeaders().set(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID,"17");
+        request.getHeaders().set(GitRemoteIdentityResolver.EXPECTED_SHA,"a".repeat(40));
+        byte[] body=("{\"sha\":\""+"a".repeat(40)+"\"}").getBytes(StandardCharsets.UTF_8);
+        assertThrows(IOException.class,()->interceptor.intercept(request,body,(r,b)->new MockClientHttpResponse(
                 "{\"iid\":7,\"state\":\"opened\"}".getBytes(StandardCharsets.UTF_8),HttpStatus.OK)));
         verify(journal).finish(anyString(),eq(GitWriteResult.Outcome.UNKNOWN),anyString(),eq("RESPONSE_UNCONFIRMED"));
     }

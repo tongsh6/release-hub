@@ -20,24 +20,31 @@ import static org.junit.jupiter.api.Assertions.*;
 @WireMockTest(httpPort = 0)
 class GitLabGitBranchAdapterTest {
     private static final String ENC = "/api/v4/projects/acme%2Freleasehub";
+    private static final String NUMERIC = "/api/v4/projects/7";
     private static final String SOURCE = "feature/ITER-1";
     private static final String TARGET = "release/RW-1";
     private static final String SHA = "a".repeat(40);
     private static final String MERGE_SHA = "b".repeat(40);
+    private final GitRemoteIdentityResolver identities = org.mockito.Mockito.mock(GitRemoteIdentityResolver.class);
     private final GitLabGitBranchAdapter adapter = new GitLabGitBranchAdapter(
-            new org.springframework.boot.web.client.RestTemplateBuilder(), org.mockito.Mockito.mock(GitRemoteIdentityResolver.class));
+            new org.springframework.boot.web.client.RestTemplateBuilder(), identities);
 
     @BeforeEach void injectRestTemplate() {
         var client = java.net.http.HttpClient.newBuilder().version(java.net.http.HttpClient.Version.HTTP_1_1).build();
         adapter.setRestTemplate(new RestTemplate(new org.springframework.http.client.JdkClientHttpRequestFactory(client)));
-        stubFor(get(urlPathEqualTo(ENC)).willReturn(okJson("{\"id\":7}")));
-        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/feature%2FITER-1"))
+        org.mockito.Mockito.when(identities.resolve(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(call -> {
+                    var endpoint = GitRemoteIdentityResolver.parse(call.getArgument(0, java.net.URI.class));
+                    return new GitRemoteIdentityResolver.Identity("repo", "mapping", "remote", "GITLAB",
+                            endpoint.baseUrl(), "7", endpoint);
+                });
+        stubFor(get(urlPathEqualTo(NUMERIC + "/repository/branches/feature%2FITER-1"))
                 .willReturn(okJson("{\"name\":\"feature/ITER-1\",\"commit\":{\"id\":\"" + SHA + "\"}}")));
-        stubFor(get(urlPathEqualTo(ENC + "/merge_requests"))
+        stubFor(get(urlPathEqualTo(NUMERIC + "/merge_requests"))
                 .withQueryParam("state", equalTo("opened")).willReturn(okJson("[]")));
-        stubFor(get(urlPathEqualTo(ENC + "/merge_requests"))
+        stubFor(get(urlPathEqualTo(NUMERIC + "/merge_requests"))
                 .withQueryParam("state", equalTo("merged")).willReturn(okJson("[]")));
-        stubFor(get(urlPathEqualTo(ENC + "/repository/commits/" + SHA + "/refs")).willReturn(okJson("[]")));
+        stubFor(get(urlPathEqualTo(NUMERIC + "/repository/commits/" + SHA + "/refs")).willReturn(okJson("[]")));
     }
 
     @Test void shouldSupportGitLabProvider() {
@@ -166,7 +173,7 @@ class GitLabGitBranchAdapterTest {
     }
 
     @Test void shouldSkipEmptyMrOnlyWithConfirmedContainment(WireMockRuntimeInfo wm) {
-        stubFor(get(urlPathEqualTo(ENC + "/repository/commits/" + SHA + "/refs"))
+        stubFor(get(urlPathEqualTo(NUMERIC + "/repository/commits/" + SHA + "/refs"))
                 .willReturn(okJson("[{\"type\":\"branch\",\"name\":\"release/RW-1\"}]")));
         var result = merge(wm);
         assertEquals(MergeStatus.SUCCESS, result.status());
@@ -176,10 +183,10 @@ class GitLabGitBranchAdapterTest {
 
     @Test void shouldWaitForReadinessBeforeMerging(WireMockRuntimeInfo wm) {
         createMr(102, "checking");
-        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/102")).willReturn(okJson(mr(102, "opened", "mergeable"))));
+        stubFor(get(urlPathEqualTo(NUMERIC + "/merge_requests/102")).willReturn(okJson(mr(102, "opened", "mergeable"))));
         mergeMr(102);
         assertEquals(MergeStatus.SUCCESS, merge(wm).status());
-        verify(1, getRequestedFor(urlPathEqualTo(ENC + "/merge_requests/102")));
+        verify(1, getRequestedFor(urlPathEqualTo(NUMERIC + "/merge_requests/102")));
         verify(1, postRequestedFor(urlPathEqualTo(ENC + "/merge_requests")));
     }
 
@@ -216,7 +223,7 @@ class GitLabGitBranchAdapterTest {
     }
 
     @Test void shouldGetBranchStatusSuccessfully(WireMockRuntimeInfo wm) {
-        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%2FRW-1"))
+        stubFor(get(urlPathEqualTo(NUMERIC + "/repository/branches/release%2FRW-1"))
                 .willReturn(okJson("{\"name\":\"release/RW-1\",\"commit\":{\"id\":\"" + SHA + "\"}}")));
         var status = adapter.getBranchStatus(repo(wm), "token", TARGET);
         assertTrue(status.exists());
@@ -225,7 +232,7 @@ class GitLabGitBranchAdapterTest {
     }
 
     @Test void shouldReturnMissingBranchOnlyOnNotFound(WireMockRuntimeInfo wm) {
-        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%2FRW-1"))
+        stubFor(get(urlPathEqualTo(NUMERIC + "/repository/branches/release%2FRW-1"))
                 .willReturn(aResponse().withStatus(404)));
         var status = adapter.getBranchStatus(repo(wm), "token", TARGET);
         assertFalse(status.exists());
@@ -234,7 +241,7 @@ class GitLabGitBranchAdapterTest {
     }
 
     @Test void shouldRejectEmptyBranchReadEvidence(WireMockRuntimeInfo wm) {
-        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%2FRW-1"))
+        stubFor(get(urlPathEqualTo(NUMERIC + "/repository/branches/release%2FRW-1"))
                 .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")));
         var error = assertThrows(BusinessException.class,
                 () -> adapter.getBranchStatus(repo(wm), "token", TARGET));
@@ -247,7 +254,7 @@ class GitLabGitBranchAdapterTest {
             "{\"name\":\"release/RW-1\",\"commit\":{\"id\":\"abc123\"}}",
             "{\"name\":\"release/RW-1\",\"commit\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"})
     void shouldRejectIncompleteBranchReadEvidence(String body, WireMockRuntimeInfo wm) {
-        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%2FRW-1")).willReturn(okJson(body)));
+        stubFor(get(urlPathEqualTo(NUMERIC + "/repository/branches/release%2FRW-1")).willReturn(okJson(body)));
         var error = assertThrows(BusinessException.class,
                 () -> adapter.getBranchStatus(repo(wm), "token", TARGET));
         assertEquals(ErrorCode.GIT_IDENTITY_UNAVAILABLE, error.getErrorCode());
@@ -255,7 +262,7 @@ class GitLabGitBranchAdapterTest {
     }
 
     @Test void shouldRejectMismatchedBranchReadIdentity(WireMockRuntimeInfo wm) {
-        stubFor(get(urlPathEqualTo(ENC + "/repository/branches/release%2FRW-1"))
+        stubFor(get(urlPathEqualTo(NUMERIC + "/repository/branches/release%2FRW-1"))
                 .willReturn(okJson("{\"name\":\"private-unexpected-branch\",\"commit\":{\"id\":\"" + SHA + "\"}}")));
         var error = assertThrows(BusinessException.class,
                 () -> adapter.getBranchStatus(repo(wm), "sensitive-token-fixture", TARGET));
@@ -304,14 +311,15 @@ class GitLabGitBranchAdapterTest {
     private static void createMr(int id, String status) {
         stubFor(post(urlPathEqualTo(ENC + "/merge_requests")).willReturn(created().withHeader("Content-Type", "application/json")
                 .withBody(mr(id, "opened", status))));
+        stubFor(get(urlPathEqualTo(NUMERIC + "/merge_requests/" + id)).willReturn(okJson(mr(id, "opened", status))));
     }
     private static void mergeMr(int id) {
         stubFor(put(urlPathEqualTo(ENC + "/merge_requests/" + id + "/merge")).willReturn(okJson(mr(id, "merged", "not_open"))));
     }
     private static void openedMr(int id, String status) {
-        stubFor(get(urlPathEqualTo(ENC + "/merge_requests")).withQueryParam("state", equalTo("opened"))
+        stubFor(get(urlPathEqualTo(NUMERIC + "/merge_requests")).withQueryParam("state", equalTo("opened"))
                 .willReturn(okJson("[" + mr(id, "opened", status) + "]")));
-        stubFor(get(urlPathEqualTo(ENC + "/merge_requests/" + id)).willReturn(okJson(mr(id, "opened", status))));
+        stubFor(get(urlPathEqualTo(NUMERIC + "/merge_requests/" + id)).willReturn(okJson(mr(id, "opened", status))));
     }
     private static String mr(int id, String state, String status) {
         return """
