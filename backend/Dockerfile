@@ -15,4 +15,4 @@ FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 COPY --from=builder /build/releasehub-bootstrap/target/releasehub-bootstrap-*.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar", "--spring.profiles.active=gitlab-e2e"]
+ENTRYPOINT ["java", "-jar", "app.jar"]
