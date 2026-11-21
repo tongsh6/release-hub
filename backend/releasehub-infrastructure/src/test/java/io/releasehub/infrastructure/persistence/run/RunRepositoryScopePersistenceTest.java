@@ -17,6 +17,31 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class RunRepositoryScopePersistenceTest {
+
+    @Test
+    void rejectsNonPositiveClaimLeaseAtBeanConstruction() {
+        for (long lease : List.of(0L, -1L)) {
+            try (var context = new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+                context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(
+                        "claim-lease-fixture", Map.of("releasehub.run.worker.claim-lease-ms", Long.toString(lease))));
+                context.registerBean(RunJpaRepository.class, () -> mock(RunJpaRepository.class));
+                context.registerBean(RunTaskJpaRepository.class, () -> mock(RunTaskJpaRepository.class));
+                context.registerBean(jakarta.persistence.EntityManager.class, () -> mock(jakarta.persistence.EntityManager.class));
+                context.registerBean(java.time.Clock.class, java.time.Clock::systemUTC);
+                context.registerBean(io.releasehub.application.window.WindowIterationPort.class,
+                        () -> mock(io.releasehub.application.window.WindowIterationPort.class));
+                context.registerBean(io.releasehub.application.gitoperation.GitOperationJournalPort.class,
+                        () -> mock(io.releasehub.application.gitoperation.GitOperationJournalPort.class));
+                context.registerBean(RunJpaPersistenceAdapter.class);
+                var failure = assertThrows(org.springframework.beans.factory.BeanCreationException.class, context::refresh);
+                Throwable cause = failure;
+                while (cause.getCause() != null) cause = cause.getCause();
+                assertInstanceOf(IllegalArgumentException.class, cause);
+                assertTrue(cause.getMessage().contains("claim-lease-ms"));
+            }
+        }
+    }
+
     @Test
     void savingARepositoryItemPreservesNullIterationAndFrozenParticipantMetadata() {
         Instant now = Instant.parse("2026-11-21T10:00:00Z");
@@ -26,7 +51,7 @@ class RunRepositoryScopePersistenceTest {
         RunJpaRepository repository = mock(RunJpaRepository.class);
         var adapter = new RunJpaPersistenceAdapter(repository, mock(RunTaskJpaRepository.class), mock(jakarta.persistence.EntityManager.class),
                 java.time.Clock.systemUTC(), mock(io.releasehub.application.window.WindowIterationPort.class),
-                mock(io.releasehub.application.gitoperation.GitOperationJournalPort.class));
+                mock(io.releasehub.application.gitoperation.GitOperationJournalPort.class), 3_600_000L);
 
         assertDoesNotThrow(() -> adapter.save(run));
 
@@ -66,7 +91,7 @@ class RunRepositoryScopePersistenceTest {
 
         Run restored = new RunJpaPersistenceAdapter(repository, mock(RunTaskJpaRepository.class), mock(jakarta.persistence.EntityManager.class),
                 java.time.Clock.systemUTC(), mock(io.releasehub.application.window.WindowIterationPort.class),
-                mock(io.releasehub.application.gitoperation.GitOperationJournalPort.class)).findById("cleanup-run").orElseThrow();
+                mock(io.releasehub.application.gitoperation.GitOperationJournalPort.class), 3_600_000L).findById("cleanup-run").orElseThrow();
 
         assertEquals(1, restored.getItems().size());
         var restoredItem = restored.getItems().get(0);

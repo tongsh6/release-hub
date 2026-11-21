@@ -33,6 +33,8 @@ public class RunTaskJpaEntity {
     private String status;
     @Column(name = "claim_token")
     private String claimToken;
+    @Column(name = "claim_expires_at")
+    private Instant claimExpiresAt;
     @Column(name = "error_message")
     private String errorMessage;
     @Column(name = "started_at")

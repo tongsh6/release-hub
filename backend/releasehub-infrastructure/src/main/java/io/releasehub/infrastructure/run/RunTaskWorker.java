@@ -50,11 +50,11 @@ public final class RunTaskWorker implements AutoCloseable {
     /** 仅发现并提交有界候选，不在扫描线程领取；返回本轮已提交的命令数。 */
     public synchronized int scanOnce() {
         if (closed) return 0;
-        var candidates = runs.findPendingTaskRunIds(afterId, batchSize);
+        var candidates = runs.findTaskCandidateRunIds(afterId, batchSize);
         if (closed) return 0;
         if (candidates.isEmpty() && afterId != null) {
             afterId = null;
-            candidates = runs.findPendingTaskRunIds(null, batchSize);
+            candidates = runs.findTaskCandidateRunIds(null, batchSize);
         }
         int submitted = 0;
         for (String runId : candidates) {

@@ -23,7 +23,8 @@ import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.repo.RepoType;
 import io.releasehub.domain.run.ActionType;
 import io.releasehub.domain.run.RunExecutionStatus;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.config.BeanPostProcessor;
@@ -54,7 +55,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
-/** 独立 JVM + 真实 PostgreSQL/HTTP fixture；只验已提交 PENDING 的自动继续，不重领未知写。 */
+/** 独立 JVM + PostgreSQL/HTTP：原 PENDING 继续及无写意图 RUNNING 接管；不重放未知写。 */
 class RunTaskProcessKillIT {
     private static final String PROJECT_ID = "101";
     private static final String ITERATION = "ITER-C2-RESTART";
@@ -66,9 +67,10 @@ class RunTaskProcessKillIT {
     private static final String INTENT = "after-mr-before-merge";
     @TempDir Path temporary;
 
-    @Test
+    @ParameterizedTest(name = "claimedBeforeCrash={0}")
+    @ValueSource(booleans = {false, true})
     @Timeout(180)
-    void restartingAfterCommittedMrConsumesOnlyThePendingMerge() throws Exception {
+    void restartingAfterCommittedMrContinuesTheOriginalMerge(boolean claimedBeforeCrash) throws Exception {
         GitLabHttpFixture server = new GitLabHttpFixture();
         Process first = null;
         Process restarted = null;
@@ -82,15 +84,26 @@ class RunTaskProcessKillIT {
             Path marker = temporary.resolve("checkpoint.txt");
             Path receipt = temporary.resolve("receipt.txt");
             Path firstLog = temporary.resolve("first.log");
-            first = launch("first", db, server, windowId, repoId, marker, receipt, firstLog);
+            first = launch(claimedBeforeCrash ? "first-claimed" : "first", db, server, windowId, repoId, marker, receipt, firstLog);
             awaitCheckpoint(first, marker, firstLog);
 
             JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
                     db.getJdbcUrl(), db.getUsername(), db.getPassword()));
             String runId = Files.readString(marker).trim();
             var before = tasks(jdbc, runId);
+            var originalItemIds = jdbc.queryForList("select id from run_item where run_id=? order by id", String.class, runId);
+            var originalSteps = jdbc.queryForList("select s.* from run_step s join run_task t on t.id=s.task_id "
+                    + "where t.run_id=? order by t.task_order", runId);
+            assertThat(originalItemIds).hasSize(1);
+            assertThat(originalSteps).hasSize(3);
             assertThat(before).extracting(row -> row.get("status"))
-                    .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "PENDING");
+                    .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", claimedBeforeCrash ? "RUNNING" : "PENDING");
+            assertThat(jdbc.queryForObject("select count(*) from git_operation where task_id=?", Integer.class,
+                    before.getLast().get("id"))).isZero();
+            if (claimedBeforeCrash) {
+                assertThat(before.getLast().get("claim_token")).isNotNull();
+                assertThat(before.getLast().get("started_at")).isNotNull();
+            }
             assertThat(metadata(jdbc, runId)).containsEntry("git.projectId", PROJECT_ID)
                     .containsEntry("git.mrIid", "7").containsEntry("git.sourceSha", SOURCE_SHA)
                     .containsEntry("git.sourceBranch", SOURCE).containsEntry("git.targetBranch", TARGET);
@@ -112,9 +125,24 @@ class RunTaskProcessKillIT {
             assertThat(restarted.exitValue()).withFailMessage("Resume JVM failed: %s", tail(restartedLog)).isZero();
             assertThat(Files.readString(receipt).trim()).isEqualTo(runId);
             var after = tasks(jdbc, runId);
+            assertThat(jdbc.queryForList("select id from run_item where run_id=? order by id", String.class, runId))
+                    .isEqualTo(originalItemIds);
+            var completedSteps = jdbc.queryForList("select s.* from run_step s join run_task t on t.id=s.task_id "
+                    + "where t.run_id=? order by t.task_order", runId);
+            assertThat(completedSteps).hasSize(4);
+            assertThat(completedSteps.subList(0, 3)).isEqualTo(originalSteps);
+            assertThat(completedSteps.getLast().get("task_id")).isEqualTo(before.getLast().get("id"));
             assertThat(after.subList(0, 3)).isEqualTo(before.subList(0, 3));
             assertThat(after).extracting(row -> row.get("status"))
                     .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED");
+            assertThat(after.getLast().get("id")).isEqualTo(before.getLast().get("id"));
+            if (claimedBeforeCrash) {
+                assertThat(after.getLast().get("claim_token")).isNotEqualTo(before.getLast().get("claim_token"));
+                assertThat(after.getLast().get("started_at")).isEqualTo(before.getLast().get("started_at"));
+                assertThat(before.getLast().get("claim_expires_at")).isNotNull();
+                assertThat(after.getLast().get("claim_expires_at")).isNotNull()
+                        .isNotEqualTo(before.getLast().get("claim_expires_at"));
+            }
             assertThat(jdbc.queryForObject("select execution_status from run where id=?", String.class, runId))
                     .isEqualTo("DONE");
             assertThat(metadata(jdbc, runId)).containsEntry("git.projectId", PROJECT_ID)
@@ -130,9 +158,9 @@ class RunTaskProcessKillIT {
             assertThat(server.writeCount()).isEqualTo(2);
             assertThat(server.requests.subList(requestsBeforeRestart, server.requests.size()))
                     .noneMatch(request -> request.method().equals("POST") || request.internalHeaders());
-            System.out.printf("PROCESS_PENDING_RESUME run=%s killedPid=%d exit=%d resumedPid=%d "
+            System.out.printf("PROCESS_%s_RESUME run=%s killedPid=%d exit=%d resumedPid=%d "
                     + "mrPost=1 mergePut=1 preservedPrefix=3 tasks=COMPLETED,COMPLETED,COMPLETED,COMPLETED%n",
-                    runId, killedPid, first.exitValue(), restarted.pid());
+                    claimedBeforeCrash ? "CLAIMED_UNWRITTEN" : "PENDING", runId, killedPid, first.exitValue(), restarted.pid());
         } finally {
             stopOwnedProcess(first);
             stopOwnedProcess(restarted);
@@ -175,7 +203,7 @@ class RunTaskProcessKillIT {
     }
 
     private static List<Map<String, Object>> tasks(JdbcTemplate jdbc, String runId) {
-        return jdbc.queryForList("select id, task_type, status, claim_token, started_at, finished_at "
+        return jdbc.queryForList("select id, task_type, status, claim_token, started_at, claim_expires_at, finished_at "
                 + "from run_task where run_id=? order by task_order", runId);
     }
 
@@ -213,15 +241,16 @@ class RunTaskProcessKillIT {
     public static final class CheckpointConfiguration {
         @Bean
         static BeanPostProcessor checkpointPause(Environment environment) {
-            boolean pause = environment.getProperty("releasehub.fixture.pause-after-mr", Boolean.class, false);
+            boolean pauseAfterMr = environment.getProperty("releasehub.fixture.pause-after-mr", Boolean.class, false);
+            boolean pauseAfterClaim = environment.getProperty("releasehub.fixture.pause-after-claim", Boolean.class, false);
             Path marker = Path.of(environment.getRequiredProperty("releasehub.fixture.checkpoint-file"));
             return new BeanPostProcessor() {
                 @Override
                 public Object postProcessAfterInitialization(Object bean, String beanName) {
-                    if (!pause || !(bean instanceof RunPort original)) return bean;
+                    if (!(pauseAfterMr || pauseAfterClaim) || !(bean instanceof RunPort original)) return bean;
                     return Proxy.newProxyInstance(RunPort.class.getClassLoader(), new Class<?>[]{RunPort.class},
                             (proxy, method, arguments) -> {
-                                if (method.getName().equals("claimNextTask")) {
+                                if (pauseAfterMr && method.getName().equals("claimNextTask")) {
                                     String runId = (String) arguments[0];
                                     boolean committed = original.findTasks(runId).stream().anyMatch(task ->
                                             task.actionType() == ActionType.ENSURE_MR
@@ -232,8 +261,18 @@ class RunTaskProcessKillIT {
                                         throw new IllegalStateException("Checkpoint pause unexpectedly ended");
                                     }
                                 }
-                                try { return method.invoke(original, arguments); }
+                                Object result;
+                                try { result = method.invoke(original, arguments); }
                                 catch (InvocationTargetException error) { throw error.getCause(); }
+                                if (pauseAfterClaim && method.getName().equals("claimNextTask")
+                                        && result instanceof java.util.Optional<?> claimed
+                                        && claimed.orElse(null) instanceof RunPort.TaskClaim task
+                                        && task.actionType() == ActionType.TRY_MERGE) {
+                                    Files.writeString(marker, task.runId());
+                                    new CountDownLatch(1).await();
+                                    throw new IllegalStateException("Claim pause unexpectedly ended");
+                                }
+                                return result;
                             });
                 }
             };
@@ -243,7 +282,8 @@ class RunTaskProcessKillIT {
     public static final class Child {
         private Child() {}
         public static void main(String[] args) throws Exception {
-            boolean first = "first".equals(args[0]);
+            boolean claimedBeforeCrash = "first-claimed".equals(args[0]);
+            boolean first = "first".equals(args[0]) || claimedBeforeCrash;
             Path marker = Path.of(args[1]);
             Path receipt = Path.of(args[2]);
             try (ConfigurableApplicationContext context = new SpringApplicationBuilder(
@@ -251,7 +291,9 @@ class RunTaskProcessKillIT {
                     .run("--spring.profiles.active=e2e", "--server.port=0", "--spring.jpa.open-in-view=false",
                             "--releasehub.run.worker.enabled=true", "--releasehub.run.worker.parallelism=1",
                             "--releasehub.run.worker.queue-capacity=0", "--releasehub.run.worker.scan-delay-ms=25",
-                            "--releasehub.fixture.pause-after-mr=" + first,
+                            "--releasehub.run.worker.claim-lease-ms=2000",
+                            "--releasehub.fixture.pause-after-mr=" + (first && !claimedBeforeCrash),
+                            "--releasehub.fixture.pause-after-claim=" + claimedBeforeCrash,
                             "--releasehub.fixture.checkpoint-file=" + marker,
                             "--spring.datasource.url=" + environment("RH_C2_DB_URL"),
                             "--spring.datasource.username=" + environment("RH_C2_DB_USER"),
@@ -266,13 +308,13 @@ class RunTaskProcessKillIT {
                     new CountDownLatch(1).await();
                     throw new IllegalStateException("First process unexpectedly stopped");
                 }
-                // 重启先由生产定时扫描消费旧 PENDING；无需重发受理请求或手动驱动任务。
+                // 重启由生产扫描继续原任务；只读等待，不重发受理或手动领取。
                 String originalRunId = Files.readString(marker).trim();
                 RunPort runs = context.getBean(RunPort.class);
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(35);
                 while (runs.findById(originalRunId).orElseThrow().getExecutionStatus() != RunExecutionStatus.DONE) {
                     if (System.nanoTime() >= deadline) throw new IllegalStateException(
-                            "Scheduled worker did not finish pending task: " + runs.findTasks(originalRunId));
+                            "Scheduled worker did not finish original task: " + runs.findTasks(originalRunId));
                     Thread.sleep(50);
                 }
                 assertThat(context.getBean(GitOperationJournalPort.class).list(repoId, 0, 10))

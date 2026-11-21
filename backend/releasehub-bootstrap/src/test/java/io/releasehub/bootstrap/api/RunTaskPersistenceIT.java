@@ -78,6 +78,7 @@ class RunTaskPersistenceIT {
     @Autowired WindowIterationPort bindings;
     @Autowired RunPlanAppService plans;
     @Autowired RunPort runs;
+    @org.springframework.boot.test.mock.mockito.SpyBean java.time.Clock clock;
     @MockBean GitLabPort gitLab;
     @MockBean GitLabFilePort gitFiles;
     @MockBean GitBranchAdapterFactory gitBranches;
@@ -155,7 +156,7 @@ class RunTaskPersistenceIT {
                 "operator", UUID.randomUUID().toString());
         var run = runs.findById(plans.admit(windowId, List.of(firstRepo), List.of(firstIteration), true, "operator", java.util.UUID.randomUUID().toString()).runId()).orElseThrow();
         assertThat(jdbc.queryForObject("select count(*) from run_task where run_id=?", Integer.class, preview.runId())).isZero();
-        assertThat(runs.findPendingTaskRunIds(null, 1000)).doesNotContain(preview.runId());
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(preview.runId());
         assertThat(jdbc.queryForObject("select count(*) from run_task where run_id=?", Integer.class, run.getId().value())).isEqualTo(4);
     }
 
@@ -362,27 +363,27 @@ class RunTaskPersistenceIT {
     void candidateDiscoveryRequiresCurrentWindowProtocolActiveStateAndPendingIntent() {
         Run run = admit(List.of(firstRepo), List.of(firstIteration), true);
         String id = run.getId().value();
-        assertThat(runs.findPendingTaskRunIds(null, 1000)).contains(id);
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).contains(id);
 
         // 有意构造历史/其他协议行，仅验证候选发现边界，不派发这些反例。
         for (int version : List.of(1, 2)) {
             jdbc.update("update run set execution_version=? where id=?", version, id);
-            assertThat(runs.findPendingTaskRunIds(null, 1000)).doesNotContain(id);
+            assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(id);
         }
         jdbc.update("update run set execution_version=? where id=?", Run.ORCHESTRATION_PROTOCOL_VERSION, id);
         for (String type : List.of("WINDOW_CLEANUP", "VERSION_UPDATE", "ATTACH_ITERATION")) {
             jdbc.update("update run set run_type=? where id=?", type, id);
-            assertThat(runs.findPendingTaskRunIds(null, 1000)).doesNotContain(id);
+            assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(id);
         }
         jdbc.update("update run set run_type='WINDOW_ORCHESTRATION' where id=?", id);
         for (String status : List.of("PLANNED", "DONE", "PARTIAL_FAILED", "FAILED")) {
             jdbc.update("update run set execution_status=? where id=?", status, id);
-            assertThat(runs.findPendingTaskRunIds(null, 1000)).doesNotContain(id);
+            assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(id);
         }
         jdbc.update("update run set execution_status='NEEDS_REVIEW' where id=?", id);
-        assertThat(runs.findPendingTaskRunIds(null, 1000)).contains(id);
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).contains(id);
         jdbc.update("update run_task set status='SKIPPED' where run_id=?", id);
-        assertThat(runs.findPendingTaskRunIds(null, 1000)).doesNotContain(id);
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(id);
         verifyNoInteractions(gitLab, gitFiles, gitBranches);
     }
 
@@ -397,7 +398,7 @@ class RunTaskPersistenceIT {
         String cursor = null;
         boolean ended = false;
         for (int page = 0; page < 1000; page++) {
-            var candidates = runs.findPendingTaskRunIds(cursor, 1);
+            var candidates = runs.findTaskCandidateRunIds(cursor, 1);
             assertThat(candidates).hasSizeLessThanOrEqualTo(1);
             if (candidates.isEmpty()) { ended = true; break; }
             String next = candidates.getFirst();
@@ -412,9 +413,9 @@ class RunTaskPersistenceIT {
             assertThat(jdbc.queryForObject("select count(*) from run_task where run_id=? and claim_token is not null",
                     Integer.class, id)).isZero();
         }
-        assertThatThrownBy(() -> runs.findPendingTaskRunIds(null, 0))
+        assertThatThrownBy(() -> runs.findTaskCandidateRunIds(null, 0))
                 .hasRootCauseInstanceOf(IllegalArgumentException.class).hasMessageContaining("between 1 and 1000");
-        assertThatThrownBy(() -> runs.findPendingTaskRunIds(null, 1001))
+        assertThatThrownBy(() -> runs.findTaskCandidateRunIds(null, 1001))
                 .hasRootCauseInstanceOf(IllegalArgumentException.class).hasMessageContaining("between 1 and 1000");
         verifyNoInteractions(gitLab, gitFiles, gitBranches);
     }
@@ -425,7 +426,7 @@ class RunTaskPersistenceIT {
         String id = run.getId().value();
         var claim = runs.claimNextTask(id).orElseThrow();
         var runningTasks = runs.findTasks(id);
-        assertThat(runs.findPendingTaskRunIds(null, 1000)).contains(id);
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).contains(id);
         assertThat(runs.claimNextTask(id)).isEmpty();
         assertThat(runs.findTasks(id)).isEqualTo(runningTasks);
         assertThat(jdbc.queryForObject("select claim_token from run_task where id=?", String.class,
@@ -439,6 +440,337 @@ class RunTaskPersistenceIT {
         assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class,
                 claim.fence().taskId())).isEqualTo(1);
         verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+
+    @Test
+    void flywayCreatesNullableClaimExpiryWithoutReplacingFirstStart() {
+        assertClaimExpiryColumn(jdbc.queryForObject("select current_schema()", String.class));
+    }
+
+    @Test
+    void localHibernateUpdateAddsTheSameNullableClaimExpiry() {
+        String schema = "lease_local_" + UUID.randomUUID().toString().replace("-", "");
+        jdbc.execute("create schema " + schema);
+        // local profile uses Hibernate update; start with its existing task table shape.
+        jdbc.execute("create table " + schema + ".run_task (id varchar(255) primary key, started_at timestamptz)");
+        var registry = new org.hibernate.boot.registry.StandardServiceRegistryBuilder()
+                .applySetting("hibernate.connection.driver_class", "org.postgresql.Driver")
+                .applySetting("hibernate.connection.url", DB.getJdbcUrl())
+                .applySetting("hibernate.connection.username", DB.getUsername())
+                .applySetting("hibernate.connection.password", DB.getPassword())
+                .applySetting("hibernate.default_schema", schema)
+                .applySetting("hibernate.hbm2ddl.auto", "update")
+                .build();
+        try {
+            try (var factory = new org.hibernate.boot.MetadataSources(registry)
+                    .addAnnotatedClass(io.releasehub.infrastructure.persistence.run.RunTaskJpaEntity.class)
+                    .buildMetadata().buildSessionFactory()) {
+                assertClaimExpiryColumn(schema);
+            }
+        } finally {
+            org.hibernate.boot.registry.StandardServiceRegistryBuilder.destroy(registry);
+            jdbc.execute("drop schema " + schema + " cascade");
+        }
+    }
+
+    private void assertClaimExpiryColumn(String schema) {
+        var columns = jdbc.queryForList("""
+                select column_name, data_type, is_nullable from information_schema.columns
+                where table_schema=? and table_name='run_task' and column_name in ('started_at', 'claim_expires_at')
+                """, schema);
+        assertThat(columns).extracting(column -> column.get("column_name"))
+                .containsExactlyInAnyOrder("started_at", "claim_expires_at");
+        assertThat(columns.stream().filter(column -> "claim_expires_at".equals(column.get("column_name"))))
+                .singleElement().satisfies(column -> {
+                    assertThat(column.get("data_type")).isEqualTo("timestamp with time zone");
+                    assertThat(column.get("is_nullable")).isEqualTo("YES");
+                });
+    }
+
+
+    @Test
+    void claimDeadlineUsesDatabaseTimeWhenWorkerClockIsAhead() {
+        Run run = admit(List.of(firstRepo), List.of(firstIteration), true);
+        Instant workerTime = Instant.parse("2040-01-01T00:00:00Z");
+        org.mockito.Mockito.doReturn(workerTime).when(clock).instant();
+        Instant before = databaseNow();
+        var claim = runs.claimNextTask(run.getId().value()).orElseThrow();
+        Instant after = databaseNow();
+
+        assertThat(claim.startedAt()).isEqualTo(workerTime);
+        assertThat(claimExpiry(claim)).isNotNull()
+                .isBetween(before.plusSeconds(3600), after.plusSeconds(3600));
+        assertThat(runs.findTasks(run.getId().value()).getFirst().startedAt()).isEqualTo(workerTime);
+    }
+
+    @Test
+    void expiredLastTaskIsDiscoveredWithoutAnyPendingTask() {
+        var claim = claimLastTask();
+        assertThat(runs.findTasks(claim.runId()).stream().map(RunPort.TaskView::status))
+                .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "RUNNING");
+        expireClaim(claim);
+
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).contains(claim.runId());
+        assertThat(jdbc.queryForObject("select count(*) from git_operation where task_id=?",
+                Integer.class, claim.fence().taskId())).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?",
+                Integer.class, claim.fence().taskId())).isZero();
+    }
+
+    @Test
+    void reclaimPreservesFirstStartAndPrefixWhileRejectingOldCompletion() {
+        Run run = admit(List.of(firstRepo), List.of(firstIteration), true);
+        for (int index = 0; index < 3; index++) completeSuccess(runs.claimNextTask(run.getId().value()).orElseThrow());
+        var prefix = jdbc.queryForList("select * from run_step where run_item_id=? order by task_id",
+                run.getItems().getFirst().getId().value());
+        int executedOrder = runs.findById(run.getId().value()).orElseThrow().getItems().getFirst().getExecutedOrder();
+        Instant firstTime = Instant.parse("2040-01-01T00:00:00Z");
+        org.mockito.Mockito.doReturn(firstTime).when(clock).instant();
+        var previous = runs.claimNextTask(run.getId().value()).orElseThrow();
+        expireClaim(previous);
+        Instant currentTime = Instant.parse("2020-01-01T00:00:00Z");
+        org.mockito.Mockito.doReturn(currentTime).when(clock).instant();
+
+        var candidate = runs.claimNextTask(run.getId().value());
+        assertThat(candidate).as("the original task with no write intent can be reclaimed").isPresent();
+        var current = candidate.orElseThrow();
+        assertThat(current.fence().taskId()).isEqualTo(previous.fence().taskId());
+        assertThat(current.fence().claimToken()).isNotEqualTo(previous.fence().claimToken());
+        assertThat(current.startedAt()).isEqualTo(currentTime);
+        assertThat(current.metadata()).isEqualTo(previous.metadata());
+        assertThat(runs.findTasks(current.runId()).getLast().startedAt()).isEqualTo(firstTime);
+        assertThat(runs.findById(current.runId()).orElseThrow().getItems().getFirst().getExecutedOrder())
+                .isEqualTo(executedOrder);
+        assertThatThrownBy(() -> runs.completeTask(previous,
+                new RunStep(ActionType.TRY_MERGE, RunItemResult.MERGED, firstTime, firstTime.plusMillis(1), "stale worker"),
+                Map.of("git.mergeSha", "b".repeat(40), "git.mrDisposition", "MR_REUSED")))
+                .isInstanceOf(BusinessException.class);
+
+        Run completed = runs.completeTask(current,
+                new RunStep(ActionType.TRY_MERGE, RunItemResult.MERGED, currentTime, currentTime.plusMillis(1), "current worker"),
+                Map.of("git.mergeSha", "b".repeat(40), "git.mrDisposition", "MR_REUSED"));
+        assertThat(completed.getExecutionStatus()).isEqualTo(RunExecutionStatus.DONE);
+        assertThat(jdbc.queryForList("select * from run_step where run_item_id=? and task_id<>? order by task_id",
+                current.itemId(), current.fence().taskId())).isEqualTo(prefix);
+        assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?",
+                Integer.class, current.fence().taskId())).isEqualTo(1);
+        assertThat(completed.getItems().getFirst().getSteps().getLast().startAt()).isEqualTo(currentTime);
+    }
+
+    @Test
+    void twoWorkersCannotBothReclaimTheSameExpiredTask() throws Exception {
+        var previous = claimLastTask();
+        expireClaim(previous);
+        var start = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var first = pool.submit(() -> { start.await(); return runs.claimNextTask(previous.runId()); });
+            var second = pool.submit(() -> { start.await(); return runs.claimNextTask(previous.runId()); });
+            start.countDown();
+            var results = List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
+            assertThat(results.stream().filter(java.util.Optional::isPresent)).hasSize(1);
+            var current = results.stream().flatMap(java.util.Optional::stream).findFirst().orElseThrow();
+            assertThat(current.fence().taskId()).isEqualTo(previous.fence().taskId());
+            assertThat(current.fence().claimToken()).isNotEqualTo(previous.fence().claimToken());
+            assertThat(claimExpiry(current)).isAfter(databaseNow());
+            assertThat(runs.claimNextTask(previous.runId())).isEmpty();
+        }
+    }
+
+    @Test
+    void claimDeadlineStartsAfterWaitingForTheRunLock() throws Exception {
+        Run run = admit(List.of(firstRepo), List.of(firstIteration), true);
+        var locked = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var waiterStarted = new CountDownLatch(1);
+        var waiterPid = new java.util.concurrent.atomic.AtomicInteger();
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            try {
+                var holder = pool.submit(() -> new TransactionTemplate(transactions).execute(tx -> {
+                    jdbc.queryForObject("select id from run where id=? for update", String.class, run.getId().value());
+                    locked.countDown();
+                    try {
+                        if (!release.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("fixture lock was not released");
+                    } catch (InterruptedException error) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(error);
+                    }
+                    return null;
+                }));
+                assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+                var waiter = pool.submit(() -> new TransactionTemplate(transactions).execute(tx -> {
+                    waiterPid.set(jdbc.queryForObject("select pg_backend_pid()", Integer.class));
+                    waiterStarted.countDown();
+                    return runs.claimNextTask(run.getId().value());
+                }));
+                assertThat(waiterStarted.await(5, TimeUnit.SECONDS)).isTrue();
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                boolean waiting = false;
+                while (System.nanoTime() < deadline) {
+                    waiting = jdbc.queryForObject(
+                            "select count(*) from pg_stat_activity where pid=? and wait_event_type='Lock'",
+                            Integer.class, waiterPid.get()) == 1;
+                    if (waiting) break;
+                    Thread.sleep(10);
+                }
+                assertThat(waiting).as("the claimant actually waited on the PostgreSQL row lock").isTrue();
+                Instant earliestClaimTime = databaseNow();
+                release.countDown();
+                holder.get(10, TimeUnit.SECONDS);
+                var claim = waiter.get(10, TimeUnit.SECONDS).orElseThrow();
+                assertThat(claimExpiry(claim)).isNotNull()
+                        .isBetween(earliestClaimTime.plusSeconds(3600), databaseNow().plusSeconds(3600));
+            } finally {
+                release.countDown();
+            }
+        }
+    }
+
+    @Test
+    void nullFutureAndUnknownClaimsAreNotRecoveryCandidates() {
+        var claim = claimLastTask();
+        jdbc.update("update run_task set claim_expires_at=null where id=?", claim.fence().taskId());
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(claim.runId());
+        assertThat(runs.claimNextTask(claim.runId())).isEmpty();
+
+        jdbc.update("update run_task set claim_expires_at=clock_timestamp()+interval '1 day' where id=?",
+                claim.fence().taskId());
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(claim.runId());
+        assertThat(runs.claimNextTask(claim.runId())).isEmpty();
+
+        runs.completeTask(claim, step(claim, RunItemResult.UNKNOWN), Map.of("git.blockReason", "UNKNOWN"));
+        expireClaim(claim);
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(claim.runId());
+        assertThat(runs.claimNextTask(claim.runId())).isEmpty();
+        assertThat(runs.findTasks(claim.runId()).getLast().status()).isEqualTo("UNKNOWN");
+    }
+
+
+    @Test
+    void aCurrentTaskStepPreventsRecoveryButSuccessfulPrefixStepsDoNot() {
+        var claim = claimLastTask();
+        expireClaim(claim);
+        // Isolated inconsistent result fixture: a committed Step cannot be silently replayed.
+        jdbc.update("""
+                insert into run_step(run_item_id,action_type,result,start_at,end_at,message,task_id)
+                values (?,?,?,?,?,?,?)
+                """, claim.itemId(), ActionType.TRY_MERGE.name(), RunItemResult.MERGED.name(),
+                java.sql.Timestamp.from(claim.startedAt()), java.sql.Timestamp.from(claim.startedAt().plusMillis(1)),
+                "retained result evidence", claim.fence().taskId());
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(claim.runId());
+        assertThat(runs.claimNextTask(claim.runId())).isEmpty();
+        assertThat(jdbc.queryForObject("select claim_token from run_task where id=?", String.class,
+                claim.fence().taskId())).isEqualTo(claim.fence().claimToken());
+        assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?",
+                Integer.class, claim.fence().taskId())).isEqualTo(1);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void incompleteRunningClaimsCannotRegainOwnership() {
+        var claim = claimLastTask();
+        expireClaim(claim);
+        jdbc.update("update run_task set claim_token=null where id=?", claim.fence().taskId());
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(claim.runId());
+        assertThat(runs.claimNextTask(claim.runId())).isEmpty();
+
+        jdbc.update("update run_task set claim_token=?,started_at=null where id=?",
+                claim.fence().claimToken(), claim.fence().taskId());
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).doesNotContain(claim.runId());
+        assertThat(runs.claimNextTask(claim.runId())).isEmpty();
+        assertThat(runs.findTasks(claim.runId()).getLast().startedAt()).isNull();
+
+        jdbc.update("update run_task set started_at=? where id=?",
+                java.sql.Timestamp.from(claim.startedAt()), claim.fence().taskId());
+        assertThat(jdbc.update("update run_item set executed_order=0 where id=?", claim.itemId())).isEqualTo(1);
+        // Discovery only offers a candidate; the locked claim must reject incomplete execution facts.
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).contains(claim.runId());
+        String factsSql = """
+                select t.claim_token,t.claim_expires_at,i.executed_order
+                from run_task t join run_item i on i.id=t.target_id where t.id=?
+                """;
+        var before = jdbc.queryForMap(factsSql, claim.fence().taskId());
+        var reclaimed = runs.claimNextTask(claim.runId());
+        var after = jdbc.queryForMap(factsSql, claim.fence().taskId());
+        org.assertj.core.api.SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(reclaimed).as("missing execution order must not grant ownership").isEmpty();
+            softly.assertThat(after.get("claim_token")).as("original token").isEqualTo(before.get("claim_token"));
+            softly.assertThat(after.get("claim_expires_at")).as("original expiry").isEqualTo(before.get("claim_expires_at"));
+            softly.assertThat(after.get("executed_order")).as("missing order remains unmodified").isEqualTo(0);
+        });
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void anotherRepositoryCanBeReclaimedWhileTheRunNeedsReview() {
+        Run run = admit(List.of(firstRepo, secondRepo), List.of(firstIteration), true);
+        var unknown = runs.claimNextTask(run.getId().value()).orElseThrow();
+        runs.completeTask(unknown, step(unknown, RunItemResult.UNKNOWN), Map.of("git.blockReason", "UNKNOWN"));
+        var other = runs.claimNextTask(run.getId().value()).orElseThrow();
+        assertThat(other.repo()).isNotEqualTo(unknown.repo());
+        expireClaim(other);
+        assertThat(runs.findById(run.getId().value()).orElseThrow().getExecutionStatus()).isEqualTo(RunExecutionStatus.NEEDS_REVIEW);
+        assertThat(runs.findTaskCandidateRunIds(null, 1000)).contains(run.getId().value());
+
+        var candidate = runs.claimNextTask(run.getId().value());
+        assertThat(candidate).isPresent();
+        var current = candidate.orElseThrow();
+        assertThat(current.fence().taskId()).isEqualTo(other.fence().taskId());
+        assertThat(current.fence().claimToken()).isNotEqualTo(other.fence().claimToken());
+        assertThat(current.repo()).isEqualTo(other.repo());
+        completeSuccess(current);
+        assertThat(runs.findTasks(run.getId().value()).stream()
+                .filter(task -> task.taskId().equals(unknown.fence().taskId()))).singleElement()
+                .satisfies(task -> assertThat(task.status()).isEqualTo("UNKNOWN"));
+        assertThat(runs.findById(run.getId().value()).orElseThrow().getExecutionStatus()).isEqualTo(RunExecutionStatus.NEEDS_REVIEW);
+    }
+
+    @Test
+    void expiryDoesNotReleaseTheActiveRunCleanupBarrier() {
+        var claim = claimLastTask();
+        var window = windows.findById(ReleaseWindowId.of(windowId)).orElseThrow();
+        window.publish(Instant.now());
+        windows.save(window);
+        expireClaim(claim);
+
+        int priorCleanupRuns = jdbc.queryForObject("select count(*) from run where run_type='WINDOW_CLEANUP'", Integer.class);
+        assertThatThrownBy(() -> plans.admitCleanup(windowId, "cleanup-operator", false))
+                .isInstanceOf(BusinessException.class);
+        assertThat(windows.findById(ReleaseWindowId.of(windowId)).orElseThrow().getStatus())
+                .isEqualTo(ReleaseWindowStatus.PUBLISHED);
+        assertThat(jdbc.queryForObject("select count(*) from run where run_type='WINDOW_CLEANUP'",
+                Integer.class)).isEqualTo(priorCleanupRuns);
+
+        completeSuccess(claim);
+        assertThat(plans.admitCleanup(windowId, "cleanup-operator", false).run().getRunType())
+                .isEqualTo(io.releasehub.domain.run.RunType.WINDOW_CLEANUP);
+        assertThat(windows.findById(ReleaseWindowId.of(windowId)).orElseThrow().getStatus())
+                .isEqualTo(ReleaseWindowStatus.CLOSED);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    private RunPort.TaskClaim claimLastTask() {
+        Run run = admit(List.of(firstRepo), List.of(firstIteration), true);
+        for (int index = 0; index < 3; index++) completeSuccess(runs.claimNextTask(run.getId().value()).orElseThrow());
+        return runs.claimNextTask(run.getId().value()).orElseThrow();
+    }
+
+    private void expireClaim(RunPort.TaskClaim claim) {
+        // Targeted failure injection in the isolated database; no production sleep or status rewrite.
+        assertThat(jdbc.update("update run_task set claim_expires_at=clock_timestamp()-interval '1 second' where id=?",
+                claim.fence().taskId())).isEqualTo(1);
+    }
+
+    private Instant claimExpiry(RunPort.TaskClaim claim) {
+        return jdbc.queryForObject("select claim_expires_at from run_task where id=?", (row, index) -> {
+            var value = row.getObject(1, java.time.OffsetDateTime.class);
+            return value == null ? null : value.toInstant();
+        }, claim.fence().taskId());
+    }
+
+    private Instant databaseNow() {
+        return jdbc.queryForObject("select clock_timestamp()", (row, index) ->
+                row.getObject(1, java.time.OffsetDateTime.class).toInstant());
     }
 
     private Run admit(List<String> repos, List<String> iterations, boolean failFast) {

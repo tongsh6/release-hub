@@ -21,15 +21,16 @@ public interface RunPort {
 
     /** 加入受理事务，按冻结 Item 范围建立固定四动作；预览不调用。 */
     void createTasks(Run run);
-    /** 按稳定 Run ID 游标发现当前协议且仍有 PENDING 的候选；不授予执行资格。 */
-    List<String> findPendingTaskRunIds(String afterId, int limit);
-    /** 一次性领取；没有租约超时重派或隐式恢复。 */
+    /** 按稳定 Run ID 游标发现当前协议的 PENDING 或无写入/结果证据的到期 RUNNING 候选；不授予执行资格。 */
+    List<String> findTaskCandidateRunIds(String afterId, int limit);
+    /** 锁内领取一个可执行任务；仅无 operation/Step 的完整到期领取可更换 token，既有写入不重派。 */
     Optional<TaskClaim> claimNextTask(String runId);
     /** 短事务内定向保存事实、投影、绑定和 guard 确认；不保存传入的整个 Run。 */
     Run completeTask(TaskClaim claim, RunStep step, Map<String, String> metadataUpdates);
     List<TaskView> findTasks(String runId);
 
     record TaskFence(String taskId, String claimToken) {}
+    /** startedAt 是当前持有者的执行起点；TaskView.startedAt 保留任务首次领取时间。 */
     record TaskClaim(TaskFence fence, String runId, String itemId, RepoId repo, ActionType actionType,
                      Instant startedAt, String operator, Map<String, String> metadata) {
         public TaskClaim { metadata = Map.copyOf(metadata); }

@@ -17,7 +17,7 @@ import io.releasehub.domain.run.RunItemId;
 import io.releasehub.domain.run.RunItemResult;
 import io.releasehub.domain.run.RunStep;
 import io.releasehub.domain.run.RunType;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -28,6 +28,8 @@ import org.springframework.transaction.annotation.Propagation;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -45,13 +47,16 @@ import java.util.stream.Collectors;
 
 @Repository
 @Primary
-@RequiredArgsConstructor
 public class RunJpaPersistenceAdapter implements RunPort {
 
     private static final Set<String> SUCCESSFUL_TASKS = Set.of("COMPLETED", "INHERITED");
     private static final Set<String> MR_IDENTITY = Set.of("git.projectId", "git.sourceBranch", "git.targetBranch",
             "git.mrIid", "git.mrUrl", "git.sourceSha");
     private static final Set<String> MR_RESULT = Set.of("git.mergeSha", "git.mrDisposition", "git.blockReason", "git.requestId");
+    private static final String NO_TASK_EVIDENCE = """
+            NOT EXISTS (SELECT 1 FROM {h-schema}git_operation o WHERE o.task_id=t.id)
+            AND NOT EXISTS (SELECT 1 FROM {h-schema}run_step s WHERE s.task_id=t.id)
+            """;
 
     private final RunJpaRepository repository;
     private final RunTaskJpaRepository tasks;
@@ -59,6 +64,23 @@ public class RunJpaPersistenceAdapter implements RunPort {
     private final Clock clock;
     private final WindowIterationPort bindings;
     private final GitOperationJournalPort journal;
+    private final long claimLeaseMillis;
+
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(value = {"EI_EXPOSE_REP2", "CT_CONSTRUCTOR_THROW"},
+            justification = "EntityManager 是事务绑定的 Spring 共享代理，仅内部使用；非法期限在任何字段赋值前拒绝，"
+                    + "构造过程不分配资源、不发布自身，类需保留 Spring 事务代理能力")
+    public RunJpaPersistenceAdapter(RunJpaRepository repository, RunTaskJpaRepository tasks, EntityManager entityManager,
+                                    Clock clock, WindowIterationPort bindings, GitOperationJournalPort journal,
+                                    @Value("${releasehub.run.worker.claim-lease-ms:3600000}") long claimLeaseMillis) {
+        if (claimLeaseMillis <= 0) throw new IllegalArgumentException("releasehub.run.worker.claim-lease-ms must be positive");
+        this.repository = repository;
+        this.tasks = tasks;
+        this.entityManager = entityManager;
+        this.clock = clock;
+        this.bindings = bindings;
+        this.journal = journal;
+        this.claimLeaseMillis = claimLeaseMillis;
+    }
 
     @Override
     @Transactional
@@ -195,20 +217,28 @@ public class RunJpaPersistenceAdapter implements RunPort {
 
     @Override
     @Transactional(readOnly = true)
-    public List<String> findPendingTaskRunIds(String afterId, int limit) {
+    public List<String> findTaskCandidateRunIds(String afterId, int limit) {
         if (limit < 1 || limit > 1000) throw new IllegalArgumentException("Scan limit must be between 1 and 1000");
-        return entityManager.createQuery("""
-                select r.id from RunJpaEntity r
-                where r.runType = :type and r.executionVersion = :protocol
-                  and r.executionStatus in ('RUNNING', 'NEEDS_REVIEW') and r.id > :cursor
-                  and exists (select t.id from RunTaskJpaEntity t where t.runId = r.id and t.status = 'PENDING')
-                order by r.id
-                """, String.class)
-                .setParameter("type", RunType.WINDOW_ORCHESTRATION.name())
-                .setParameter("protocol", Run.ORCHESTRATION_PROTOCOL_VERSION)
-                .setParameter("cursor", afterId == null ? "" : afterId)
+        List<?> candidates = entityManager.createNativeQuery("""
+                SELECT r.id FROM {h-schema}run r
+                WHERE r.run_type=?1 AND r.execution_version=?2
+                  AND r.execution_status IN ('RUNNING', 'NEEDS_REVIEW') AND r.id>?3
+                  AND EXISTS (
+                    SELECT 1 FROM {h-schema}run_task t WHERE t.run_id=r.id
+                      AND (t.status='PENDING' OR (
+                        t.status='RUNNING' AND t.claim_token IS NOT NULL AND t.started_at IS NOT NULL
+                        AND t.claim_expires_at IS NOT NULL AND t.claim_expires_at<=clock_timestamp()
+                        AND
+                """ + NO_TASK_EVIDENCE + """
+                        )))
+                ORDER BY r.id
+                """)
+                .setParameter(1, RunType.WINDOW_ORCHESTRATION.name())
+                .setParameter(2, Run.ORCHESTRATION_PROTOCOL_VERSION)
+                .setParameter(3, afterId == null ? "" : afterId)
                 .setMaxResults(limit)
                 .getResultList();
+        return candidates.stream().map(String.class::cast).toList();
     }
 
     @Override
@@ -221,25 +251,62 @@ public class RunJpaPersistenceAdapter implements RunPort {
         var ordered = tasks.findByRunIdOrderByTaskOrderAsc(runId);
         Map<String, RunItemJpaEntity> items = taskItems(run, ordered);
         for (var candidate : ordered) {
-            if (!"PENDING".equals(candidate.getStatus())) continue;
+            if (!Set.of("PENDING", "RUNNING").contains(candidate.getStatus())) continue;
             RunItemJpaEntity item = items.get(candidate.getTargetId());
             if (!eligible(candidate, item, ordered, items)) continue;
+            // 所有领取、结果和写意图都遵循 Run → Task 锁序；拿锁后才采样数据库时间。
+            RunTaskJpaEntity task = tasks.findForUpdate(candidate.getId()).orElseThrow(this::stale);
+            Instant databaseTime = databaseNow();
+            boolean initialClaim = "PENDING".equals(task.getStatus());
+            if (initialClaim) {
+                if (task.getClaimToken() != null) throw stale();
+            } else if (item.getExecutedOrder() <= 0 || !recoverableWithoutEvidence(task, databaseTime)) {
+                continue;
+            }
             Map<String, String> metadata = taskMetadata(run, item);
             Instant started = now();
             String token = UUID.randomUUID().toString();
-            requireOne(update("UPDATE {h-schema}run_task SET status='RUNNING', claim_token=?1, started_at=?2 "
-                    + "WHERE id=?3 AND status='PENDING' AND claim_token IS NULL", token, stamp(started), candidate.getId()));
-            if (item.getExecutedOrder() == 0) {
+            OffsetDateTime expiresAt = databaseTime.plusMillis(claimLeaseMillis).atOffset(ZoneOffset.UTC);
+            if (initialClaim) {
+                requireOne(update("UPDATE {h-schema}run_task SET status='RUNNING', claim_token=?1, started_at=?2, claim_expires_at=?3 "
+                        + "WHERE id=?4 AND status='PENDING' AND claim_token IS NULL",
+                        token, stamp(started), expiresAt, task.getId()));
+            } else {
+                // 期限只提供竞争资格；实际换权以原 token、原期限及无事实约束的单行 CAS 为准。
+                requireOne(update("""
+                        UPDATE {h-schema}run_task t SET claim_token=?1, claim_expires_at=?2
+                        WHERE t.id=?3 AND t.status='RUNNING' AND t.claim_token=?4
+                          AND t.started_at IS NOT NULL AND t.claim_expires_at=?5 AND t.claim_expires_at<=?6
+                          AND
+                        """ + NO_TASK_EVIDENCE,
+                        token, expiresAt, task.getId(), task.getClaimToken(),
+                        task.getClaimExpiresAt().atOffset(ZoneOffset.UTC), databaseTime.atOffset(ZoneOffset.UTC)));
+            }
+            if (initialClaim && item.getExecutedOrder() == 0) {
                 int order = run.getItems().stream().mapToInt(RunItemJpaEntity::getExecutedOrder).max().orElse(0) + 1;
                 requireOne(update("UPDATE {h-schema}run_item SET executed_order=?1, updated_at=?2 WHERE id=?3 AND executed_order=0",
                         order, stamp(started), item.getId()));
             }
-            var claim = new TaskClaim(new TaskFence(candidate.getId(), token), runId, item.getId(),
-                    RepoId.of(item.getRepoId()), ActionType.valueOf(candidate.getTaskType()), started, run.getOperator(), metadata);
+            var claim = new TaskClaim(new TaskFence(task.getId(), token), runId, item.getId(),
+                    RepoId.of(item.getRepoId()), ActionType.valueOf(task.getTaskType()), started, run.getOperator(), metadata);
             entityManager.clear();
             return Optional.of(claim);
         }
         return Optional.empty();
+    }
+
+    private boolean recoverableWithoutEvidence(RunTaskJpaEntity task, Instant databaseTime) {
+        if (!"RUNNING".equals(task.getStatus()) || task.getClaimToken() == null || task.getStartedAt() == null
+                || task.getClaimExpiresAt() == null || task.getClaimExpiresAt().isAfter(databaseTime)) return false;
+        Number matches = (Number) entityManager.createNativeQuery(
+                "SELECT count(*) FROM {h-schema}run_task t WHERE t.id=?1 AND " + NO_TASK_EVIDENCE)
+                .setParameter(1, task.getId()).getSingleResult();
+        return matches.longValue() == 1;
+    }
+
+    private Instant databaseNow() {
+        return ((OffsetDateTime) entityManager.createNativeQuery("SELECT clock_timestamp()", OffsetDateTime.class)
+                .getSingleResult()).toInstant();
     }
 
     private boolean eligible(RunTaskJpaEntity candidate, RunItemJpaEntity item, List<RunTaskJpaEntity> ordered,

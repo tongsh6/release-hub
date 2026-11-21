@@ -27,9 +27,9 @@ class RunTaskWorkerTest {
     @Test
     void anUnclaimableFirstPageDoesNotStarveLaterRunsAndCursorWraps() throws Exception {
         worker = new RunTaskWorker(runs, service, 1, 2, 1);
-        when(runs.findPendingTaskRunIds(null, 1)).thenReturn(List.of("blocked"));
-        when(runs.findPendingTaskRunIds("blocked", 1)).thenReturn(List.of("ready"));
-        when(runs.findPendingTaskRunIds("ready", 1)).thenReturn(List.of());
+        when(runs.findTaskCandidateRunIds(null, 1)).thenReturn(List.of("blocked"));
+        when(runs.findTaskCandidateRunIds("blocked", 1)).thenReturn(List.of("ready"));
+        when(runs.findTaskCandidateRunIds("ready", 1)).thenReturn(List.of());
         var first = new CountDownLatch(1);
         var ready = new CountDownLatch(1);
         when(service.executeNextTask("blocked")).thenAnswer(call -> { first.countDown(); return false; });
@@ -41,17 +41,17 @@ class RunTaskWorkerTest {
         assertTrue(ready.await(3, TimeUnit.SECONDS));
         assertEquals(1, worker.scanOnce());
 
-        verify(runs, times(2)).findPendingTaskRunIds(null, 1);
-        verify(runs).findPendingTaskRunIds("blocked", 1);
-        verify(runs).findPendingTaskRunIds("ready", 1);
+        verify(runs, times(2)).findTaskCandidateRunIds(null, 1);
+        verify(runs).findTaskCandidateRunIds("blocked", 1);
+        verify(runs).findTaskCandidateRunIds("ready", 1);
         verify(runs, never()).claimNextTask(anyString());
     }
 
     @Test
     void theSameRunCanReachTwoWorkersWithoutRunLevelSingleFlight() throws Exception {
         worker = new RunTaskWorker(runs, service, 2, 0, 1);
-        when(runs.findPendingTaskRunIds(null, 1)).thenReturn(List.of("shared-run"));
-        when(runs.findPendingTaskRunIds("shared-run", 1)).thenReturn(List.of());
+        when(runs.findTaskCandidateRunIds(null, 1)).thenReturn(List.of("shared-run"));
+        when(runs.findTaskCandidateRunIds("shared-run", 1)).thenReturn(List.of());
         var bothStarted = new CountDownLatch(2);
         var release = new CountDownLatch(1);
         when(service.executeNextTask("shared-run")).thenAnswer(call -> {
@@ -72,9 +72,9 @@ class RunTaskWorkerTest {
     @Test
     void rejectedAndCancelledCommandsNeverReachTheClaimingExecutor() throws Exception {
         worker = new RunTaskWorker(runs, service, 1, 1, 1);
-        when(runs.findPendingTaskRunIds(null, 1)).thenReturn(List.of("active"));
-        when(runs.findPendingTaskRunIds("active", 1)).thenReturn(List.of("queued"));
-        when(runs.findPendingTaskRunIds("queued", 1)).thenReturn(List.of("rejected"));
+        when(runs.findTaskCandidateRunIds(null, 1)).thenReturn(List.of("active"));
+        when(runs.findTaskCandidateRunIds("active", 1)).thenReturn(List.of("queued"));
+        when(runs.findTaskCandidateRunIds("queued", 1)).thenReturn(List.of("rejected"));
         var entered = new CountDownLatch(1);
         var finish = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -104,8 +104,8 @@ class RunTaskWorkerTest {
     @Test
     void aTaskFailureDoesNotStopLaterScansOrRetryFromMemory() throws Exception {
         worker = new RunTaskWorker(runs, service, 1, 1, 1);
-        when(runs.findPendingTaskRunIds(null, 1)).thenReturn(List.of("failed-commit"));
-        when(runs.findPendingTaskRunIds("failed-commit", 1)).thenReturn(List.of("other-run"));
+        when(runs.findTaskCandidateRunIds(null, 1)).thenReturn(List.of("failed-commit"));
+        when(runs.findTaskCandidateRunIds("failed-commit", 1)).thenReturn(List.of("other-run"));
         var failed = new CountDownLatch(1);
         var next = new CountDownLatch(1);
         when(service.executeNextTask("failed-commit")).thenAnswer(call -> {
@@ -135,7 +135,7 @@ class RunTaskWorkerTest {
         worker = new RunTaskWorker(runs, service, 1, 1, 1);
         var queryEntered = new CountDownLatch(1);
         var releaseQuery = new CountDownLatch(1);
-        when(runs.findPendingTaskRunIds(null, 1)).thenAnswer(call -> {
+        when(runs.findTaskCandidateRunIds(null, 1)).thenAnswer(call -> {
             queryEntered.countDown();
             releaseQuery.await();
             return List.of("ready-after-close");
@@ -151,7 +151,7 @@ class RunTaskWorkerTest {
             assertEquals(0, scan.get(3, TimeUnit.SECONDS));
         }
         verifyNoInteractions(service);
-        verify(runs).findPendingTaskRunIds(null, 1);
+        verify(runs).findTaskCandidateRunIds(null, 1);
         verify(runs, never()).claimNextTask(anyString());
     }
 
