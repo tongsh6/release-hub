@@ -213,9 +213,9 @@ B3 固定 SHA 验收后接续本片。用户价值是 MERGE_MR 的完整成功�
 
 本片不恢复 INTENT/SEND/UNKNOWN，不扩 cleanup/version 或完整 UI，不迁移缺证明旧摘要。回滚先停派发，保留任务、操作、保护及已提交结果，不撤销已发生的 merge。B4 已用本片固定 SHA 完成远端验收；C2 整体及后续恢复能力未因此完成。
 
-##### C2-B5：原 MERGE 未发送意图的安全续发（当前子片 / HEAD，本地验收通过、待交付）
+##### C2-B5：原 MERGE 未发送意图的安全续发（已交付 / DONE）
 
-B4 交付后接续本片。实施前先定义正反例并只读核对职责，再在旧生产 HEAD 4a067a8 的隔离冻结树运行独立 RED；目前实现、补充真实 CAS 拒绝反例与本地门禁已通过，相关 692 项的分批汇总方式及完整证据见 tasks 与任务记录 18。目标是在原 MERGE 意图已经持久化、任何 SEND 尚未发生时，安全续用原操作，并防止旧执行者以 UNKNOWN 结果覆盖新发送者。B5 仍为 HEAD，后端 0642828 已提交推送；文档阶段及固定该后端完整 SHA 的 CI 待完成。
+B4 交付后实施本片：先定义正反例并只读核对职责，再在旧生产 HEAD 4a067a8 的隔离冻结树运行独立 RED；实现、真实 CAS 拒绝反例及本地门禁已通过，相关 692 项的分批汇总方式见记录 18。本片在任何 SEND 尚未发生时安全续用原 MERGE 操作，并防止旧执行者以 UNKNOWN 覆盖新发送者。后端 0642828、文档 62d075c 已分阶段推送，固定后端完整 SHA 的 Full-Link 44935216788 为 5/5，B5 已 DONE；以下前置读取限制保留为 B5 交付历史，其本地结果收口由 B6 单独接续。
 
 资格只限当前 WINDOW 协议活动 Run 的原 TRY_MERGE：RUNNING 领取字段完整且数据库时间确认到期、实际顺序有效、仓内前序满足、无当前 Step；同任务仅有一个 MERGE_MR/INTENT_RECORDED，原 attempt 只有完整 sequence 0，未出现任何 SEND/响应。原 numeric project、remote、计划、CREATED/MR_REUSED 检查点、PUT/suffix、冻结 SHA、完整请求与 guard reservation 必须一致。缺字段、历史摘要、其他动作、SEND_STARTED/UNKNOWN/NEEDS_REVIEW 或 owner 已提交结果均不接管。
 
@@ -240,11 +240,48 @@ B4 交付后接续本片。实施前先定义正反例并只读核对职责，�
 | 旧 SEND 先赢；新接管先赢；两名新 worker；旧发送者异常返回 UNKNOWN | 真 PG 锁两序验证；输家零发送、零结果写，实际 sender 的响应不丢失且最多一个业务 Step |
 | SEND 已落库但 HTTP 前中断；伪装 INTENT 却已有 SEND；错 guard/attempt/checkpoint/request/owner/Step | 不续发，不修改历史或释放 guard；零 HTTP 的拒绝不能掩盖实际已发送事实 |
 | 原 op token/session 与新 Task token 不同；旧/新 expectedVersion 观察 | 当前 fence 可发送及确认，原 reservation 仍保护映射；旧版本观察拒绝，新合法历史观察可保存 |
-| 前置 GET 失败、MR closed 或 source 已变成 B | Task 可落 UNKNOWN，op 仍为 INTENT 且无 SEND/响应；guard 原 reservation 与 INTENT_PENDING 理由保持，不能改为 REMOTE_RESULT_UNKNOWN，不新增 guard 状态 |
-| 前置 GET 已证 target 包含 A，或返回 BLOCKED | 不把未发送 INTENT 伪造为 APPLIED/REJECTED；允许原 completeTask 整个结果事务拒绝回滚并保 RUNNING/INTENT/INTENT_PENDING 及原 reservation，此边界尚不能自动收口，后续独立处理 |
+| B5 交付时：前置 GET 失败、MR closed 或 source 已变成 B | 当时 Task 可落 UNKNOWN，op 仍 INTENT 且无 SEND/响应，原 reservation/INTENT_PENDING 保持；未发送本地结果收口的变更归 B6 |
+| B5 交付时：前置 GET 已证 target 包含 A，或返回 BLOCKED | 当时不伪造 APPLIED/REJECTED，原结果事务拒绝回滚并保 RUNNING/INTENT/INTENT_PENDING；该保守边界由 B6 独立改变，不反写 B5 验收结论 |
 | 坏候选占满前页，后页为合法末尾 INTENT；仓内前序与跨仓进展 | 原有有界 keyset 向后推进；锁内决定授权，同仓不越序、跨仓不被坏候选饿死 |
 
-有效独立 RED 共 106 个新实例；首轮定向 108/108 包含两个 producer null/empty 边界，真实 PG 等待关系、旧/新 owner 竞争及三个独立进程中断场景均有证据。相关回归首轮 691/1 FAIL 为旧 HTTP 候选断言；随后仅修两份测试，真实 Task CAS 返回 0 的补充反例已独立 RED→GREEN，不能用主动 setRollbackOnly 代替。最终相关 13 套 692 项为按源码核对的分批汇总，API 48、普通 816（811 PASS/5 既有 SKIP）和静态门禁通过，详见记录 18.6–18.7。后端 0642828 已完成第一阶段推送；文档阶段与固定该后端完整 SHA 的 CI 尚待完成，CI 绑定对象不扩为后续文档 SHA。其他 INTENT 动作、SEND/UNKNOWN 恢复、cleanup/version 与完整 UI 均不扩入本片；前置读取已包含 A/BLOCKED 仍只验证整事务拒绝回滚与保留保护，尚不能自动收口。回滚停止派发并保留事实，不撤销已发生的 GitLab 写入。
+有效独立 RED 共 106 个新实例；首轮定向 108/108 包含两个 producer null/empty 边界，真实 PG 等待关系、旧/新 owner 竞争及三个独立进程中断场景均有证据。相关回归首轮 691/1 FAIL 为旧 HTTP 候选断言；随后仅修两份测试，真实 Task CAS 返回 0 的补充反例已独立 RED→GREEN，不能用主动 setRollbackOnly 代替。最终相关 13 套 692 项为按源码核对的分批汇总，API 48、普通 816（811 PASS/5 既有 SKIP）和静态门禁通过，详见记录 18.6–18.7。后端 064282887ae825255360bcf3b04d0377163219aa 与文档 62d075c36bd96c35d14bc541957787c5173559f8 已推送，固定前者的 Full-Link 44935216788 为 5/5，证据见 18.9。CI 仍限后端 API 与隔离 GitLab，不扩大为后续文档 SHA、完整 UI 或 Slice4/5。B5 的未发送本地结果限制由下节 B6 独立接续；其他 INTENT 动作、SEND/UNKNOWN 恢复、cleanup/version 与完整 UI 仍分别验收。
+
+##### C2-B6：原 MERGE 未发送意图的本地结果收口（当前子片 / HEAD，实施前契约）
+
+B5 的固定后端 SHA CI 已通过后接续本片。根侧与 provider/持久化两路只读审查已收敛独立契约；尚无 B6 源码或新 RED，事实见 tasks 与记录 19。B5 对未发送 INTENT 的保守结果边界保留为历史验收，本片单独定义其变更。
+
+释放依据是当前 Task fence、原完整 MERGE INTENT、同 attempt 严格唯一 sequence 0 且无 SEND，以及同一物理事务中的 NOT_SENT 与 Task 终态。收口不要求 lease 再次到期：未过期原 owner 与经 B5 到期换权后的当前 owner 都是正例，只有换权本身要求 expired。业务读取是否确定、BlockReason 是否在白名单，都不能代替这个证明。当前 interceptor 先 begin，再由独立事务提交 sending，之后才执行 HTTP；因此本地 NOT_SENT 必须与 SEND_STARTED 竞争同一原锁并互斥。它是未发送事实，不新增 GitWriteResult.Outcome，不伪造 HTTP status、响应或 requestId。
+
+| 复用的职责 | 本片最小调整与实际消费者 |
+|---|---|
+| RunJpa.completeTask → Journal.acknowledgeTask | 扩传实际结果 patch，并将 ack 前移到同一 completeTask 事务的 Step/metadata 写入之前；继续沿原锁顺序核当前 fence，不开第二结果入口 |
+| Journal.validUnsentMerge | 原 TRY/MERGE_MR 的完整 typed 请求、hash、CREATED/MR_REUSED 检查点、计划/remote/guard 与 no Step 资格保持，复用原 helper，不复制或放宽证明 |
+| 原 operation/event/Task/结果事务 | 原 operation ID、attempt、sequence 0、claim/session、身份与历史 reservation 不改；新增同 attempt sequence 1 的 NOT_SENT 本地事件，当前 fence 记事实；Task/Step/patch/仓内队列/绑定/Run 聚合与原 guard 释放同事务 |
+| 原 observation 与 guard 消费者 | NOT_SENT 使旧 expectedVersion 失效，新 observe 仍只读；只释放匹配原 session/operation/generation 的 reservation，mapping/baseURL 的 hasActiveGuards 继续反映其他保护 |
+| GitOperationsPanel | RunDetail 与 RepositoryDetail/RepositoryDrawer 已实际挂载同一组件；只补 NOT_SENT 状态/事件的 zh/en 标签及组件验收，不新增 UI 流程或 API |
+
+只允许真实 ALREADY_MERGED、MERGE_BLOCKED、UNKNOWN 的本地结果，不接受未发送却 MERGED，也不扩展 FAILED。validatedPatch 的字段集合/身份校验不等于结果语义证明：ALREADY_MERGED 必须对应 patch.mrDisposition=ALREADY_MERGED；UNKNOWN/BLOCKED 不得夹带成功 mergeSha 或成功 disposition。null 沿既有删除语义；异常路径只带 blockReason 时不强制补 requestId 键。seq1 evidence 最小必有 taskId/claimToken/result，metadata 保存实际 nullable 结果 patch，不复制完整请求/身份；operation/event reason 取实际 git.blockReason，无则 null。
+
+ALREADY_MERGED 沿原 target contains 原冻结 A 的证明，不额外强制 MR 读取，MR 404 不能推翻已成立的 contains；已有 mergeSha 的额外 contains 规则保留，不补造 SHA。MR 虽标 merged 但 target 已 reset 时仍 UNKNOWN。GET 403 保持现有 BLOCKED/PERMISSION_DENIED 分类；unavailable/closed/sourceChanged 仍为 Task UNKNOWN、Run NEEDS_REVIEW，同仓后继停住且禁止自动或普通重试。释放已证明无在途写的 reservation 不改变这些业务限制。BLOCKED 沿原 FAIL_FAST/CONTINUE_ON_BLOCK 与用户重试语义，重试复用原 MR。
+
+Operation.blocked 仍表示该 remote 当前是否有任一 guard。历史 NOT_SENT 在后来的新操作占用同一 remote 时可以 blocked=true，不硬改为恒 false，也不清除其他操作的 reservation。现有 state/event 字符串没有 enum CHECK，本片无需数据库迁移；不新建实体、表、DTO、API、dispatcher、provenance 或兼容回填。
+
+| 独立正反例 | 待先 RED 验证的出口 |
+|---|---|
+| target 已包含 A（含 MR 404）；各真实 BLOCKED（含 GET 403）；unavailable/closed/sourceChanged | 0 PUT，NOT_SENT 与真实本地结果原子提交；ALREADY 不补额外 MR 前置条件，UNKNOWN 继续阻断队列和重试 |
+| 原 checkpoint 仍 ready | 沿 B5 原路径一次 PUT，不被本地收口截断或改成 NOT_SENT |
+| SEND 先赢；NOT_SENT 先赢；两个本地收口者 | MERGE 已 SEND 且尚无 seq2 响应时，包括同 fence UNKNOWN 在内的任何本地 completeTask 均整笔拒绝，保留迟到真实 finish；NOT_SENT 先赢则拒绝旧/现 worker 迟到 sending/finish/complete；最多一个本地事件和 Step |
+| stale fence、缺 typed/旧 hash、错 guard/checkpoint、非唯一 seq0 或多事件 | 零修改拒绝，不以结果分类、补值或候选发现替代资格 |
+| ALREADY 缺对应 disposition；UNKNOWN/BLOCKED 带成功事实；未发送却 MERGED/FAILED | 拒绝结果语义污染；nullable patch 真实删除，缺 requestId 本身不构成拒绝理由 |
+| ack 后外层回滚；最终 Task CAS 实际返回 0 | op state/version/事件、Task/Step/metadata/队列/绑定/Run/guard 全部回滚，两类证据分别保存 |
+| 旧版本观察；新 observe；同 remote 后来已有其他 guard | 旧 expectedVersion 失效，新观察只读；历史 NOT_SENT 可 blocked=true，映射/baseURL 保护仍由实际 guard 决定 |
+| BLOCKED 的 FAIL_FAST/CONTINUE 与用户重试；UNKNOWN 的同仓后继 | 队列和终态按原规则汇总，重试复用原 MR；释放 reservation 不放开 UNKNOWN 的执行与重试 |
+| 独立 JVM 在 INTENT 后强杀并由默认 worker 重启 | 本地结果 0 PUT 收口，原 ID/attempt/seq0 保持；无 PENDING 的末尾任务仍能发现 |
+| Run/Repo 现有组件消费者与 zh/en | NOT_SENT 状态和事件可读，blocked 真实呈现；组件验收不冒称完整 UI 黄金旅程 |
+
+MERGE operation 已 UNKNOWN 且具有真实 sequence 2 响应时，既有 UNKNOWN 确认继续允许；上述 SEND 无响应边界只保护实际发送者，不扩展 SEND 恢复。
+
+本片仅接续原 MERGE 未发送意图；其他 INTENT 动作、SEND/UNKNOWN 恢复、cleanup/version 与完整 UI 仍独立排队。回滚先停派发并保留原事实，不撤销远端写，不重新发送已 NOT_SENT 的原操作。
 
 ### 分阶段依赖与交付
 
