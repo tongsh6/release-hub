@@ -7,6 +7,7 @@ import io.releasehub.domain.run.RunItemResult;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** HTTP 意图、发送和响应事实独立提交；任务确认必须加入任务结果的同一事务。 */
@@ -37,8 +38,8 @@ public interface GitOperationJournalPort {
     Optional<MrEvidence> confirmedAppliedCreatedMr(RunPort.TaskClaim claim);
     /** 必须加入原任务结果事务，核对完整 MERGE_MR 原响应与原检查点，返回历史合并结果；零远端调用。 */
     Optional<MrEvidence> confirmedAppliedMergedMr(RunPort.TaskClaim claim);
-    /** 仅在活动领取者的结果事务中确认；没有远端操作的任务不创建仓库保护。 */
-    void acknowledgeTask(RunPort.TaskFence fence, RunItemResult result);
+    /** 在原 Step 与检查点改写前加入当前领取者的结果事务；用实际结果 patch 确认操作，没有操作则不创建保护。 */
+    void acknowledgeTask(RunPort.TaskFence fence, RunItemResult result, Map<String, String> resultMetadata);
     List<Operation> list(String repoId, int page, int size);
     List<Operation> listByRun(String runId, int page, int size);
     Optional<Detail> find(String operationId);

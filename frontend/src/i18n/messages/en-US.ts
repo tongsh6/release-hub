@@ -57,6 +57,7 @@ export default {
     },
     states: {
       INTENT_RECORDED: 'Intent recorded',
+      NOT_SENT: 'Ended without sending',
       SEND_STARTED: 'Request started',
       APPLIED: 'Remote confirmed',
       REJECTED: 'Remote rejected',
@@ -65,6 +66,7 @@ export default {
     },
     events: {
       INTENT_RECORDED: 'Intent recorded',
+      NOT_SENT: 'Unsent operation ended',
       SEND_STARTED: 'Request started',
       APPLIED: 'Remote confirmed',
       REJECTED: 'Remote rejected',

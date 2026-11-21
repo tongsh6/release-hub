@@ -423,6 +423,8 @@ public class RunJpaPersistenceAdapter implements RunPort {
         Map<String, RunItemJpaEntity> items = taskItems(run, ordered);
         Instant finished = now();
 
+        // 先用原检查点与无 Step 事实确认操作；后续 Task CAS 失败时，操作、事件与 guard 一起回滚。
+        journal.acknowledgeTask(claim.fence(), step.result(), patch);
         requireOne(update("INSERT INTO {h-schema}run_step(run_item_id,action_type,result,start_at,end_at,message,task_id) "
                 + "VALUES (?1,?2,?3,?4,?5,?6,?7)", item.getId(), step.actionType().name(), step.result().name(),
                 stamp(step.startAt()), stamp(step.endAt()), step.message(), task.getId()));
@@ -445,8 +447,6 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 bindings.updateLastMergeAt(window, item.getIterationKey(), finished);
             }
         }
-        // ack 必须在任务仍为 RUNNING 时确认同一 token，且加入当前事务。
-        journal.acknowledgeTask(claim.fence(), step.result());
         String status = step.result() == RunItemResult.UNKNOWN ? "UNKNOWN"
                 : step.result().isFailure() ? "FAILED" : "COMPLETED";
         requireOne(update("UPDATE {h-schema}run_task SET status=?1,finished_at=?2,error_message=?3 "

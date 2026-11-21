@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.releasehub.infrastructure.git.GitLabGitBranchAdapter;
 import io.releasehub.infrastructure.git.GitLabMergeRequestAdapter;
 import io.releasehub.application.port.out.GitBranchPort.MrEvidence;
+import io.releasehub.application.port.out.GitBranchPort.MergeBlockReason;
 import io.releasehub.application.port.out.GitBranchPort.MrDisposition;
 import io.releasehub.domain.run.ActionType;
 import io.releasehub.application.gitoperation.*;
@@ -25,11 +26,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Objects;
 import java.util.UUID;
 
-/** 每次证据变更独立提交，即使调用者的业务事务随后回滚也保留。 */
+/** HTTP 意图、发送与响应独立提交；本地任务确认及未发送收口加入任务结果事务。 */
 @Repository @RequiredArgsConstructor
 @Transactional(propagation = Propagation.REQUIRES_NEW)
 public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
@@ -303,8 +305,8 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
     }
 
     @Override @Transactional(propagation=Propagation.MANDATORY)
-    public void acknowledgeTask(RunPort.TaskFence fence, RunItemResult result) {
-        if (result == null) throw invalid();
+    public void acknowledgeTask(RunPort.TaskFence fence, RunItemResult result, Map<String, String> resultMetadata) {
+        if (result == null || resultMetadata == null) throw invalid();
         var task = lockTask(fence, true);
         var operations = em.createQuery("select o from GitOperationEntity o where o.taskId=:task", GitOperationEntity.class)
                 .setParameter("task", fence.taskId()).getResultList();
@@ -318,11 +320,25 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
                     ? "INTENT_RECORDED".equals(op.getState()) ? !onlyIntentEvent(op) : !sentBy(op, fence)
                     : !fence.claimToken().equals(op.getClaimToken()))) throw stale();
         var guard = ownGuard(op);
+        boolean unsentMerge = "MERGE_MR".equals(op.getAction()) && "INTENT_RECORDED".equals(op.getState());
+        // A committed SEND owns the right to record its response before any local task result.
+        if ("MERGE_MR".equals(op.getAction()) && "SEND_STARTED".equals(op.getState())) throw stale();
+        if (unsentMerge) {
+            var item = em.find(RunItemJpaEntity.class, task.getTargetId());
+            if (!validUnsentMerge(task, item, op) || !validUnsentResult(result, resultMetadata)) throw stale();
+            String reason = resultMetadata.get("git.blockReason");
+            var evidence = JSON.createObjectNode().put("taskId", fence.taskId())
+                    .put("claimToken", fence.claimToken()).put("result", result.name());
+            evidence.set("metadata", JSON.valueToTree(resultMetadata));
+            op.setState("NOT_SENT");
+            op.setReason(reason);
+            op.setUpdatedAt(now());
+            event(op, 1, "NOT_SENT", evidence.toString(), reason);
+        }
         boolean unresolved = List.of("INTENT_RECORDED", "SEND_STARTED", "UNKNOWN", "NEEDS_REVIEW").contains(op.getState());
         if (unresolved) {
             if (result != RunItemResult.UNKNOWN) throw stale();
-            guard.setReason("MERGE_MR".equals(op.getAction()) && "INTENT_RECORDED".equals(op.getState())
-                    ? "INTENT_PENDING" : "REMOTE_RESULT_UNKNOWN");
+            guard.setReason("REMOTE_RESULT_UNKNOWN");
         } else if ("APPLIED".equals(op.getState()) && result == RunItemResult.UNKNOWN) {
             op.setState("NEEDS_REVIEW");
             op.setReason("LOCAL_RESULT_UNCONFIRMED");
@@ -330,7 +346,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
             event(op, 3, "LOCAL_RESULT_UNCONFIRMED", "{}", "LOCAL_RESULT_UNCONFIRMED");
             guard.setReason("LOCAL_RESULT_UNCONFIRMED");
         } else {
-            if (!"REJECTED".equals(op.getState())
+            if (!unsentMerge && !"REJECTED".equals(op.getState())
                     && !("APPLIED".equals(op.getState()) && confirmsAppliedTask(task.getTaskType(), result))) throw stale();
             guard.setSessionId(null);
             guard.setOperationId(null);
@@ -498,6 +514,24 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         if (steps.longValue() != 0 || !completeMergeRequest(op, item.getMetadata())) return false;
         var guard = matchingGuard(op);
         return guard.isPresent() && "INTENT_PENDING".equals(guard.get().getReason());
+    }
+
+    private boolean validUnsentResult(RunItemResult result, Map<String, String> patch) {
+        if (!java.util.Set.of("git.requestId", "git.blockReason", "git.mergeSha", "git.mrDisposition")
+                .containsAll(patch.keySet()) || !patch.containsKey("git.blockReason")
+                || patch.get("git.requestId") != null) return false;
+        String reason = patch.get("git.blockReason");
+        if (result == RunItemResult.ALREADY_MERGED) {
+            String mergeSha = patch.get("git.mergeSha");
+            return "ALREADY_MERGED".equals(patch.get("git.mrDisposition"))
+                    && patch.containsKey("git.mergeSha") && reason == null
+                    && (mergeSha == null || validSha(mergeSha));
+        }
+        if (patch.containsKey("git.mergeSha") || patch.containsKey("git.mrDisposition")) return false;
+        // Validate result data; the complete no-SEND proof above authorizes local termination.
+        return result == RunItemResult.UNKNOWN && "UNKNOWN".equals(reason)
+                || result == RunItemResult.MERGE_BLOCKED && java.util.Arrays.stream(MergeBlockReason.values())
+                        .anyMatch(value -> value.name().equals(reason));
     }
 
     private boolean completeMergeRequest(GitOperationEntity op, java.util.Map<String, String> metadata) {

@@ -57,6 +57,7 @@ export default {
     },
     states: {
       INTENT_RECORDED: '已记录意图',
+      NOT_SENT: '已结束（未发送）',
       SEND_STARTED: '请求已开始',
       APPLIED: '远端已确认',
       REJECTED: '远端已拒绝',
@@ -65,6 +66,7 @@ export default {
     },
     events: {
       INTENT_RECORDED: '已记录意图',
+      NOT_SENT: '未发送操作已结束',
       SEND_STARTED: '请求已开始',
       APPLIED: '远端已确认',
       REJECTED: '远端已拒绝',

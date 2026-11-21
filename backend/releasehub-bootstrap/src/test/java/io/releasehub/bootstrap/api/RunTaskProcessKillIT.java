@@ -631,6 +631,196 @@ class RunTaskProcessKillIT {
         }
     }
 
+    @ParameterizedTest(name = "unsentRestart={0}")
+    @ValueSource(strings = {"contained", "blocked", "unknown"})
+    @Timeout(240)
+    void mergeNotSentRestartClosesOriginalIntentWithoutReplay(String observation) throws Exception {
+        GitLabHttpFixture server = new GitLabHttpFixture();
+        Process first = null;
+        Process resumed = null;
+        Process observed = null;
+        try (var db = new PostgreSQLContainer<>("postgres:18.1")
+                .withDatabaseName("merge_not_sent_restart").withUsername("process_test").withPassword("isolated-process-db")) {
+            db.start();
+            server.start();
+            routes(server);
+            String root = "/api/v4/projects/" + PROJECT_ID;
+            String windowId = UUID.randomUUID().toString();
+            String repoId = UUID.randomUUID().toString();
+            Path marker = temporary.resolve("not-sent-original-checkpoint.txt");
+            Path receipt = temporary.resolve("not-sent-resumed-receipt.txt");
+            Path firstLog = temporary.resolve("not-sent-first.log");
+            first = launch("first-intent-merge", db, server, windowId, repoId, marker, receipt, firstLog);
+            awaitCheckpoint(first, marker, firstLog);
+            JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword()));
+            String runId = Files.readString(marker).trim();
+            var originalTasks = tasks(jdbc, runId);
+            var originalTask = originalTasks.getLast();
+            String taskId = originalTask.get("id").toString();
+            int originalTaskOrder = jdbc.queryForObject("select task_order from run_task where id=?", Integer.class, taskId);
+            var originalOperation = jdbc.queryForMap("select * from git_operation where task_id=?", taskId);
+            String operationId = originalOperation.get("id").toString();
+            var originalEvents = mergeEvents(jdbc, operationId);
+            var originalMetadata = metadata(jdbc, runId);
+            var originalGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", originalOperation.get("remote_key"));
+            var originalSteps = jdbc.queryForList("select s.* from run_step s join run_task t on t.id=s.task_id where t.run_id=? order by t.task_order", runId);
+            var originalOrder = jdbc.queryForMap("select planned_order,executed_order from run_item where run_id=?", runId);
+            assertThat(originalTasks).extracting(row -> row.get("status")).containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "RUNNING");
+            assertThat(originalOperation).containsEntry("state", "INTENT_RECORDED").containsEntry("action", "MERGE_MR")
+                    .containsEntry("claim_token", originalTask.get("claim_token")).containsEntry("session_id", originalTask.get("claim_token"));
+            assertThat(originalEvents).singleElement().satisfies(event -> assertThat(event)
+                    .containsEntry("event_type", "INTENT_RECORDED").containsEntry("event_sequence", 0)
+                    .containsEntry("attempt_id", originalOperation.get("attempt_id")));
+            assertThat(originalGuard).containsEntry("operation_id", operationId)
+                    .containsEntry("session_id", originalTask.get("claim_token")).containsEntry("reason", "INTENT_PENDING");
+            assertThat(originalSteps).hasSize(3);
+            server.verify("POST", root + "/merge_requests", 1);
+            server.verify("PUT", root + "/merge_requests/7/merge", 0);
+            long killedPid = first.pid();
+            first.destroyForcibly();
+            assertThat(first.waitFor(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(first.exitValue()).isEqualTo(137);
+            System.out.printf("PROCESS_MERGE_NOT_SENT_CHECKPOINT observation=%s run=%s task=%s operation=%s attempt=%s "
+                            + "killedPid=%d exit=%d events=1 post=1 put=0 noPendingAtKill=true%n",
+                    observation, runId, taskId, operationId, originalOperation.get("attempt_id"), killedPid, first.exitValue());
+
+            int requestsBeforeResume = server.requests.size();
+            String currentMr = server.responses.get("GET " + root + "/merge_requests/7").body();
+            switch (observation) {
+                case "contained" -> {
+                    server.reply("GET", root + "/repository/commits/" + SOURCE_SHA + "/refs", 200,
+                            "[{\"type\":\"branch\",\"name\":\"" + TARGET + "\"}]");
+                    server.reply("GET", root + "/merge_requests/7", 404, "{}");
+                }
+                case "blocked" -> server.reply("GET", root + "/merge_requests/7", 200,
+                        currentMr.replace("\"mergeable\"", "\"not_approved\""));
+                case "unknown" -> server.reply("GET", root + "/merge_requests/7", 503, "{}");
+                default -> throw new AssertionError(observation);
+            }
+            Path resumedLog = temporary.resolve("not-sent-resumed.log");
+            resumed = launch("resume-not-sent-" + observation, db, server, windowId, repoId, marker, receipt, resumedLog);
+            assertThat(resumed.waitFor(55, TimeUnit.SECONDS))
+                    .withFailMessage("Unsent completion JVM did not finish: %s", tail(resumedLog)).isTrue();
+            assertThat(resumed.exitValue()).withFailMessage("Unsent completion JVM failed: %s", tail(resumedLog)).isZero();
+            int resumedScans = Integer.parseInt(Files.readString(marker.resolveSibling("not-sent-resumed-scans.txt")).trim());
+            assertThat(resumedScans).isGreaterThanOrEqualTo(3);
+            assertThat(Files.readString(receipt).trim()).isEqualTo(runId);
+
+            String result = mergeNotSentProcessResult(observation);
+            String expectedTaskStatus = observation.equals("contained") ? "COMPLETED" : observation.equals("blocked") ? "FAILED" : "UNKNOWN";
+            String expectedRunStatus = observation.equals("contained") ? "DONE" : observation.equals("blocked") ? "FAILED" : "NEEDS_REVIEW";
+            var completedTasks = tasks(jdbc, runId);
+            var completedTask = completedTasks.getLast();
+            String currentToken = completedTask.get("claim_token").toString();
+            assertThat(currentToken).isNotEqualTo(originalTask.get("claim_token"));
+            assertThat(completedTasks.subList(0, 3)).isEqualTo(originalTasks.subList(0, 3));
+            assertThat(jdbc.queryForObject("select task_order from run_task where id=?", Integer.class, taskId)).isEqualTo(originalTaskOrder);
+            assertThat(completedTask).containsEntry("id", taskId).containsEntry("status", expectedTaskStatus)
+                    .containsEntry("started_at", originalTask.get("started_at"));
+            assertThat(completedTask.get("finished_at")).isNotNull();
+            var completedOperation = jdbc.queryForMap("select * from git_operation where task_id=?", taskId);
+            var patch = mergeNotSentProcessPatch(observation);
+            assertThat(completedOperation).containsEntry("state", "NOT_SENT").containsEntry("reason", patch.get("git.blockReason"));
+            assertThat(operationProvenance(completedOperation)).isEqualTo(operationProvenance(originalOperation));
+            assertThat(((Number) completedOperation.get("state_version")).longValue())
+                    .isGreaterThan(((Number) originalOperation.get("state_version")).longValue());
+            var completedEvents = mergeEvents(jdbc, operationId);
+            assertThat(completedEvents).hasSize(2).extracting(row -> row.get("event_type")).containsExactly("INTENT_RECORDED", "NOT_SENT");
+            assertThat(completedEvents.getFirst()).isEqualTo(originalEvents.getFirst());
+            assertThat(completedEvents.getLast()).containsEntry("event_sequence", 1)
+                    .containsEntry("attempt_id", originalOperation.get("attempt_id")).containsEntry("reason", patch.get("git.blockReason"));
+            var json = new com.fasterxml.jackson.databind.ObjectMapper();
+            var local = json.createObjectNode().put("taskId", taskId).put("claimToken", currentToken).put("result", result);
+            local.set("metadata", json.valueToTree(patch));
+            assertThat(json.readTree(completedEvents.getLast().get("evidence_json").toString())).isEqualTo(local);
+            var completedMetadata = new java.util.LinkedHashMap<>(originalMetadata);
+            patch.forEach((key, value) -> { if (value == null) completedMetadata.remove(key); else completedMetadata.put(key, value); });
+            assertThat(metadata(jdbc, runId)).isEqualTo(completedMetadata);
+            assertThat(completedMetadata).doesNotContainKey("git.requestId");
+            assertThat(jdbc.queryForMap("select planned_order,executed_order from run_item where run_id=?", runId)).isEqualTo(originalOrder);
+            var completedGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", originalOperation.get("remote_key"));
+            assertThat(completedGuard).containsEntry("generation", originalGuard.get("generation"))
+                    .containsEntry("session_id", null).containsEntry("operation_id", null).containsEntry("reason", null);
+            var completedSteps = jdbc.queryForList("select s.* from run_step s join run_task t on t.id=s.task_id where t.run_id=? order by t.task_order", runId);
+            assertThat(completedSteps).hasSize(4);
+            assertThat(completedSteps.subList(0, 3)).isEqualTo(originalSteps);
+            assertThat(completedSteps.getLast()).containsEntry("task_id", taskId).containsEntry("result", result);
+            assertThat(jdbc.queryForObject("select final_result from run_item where run_id=?", String.class, runId)).isEqualTo(result);
+            assertThat(jdbc.queryForObject("select execution_status from run where id=?", String.class, runId)).isEqualTo(expectedRunStatus);
+            var runFinishedAt = jdbc.queryForObject("select finished_at from run where id=?", java.sql.Timestamp.class, runId);
+            if (observation.equals("unknown")) assertThat(runFinishedAt).isNull();
+            else assertThat(runFinishedAt).isNotNull();
+            var lastMergeAt = jdbc.queryForObject("select last_merge_at from window_iteration where window_id=? and iteration_key=?",
+                    java.sql.Timestamp.class, windowId, ITERATION);
+            if (observation.equals("contained")) assertThat(lastMergeAt).isNotNull();
+            else assertThat(lastMergeAt).isNull();
+            if (observation.equals("contained")) {
+                assertThat(server.requests.subList(requestsBeforeResume, server.requests.size()))
+                        .noneMatch(request -> request.method().equals("GET") && request.path().equals(root + "/merge_requests/7"));
+            }
+            server.verify("POST", root + "/merge_requests", 1);
+            server.verify("PUT", root + "/merge_requests/7/merge", 0);
+            assertThat(server.writeCount()).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select count(*) from git_operation where task_id=?", Integer.class, taskId)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select count(*) from run", Integer.class)).isEqualTo(1);
+
+            int requestsBeforeObservation = server.requests.size();
+            Path observedLog = temporary.resolve("not-sent-observed.log");
+            Path observedReceipt = temporary.resolve("not-sent-observed-receipt.txt");
+            observed = launch("observe-not-sent-" + observation, db, server, windowId, repoId, marker, observedReceipt, observedLog);
+            assertThat(observed.waitFor(55, TimeUnit.SECONDS))
+                    .withFailMessage("Unsent observation JVM did not finish: %s", tail(observedLog)).isTrue();
+            assertThat(observed.exitValue()).withFailMessage("Unsent observation JVM failed: %s", tail(observedLog)).isZero();
+            int observedScans = Integer.parseInt(Files.readString(marker.resolveSibling("not-sent-observed-scans.txt")).trim());
+            assertThat(observedScans).isGreaterThanOrEqualTo(3);
+            assertThat(Files.readString(observedReceipt).trim()).isEqualTo(runId);
+            assertThat(tasks(jdbc, runId)).isEqualTo(completedTasks);
+            assertThat(jdbc.queryForMap("select * from git_operation where task_id=?", taskId)).isEqualTo(completedOperation);
+            assertThat(mergeEvents(jdbc, operationId)).isEqualTo(completedEvents);
+            assertThat(metadata(jdbc, runId)).isEqualTo(completedMetadata);
+            assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", originalOperation.get("remote_key"))).isEqualTo(completedGuard);
+            assertThat(jdbc.queryForList("select s.* from run_step s join run_task t on t.id=s.task_id where t.run_id=? order by t.task_order", runId)).isEqualTo(completedSteps);
+            assertThat(server.requests).hasSize(requestsBeforeObservation);
+            server.verify("POST", root + "/merge_requests", 1);
+            server.verify("PUT", root + "/merge_requests/7/merge", 0);
+            System.out.printf("PROCESS_MERGE_NOT_SENT_RESULT observation=%s run=%s task=%s operation=%s attempt=%s "
+                            + "killedPid=%d exit=%d resumedPid=%d observedPid=%d result=%s oldTokenRevoked=true currentTokenPreserved=true "
+                            + "resumedScans=%d observedScans=%d events=%d post=1 put=0 observationHttp=0%n",
+                    observation, runId, taskId, operationId, originalOperation.get("attempt_id"), killedPid, first.exitValue(),
+                    resumed.pid(), observed.pid(), result, resumedScans, observedScans, completedEvents.size());
+        } finally {
+            stopOwnedProcess(first);
+            stopOwnedProcess(resumed);
+            stopOwnedProcess(observed);
+            server.stop();
+        }
+    }
+
+    private static String mergeNotSentProcessResult(String observation) {
+        return switch (observation) {
+            case "contained" -> "ALREADY_MERGED";
+            case "blocked" -> "MERGE_BLOCKED";
+            case "unknown" -> "UNKNOWN";
+            default -> throw new AssertionError(observation);
+        };
+    }
+
+    private static Map<String, String> mergeNotSentProcessPatch(String observation) {
+        Map<String, String> patch = new java.util.LinkedHashMap<>();
+        patch.put("git.requestId", null);
+        patch.put("git.blockReason", switch (observation) {
+            case "contained" -> null;
+            case "blocked" -> "APPROVAL_REQUIRED";
+            case "unknown" -> "UNKNOWN";
+            default -> throw new AssertionError(observation);
+        });
+        if (observation.equals("contained")) {
+            patch.put("git.mergeSha", null);
+            patch.put("git.mrDisposition", "ALREADY_MERGED");
+        }
+        return patch;
+    }
+
     private static List<Map<String, Object>> mergeEvents(JdbcTemplate jdbc, String operationId) {
         return jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence", operationId);
     }
@@ -828,6 +1018,8 @@ class RunTaskProcessKillIT {
             boolean sentMergeBeforeCrash = "first-sent-merge".equals(args[0]);
             boolean intentThenAppliedCrash = "resume-intent-applied-merge".equals(args[0]);
             boolean sentMergeResume = "resume-sent-merge".equals(args[0]);
+            boolean notSentResume = args[0].startsWith("resume-not-sent-");
+            boolean notSentObservation = args[0].startsWith("observe-not-sent-");
             boolean first = "first".equals(args[0]) || claimedBeforeCrash || appliedBranchBeforeCrash
                     || appliedMrBeforeCrash || appliedMergeBeforeCrash || intentMergeBeforeCrash || sentMergeBeforeCrash;
             Path marker = Path.of(args[1]);
@@ -843,7 +1035,7 @@ class RunTaskProcessKillIT {
                             "--releasehub.fixture.pause-before-completion=" + (appliedBranchBeforeCrash ? "ENSURE_FEATURE" : appliedMrBeforeCrash ? "ENSURE_MR" : appliedMergeBeforeCrash || intentThenAppliedCrash ? "TRY_MERGE" : ""),
                             "--releasehub.fixture.pause-after-projection=" + (branchProjectionResume || mrProjectionResume || mergeProjectionResume),
                             "--releasehub.fixture.pause-after-merge-journal=" + (intentMergeBeforeCrash ? "INTENT_RECORDED" : sentMergeBeforeCrash ? "SEND_STARTED" : ""),
-                            "--releasehub.fixture.observe-scans=" + sentMergeResume,
+                            "--releasehub.fixture.observe-scans=" + (sentMergeResume || notSentResume || notSentObservation),
                             "--releasehub.fixture.completion-checkpoint-file=" + (intentThenAppliedCrash
                                     ? marker.resolveSibling("resumed-merge-applied.txt") : marker),
                             "--releasehub.fixture.checkpoint-file=" + marker,
@@ -863,6 +1055,11 @@ class RunTaskProcessKillIT {
                 // 重启由生产扫描继续原任务；只读等待，不重发受理或手动领取。
                 String originalRunId = Files.readString(marker).trim();
                 RunPort runs = context.getBean(RunPort.class);
+                if (notSentResume || notSentObservation) {
+                    String observation = args[0].substring((notSentObservation ? "observe-not-sent-" : "resume-not-sent-").length());
+                    observeNotSentMerge(context, runs, originalRunId, marker, receipt, observation, notSentObservation);
+                    return;
+                }
                 if (sentMergeResume) {
                     observeCommittedSend(context, runs, originalRunId, marker, receipt);
                     return;
@@ -883,6 +1080,42 @@ class RunTaskProcessKillIT {
                 assertThat(run.getId().value()).isEqualTo(originalRunId);
                 Files.writeString(receipt, run.getId().value());
             }
+        }
+
+        private static void observeNotSentMerge(ConfigurableApplicationContext context, RunPort runs,
+                                                String runId, Path marker, Path receipt, String observation,
+                                                boolean observeOnly) throws Exception {
+            String expectedTaskStatus = observation.equals("contained") ? "COMPLETED" : observation.equals("blocked") ? "FAILED" : "UNKNOWN";
+            RunExecutionStatus expectedRunStatus = observation.equals("contained") ? RunExecutionStatus.DONE
+                    : observation.equals("blocked") ? RunExecutionStatus.FAILED : RunExecutionStatus.NEEDS_REVIEW;
+            String taskId = runs.findTasks(runId).stream().filter(task -> task.actionType() == ActionType.TRY_MERGE)
+                    .findFirst().orElseThrow().taskId();
+            JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(35);
+            while (runs.findTasks(runId).stream().filter(task -> task.taskId().equals(taskId))
+                    .findFirst().orElseThrow().status().equals("RUNNING")) {
+                if (observeOnly) throw new AssertionError("A terminal unsent task was revived on JVM restart");
+                if (System.nanoTime() >= deadline) fail(
+                        "Default worker did not complete the original unsent task: " + runs.findTasks(runId));
+                Thread.sleep(25);
+            }
+            assertThat(runs.findTasks(runId).stream().filter(task -> task.taskId().equals(taskId))
+                    .findFirst().orElseThrow().status()).isEqualTo(expectedTaskStatus);
+            assertThat(jdbc.queryForObject("select state from git_operation where task_id=?", String.class, taskId)).isEqualTo("NOT_SENT");
+            assertThat(runs.findById(runId).orElseThrow().getExecutionStatus()).isEqualTo(expectedRunStatus);
+            int before = CheckpointConfiguration.COMPLETED_SCANS.get();
+            while (CheckpointConfiguration.COMPLETED_SCANS.get() - before < 3) {
+                if (System.nanoTime() >= deadline) fail("Default scanner did not complete three terminal-state scans");
+                Thread.sleep(25);
+            }
+            int completed = CheckpointConfiguration.COMPLETED_SCANS.get() - before;
+            assertThat(runs.findTasks(runId).stream().filter(task -> task.taskId().equals(taskId))
+                    .findFirst().orElseThrow().status()).isEqualTo(expectedTaskStatus);
+            assertThat(jdbc.queryForObject("select state from git_operation where task_id=?", String.class, taskId)).isEqualTo("NOT_SENT");
+            assertThat(runs.findById(runId).orElseThrow().getExecutionStatus()).isEqualTo(expectedRunStatus);
+            Files.writeString(marker.resolveSibling(observeOnly ? "not-sent-observed-scans.txt" : "not-sent-resumed-scans.txt"),
+                    Integer.toString(completed));
+            Files.writeString(receipt, runId);
         }
 
         private static void observeCommittedSend(ConfigurableApplicationContext context, RunPort runs,
