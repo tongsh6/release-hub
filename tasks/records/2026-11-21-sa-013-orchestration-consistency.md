@@ -1,6 +1,6 @@
 # 2026-11-21 SA-013：分支收敛与唯一编排语义
 
-状态：已交付阶段及其固定 SHA 证据按各节保留；当前 C2-B4 已完成实现、本地验收与后端本地提交，交付收口见第 17 节。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，文档阶段推送与本片固定 SHA CI 待完成，不以旧 CI 代替本次运行。
+状态：已交付阶段及其固定 SHA 证据按各节保留；C2-B4 已完成分阶段推送与固定 SHA 5/5，交付收口见 17.5。当前 C2-B5 仅完成独立契约与只读职责审查，源码未实施、新测试待 RED，见第 18 节；任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
 
 ## 1. 目标与范围
 
@@ -655,7 +655,7 @@ API 清单另经只读核对：实际三类为 RunPagedApiTest、RunPlanApiIT、
 
 ## 17. C2-B4：合并 MR 完整证明与末尾原任务结果恢复
 
-B3 固定 SHA CI 通过后，唯一 HEAD 切换 C2-B4。实施前先完成正反例、官方 producer 与持久化/调度职责审查，再运行独立 RED；当前已完成实现、最终定向、本地门禁及后端本地提交，详见 17.1–17.4。文档阶段推送与本片固定完整 SHA 的 Full-Link 尚待收口，B4 保持 HEAD，C2 整体未完成。
+B3 固定 SHA CI 通过后，当时唯一 HEAD 切换 C2-B4。实施前先完成正反例、官方 producer 与持久化/调度职责审查，再运行独立 RED；实现、最终定向、本地门禁及后端提交过程见 17.1–17.4。随后分阶段推送并用本片固定完整 SHA 完成 Full-Link 5/5，B4 标记 DONE，证据见 17.5；C2 整体未完成。
 
 实施前源码定位：findTaskCandidateRunIds 当时只纳入 PENDING 或无 operation/Step 的到期 RUNNING，末尾 TRY_MERGE 已有 APPLIED 且无 PENDING 时不入候选；projectNextAppliedTask 当时只接受 ENSURE。completeTask 已拥有 Step、metadata、Item、lastMergeAt、guard、Task 与 Run 的原子结果职责，随后用真实 RED 验证上述缺口。
 
@@ -731,4 +731,34 @@ PG 覆盖终态候选、CREATED/MR_REUSED、40/64 位等值大小写、合法 nu
 
 后端完整纵向切片已本地提交为 `23950f98f2c7000bc054e74e9a67feb5f892e2dc`，父提交 `77f206c5b1610e4b5d8c814b39b72a5f191970da`，标题 `feat(run): recover confirmed merge results on terminal tasks`，共 13 个 backend 文件。提交树逐文件 hash 与最终 533/48/789/静态验收树一致；此时尚未推送。
 
-B4 继续保持唯一 HEAD。待完成文档提交、分阶段推送与本片固定完整 SHA 的 Full-Link 后再收口，不借用 B3 CI；Full-Link 的后端 API/隔离 GitLab 覆盖也不扩写为完整 UI 或更强的 Slice4/5 验收。本片不扩 INTENT/SEND/UNKNOWN、cleanup/version；回滚停派发并保留已发生事实，不撤销 merge。
+上述本地验收完成时，B4 仍为唯一 HEAD，文档提交、分阶段推送及本片固定完整 SHA 的 Full-Link 尚待收口；随后交付事实见 17.5。Full-Link 的后端 API/隔离 GitLab 覆盖不扩写为完整 UI 或更强的 Slice4/5 验收。本片不扩 INTENT/SEND/UNKNOWN、cleanup/version；回滚停派发并保留已发生事实，不撤销 merge。
+
+### 17.5 B4 分阶段推送与固定 SHA 远端验收
+
+后端 `23950f98f2c7000bc054e74e9a67feb5f892e2dc` 与文档 `be1ccbe61a5155ba5ce8582f884d41dbb385a932` 已按阶段推送到 `feature/orchestration-consistency`。`.ai/reports/validation/c2-b4/phase-push.json` 保存推送前后引用：main/develop 仍共同指向 `d4534ccc34fedb9bbf394ced89b4726f43ec197c`，远端只有 main、develop、该 feature 三分支，推送完成时工作区干净。
+
+固定完整 `be1ccbe61a5155ba5ce8582f884d41dbb385a932` 的 [Full-Link 44929301318](https://github.com/tongsh6/release-hub/actions/runs/44929301318) 为 completed/success，job `136922204638` 同为 success，watchExitCode=0。原始日志 Passed: 5 / Failed: 0，汇总时间 `2026-11-21T17:28:09.1091859Z`，即北京时间 `2026-11-22 01:28:09`；run 更新完成时间 `2026-11-21T17:28:40Z`。证据为 `.ai/reports/validation/c2-b4/full-link/result.json` 与同目录 `136922204638.log`。
+
+该 CI 绑定 B4 自身已推送 SHA；backend 仍与最终 533/48/789/静态验收树一致，B4 标记 DONE。最初编译失败 0 tests、各自源码树的独立 RED、533/2 FAIL 首轮及仅测试修正历史原样保留，重叠用例不累计。5/5 仍为后端 API 与隔离 GitLab 切片，不等于完整 UI 黄金旅程，不扩大 Slice4/5 既有较弱边界，不为 INTENT/SEND/UNKNOWN 提供本片未做的恢复验收。
+
+## 18. C2-B5 实施前：原 MERGE 未发送意图的安全续发
+
+B4 固定 SHA CI 成功后，唯一 HEAD 接续 B5。此时只读职责审查与独立契约已完成，尚未修改本片生产/测试源码或运行新 RED；以下是源码定位和待验证结论，不作为已测缺陷或已完成能力。
+
+### 18.1 独立正反例与源码定位
+
+正例先定义为：原 TRY 完整到期，仅有同 attempt 的 MERGE_MR/INTENT sequence 0、无任何 SEND/自身 Step，原 checkpoint 仍 ready；重启接管应继续原精确请求、原 operation/attempt，并只产生一次 PUT。反例包括旧 SEND 已先提交、已有 owner UNKNOWN/Step、伪装 INTENT 但已有 SEND、错误 guard/checkpoint/request，以及新旧观察版本交错。
+
+最强反例推翻仅允许同 token 再进 SEND 的方案：发送输家被拒后会沿 RunAppService 映射成 UNKNOWN；若仍持同一 Task fence，旧 completeTask 可抢先结束新发送者的任务，随后实际 HTTP 响应可能因任务不再 RUNNING 而丢失。因此需要 Task 当前 owner 轮换，同时约束 sending、finish 与完整结果提交；只修 SEND CAS 不足以证明安全。
+
+源码只读定位还显示：原 operationForUpdate、ack、APPLIED 证明把原 op claim/session 与当前 Task token 等值；HTTP interceptor 当时忽略 begin 返回的 operation ID，原 target 不完整保存 merge_commit_message/should_remove_source_branch，原 body hash 依赖序列化字节。guard 映射保护与非 Task completeSession 存在真实 session 消费者，不能为接管一起轮换原 reservation。上述位置决定最小职责调整，必须先以独立 RED 验证，不能直接当作已测结论。
+
+### 18.2 最小契约与验收边界
+
+完整契约集中于原 design、tasks 与 Run delta：RunPort.claimNextTask 保持唯一领取入口；Run→Task→guard 锁内重核并 CAS 只换 Task 当前 token/lease，递增 operation observation version，保留 op 原 claim/session/attempt、guard 原 reservation、startedAt 与实际顺序。sending/finish 显式核实际 caller fence，seq1 记实际 sender；ack/APPLIED 只对本片原 attempt 核该 sender，B2/B3 的原资格不放宽。原 begin 复用并返回 operation ID，由 interceptor 实际消费；无新实体、表、API、DTO、attempt 或 dispatcher。
+
+请求复用原 target 和 hash 能力，保存 sha 文本、原输入 merge_commit_message 文本、should_remove_source_branch=false 布尔三键；自动续发另核消息等于原计划默认值，不将此恢复资格扩为正常非 Task 消费者必须拥有计划；固定次序/类型指纹覆盖原 envelope，不允许 query（含空 ?），未知/缺失/错型/旧 hash 拒绝零写，无兼容回填。历史观察按原 Task 归属和 expectedVersion 核验，接管使旧版本失效；不拿原 op token 当作当前发送权，也不破坏原映射保护。
+
+旧 SEND 先提交时不能接管，其迟到真实响应仍须保存；新接管先提交时旧 sending 与旧 UNKNOWN complete 均拒绝。SEND 已提交但 HTTP 前中断不得再次发送。前置 GET 失败、closed 或 source B 可令 Task UNKNOWN，但 operation 仍 INTENT 且无 SEND/响应，guard 原 reservation/INTENT_PENDING 保持，不能误写 REMOTE_RESULT_UNKNOWN 或引入新状态；前置 GET 已包含 A 或 BLOCKED 不伪造 APPLIED/REJECTED，允许原 completeTask 整事务拒绝回滚并保 RUNNING/INTENT/INTENT_PENDING，这一边界尚不能自动收口，留待后续独立处理。
+
+下一验证按先 RED 推进：真 PG 锁两种胜出顺序、两名新 worker、输家 UNKNOWN、显式 fence 与旧/新 version；坏前页 keyset、同仓前序/跨仓进展；跨 JVM 在 INTENT 后强杀、到期后复用原 operation 一次 PUT，并回归 B2/B3/B4。其他 INTENT 动作、SEND/UNKNOWN、cleanup/version 与完整 UI 仍 QUEUED；回滚停派发并保留事实，不撤销远端写。

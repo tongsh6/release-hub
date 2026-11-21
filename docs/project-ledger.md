@@ -10,7 +10,7 @@
 
 ## 1. 当前阶段目标
 
-2026-11-21：用户已授权持续研发、必要重构和分阶段推送；生命周期与工作模式的正式值读取项目画像，AIEF 校准依据见 [接入记录](../tasks/records/2026-11-21-aief-project-operating-context.md)。main/develop 同指 `d4534cc`，研发位于 `feature/orchestration-consistency`。S3-A/B1、S3-B2、S3-C1 已分阶段推送；AIEF 对齐提交 `83998b2`，CI profile/Python 修复为 `08432e9`、`a7181fa`。C1 后端 `44e742c`、前端 `3766686`、E2E/脚本 `4c6b3e9`、文档 `e5094ba` 均已核对远端；固定 `e5094ba` 的 [Full-Link 44899945002](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 5/5 通过。**S3-C2-A 已完成并推送**：后端 `06aee3b`、前端 `b37397f`、E2E/脚本 `e0c6356`、文档 `1761572`；固定完整 SHA `1761572bca6c149aecba78d26a7b25cb98b5251a` 的 [Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754) 为 5/5。**S3-C2-B1 已 DONE 并推送**：后端 `3f810c8`、文档 `5441df6`；固定完整 SHA `5441df6bdc971953dee390c9470d4786fe0eab44` 的 [Full-Link 44911634004](https://github.com/tongsh6/release-hub/actions/runs/44911634004) 为 5/5，feature 与远端一致，main/develop 仍为 `d4534cc`。**S3-C2-B2 已 DONE 并推送**：`fe4c006`、`1386ccc`、`cc80036`；固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5。2026-11-22，C2-B3 已按 `d87dfa8`、`544983b` 分组推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，已 DONE。当前工作按[执行路线图](execution-roadmap.md)接续 C2-B4「合并 MR 完整证明与末尾原任务结果恢复」，实现与最终本地门禁已完成，后端23950f9已本地提交，待文档提交、阶段推送及本片固定SHA CI；C2 整体尚未完成。
+2026-11-21：用户已授权持续研发、必要重构和分阶段推送；生命周期与工作模式的正式值读取项目画像，AIEF 校准依据见 [接入记录](../tasks/records/2026-11-21-aief-project-operating-context.md)。main/develop 同指 `d4534cc`，研发位于 `feature/orchestration-consistency`。S3-A/B1、S3-B2、S3-C1 已分阶段推送；AIEF 对齐提交 `83998b2`，CI profile/Python 修复为 `08432e9`、`a7181fa`。C1 后端 `44e742c`、前端 `3766686`、E2E/脚本 `4c6b3e9`、文档 `e5094ba` 均已核对远端；固定 `e5094ba` 的 [Full-Link 44899945002](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 5/5 通过。**S3-C2-A 已完成并推送**：后端 `06aee3b`、前端 `b37397f`、E2E/脚本 `e0c6356`、文档 `1761572`；固定完整 SHA `1761572bca6c149aecba78d26a7b25cb98b5251a` 的 [Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754) 为 5/5。**S3-C2-B1 已 DONE 并推送**：后端 `3f810c8`、文档 `5441df6`；固定完整 SHA `5441df6bdc971953dee390c9470d4786fe0eab44` 的 [Full-Link 44911634004](https://github.com/tongsh6/release-hub/actions/runs/44911634004) 为 5/5，feature 与远端一致，main/develop 仍为 `d4534cc`。**S3-C2-B2 已 DONE 并推送**：`fe4c006`、`1386ccc`、`cc80036`；固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5。2026-11-22，C2-B3 已按 `d87dfa8`、`544983b` 分组推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，已 DONE。C2-B4 已按后端 `23950f9`、文档 `be1ccbe` 分组推送，固定 `be1ccbe61a5155ba5ce8582f884d41dbb385a932` 的 [Full-Link 44929301318](https://github.com/tongsh6/release-hub/actions/runs/44929301318) 为 5/5，已 DONE。当前工作按[执行路线图](execution-roadmap.md)进入 C2-B5「原 MERGE 未发送意图的安全续发」的独立契约与 RED 阶段；尚未实现 B5，C2 整体尚未完成。
 
 C2-A 已交付基线由有界后台 worker 消费唯一持久四动作，Orchestrate/retry 返回 HTTP 202/Run ID；相同 key 只返回原回执。C2-A 当时只扫描当前 WINDOW 协议的 PENDING，不接管 RUNNING/UNKNOWN。同 Run 双仓真实 HTTP 验证已通过：R1 响应在途时 R2 可进展；默认定时器与独立 JVM 重启只继续原 PENDING TRY_MERGE，MR POST=1、MERGE PUT=1。普通后端 677 项（672 PASS/5 既有 SKIP），API/数据库 67/67、HTTP 29/29、进程 1/1，后补 worker 停机断言后 7/7；重叠 suite 不累计。前端 39 文件 214/214、全部门禁与静态复扫通过；最后 E2E 消费者契约补验 16/16 已包含在 `e0c6356`。C2-A 固定 SHA Full-Link 5/5 已收口。B1 已交付的限定接管范围、本地与固定 SHA CI 证据见下文；后续写意图恢复和真实 UI 黄金旅程仍待独立验收。
 
@@ -58,7 +58,7 @@ C2-B2 已完成实现、本地门禁和远端交付。定向189/189、API48/48�
 
 B3 远端验收原始证据：`.ai/reports/validation/c2-b3/full-link/result.json` 和 `136907137667.log`；run 44924378741 / job 136907137667 的 headSha 为 `544983beff74604852c050209e4c8caa93678ef2`，SUCCESS、Passed 5 / Failed 0，日志北京时间 2026-11-22 00:34:33，收尾成功。[Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 使用后端 API＋隔离 GitLab，仍不扩大 Slice4/5 或完整 UI 覆盖。
 
-### C2-B4 本地验收完成，待阶段推送与固定 SHA CI（2026-11-22）
+### C2-B4 已交付验收（2026-11-22）
 
 MERGE_MR 的正常调用、HTTP 规范事件和恢复共用严格 HTTP 200/merged 证明：三个原 JSON 数值项目身份、原 IID、文本分支/URL/source SHA，且 merge_commit_sha 必须存在、允许显式 null 或合法 SHA。精确分支由既有 workflow/原检查点绑定；不能用其他 SHA 或字段别名补造成功。
 
@@ -72,10 +72,13 @@ MERGE_MR 的正常调用、HTTP 规范事件和恢复共用严格 HTTP 200/merge
 | 稳定源码 | 七份 hash 快照及当前源码一致，均 495 backend 文件 | `local-evidence-audit.json`；仅两个测试文件在首轮 GREEN 后改断言 |
 | 静态 | 六份新鲜 SpotBugs XML 均0，typecheck PASS，lint 0 errors/8 既有 warnings | `.ai/reports/static-scan/20261122-010845/summary.md` 已逐项说明保留理由及覆盖边界 |
 | 独立 JVM 末尾 MERGE | run `fb7e11f7-9256-408b-b530-e0cd657a2f3a`，PID89472→89518、exit137；无 PENDING，projectionHttp0、MR POST1/mergePUT1，原 token/6条事件保持 | `final-green-jdk21/maven.log`；5类进程中断全部通过，MR404/target重置为受控HTTP fixture |
+| 固定 SHA 远端验收 | `be1ccbe61a5155ba5ce8582f884d41dbb385a932`；run 44929301318 / job 136922204638，SUCCESS，Passed 5 / Failed 0；日志北京时间 2026-11-22 01:28:09 | [Full-Link 44929301318](https://github.com/tongsh6/release-hub/actions/runs/44929301318)；`.ai/reports/validation/c2-b4/full-link/result.json`、`136922204638.log`；后端 API＋隔离 GitLab，保留 Slice4/5 与完整 UI 覆盖边界 |
 
 独立 RED 在生产仍为77f206c时完成：adapter105/20FAIL、workflow/app77PASS、HTTP34/28FAIL、进程3/1FAIL、PG44/12FAIL，均0ERROR/0SKIP。5项额外PG轮确认旧结果字段确实存在，5FAIL且0ERROR；与44项重叠不累计。第一次冻结导出因测试调用参数错误而编译失败、0用例，不作为行为RED。首轮 GREEN 为533/2FAIL/0ERROR；仅修正测试将无序 Item 集合位置当执行顺序、以及旧候选断言混淆“发现”和“领取”的问题，保留完整历史后得到最终533/533。详见任务记录17及 `.ai/reports/validation/c2-b4/`。
 
-后端 `23950f98f2c7000bc054e74e9a67feb5f892e2dc` 已本地提交13文件，提交树与本地门禁相同。当前仍为唯一 HEAD，待验收文档提交、阶段推送与本片准确 SHA 的 Full-Link；不借用B3 CI标记DONE。INTENT/SEND/UNKNOWN、版本/收尾恢复和完整UI仍分别追踪。真实SQL keyset、双恢复者和外层事务回滚各按实际覆盖记录；未声称坏前页整个worker强杀演练或确定的双恢复者锁等待trace。
+后端 `23950f98f2c7000bc054e74e9a67feb5f892e2dc`（13 文件）与验收文档 `be1ccbe61a5155ba5ce8582f884d41dbb385a932`（10 文件）已分组提交并推送；后端提交树与本地门禁相同。本片准确 SHA 的 Full-Link 5/5 已完成，B4 标记 DONE，未借用 B3 CI。main/develop 仍同指 d4534cc，远端仅保留两条基线分支及当前 feature。真实 SQL keyset、双恢复者和外层事务回滚各按实际覆盖记录；未声称坏前页整个 worker 强杀演练或确定的双恢复者锁等待 trace。
+
+C2-B5 的独立设计已核实：现有 Task 承担当前发送/结果权，原 operation、attempt 和 guard reservation 保留历史归属；原 MERGE 请求缺少完整 typed 参数及跨 JVM 稳定指纹，须先补 producer 再允许续发。现阶段只有契约和消费者查重，尚无 B5 RED/GREEN 或交付证据。原已发送、未知结果、其他动作与完整 UI 继续独立追踪，详见记录 18。
 
 ### 2026-10-08 历史 S2 验收记录
 
@@ -335,7 +338,7 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| S3-C2-B4 合并 MR 完整证明与末尾原任务结果恢复 | 独立RED、最终定向533/API48/普通789和静态已通过，后端23950f9本地提交 | 文档提交、阶段推送与本片固定SHA Full-Link | 完整200/merged证明、合法null与原身份保持；纯DB补原TRY，结果/绑定/guard/Run同一事务；CI使用本片SHA |
+| S3-C2-B5 原 MERGE 未发送意图的安全续发 | B4 已完成本地与固定 SHA 5/5；两路独立契约及消费者核对已收敛，B5 尚未实现 | 先写原请求、发送/结果权、观察版本与跨 JVM 中断的独立 RED | 仅完整未发送 INTENT 可换 Task 当前权；原 operation/attempt/reservation 保留，旧 worker 不能发送或写 UNKNOWN，一次 PUT 的结果可原子完成 |
 | 前端用户旅程自动化验证 | 2026-05-24 的 E2E 49/0/0 为历史；C2-A 组件 214 PASS 为沿用基线，B1 无 UI/API 变更；后端 API/GitLab fixture 均不等于页面旅程 | 按 S5 受控范围执行真实 GitLab/UI 全旅程；C2-A Playwright 仅迁移消费者和发现 23 项 | 页面创建/变更业务数据，API/数据库/GitLab 只作后置复核；stub 不替代真实写入证据 |
 
 ---
@@ -358,8 +361,8 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| HEAD | SA-013 S3-C2-B4 合并 MR 完整证明与末尾原任务结果恢复 | 代码与本地门禁通过，后端23950f9已本地提交，阶段推送及本片CI待完成 | 固定SHA Full-Link通过后出队；历史B3验收不代替本片CI，INTENT/SEND/UNKNOWN另片处理 |
-| 后续 | SA-013 S3-C2-B 的发送权与 INTENT/SEND/UNKNOWN 恢复 | 不在 APPLIED 原结果投影范围内；历史 HTTP 事实与当前所有权分别承责 | 租约过期不授权重发，验证精确证据、迟到响应与旧 worker；不任意 FOUND 释放 guard |
+| HEAD | SA-013 S3-C2-B5 原 MERGE 未发送意图的安全续发 | B4 固定 be1ccbe Full-Link 5/5 已完成；未发送 MERGE 的完整请求与当前权必须独立验证 | 原请求核等、Task 换权、原操作复用、SEND sender 证明、旧观察失效、真实竞争和进程恢复；尚未实现 |
+| 后续 | SA-013 其他 INTENT、SEND/UNKNOWN 核对与恢复 | 不在 B5 的原 MERGE 未发送正例内；PUT 前读取的 ALREADY_MERGED/BLOCKED 不伪造本操作结果，现阶段保留 INTENT/guard | 租约过期不授权重发；分别验收未发送意图收口、精确证据、迟到响应与旧 worker，不任意 FOUND 释放 guard |
 | 后续 | SA-002 BranchCreationMode 执行计划评审门禁 | 原队列保留，最小 dry-run 已完成 | 评审是否进入执行计划切片；未批准前不实现执行 API、数据库写入、迁移表或 GitLab 操作 |
 
 ---
@@ -368,13 +371,13 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 当前研发交付 | `tasks/records/2026-11-21-sa-013-orchestration-consistency.md` | C1 `e5094ba` / Full-Link `44899945002` 为历史 5/5；第 13 节记录 C2-A 本地 RED/GREEN、214 项前端、消费者补验 16/16、真实进程继续和固定 `1761572` / Full-Link `44905843754` 5/5；第 14 节记录 C2-B1 限定接管、各轮本地门禁、`3f810c8`/`5441df6` 交付与固定 SHA Full-Link `44911634004` 5/5；第 15 节记录 C2-B2 的真实 RED、同一源码树定向 189/API 48/普通 700、APPLIED_BRANCH 硬杀、静态及三组提交；固定 cc800362 的 Full-Link 44917254215 为 5/5，已交付；第 16 节记录 B3 独立正反例、403/48/738 最终门禁、真实 MR 进程恢复、d87dfa8/544983b 推送及固定 SHA Full-Link44924378741的5/5；第17节记录B4独立RED、首轮533/2FAIL、最终533/API48/普通789/静态、真实末尾MERGE恢复和本地提交 |
+| 当前研发交付 | `tasks/records/2026-11-21-sa-013-orchestration-consistency.md` | C1 `e5094ba` / Full-Link `44899945002` 为历史 5/5；第 13 节记录 C2-A 本地 RED/GREEN、214 项前端、消费者补验 16/16、真实进程继续和固定 `1761572` / Full-Link `44905843754` 5/5；第 14 节记录 C2-B1 限定接管、各轮本地门禁、`3f810c8`/`5441df6` 交付与固定 SHA Full-Link `44911634004` 5/5；第 15 节记录 C2-B2 的真实 RED、同一源码树定向 189/API 48/普通 700、APPLIED_BRANCH 硬杀、静态及三组提交；固定 cc800362 的 Full-Link 44917254215 为 5/5，已交付；第 16 节记录 B3 独立正反例、403/48/738 最终门禁、真实 MR 进程恢复、d87dfa8/544983b 推送及固定 SHA Full-Link44924378741的5/5；第17节记录B4独立RED、首轮533/2FAIL、最终533/API48/普通789/静态、真实末尾MERGE恢复、23950f9/be1ccbe推送与固定SHA Full-Link44929301318的5/5；第18节记录B5独立契约与反例，尚未实现 |
 | C2-B4 最终本地静态扫描 | `.ai/reports/static-scan/20261122-010845/summary.md` | 六份新鲜SpotBugs XML均0、typecheck PASS、lint 0 errors/8既有fixture warnings逐项处置；七份495文件backend快照一致 |
 | C2-B3 已交付静态扫描 | `.ai/reports/static-scan/20261122-001110/summary.md` | 六份新鲜 SpotBugs XML 均0、typecheck PASS、lint 0 errors/8既有fixture warnings；逐项保留理由和覆盖边界，同一495文件backend树 |
 | C2-B2 已交付静态扫描 | `.ai/reports/static-scan/20261121-224714/summary.md` | 六份新鲜SpotBugs XML均0、typecheck PASS、lint 0 errors/8既有fixture warnings逐项保留；与定向/API/普通回归同一backend树，无前端变更或规则关闭 |
 | C2-B1 已交付静态基线 | `.ai/reports/static-scan/20261121-214959/summary.md` | 6 份新鲜 SpotBugs XML 均 0、typecheck PASS、lint 0 errors/8 既有 fixture warnings 逐项保留；首扫 `20261121-213959` raw 实际 4 项，遗漏 CT 与环境误分类已追加纠正，SQL 已修、构造器 EI/CT 精确说明；仅保留B1历史，C2-B2另由本片224714独立验证 |
 | C2-A 历史静态扫描 | `.ai/reports/static-scan/20261121-203554/summary.md` | RunTaskWorker 构造器级精确说明；SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings，EOF 与 TopN 已收口 |
-| 场景矩阵 | `docs/reports/scenario-acceptance-matrix.md` | C1/C2-A/C2-B1/C2-B2 各自本地及固定 SHA 交付证据；C2-B3 最终本地及固定544983b的Full-Link44924378741为5/5，已交付；B4最终本地533/API48/普通789与静态通过，待本片阶段推送和准确SHA CI；INTENT/SEND/UNKNOWN与完整UI仍未交付 |
+| 场景矩阵 | `docs/reports/scenario-acceptance-matrix.md` | C1/C2-A/C2-B1/C2-B2 各自本地及固定 SHA 交付证据；C2-B3 最终本地及固定544983b的Full-Link44924378741为5/5，已交付；B4最终本地533/API48/普通789与静态通过，23950f9/be1ccbe已推送，固定be1ccbe的Full-Link44929301318为5/5；B5独立契约已定义但未实现，其他INTENT/SEND/UNKNOWN与完整UI仍未交付 |
 | 发布候选收口报告 | `docs/reports/release-candidate-2026-05-23.md` | 2026-05-24 当时分支已通过受控候选验证，交付证据包已汇总全量验收、前端 E2E、关键组件、SA-002 处置 case 页面验收和静态扫描；仍为 dogfood/staging 候选 |
 | 发布候选评审页 | `frontend/src/views/release-governance/ReleaseCandidateReview.vue` + `GET /api/v1/release-governance/candidate-review` + `POST /api/v1/release-governance/candidate-review/signoffs` | 聚合候选结论、验收证据、风险边界、检查清单和人工签核；签核不触发发布、清理、GitLab 或数据状态变更 |
 | 数据质量复核队列 | `frontend/src/views/data-quality/DataQualityReviewQueue.vue` + `POST /api/v1/data-quality/cleanup-review` | 导入 dry-run JSONL 后可按资源、风险、状态和资产范围筛选；页面展示数据源口径、命名空间、复核批次、资产范围、保留策略、处置等级、允许动作、回滚边界和审计记录；所有结果仍不允许直接执行 |

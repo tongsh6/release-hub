@@ -1,6 +1,6 @@
 # 实施切片与验收追踪
 
-完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已交付；C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754、C2-B1 固定 `5441df6` 的 Full-Link 44911634004 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已分组提交推送。C2-B2 三组 fe4c006、1386ccc、cc80036 已推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5，建分支成功证明与 APPLIED 投影恢复已交付。C2-B3 的 d87dfa8、544983b 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE，完整证据见记录 16.6。当前唯一队首为 C2-B4 合并 MR 完整证明与末尾原任务结果恢复，本地定向 533/API 48/普通 789 与静态门禁通过，后端 23950f9 已本地提交，文档阶段推送与本片固定 SHA CI 待收口（记录 17）；INTENT/SEND/UNKNOWN 等仍后续独立验收，C2 整体未完成。
+完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已交付；C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754、C2-B1 固定 `5441df6` 的 Full-Link 44911634004 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已分组提交推送。C2-B2 三组 fe4c006、1386ccc、cc80036 已推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5，建分支成功证明与 APPLIED 投影恢复已交付。C2-B3 的 d87dfa8、544983b 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE，完整证据见记录 16.6。C2-B4 的 23950f9、be1ccbe 已分阶段推送，固定完整 `be1ccbe61a5155ba5ce8582f884d41dbb385a932` 的 [Full-Link 44929301318](https://github.com/tongsh6/release-hub/actions/runs/44929301318) 为 5/5，B4 已 DONE（记录 17.5）。当前唯一队首为 C2-B5 原 MERGE 未发送意图的安全续发，独立契约与只读职责审查已完成，源码未实施、新测试待 RED（记录 18）；其他 INTENT 动作与 SEND/UNKNOWN 等仍后续独立验收，C2 整体未完成。
 
 关联：[需求](../../../requirements/in-progress/SA-013-发布编排中断恢复.md)、[提案](proposal.md)、[Run delta](specs/run/spec.md)、[窗口 delta](specs/release-window/spec.md)。依赖顺序为 S0 → S1 → S2 → S3 → S4 → S5。
 
@@ -159,7 +159,7 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 - [x] 文档 544983beff74604852c050209e4c8caa93678ef2 已提交推送；固定该完整 SHA 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE。覆盖为后端 API 与隔离 GitLab，不扩完整 UI 或 Slice4/5 边界；证据见记录 16.6。
 - 回滚：停派发并保留事实；MERGE_MR、INTENT/SEND/UNKNOWN、版本/收尾恢复与完整 UI 旅程继续独立追踪，不兼容缺证明的旧摘要。
 
-#### C2-B4：合并 MR 完整证明与末尾原任务结果恢复（当前子片 / HEAD，本地验收完成）
+#### C2-B4：合并 MR 完整证明与末尾原任务结果恢复（已交付 / DONE）
 
 - 依赖与范围：B3 已完成固定 SHA 5/5；本片只处理原 TRY_MERGE 对应 MERGE_MR/APPLIED。完整契约见 design.md 与 Run delta，实际阶段证据见任务记录 17；本地通过不代替固定 SHA 远端验收。
 - [x] provider 与持久化两路独立只读核对已收敛；原 Task/Journal/guard、MrEvidence、worker 游标和 completeTask 有实际消费者，无需新实体、表、DTO、API 或框架。
@@ -173,13 +173,27 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 - [x] 五类独立 JVM 强杀重启通过；末尾 MERGE/APPLIED 时无 PENDING，默认 worker 纯 DB 恢复原 TRY/MERGED，投影 HTTP=0、MR POST=1、merge PUT=1，原 token/六条事件保持。
 - [x] 首轮 533 项/2 FAIL 保留；仅修两份测试的发现/授权及无序集合断言，生产未改，最终 11 suites、533/533、0 FAIL/ERROR/SKIP。独立源码复审无阻塞；详见 17.2–17.3。
 - [x] 同一 495 文件 backend 树 API 48/48、普通 789（784 PASS/5 既有 SKIP）、六份 fresh SpotBugs XML 0、typecheck PASS、lint 0 errors/8 既有 warnings；TopN 八项已逐项说明保留理由，报告 20261122-010845，详见 17.4。
-- [x] 后端 13 文件完整纵向切片已本地提交 23950f98f2c7000bc054e74e9a67feb5f892e2dc，与最终 533/48/789/静态验收树一致；此时尚未推送。
-- [ ] 完成文档门禁与提交、分阶段推送及本片固定完整 SHA Full-Link 后收口；B4 仍为唯一 HEAD，历史 B3 CI 不作本片验收结论。
+- [x] 后端 13 文件完整纵向切片提交 23950f98f2c7000bc054e74e9a67feb5f892e2dc，与最终 533/48/789/静态验收树一致；已随文档阶段推送，本地提交时点的历史状态见 17.4。
+- [x] 文档 be1ccbe61a5155ba5ce8582f884d41dbb385a932 已门禁通过并分阶段推送；固定该完整 SHA 的 Full-Link 44929301318 / job 136922204638 为 SUCCESS、5/5，B4 标记 DONE，详见 17.5。
 - 回滚与后续：停派发并保留事实，不撤销 merge；INTENT/SEND/UNKNOWN、cleanup/version 与完整 UI 仍独立排队。
 
-#### C2-B 后续：已有写意图、发送权与未知结果
+#### C2-B5：原 MERGE 未发送意图的安全续发（当前子片 / HEAD，实施前契约）
 
-- [ ] 租约与代次具有实际接管消费者；历史 HTTP 事实归属和当前发送/投影权分开，不能旋转 token 后丢失旧操作观察或迟到响应。
+- 依赖与范围：B4 已完成本片固定 SHA 5/5；仅完整过期 RUNNING TRY 的唯一 MERGE_MR/INTENT、原 attempt sequence 0 且无任何 SEND/自身 Step。完整契约见 design 与 Run delta；本片源码未实施、新测试待 RED，事实见记录 18。
+- [x] provider 与持久化/调度两路只读审查及独立正反例已收敛；Task 当前 token 与 op/guard 历史 reservation 分责，复用原领取、Journal、workflow、interceptor 与结果事务，无新实体、表、API、DTO 或 dispatcher。
+- [ ] 先保存独立 RED：真实 PG 锁内旧 SEND/新接管两种顺序、两名新 worker、输家 UNKNOWN、显式 caller fence 与旧/新 observation version；不以并发启动代替已观察的锁竞争。
+- [ ] 原 claimNextTask 在 Run→Task→guard 锁内核完整资格、原计划/项目/checkpoint/request 和前序，CAS 只换 Task token/lease 并递增 op observation version；op claim/session/attempt、guard reservation、首次时间/顺序与历史事件不改。
+- [ ] 持久原 MERGE 三键完整 typed body、固定次序/类型指纹与无 query（空 ? 也拒绝）；布尔 false 与冻结 SHA 保持，自动续发另核精确原计划消息，正常 producer 保留原输入消息；缺失/未知/错型/旧 hash 拒绝零写，无回填兼容。
+- [ ] 正常与恢复走原路径，begin 返回原 operation ID 且 interceptor 实际消费；sending/finish 显式核 caller fence、seq1 记实际 sender；ack/APPLIED 核同 attempt sender，B2/B3 既有资格不放宽。
+- [ ] 旧 SEND 先赢禁止接管且迟到实际响应仍可保存；新接管先赢后旧 sending/UNKNOWN complete 均拒绝；SEND 已提交而 HTTP 前中断不得重发；映射保护与历史 observation 仍有效。
+- [ ] 前置 GET 仍 ready 时一次 PUT；GET 失败/closed/source B 可令 Task UNKNOWN，但 op INTENT、无 SEND/响应，guard 原 reservation/INTENT_PENDING 保持，不误写 REMOTE_RESULT_UNKNOWN 或新增状态；ALREADY/BLOCKED 不造 APPLIED/REJECTED，验证原 completeTask 可整事务拒绝回滚并保 RUNNING/INTENT/INTENT_PENDING，明确尚不能自动收口。
+- [ ] 验证坏前页 keyset、同仓前序/跨仓进展、跨 JVM 在 INTENT 后强杀并到期恢复同 op/一次 PUT，以及 B2/B3/B4 回归；事实、源码与证据分阶段保存。
+- [ ] 完成相关回归、静态 TopN、独立 review、分组 commit/push 与本片固定完整 SHA Full-Link 后再收口，不借用 B4 CI。
+- 回滚：停派发并保留原 Task/op/attempt/事件/guard；不撤销远端写。其他动作的 INTENT、SEND/UNKNOWN、cleanup/version 与完整 UI 不在本片。
+
+#### C2-B 后续：其他 INTENT 动作与 SEND/UNKNOWN（QUEUED）
+
+- [ ] 其他动作的 INTENT 及已发送未知结果按各自原职责独立验收；历史 HTTP 事实归属和当前发送/投影权分开，不将 B5 的 MERGE 未发送资格推广到其他动作。
 - [ ] UNKNOWN/NEEDS_REVIEW 的精确只读核对、受证据约束的 resume；无 force 绕过或任意 FOUND 自动释放 guard。
 - [ ] SEND_STARTED 前后硬中断、外部成功但业务提交失败、租约过期、旧 worker 延迟发送/返回与观察版本竞争；不能把数据库 fencing 当作 Git fencing。
 

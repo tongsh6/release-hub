@@ -506,7 +506,7 @@ C2-B3 已 DONE：d87dfa8、544983b 已推送，固定完整 SHA `544983beff74604
 
 ### Requirement: 已确认合并 MR 结果的末尾原任务恢复
 
-C2-B4 为当前唯一实施队首，实现与本地验收已完成；文档阶段推送和本片固定完整 SHA CI 待收口，事实见 tasks 与任务记录 17。系统 SHALL 复用原 Task、操作账本和结果事务，对完整到期的原 TRY_MERGE/MERGE_MR/APPLIED 补历史 MERGED 结果；即使整个 Run 没有 PENDING 后继也 SHALL 被默认 worker 发现。恢复 SHALL 零 HTTP，不授予 INTENT/SEND/UNKNOWN 或其他执行类型恢复权限。
+C2-B4 已交付，分阶段推送与本片固定完整 SHA 5/5 证据见 tasks 与任务记录 17.5。系统 SHALL 复用原 Task、操作账本和结果事务，对完整到期的原 TRY_MERGE/MERGE_MR/APPLIED 补历史 MERGED 结果；即使整个 Run 没有 PENDING 后继也 SHALL 被默认 worker 发现。恢复 SHALL 零 HTTP，不授予 INTENT/SEND/UNKNOWN 或其他执行类型恢复权限。
 
 #### Scenario: 同一原响应的完整合并证明
 
@@ -577,6 +577,75 @@ C2-B4 为当前唯一实施队首，实现与本地验收已完成；文档阶�
 - **WHEN** 独立 JVM exit=137 并由默认 worker 重启
 - **THEN** 原 Run 被扫描发现并完成受控投影，恢复阶段 HTTP=0，原 merge PUT 总数=1，身份/历史保持且最终汇总正确
 - **AND** 回滚先停派发并保留事实，不撤销已发生的 merge；cleanup/version、完整 UI 及其他恢复仍需独立验收
+
+### Requirement: 原 MERGE 未发送意图的安全续发
+
+C2-B5 为当前唯一实施队首；以下是独立实施前契约，源码未实施、新测试待 RED，事实见 tasks 与任务记录 18。系统 SHALL 仅复用原过期 TRY_MERGE 的完整未发送 MERGE_MR 意图，分开 Task 当前发送/结果权与 op/guard 历史 reservation，不新增操作、attempt、实体、表、API、DTO 或 dispatcher。
+
+#### Scenario: 唯一原领取入口内接管完整未发送意图
+
+- **GIVEN** 当前协议活动 Run 的原 TRY_MERGE 为完整到期 RUNNING、实际顺序及仓内前序有效、无当前 Step，且只有一个 MERGE_MR/INTENT_RECORDED，其原 attempt 只有完整 sequence 0、未出现任何 SEND 或响应
+- **WHEN** 原 claimNextTask 在 Run→Task→guard 锁内刷新数据库时间、原项目/remote/计划/checkpoint/request 与 reservation 后取得 CAS 权限
+- **THEN** 只更新 Task 当前 token/lease 并递增 operation observation version，保留原 startedAt、实际顺序、业务身份及原 op claim_token/session/attempt、guard session/operation/generation 与事件
+- **AND** 非完整到期、错误 owner/guard/checkpoint、其他动作或状态、已有 Step/SEND/响应均不接管；候选发现不能代替锁内授权
+
+#### Scenario: 原请求的完整 typed 持久化与精确重建
+
+- **GIVEN** 原 target 保留 method/suffix 等既有身份及请求体 sha、merge_commit_message、should_remove_source_branch 三键
+- **WHEN** 正常发送或恢复验证原请求
+- **THEN** sha 为冻结的合法文本 SHA，消息保留原输入文本，删除标志为布尔 false；请求无 query，空 ? 也拒绝
+- **AND** B5 自动续发另要求持久消息精确等于原计划默认 `Merge {source} into {target}`；该资格不推广为正常非 Task 调用必须拥有计划，也不替换其原自定义消息
+- **AND** 共用固定字段次序、固定类型且覆盖原 envelope 的指纹；缺失/未知键、错类型、篡改消息/标志、错路径/SHA 或旧 hash 均拒绝且零远端写，不补默认值或兼容回填
+- **AND** 复用现有 hash 能力；恢复走原 workflow/adapter/interceptor，begin 返回原 operation ID 且 interceptor 实际使用该 ID，不创建新 operation 或 attempt
+
+#### Scenario: 新接管先赢后旧 worker 无发送或结果权
+
+- **GIVEN** 旧 worker 已提交完整 INTENT 后暂停，原领取到期，新 worker 先在锁内接管并成为当前 Task owner
+- **WHEN** 旧 worker 恢复 sending，或将发送拒绝异常映射成 UNKNOWN 后调用 completeTask
+- **THEN** 两者均被旧 fence 拒绝，不提交 SEND、UNKNOWN Step 或释放 guard；当前 owner 仍可沿原操作提交实际结果
+- **AND** 两名新 worker 竞争最多产生一个当前 owner；sending/finish 显式核实际 caller TaskFence，非 Task 调用显式无 TaskFence，不保留无 fence 的旧重载旁路
+
+#### Scenario: 旧 SEND 先赢后保留实际响应
+
+- **GIVEN** 旧 worker 的 SEND 事务先取得原锁并提交，或 SEND 已提交而 HTTP 尚未开始
+- **WHEN** 新 worker 在锁内刷新后尝试接管
+- **THEN** 不更换 Task token/lease、不再次发送；旧实际 sender 的迟到 HTTP finish 仍可保存，不能因 lease 到期丢弃已经发生的观察
+- **AND** 新 owner 已获授权后的旧 finish 不得冒用 operation ID 覆盖事件；finish 只认可该 attempt 已记录的实际 sender
+
+#### Scenario: 实际 sender 与原历史 reservation 各自承担职责
+
+- **GIVEN** 接管后的 Task token 不同于原 op claim_token/session，而 guard 仍绑定原 session/operation/generation
+- **WHEN** 当前 worker 发送、完成或确认原操作
+- **THEN** sequence 1 记录实际 sender 的 taskId/claimToken，finish、ack 及本片后续 APPLIED 证明按原 attempt 的 sender 和当前 Task 核权；B2/B3 原 token 资格不放宽
+- **AND** 原 session 等值映射保护、非 Task completeSession 与历史事件归属保持，不为接管重写历史 reservation
+
+#### Scenario: 接管使旧观察版本失效但保留合法历史观察
+
+- **GIVEN** 只读观察基于接管前 operation version 发起，接管后另有基于新版本的合法观察
+- **WHEN** 两者按历史 Task 关联与 expectedVersion 提交
+- **THEN** 旧版本被拒绝，新版本按原规则核对并可保存；不使用原 op token 与当前 Task token 等值来替代观察资格
+
+#### Scenario: 前置读取不能确认继续发送时保留意图和保护
+
+- **GIVEN** 原未发送意图已接管
+- **WHEN** 前置 GET 失败、MR 已 closed 或 source 已由 A 变为 B
+- **THEN** Task 可落 UNKNOWN，但 operation 保留 INTENT 且无 SEND/响应，guard 的原 reservation 与 INTENT_PENDING 理由保持；不得误写 REMOTE_RESULT_UNKNOWN、新增 guard 状态或伪造 APPLIED/REJECTED
+- **AND** 只有原 checkpoint 仍 ready 且精确请求有效时才能发送一次 PUT
+
+#### Scenario: 前置读取已满足或阻塞的结果尚不能自动收口
+
+- **GIVEN** 原未发送 MERGE 意图已接管，前置 GET 证实 target 已包含原 A 或返回 BLOCKED
+- **WHEN** 原 workflow 尝试通过 completeTask 提交该读取结果
+- **THEN** 不伪造 APPLIED/REJECTED 来消费 INTENT；允许原结果事务整体拒绝回滚并保留 Task RUNNING、operation INTENT 及 guard 原 reservation/INTENT_PENDING
+- **AND** 此边界留待后续独立处理，不声明本片能够自动结束该任务或解除保护
+
+#### Scenario: 真实竞争、末尾发现与进程中断验收
+
+- **GIVEN** 坏候选占满前页、后页有合法末尾 INTENT，或原 MERGE INTENT 已提交而任何 SEND 未发生
+- **WHEN** 有界 keyset 扫描，或独立 JVM 在 INTENT 后 exit=137 并到期重启
+- **THEN** 原 worker 继续发现后页候选且锁内授权，同仓不越序、跨仓可推进；合法重启复用原 operation/attempt，PUT 总数为 1，首次时间/顺序/历史 reservation 保持
+- **AND** 独立验收包含真实 PG 锁两种胜出顺序、两名新 worker、输家 UNKNOWN、显式 fence/观察 version，以及 B2/B3/B4 回归；未发送以外的 INTENT 动作、SEND/UNKNOWN、cleanup/version 与完整 UI 不扩入本片
+- **AND** 回滚停止派发并保留原事实及保护，不撤销已发生的远端写入
 
 ## MODIFIED Requirements
 

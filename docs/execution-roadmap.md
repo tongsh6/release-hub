@@ -21,9 +21,10 @@
 | 5 | DONE | SA-013 | S3-C2-B1 无写意图的过期 RUNNING 接管 | 3f810c8、5441df6 已推送；固定 5441df6 的 Full-Link 44911634004 为 5/5 | 无 operation/Step 的完整过期领取按原 token 接管，原任务/首次时间/实际顺序与 MR 检查点保持 |
 | 6 | DONE | SA-013 | S3-C2-B2 建分支成功证明与 APPLIED 结果投影恢复 | fe4c006、1386ccc、cc80036 已推送；固定 cc80036 的 Full-Link 44917254215 为 5/5 | 规范成功证明与纯 DB 原分支结果投影完成；同一 backend 树定向 189/API 48/普通 700 及静态门禁通过 |
 | 7 | DONE | SA-013 | S3-C2-B3 创建 MR 完整证明与原检查点恢复 | d87dfa8、544983b 已推送；固定完整 SHA `544983beff74604852c050209e4c8caa93678ef2` 的 Full-Link 44924378741 为 5/5；本地 403/48/738 与静态门禁同树 | 完整创建证明、原 ENSURE_MR 检查点投影与后继原 IID/SHA 消费完成本片验收，证据见记录 16.6 |
-| 8 | HEAD | SA-013 | S3-C2-B4 合并 MR 完整证明与末尾原任务结果恢复 | 后端 23950f9 已本地提交；同一树 533/48/789 与静态门禁通过；待文档阶段推送及本片固定 SHA CI，记录 17 | 完整 MERGE_MR 证明复用原职责，补齐无 PENDING 的末尾发现与纯 DB 原 TRY 结果，不重写检查点身份 |
-| 9 | QUEUED | SA-013 | S3-C2-B 后续：发送权与未知结果恢复 | C2-B4 之后独立验收 | INTENT 发送权、SEND/UNKNOWN 精确核对与观察版本分别处理 |
-| 10 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队列保留 | 历史数据处置仍先核实计划，不自动迁移或清库 |
+| 8 | DONE | SA-013 | S3-C2-B4 合并 MR 完整证明与末尾原任务结果恢复 | 23950f9、be1ccbe 已分阶段推送；固定完整 SHA `be1ccbe61a5155ba5ce8582f884d41dbb385a932` 的 Full-Link 44929301318 为 5/5；同一 backend 树 533/48/789 与静态门禁通过 | 完整 MERGE_MR 证明、无 PENDING 的末尾发现与纯 DB 原 TRY 结果已验收，证据见记录 17.5 |
+| 9 | HEAD | SA-013 | S3-C2-B5 原 MERGE 未发送意图的安全续发 | 独立契约与只读职责审查完成，源码未实施、新测试待 RED，记录 18 | 仅恢复完整过期 TRY 的原 MERGE_MR/INTENT；分开当前发送权与历史事实，先验证旧发送者和新接管者两种胜出顺序 |
+| 10 | QUEUED | SA-013 | S3-C2-B 后续：其他 INTENT 动作与 SEND/UNKNOWN | C2-B5 之后独立验收 | 其他写意图、已发送未知结果及早期读取不能自动收口的边界分别处理 |
+| 11 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队列保留 | 历史数据处置仍先核实计划，不自动迁移或清库 |
 
 ## 3. 当前队首验收出口
 
@@ -39,9 +40,9 @@ C2-A 最终静态报告为 `.ai/reports/static-scan/20261121-203554/summary.md`�
 
 当前 C2-B1 已在同一路径实现：API 48/48、普通后端 680 项（675 PASS、5 既有 SKIP）在静态整理前各自源码稳定的树通过；整理仅涉及 RunJpaPersistenceAdapter，最终代码已重跑覆盖它的组合 76/76，源码前后 hash 一致，重叠不累计。末尾仅 RUNNING、双 worker 原子接管、旧 begin/complete 拒绝、全部 operation/当前 task Step 排除、拿锁后 DB 期限、首次时间及已有顺序保留均有真实 RED→GREEN；PENDING 和已领取但无 operation 两个独立 JVM 强杀重启场景均 MR POST=1、MERGE PUT=1。默认期限 60 分钟、无心跳；V40 NULL 不回填为资格。最终静态 `.ai/reports/static-scan/20261121-214959/summary.md` 为六模块 SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 fixture warnings；首扫 4 项已修复或精确说明并复扫。后端 3f810c8、文档 5441df6 已推送；固定完整 5441df6bdc971953dee390c9470d4786fe0eab44 的 [Full-Link 44911634004](https://github.com/tongsh6/release-hub/actions/runs/44911634004) 为 5/5，B1 正式出队，未借用 C2-A CI。
 
-C2-B2 已完成 CREATE_BRANCH 成功证明与原分支 Task 的 APPLIED 投影并分组推送。真实 RED 先复现错误 commit.id 被旁支字段覆盖而错误 CREATED/APPLIED 并清 guard，再统一 201/name/确切 commit.id 校验。复用原事件、operation、Task 与 guard，同一结果事务补记；真实进程 exit=137 后默认 worker 恢复，投影阶段 HTTP=0、分支 POST 总数 1、原 token/三条事件保持，原 Run 随后完成。同一 backend 树组合 189/189、API 48/48、普通 695 PASS/5 既有 SKIP 和静态 20261121-224714 通过，TopN 8 条既有 fixture 告警逐项留痕；详细证据见任务记录 15.2。固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5，B2 已 DONE。C2-B3 后续交付证据见记录 16.6；当前唯一 HEAD 为 C2-B4 合并 MR 完整证明与末尾原任务结果恢复；本片实现与独立验收见原 design/tasks/Run delta 和记录 17。INTENT/SEND/UNKNOWN 及完整 UI 仍分别排队。
+C2-B2 已完成 CREATE_BRANCH 成功证明与原分支 Task 的 APPLIED 投影并分组推送。真实 RED 先复现错误 commit.id 被旁支字段覆盖而错误 CREATED/APPLIED 并清 guard，再统一 201/name/确切 commit.id 校验。复用原事件、operation、Task 与 guard，同一结果事务补记；真实进程 exit=137 后默认 worker 恢复，投影阶段 HTTP=0、分支 POST 总数 1、原 token/三条事件保持，原 Run 随后完成。同一 backend 树组合 189/189、API 48/48、普通 695 PASS/5 既有 SKIP 和静态 20261121-224714 通过，TopN 8 条既有 fixture 告警逐项留痕；详细证据见任务记录 15.2。固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5，B2 已 DONE。C2-B3 交付证据见记录 16.6，C2-B4 交付证据见记录 17.5。当前唯一 HEAD 为 C2-B5 原 MERGE 未发送意图的安全续发；实施前契约见原 design/tasks/Run delta 与记录 18，尚未修改源码或运行新 RED。其他 INTENT 动作、SEND/UNKNOWN 及完整 UI 仍分别排队。
 
-C2-B4 已完成独立 RED、最终 11 suites/533 定向、API 48、普通 789（784 PASS/5 既有 SKIP）及静态 20261122-010845；七份 495 文件 backend 快照与提交树一致，TopN 八项既有 warning 已逐项留痕。末尾 MERGE/APPLIED 后无 PENDING 的独立 JVM exit=137，默认 worker 重启投影 HTTP=0、原 merge PUT 总数 1、原 token/六条事件保持；首轮 533/2 FAIL 及仅测试断言修正历史见记录 17.2。本地后端提交为 `23950f98f2c7000bc054e74e9a67feb5f892e2dc`；文档提交、分阶段推送与本片固定完整 SHA Full-Link 待收口，B4 尚未 DONE。
+C2-B4 已完成独立 RED、最终 11 suites/533 定向、API 48、普通 789（784 PASS/5 既有 SKIP）及静态 20261122-010845；七份 495 文件 backend 快照与提交树一致，TopN 八项既有 warning 已逐项留痕。末尾 MERGE/APPLIED 后无 PENDING 的独立 JVM exit=137，默认 worker 重启投影 HTTP=0、原 merge PUT 总数 1、原 token/六条事件保持；首轮 533/2 FAIL 及仅测试断言修正历史见记录 17.2。后端 `23950f98f2c7000bc054e74e9a67feb5f892e2dc` 与文档 `be1ccbe61a5155ba5ce8582f884d41dbb385a932` 已分阶段推送；固定后者的 [Full-Link 44929301318](https://github.com/tongsh6/release-hub/actions/runs/44929301318) 为 5/5，B4 标记 DONE，覆盖仍限于后端 API 与隔离 GitLab，不扩大完整 UI 或 Slice4/5 边界。
 
 ## 4. 暂缓项
 
