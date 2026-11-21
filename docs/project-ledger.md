@@ -10,9 +10,9 @@
 
 ## 1. 当前阶段目标
 
-2026-11-21：用户已授权持续研发、必要重构和分阶段推送；生命周期与工作模式的正式值读取项目画像，AIEF 校准依据见 [接入记录](../tasks/records/2026-11-21-aief-project-operating-context.md)。main/develop 同指 `d4534cc`，研发位于 `feature/orchestration-consistency`。S3-A/B1、S3-B2、S3-C1 已分阶段推送；AIEF 对齐提交 `83998b2`，CI profile/Python 修复为 `08432e9`、`a7181fa`。C1 后端 `44e742c`、前端 `3766686`、E2E/脚本 `4c6b3e9`、文档 `e5094ba` 均已核对远端；固定 `e5094ba` 的 [Full-Link 44899945002](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 5/5 通过。当前唯一队首仍为 **S3-C2-A 持久扫描、异步受理与进度观察**：本地实现、反例和静态门禁通过，分组提交及本次固定 SHA Full-Link 正在收口。C2-B 的已领取任务接管和证据驱动恢复继续排队。
+2026-11-21：用户已授权持续研发、必要重构和分阶段推送；生命周期与工作模式的正式值读取项目画像，AIEF 校准依据见 [接入记录](../tasks/records/2026-11-21-aief-project-operating-context.md)。main/develop 同指 `d4534cc`，研发位于 `feature/orchestration-consistency`。S3-A/B1、S3-B2、S3-C1 已分阶段推送；AIEF 对齐提交 `83998b2`，CI profile/Python 修复为 `08432e9`、`a7181fa`。C1 后端 `44e742c`、前端 `3766686`、E2E/脚本 `4c6b3e9`、文档 `e5094ba` 均已核对远端；固定 `e5094ba` 的 [Full-Link 44899945002](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 5/5 通过。**S3-C2-A 已完成并推送**：后端 `06aee3b`、前端 `b37397f`、E2E/脚本 `e0c6356`、文档 `1761572`；固定完整 SHA `1761572bca6c149aecba78d26a7b25cb98b5251a` 的 [Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754) 为 5/5。当前唯一队首为 **S3-C2-B1：无 operation 的过期 RUNNING 接管**，尚未实现；已有写意图的核对与恢复继续排队。
 
-C2-A 当前由有界后台 worker 消费唯一持久四动作，Orchestrate/retry 返回 HTTP 202/Run ID；相同 key 只返回原回执。后台只扫描当前 WINDOW 协议的 PENDING，RUNNING/UNKNOWN 不重领。同 Run 双仓真实 HTTP 验证已通过：R1 响应在途时 R2 可进展；默认定时器与独立 JVM 重启只继续原 PENDING TRY_MERGE，MR POST=1、MERGE PUT=1。普通后端 677 项（672 PASS/5 既有 SKIP），API/数据库 67/67、HTTP 29/29、进程 1/1，后补 worker 停机断言后 7/7；重叠 suite 不累计。前端 39 文件 214/214、全部门禁与静态复扫通过。C2-A 新 SHA 的 Full-Link 待运行；租约、已领取任务恢复和真实 UI 黄金旅程尚未交付。
+C2-A 当前由有界后台 worker 消费唯一持久四动作，Orchestrate/retry 返回 HTTP 202/Run ID；相同 key 只返回原回执。后台只扫描当前 WINDOW 协议的 PENDING，RUNNING/UNKNOWN 不重领。同 Run 双仓真实 HTTP 验证已通过：R1 响应在途时 R2 可进展；默认定时器与独立 JVM 重启只继续原 PENDING TRY_MERGE，MR POST=1、MERGE PUT=1。普通后端 677 项（672 PASS/5 既有 SKIP），API/数据库 67/67、HTTP 29/29、进程 1/1，后补 worker 停机断言后 7/7；重叠 suite 不累计。前端 39 文件 214/214、全部门禁与静态复扫通过；最后 E2E 消费者契约补验 16/16 已包含在 `e0c6356`。本次固定 SHA Full-Link 5/5 已收口；过期 RUNNING 接管、已有写意图恢复和真实 UI 黄金旅程尚未交付。
 
 ### 2026-10-08 历史 S2 验收记录
 
@@ -148,6 +148,17 @@ B2 前的 A/B1 历史验收基线保留：普通后端 486 PASS/5 既有 SKIP、
 
 ## 3. 已验证事项
 
+### 2026-11-21 C2-A 最终验证与交付
+
+| 验证边界 | 结果 | 证据 |
+|---|---|---|
+| 本地代码与故障验证 | 普通后端 677 项（672 PASS/5 既有 SKIP）；API/PG 67/67、真实 HTTP 29/29、独立 JVM 1/1、后补 worker 7/7；重叠 suite 不累计 | 本轮研发记录第 13 节 |
+| 前端与消费者 | 39 文件 214/214，typecheck/i18n/lint/build 通过；E2E fixture 契约最后补验 16/16，三脚本语法及 diff-check 通过 | `.ai/reports/validation/c2a-final-*.log`、`.ai/reports/validation/c2-a-e2e-helper/green/` |
+| 静态门禁 | SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings，TopN 与 EOF 复查通过 | `.ai/reports/static-scan/20261121-203554/summary.md` |
+| 本次固定 SHA 真实 CI | `1761572bca6c149aecba78d26a7b25cb98b5251a`，run 44905843754 / job 136851120556；2026-11-21T12:59:28Z 日志明确 Passed 5 / Failed 0 | [Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754)、`.ai/reports/validation/c2-a-full-link/` |
+
+C2-A 已 DONE。CI 是后端 API＋隔离 GitLab；Slice3 保留 202 原 Run/Task、DONE、身份和远端计数断言，Slice4/5 的既有覆盖限制仍在，完整 UI 黄金旅程未因此通过。当前接续 C2-B1，无 operation 的过期 RUNNING 接管尚未实现，不把 PENDING 的自动继续扩写为任意中断恢复。
+
 ### 2026-11-21 C1 本地候选验证
 
 | 验证边界 | 结果 | 证据 |
@@ -248,7 +259,7 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| S3-C2-A 持久扫描、异步受理与进度观察 | 代码、真实 PostgreSQL/HTTP/独立进程、前端 214 项与静态门禁通过 | 分组提交、推送并运行本次固定 SHA Full-Link，再转 C2-B | 仅推进 PENDING；同仓串行、跨仓可进展；无内存唤醒依赖；拒绝提交零领取；原回执不依赖当前 scope；不重领 RUNNING |
+| S3-C2-B1 无 operation 的过期 RUNNING 接管 | 当前唯一 HEAD；设计与只读查重已完成，实现和验收未完成 | 沿原 Task、锁、token 和单一执行器实施，不另建恢复路径 | 锁内排除该 task 的全部 operation 和 Step；两 worker 只一方接管，旧 begin/complete 拒绝；独立进程验证原任务和成功前缀保留，不接管已有写意图 |
 | 前端用户旅程自动化验证 | 2026-05-24 的 E2E 49/0/0 为历史；本轮组件 214 PASS、后端 API/GitLab fixture 均不等于页面旅程 | 按 S5 受控范围执行真实 GitLab/UI 全旅程；本轮 Playwright 仅迁移消费者和发现 23 项 | 页面创建/变更业务数据，API/数据库/GitLab 只作后置复核；stub 不替代真实写入证据 |
 
 ---
@@ -267,12 +278,12 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 
 ## 6. 当前 Top Priority
 
-> 当前主线按 `docs/reports/scenario-acceptance-matrix.md` 推进；优先级以场景矩阵缺口为准。
+> 当前执行任务只从 `docs/execution-roadmap.md` 的唯一 HEAD 选择；台账与场景矩阵记录事实、证据和缺口，不建立并行队首。
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| HEAD | SA-013 S3-C2-A 持久扫描、异步受理与进度观察 | 本地实现与验收已完成，固定 SHA Full-Link 待收口 | 分组提交/推送后核对运行 SHA；保留检查点后 PENDING 继续、已领取不接管及 UI 旅程未验收边界 |
-| 后续 | SA-013 S3-C2-B 已领取任务接管与证据驱动恢复 | RUNNING/UNKNOWN 不因租约过期获得重发资格；历史 HTTP 事实与当前所有权需分别承责 | 精确证据、迟到响应、旧 worker 延迟发送、租约与观察版本竞争；不任意 FOUND 释放 guard |
+| HEAD | SA-013 S3-C2-B1 无 operation 的过期 RUNNING 接管 | C2-A 已 DONE；领取后、写意图前退出仍需安全继续，当前尚未实现 | 同一锁内证明无 operation/当前 task Step 才更换 token；双 worker、旧调用与独立进程反例通过；不得处理已有写意图或伪造完整恢复 |
+| 后续 | SA-013 S3-C2-B 已有写意图与证据驱动恢复 | RUNNING/UNKNOWN 不因租约过期获得重发资格；历史 HTTP 事实与当前所有权需分别承责 | 精确证据、迟到响应、旧 worker 延迟发送、租约与观察版本竞争；不任意 FOUND 释放 guard |
 | 后续 | SA-002 BranchCreationMode 执行计划评审门禁 | 原队列保留，最小 dry-run 已完成 | 评审是否进入执行计划切片；未批准前不实现执行 API、数据库写入、迁移表或 GitLab 操作 |
 
 ---
@@ -281,9 +292,9 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 当前研发交付 | `tasks/records/2026-11-21-sa-013-orchestration-consistency.md` | C1 `e5094ba` / Full-Link `44899945002` 为 5/5；第 13 节记录 C2-A 本地 RED/GREEN、214 项前端、真实进程继续与本次待交付状态 |
+| 当前研发交付 | `tasks/records/2026-11-21-sa-013-orchestration-consistency.md` | C1 `e5094ba` / Full-Link `44899945002` 为历史 5/5；第 13 节记录 C2-A 本地 RED/GREEN、214 项前端、消费者补验 16/16、真实进程继续和固定 `1761572` / Full-Link `44905843754` 5/5；C2-B1 为尚未实现的当前队首 |
 | 当前静态扫描 | `.ai/reports/static-scan/20261121-203554/summary.md` | RunTaskWorker 的 Spring 协作者引用经独立审查做构造器级精确说明；SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings；EOF 定向复查通过，TopN 逐项留痕 |
-| 场景矩阵 | `docs/reports/scenario-acceptance-matrix.md` | C1 代码/数据库/API/组件/真实 GitLab CI 证据与未完成的 UI/自动恢复边界；历史结果不替代本轮真实旅程 |
+| 场景矩阵 | `docs/reports/scenario-acceptance-matrix.md` | C1/C2-A 代码、数据库/API、组件及固定 SHA GitLab CI 证据；完整 UI 与已领取任务恢复仍未完成，历史结果不替代本轮真实旅程 |
 | 发布候选收口报告 | `docs/reports/release-candidate-2026-05-23.md` | 2026-05-24 当时分支已通过受控候选验证，交付证据包已汇总全量验收、前端 E2E、关键组件、SA-002 处置 case 页面验收和静态扫描；仍为 dogfood/staging 候选 |
 | 发布候选评审页 | `frontend/src/views/release-governance/ReleaseCandidateReview.vue` + `GET /api/v1/release-governance/candidate-review` + `POST /api/v1/release-governance/candidate-review/signoffs` | 聚合候选结论、验收证据、风险边界、检查清单和人工签核；签核不触发发布、清理、GitLab 或数据状态变更 |
 | 数据质量复核队列 | `frontend/src/views/data-quality/DataQualityReviewQueue.vue` + `POST /api/v1/data-quality/cleanup-review` | 导入 dry-run JSONL 后可按资源、风险、状态和资产范围筛选；页面展示数据源口径、命名空间、复核批次、资产范围、保留策略、处置等级、允许动作、回滚边界和审计记录；所有结果仍不允许直接执行 |
@@ -304,8 +315,9 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 | 种子分支清理 | `scripts/e2e/reset-gitlab-seed-branches.sh` | 默认 dry-run 并输出 `summary.md`、`branches.md`、`branches.jsonl`；`--execute` 清理非种子分支，保留 main 与 seed feature 分支，并记录执行后 `POST_KEEP/POST_REMOVED` |
 | 启动脚本 | `backend/scripts/run.sh` | `mvn spring-boot:run -pl releasehub-bootstrap` |
 | 本地容器 | `releasehub-postgres`(5433) + `releasehub-gitlab`(9080) | 模式 A 常驻；端口策略见 memory `feedback_mode_a_b_port_isolation.md` |
-| Flyway 最新迁移 | `V38__allow_repository_scoped_run_items.sql` | 允许仓库级 Item 的 iteration_key 为 null；普通集成三元组仍由领域约束。H2/PostgreSQL 已验证，历史数据保留。V37 的类型/状态规范化及 V36→V37 混合回填证据继续有效，不补造外部事实 |
-| 当前测试基线 | `.ai/reports/validation/b2-backend-final.log`、`b2-api-final.log`、`b2-frontend-final.log` | 普通后端 608 PASS/5 既有 SKIP；六类数据库/API/HTTP fixture 70 PASS；前端 149 PASS；不同轮次和层次不累加为真实 E2E |
+| Flyway 最新迁移 | `V39__persist_orchestration_tasks.sql` | C1 已落持久任务 claim_token、Step/operation 的 task_id 及唯一约束，不回填历史 Run 的执行意图；C2-A 沿用。V38 的仓库级 Item iteration_key 可空及 V37 的状态回填证据保留；C2-B1 计划的 V40 尚未实现 |
+| 当前测试基线 | 本轮研发记录第 13 节、`.ai/reports/validation/c2a-final-*.log`、`.ai/reports/validation/c2-a-full-link/` | C2-A 普通后端 672 PASS/5 既有 SKIP、API/PG 67/67、HTTP 29/29、独立进程 1/1、后补 worker 7/7、前端 214/214、消费者补验 16/16；固定 SHA Full-Link 5/5，各层及重叠 suite 不累加 |
+| B2 历史测试基线 | `.ai/reports/validation/b2-backend-final.log`、`b2-api-final.log`、`b2-frontend-final.log` | 普通后端 608 PASS/5 既有 SKIP；六类数据库/API/HTTP fixture 70 PASS；前端 149 PASS，仅代表 B2 当时范围 |
 | 项目变更日志 | `docs/PROJECT_PROGRESS.md` | 246 行，承担「变更日志」职责，事实基线请看本文件 |
 | 需求索引 | `docs/requirements/INDEX.md` | 进行中：SA-002 BranchCreationMode 独立迁移服务设计、SA-002 数据质量受控处置执行审计 |
 

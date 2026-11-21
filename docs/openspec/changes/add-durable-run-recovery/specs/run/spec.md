@@ -351,11 +351,58 @@ C1 已交付 protocol 3 的 WINDOW_ORCHESTRATION 持久四动作及检查点后�
 - **THEN** 不自动回滚合并、删除已有引用或重触发 CI
 - **AND** 保留已发生事实和人工决策入口
 
+### Requirement: 无写意图过期任务的受控接管
+
+系统 SHALL 在 C2-B1 沿同一执行器接管当前 WINDOW 协议中无任何 operation 和结果 Step 的过期 RUNNING 任务。候选发现和领取 SHALL 同时支持只有最后一个 RUNNING、没有 PENDING 的 Run；扫描只提供候选，资格由 Run→Task 锁内复核及旧 token 条件更新决定。到期本身不得撤销已有发送/结果归属，也不得释放 guard。
+
+#### Scenario: 最后一个任务在写意图前中断
+
+- **GIVEN** 原 Run 前三动作已完成，TRY_MERGE 已领取且没有 PENDING、operation 或该 task 的 Step
+- **WHEN** 数据库期限已到，后台扫描并领取
+- **THEN** 原任务更换 token 和期限后由唯一执行器继续，Run/Item/task ID、冻结项目/IID/SHA 和实际顺序不变
+- **AND** 独立进程强杀重启后 MR POST 不增加、MERGE PUT 恰一次，成功前缀不被改写
+
+#### Scenario: 两个接管者竞争
+
+- **GIVEN** 两个 worker 同时发现同一过期任务
+- **WHEN** 它们竞争 Run→Task 锁
+- **THEN** 只有一个取得新 token，另一方不得越过已更新的数据库期限
+- **AND** 线程池拒绝或排队取消不更换 token
+
+#### Scenario: 旧写意图先赢得锁
+
+- **GIVEN** 扫描时尚无 operation，旧 worker 随后先提交了 begin
+- **WHEN** 新 worker 在锁内复核接管资格
+- **THEN** 发现同 task_id 的 operation 后拒绝接管，无论其 token 或状态
+- **AND** 不修改原 token、操作事实或 guard；不得仅排除 SEND/UNKNOWN
+
+#### Scenario: 新接管先赢得锁
+
+- **GIVEN** 新 worker 已在锁内确认无 operation/Step 并更换 token
+- **WHEN** 旧 worker 的 GET 返回并尝试 begin 或 completeTask
+- **THEN** 旧 token 在实际 HTTP 写或结果提交前被拒，旧请求零写、零新增 Step
+- **AND** 新 worker 完成原任务后，旧结果不能覆盖其投影
+
+#### Scenario: 结果和时间事实不被误判
+
+- **GIVEN** 某 task 已有任意 operation 或 Step，或期限为 NULL/未到，或 Task 已终结/UNKNOWN
+- **WHEN** 扫描或领取
+- **THEN** 该 task 不因过期规则获得接管资格；查询错误不得降级为“没有证据”
+- **AND** 同 Item 其他 task 的成功 Step 不妨碍最后一个无写意图任务接管
+
+#### Scenario: 拿锁后的数据库期限与本次步骤时间
+
+- **GIVEN** 领取事务在 Run 锁上等待，或者新旧 worker 的应用时钟存在偏差
+- **WHEN** 真正取得锁并成功领取或接管
+- **THEN** 当前期限依据拿锁后的数据库当前时间重新设置，不使用事务开始时刻或首次 Task 时间
+- **AND** Task.started_at 保留首次领取；新 TaskClaim/Step 的起止时间来自本次 worker，二者不要求与首次 Task 时间相等
+- **AND** 到期只允许竞争接管，不在 begin/sending/finish/ack 中单独撤销仍匹配的 token
+
 ## MODIFIED Requirements
 
 ### Requirement: 运行任务管理
 
-系统 SHALL 为 executionVersion=3 的 WINDOW_ORCHESTRATION 在受理事务中持久化固定四动作任务，复用现有 run_task 及 Run/Item 身份；请求线程通过唯一任务执行器消费这些记录。任务列表 SHALL 展示实际持久字段，不把未来依赖图、Attempt 或 lease 摘要当作已有 API。
+系统 SHALL 为 executionVersion=3 的 WINDOW_ORCHESTRATION 在受理事务中持久化固定四动作任务，复用现有 run_task 及 Run/Item 身份；这些记录由唯一任务执行器消费，C2-A 起由有界后台 worker 驱动，请求线程仅返回受理回执。任务列表 SHALL 展示实际持久字段，不把未来依赖图、Attempt 或 lease 摘要当作已有 API。
 
 #### Scenario: 创建运行任务
 

@@ -383,4 +383,16 @@ C2-B 的首个候选子片已只读核实：只考虑没有任何 git_operation 
 | 前端 | `b37397f5a7785eaded728bd8d2e678d2030aaad6` | 原请求回执与只读观察、迟到响应隔离、运行时 schema |
 | E2E 消费者 | `e0c635687337214f9e5247d88347a4f31ebcde55` | 202 与原 Run/Task 有界等待、RunId 值比较回归 |
 
-上述三组已提交且受验源码 hash 未变。文档为第四组，整片随后正常快进推送到 `feature/orchestration-consistency`，以该次远端精确 SHA 运行 Full-Link；门禁尚未完成，不将 C2-A 标为 DONE。`main`/`develop` 保持既有一致基线，本切片尚未合入。
+文档第四组为 `1761572bca6c149aecba78d26a7b25cb98b5251a`。四组已正常快进推送到 `feature/orchestration-consistency`，推送前核对受验源码 hash 未变；远端分支精确一致。`main`/`develop` 仍同指 `d4534ccc34fedb9bbf394ced89b4726f43ec197c`，本切片尚未合入。
+
+### 13.6 固定 SHA 远端验收与下一片
+
+[Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754) 的 head_sha 为完整 `1761572bca6c149aecba78d26a7b25cb98b5251a`，job 136851120556 成功。2026-11-21 20:59:28（Asia/Shanghai）的结果行明确 Passed: 5 / Failed: 0；后端与 GitLab 健康检查、五个纵向切片均完成，未增加启动等待或真实业务密钥。原始日志和固定 SHA 结果保存在 `.ai/reports/validation/c2-a-full-link/`。
+
+该 CI 是隔离 GitLab 的后端业务链验收，不是浏览器黄金旅程。Slice3 使用本次 202 回执和原 Run/Task 有界等待，并保留 MR-first、重复 key、身份、DONE 断言；Slice4/5 的既有限制未因整体绿灯消失。C2-A 正式 DONE；文档收口后直接进入 C2-B1，无需再请求继续授权。
+
+## 14. S3-C2-B1：无写意图的过期 RUNNING 接管
+
+实施前已独立定义反例，并由两个只读审查交叉核实锁序、时间消费者、已有 operation 归属和真实预写读取路径。设计、Run delta 和任务队列已记录最小范围：只在原 Run→Task 锁内确认当前 task_id 没有任何 operation/Step 后换 token；原 Task 首次时间保留，本次 Claim/Step 同 worker 时钟，claim_expires_at 由拿锁后数据库时间驱动。无心跳首片采用保守 60 分钟默认，配置过短的活性限制明确；隔离测试不等待该生产默认期限。
+
+当前只完成契约与正反例定义，尚无实现或 GREEN 结论。下一步先保存真实 RED，再扩展现有候选查询和唯一领取路径，验证最后一个 RUNNING、两个抢锁顺序、旧 GET 迟到、首次时间和独立进程接管。任何已有 INTENT/SEND/结果操作、UNKNOWN 精确恢复仍属于后续子片。

@@ -123,9 +123,10 @@ Attach/Detach 建立或解除关系，不写 Git；Publish 改变窗口生命周
 
 2026-11-21 已验收并推送 S3-A/B1、B2 和 C1：纯配置边界、权威计划、MR-first、统一状态、精确执行项选择、仓库级安全收尾，以及唯一 WINDOW 持久四动作。C1 最后候选契约、前端回归与静态复扫通过，固定提交 `e5094ba` 的 [Full-Link CI](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 为 5/5。真实 UI 黄金旅程按完整恢复蓝图另行验收，不用后端 API/GitLab fixture 代替。
 
-- 当前 C2-A 实现：受理事务保存冻结范围、顺序和四动作，HTTP 202 返回回执；唯一单任务执行器由有界 worker 与数据库游标扫描消费。数值项目 ID、MR IID/源 SHA 检查点及 Task/Step/Item/Run/绑定/guard 的原子结果约束沿用 C1。
+- 已交付的 C2-A：受理事务保存冻结范围、顺序和四动作，HTTP 202 返回回执；唯一单任务执行器由有界 worker 与数据库游标扫描消费。数值项目 ID、MR IID/源 SHA 检查点及 Task/Step/Item/Run/绑定/guard 的原子结果约束沿用 C1。
 - C1 的历史中断验收：当时 HTTP 200、请求线程驱动，MR 检查点提交后强杀只能证明安全停住、重启同 key 零 HTTP。C2-A 的新独立进程证据进一步证明默认后台扫描继续原 PENDING TRY_MERGE，成功前缀不变、MR POST 仍 1 次、MERGE PUT 恰 1 次；不依赖重复受理来唤醒。
-- C2-A 本地验收通过，当前分组交付与固定 SHA Full-Link 待收口；页面保存原请求并只读观察原 Run/Task。C2-B 仍需处理已领取任务的过期接管、精确证据核对与恢复，不能用 PENDING 重启继续代表 C2 整体完成。
+- C2-A 已完成本地验收并分组推送，固定 `1761572bca6c149aecba78d26a7b25cb98b5251a` 的 [Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754) 为 5/5；最后消费者契约补验 16/16。页面保存原请求并只读观察原 Run/Task，PENDING 重启继续的范围已验收，不能据此宣称 C2 整体完成。
+- 当前唯一队首为 C2-B1「无 operation 的过期 RUNNING 接管」，尚未实现：只在锁内确认原任务没有任何操作记录及当前任务 Step 后接管，保留原计划、检查点和成功前缀。已有写意图的精确核对、未知结果恢复与旧 worker 竞争继续在后续子片验收。
 - S4/S5：其他动作的安全恢复、完整 GitLab/UI 旅程和受控交付。
 
 完整阶段依赖、迁移、风险及验收条件统一维护在 [恢复设计](../../openspec/changes/add-durable-run-recovery/design.md) 与 [任务追踪](../../openspec/changes/add-durable-run-recovery/tasks.md)，不在本文维护第二份执行队列。

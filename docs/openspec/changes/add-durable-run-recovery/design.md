@@ -1,6 +1,6 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002 为 5/5。C2-A 已实现并通过本地验证，正收口本次提交和固定 SHA Full-Link；C2-B 再完成已领取任务接管与证据驱动恢复。当前事实与历史验收分别见 tasks.md 和本轮记录。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002 为 5/5。C2-A 已实现、验证并分四组推送，固定 `1761572` 的 Full-Link 44905843754 为 5/5；当前先推进 C2-B1 无写意图的过期任务接管，再逐项处理已有写意图与证据驱动恢复。当前事实与历史验收分别见 tasks.md 和本轮记录。
 
 
 ## 0. 当前研发蓝图与授权（2026-11-21）
@@ -75,6 +75,35 @@ UI 复用 executionIntent 的原 actor/operation/key/payload，并在原页面�
 #### C2-B 的接管约束
 
 当前操作账本对 task_id 唯一，观察、迟到结果和 ack 还关联原 claimToken；不得通过换 token 再创建第二个 operation 来规避。C2-B 需沿现有账本区分历史 HTTP 事实、当前发送权和当前投影权；只读 FOUND 还须验证动作所需的项目、IID、分支与冻结 SHA。无 SEND 的意图、已确认 HTTP 结果和 SEND_STARTED 后未知请求分别处理。租约过期或单次 404 均不能授权重发，未知事实不得仅凭 FOUND 解除 guard。
+
+##### C2-B1：无写意图的过期领取（当前子片，尚未实现）
+
+用户价值是进程已领取任务、尚未建立写意图时，后台能继续原任务；先独立验收这一边界，再处理已有 operation。只沿既有 RunPort/JPA、RunTask、RunAppService.executeNextTask 和 RunTaskWorker 扩展，不新增恢复实体、执行器、API 或按钮。
+
+资格必须同时满足：当前 WINDOW 协议、Run=RUNNING/NEEDS_REVIEW、Task=RUNNING、有原 token 和非空到期值、到期，且该 task_id 没有任何 git_operation 和任何 run_step。operation 按 task_id 跨所有状态/所有 token 排除，包括 INTENT；Step 只查当前 task，不因同 Item 的成功前缀而阻断最后一步。
+
+扫描方法直接改为 findTaskCandidateRunIds，继续有界游标和提交后领取；发现 PENDING 或上述过期 RUNNING。最终资格仍在 Run→Task 同一事务锁内重新检查，换 token 的条件更新再次带原 token、状态、期限及双 NOT EXISTS，并要求恰一行。旧 begin 先提交则接管拒绝；接管先提交则旧 begin/complete 均被 token 拒绝。到期只是候选条件，不给 sending/finish/ack 添加期限拒绝，不自动清 guard。
+
+| 现有时间责任 | 本片目标 |
+|---|---|
+| Task.started_at | 保留首次领取事实，继续供 TaskView/页面展示，接管不覆盖 |
+| TaskClaim.startedAt | 每次从当前 worker Clock 取本次执行起点；Step 起止同源，不强制等于首次 Task 时间 |
+| 新 claim_expires_at | 唯一新增字段；扫描和领取实际消费，使用取得锁后的数据库 clock_timestamp 加期限，接管重新设值 |
+
+PostgreSQL CURRENT_TIMESTAMP 固定为事务开始时刻，不能在长锁等待后用于新期限；依据 [PostgreSQL 18 时间函数](https://www.postgresql.org/docs/18/functions-datetime.html#FUNCTIONS-DATETIME-CURRENT)。数据库前跳只会提前产生候选，后跳会推迟恢复，均不能绕开 token 与无写意图证明。NULL 期限不推断到期，不由旧 started_at 回填执行资格。新列同时进入 V40 Flyway 与既有 JPA 映射；local 实际使用 Hibernate update，没有第二套手工初始化器。
+
+配置直接注入既有持久适配器，releasehub.run.worker.claim-lease-ms 默认 3600000，正数才有效，不透传穿过 AppService/Port。无心跳第一片取保守 60 分钟：当前 TRY_MERGE 最多 20 页 contains、1 次 MR、80 次 readiness 及身份检查，按现有 connect/read 配置计算约 34 分 30 秒预写预算；这不是严格网络上界。过短配置可能使健康长读反复失去结果提交权，不能靠延长页面观察或 E2E 启动等待掩盖。隔离测试可用短期限；正常执行没有新增等待。
+
+| 独立正反例 | 必须观察到的结果 |
+|---|---|
+| 仅最后 TRY_MERGE 已领取，前三步完成，无 PENDING | 到期后扫描发现原 Run；保留原 project/IID/SHA、任务和实际顺序 |
+| 两个 worker 竞争同一过期任务 | 仅一个新 token；另一方不能接管刚刷新期限的 claim |
+| 旧 GET 在新接管后返回，或准备写入 | 旧 complete 与旧 begin 都拒绝；旧请求零写、结果 Step 不重复 |
+| 旧 begin 先提交，或已有任意 operation/当前 task Step | 接管不改变 token、事实或 guard；其他仓库仍按原规则推进 |
+| Run 锁等待超过隔离期限、两个 worker Clock 偏移 | 新期限仍基于拿锁后的 DB 当前时间；Task 首次时间保留，Step 起止来自本次 worker |
+| MR 检查点已提交，TRY 已领取但无 operation，强杀并重启 | 默认 worker 接管原 TRY；MR POST 仍 1，MERGE PUT 恰 1，成功前缀逐字段不变 |
+
+回滚先停止派发，保留任务、期限和证据；不恢复同步旧循环、不将 RUNNING 改回 PENDING。已有 INTENT 的发送权转移、APPLIED 只补投影、SEND_STARTED/UNKNOWN 精确核对与 guard 确认属于 C2-B 后续子片，不以本片完成宣称完整恢复。
 
 ### 分阶段依赖与交付
 

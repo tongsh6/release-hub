@@ -17,9 +17,10 @@
 | 1 | DONE | SA-013 | S3-A/B1 唯一编排语义与阶段交付 | 提交 53eed67、a4007f2、71a1487 已分阶段推送 | 纯配置、不可变计划、MR-first、精确重试、统一状态与写入证据完成目标验收 |
 | 2 | DONE | SA-013 | S3-B2 仓库级关闭受理、收尾失败传播与共享引用保护 | e127023、5ad0666 已推送 | 重复 close 返回原 Run；精确 Tag/显式 CI；共享引用保留；生命周期并发屏障通过验证 |
 | 3 | DONE | SA-013 | S3-C1 持久四动作与安全中断 | `44e742c`、`3766686`、`4c6b3e9`、`e5094ba` 已推送；Full-Link 44899945002 为 5/5 | 唯一持久四动作、请求幂等、MR 检查点、原子结果和安全中断已完成本阶段验收 |
-| 4 | HEAD | SA-013 | S3-C2-A 持久扫描、异步受理与进度观察 | 本地实现、后端/PG/HTTP/进程/前端及静态门禁通过 | 本次分组提交和固定 SHA Full-Link 待收口；仅 PENDING 自动继续，不重领 RUNNING/UNKNOWN |
-| 5 | QUEUED | SA-013 | S3-C2-B 已领取任务接管与证据驱动恢复 | C2-A 与现有操作账本 | 证明无发送或精确完成后才继续；租约过期不等于可重发，保留历史 HTTP 事实 |
-| 6 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队列保留 | 历史数据处置仍先核实计划，不自动迁移或清库 |
+| 4 | DONE | SA-013 | S3-C2-A 持久扫描、异步受理与进度观察 | 四组提交已推送；固定 `1761572` 的 Full-Link 44905843754 为 5/5 | 202、持久扫描、PENDING 重启继续与原回执观察完成本阶段验收；不冒称 RUNNING/UNKNOWN 接管 |
+| 5 | HEAD | SA-013 | S3-C2-B1 无写意图的过期 RUNNING 接管 | C2-A 已验收，设计/反例及现有职责查重完成 | 同 Run→Task 锁内确认当前 task 无任何 operation/Step 后才换 token；原任务、时间事实、MR 检查点保持 |
+| 6 | QUEUED | SA-013 | S3-C2-B 后续：已有写意图与证据恢复 | C2-B1 之后独立验收 | INTENT 发送权、APPLIED 只补投影、SEND/UNKNOWN 精确核对与观察版本分别处理 |
+| 7 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队列保留 | 历史数据处置仍先核实计划，不自动迁移或清库 |
 
 ## 3. 当前队首验收出口
 
@@ -29,9 +30,11 @@ B2 已完成：普通后端 613 项（608 PASS、5 既有 SKIP）、六类数据
 
 C1 的本地最后候选验证已通过：普通后端 57 类 657 项（652 PASS/5 SKIP），最新契约 9 类 148/148，前端 170/170，以及 MR 检查点提交后独立 JVM 强杀、重启同 key 零新增 HTTP。受理回执已收窄为 runId；迭代配置建分支/归档旧入口已删除，repoConfigs 范围已校验；E2E fixture 使用隔离项目与已验证 Settings。最终扫描 `20261121-175548` 为 SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings，TopN 与 EOF 修正复验已留痕。四组提交已推送，固定 `e5094ba` 的 Full-Link 44899945002 为 5/5，C1 标记 DONE；其硬杀验收边界仍是可查询且安全停住。
 
-C2-A 本地验收已完成：202 与 Git I/O 解耦，默认数据库扫描无需内存唤醒；有界游标、池拒绝/取消、同 Run 双仓真实进展及同仓前序限制均验证。API/PG 67/67、真实 HTTP 29/29、独立 JVM 1/1，后补 worker 7/7；普通后端 677 项（672 PASS/5 SKIP）、前端 39 文件 214/214 和全部门禁通过，重叠测试不累计。MR 检查点后重启只继续原 PENDING TRY_MERGE，MR POST=1、MERGE PUT=1；已领取任务仍安全停住。当前出口剩余本次分组提交/推送及固定 SHA Full-Link。
+C2-A 本地验收已完成：202 与 Git I/O 解耦，默认数据库扫描无需内存唤醒；有界游标、池拒绝/取消、同 Run 双仓真实进展及同仓前序限制均验证。API/PG 67/67、真实 HTTP 29/29、独立 JVM 1/1，后补 worker 7/7；普通后端 677 项（672 PASS/5 SKIP）、前端 39 文件 214/214 和全部门禁通过，重叠测试不累计。MR 检查点后重启只继续原 PENDING TRY_MERGE，MR POST=1、MERGE PUT=1；已领取任务仍安全停住。四组提交 `06aee3b`、`b37397f`、`e0c6356`、`1761572` 已推送；固定最后 SHA 的 Full-Link 44905843754 为 5/5，C2-A 出队。E2E fixture 最后补验 16/16，包含原 RunId 值比较。
 
-最终静态报告为 `.ai/reports/static-scan/20261121-203554/summary.md`：SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings，TopN 逐项处理且 EOF 修正复查通过。任意中断点接管与真实 UI 黄金旅程仍未验收。CI profile/Python/fixture 修复链及 C1 5/5 保留为历史；C2-A 必须用本次 SHA 复验，Slice4/5 的较弱覆盖也不扩写为完整清理/真实冲突验收。
+最终静态报告为 `.ai/reports/static-scan/20261121-203554/summary.md`：SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings，TopN 逐项处理且 EOF 修正复查通过。任意中断点接管与真实 UI 黄金旅程仍未验收。CI profile/Python/fixture 修复链及 C1 5/5 保留为历史；C2-A 已用本次 SHA 独立复验，Slice4/5 的较弱覆盖不扩写为完整清理/真实冲突验收。
+
+当前 C2-B1 出口：末尾仅 RUNNING 的扫描发现、双 worker 原子接管、旧 begin/complete 拒绝、任意 operation/当前 task Step 排除、拿锁后 DB 期限与首次时间保留，以及 MR 检查点后 TRY 已领取的独立进程强杀重启。先保留真实 RED，再实施同一执行路径；未通过前不标记恢复完成。
 
 ## 4. 暂缓项
 

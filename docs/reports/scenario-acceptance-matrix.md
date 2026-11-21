@@ -44,11 +44,13 @@
 
 ## 二、总览
 
-2026-11-21：S3-A/B1、S3-B2 和 **S3-C1 已完成并推送**。C1 后端 `44e742c`、前端 `3766686`、E2E/脚本 `4c6b3e9`、文档 `e5094ba` 已核对远端；本地最后候选、静态门禁与固定 SHA Full-Link 5/5 均通过。当前唯一队首为 **S3-C2-A 持久扫描、异步受理与进度观察**：本地实现及门禁已通过，本次提交与固定 SHA Full-Link 待收口；C2-B 继续已领取任务接管和证据驱动恢复，C2 整体尚未完成。
+2026-11-21：S3-A/B1、S3-B2、S3-C1 和 **S3-C2-A 已完成并推送**。C1 后端 `44e742c`、前端 `3766686`、E2E/脚本 `4c6b3e9`、文档 `e5094ba` 的本地及固定 SHA CI 证据保留。C2-A 后端 `06aee3b`、前端 `b37397f`、E2E/脚本 `e0c6356`、文档 `1761572` 已推送，本次固定完整 SHA 的 Full-Link 5/5 通过。当前唯一队首为 **S3-C2-B1：无 operation 的过期 RUNNING 接管**，尚未实现；已有写意图的核对与证据驱动恢复继续排队，C2 整体尚未完成。
 
 本轮已留存 C1 证据：最近普通后端 57 类 657 项（652 PASS/5 既有 SKIP）；最后候选 9 类 148/148（Iteration 37 + bootstrap/API/PG/HTTP/fixture/硬杀 111）；前端 38 文件 170/170，typecheck、i18n、lint、build 通过，纯配置文案后另有 6 项定向复验。静态复扫 `20261121-175548` 为 SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings，TopN 及空行修正后 diff-check 证据已留存；重叠测试不累计。硬杀仅验证 ENSURE_MR 检查点提交后、下次 claim 前中断，重启返回原回执且新增 HTTP 为 0，TRY_MERGE 保持 PENDING；不代表任意中断点恢复或后台最终完成。精确日志及范围见 [本轮研发记录](../../tasks/records/2026-11-21-sa-013-orchestration-consistency.md)。
 
 固定提交 `e5094ba7971066749221f1ca4356f716b1514a4c` 的 [Full-Link CI 44899945002](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 已完成，5 切片 PASS、0 FAIL；后端约 20 秒就绪，测试与收尾步骤均成功。此前 `a7181fa` 的 Slice3/5 失败是修复链历史，不再作为当前结论。加强后的 Slice3 由真实 Orchestrate 首建 release/MR，并验证四动作、项目/IID/SHA、远端 merged、同 key 零额外 MR 与 close DONE。现有 Slice4 只断言 cleanup 步骤结构，Slice5 未真实制造 Git 合并冲突；其通过不证明更强目标。该工作流是后端 API + 隔离 GitLab，真实 UI 黄金旅程仍待单独验收。
+
+C2-A 固定提交 `1761572bca6c149aecba78d26a7b25cb98b5251a` 的 [Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754) 已 SUCCESS（job 136851120556）；2026-11-21T12:59:28Z 日志为 Passed 5 / Failed 0。最后消费者契约补验 16/16 已包含在 `e0c6356`，本次 Slice3 沿 202 返回的原 Run/Task 等待并保留 DONE、身份与 MR 计数断言。本次 CI 不扩大 Slice4/5 的覆盖强度，也不替代真实浏览器旅程。
 
 历史“已覆盖”以对应记录日期为界；历史 49 项前端 E2E 包含 route-level stub，不能直接作为当前真实 UI→GitLab 黄金旅程通过。B2 的 608 PASS/5 既有 SKIP、70 项隔离 suite、149 项前端与静态结果保留为 B2 基线。重复受理本身只返回原回执；C2-A 后台扫描可独立继续 PENDING，C2-B 才处理已领取任务接管。
 
@@ -66,7 +68,7 @@
 | SA-010 | Release Planning | 发布经理 | 挂载迭代到发布窗口 | 只保存同分组绑定、重复 attachAt 不变、多迭代仓库并集；Detach 零 Git | 新语义业务/API已验证；本轮 UI/GitLab 旅程未重跑 |
 | SA-011 | Risk & Execution | 测试人员 | 检查冲突与发布风险 | 冲突扫描、类型分布、阻塞发布、解决后重扫清零；`MERGE_CONFLICT`、`CROSS_REPO_VERSION_MISMATCH`、`REPO_AHEAD`、`SYSTEM_AHEAD`、`GIT_PERMISSION_DENIED`、`GIT_UNAVAILABLE` 具备真实 GitLab 强证据 | 已覆盖 |
 | SA-012 | Risk & Execution | 技术负责人 | 解决冲突 | 版本冲突 `USE_SYSTEM` 解决、重扫为 0、发布可继续；feature 缺失、release 已存在、分支名不合规具备后端/GitLab 强证据 | 已覆盖 |
-| SA-013 | Risk & Execution | 技术负责人 | 触发发布编排 | 持久四动作 MR-first、冻结计划/项目身份、同仓 FAIL_FAST、202/原回执、任务进度及精确 Item 重试 | C1 已交付；C2-A 本地门禁与进程 PENDING 继续通过，当前等待本次固定 SHA Full-Link；完整恢复与真实 UI 黄金旅程未完成 |
+| SA-013 | Risk & Execution | 技术负责人 | 触发发布编排 | 持久四动作 MR-first、冻结计划/项目身份、同仓 FAIL_FAST、202/原回执、任务进度及精确 Item 重试 | C1、C2-A 已交付；本次固定 SHA Full-Link 5/5 及进程 PENDING 继续通过；当前 C2-B1 未实现，完整恢复与真实 UI 黄金旅程未完成 |
 | SA-014 | Risk & Execution | 技术负责人 | 执行版本更新 | release 分支真实写回、Run DONE/PARTIAL_FAILED/FAILED/NEEDS_REVIEW、commit 可复核 | 历史真实写回证据保留；本轮验证仓库级 Item/API 与统一 Run 状态，未重跑真实写回旅程 |
 | SA-015 | Risk & Execution | 测试人员 | 复核发布状态和执行证据 | 统一 Run 状态；集成三元组与收尾仓库级范围；参与迭代、步骤、结果和报告可见 | 当前 API/组件已验证；历史页面旅程不替代 B2 新契约的完整用户验收 |
 | SA-016 | Post Release | 发布经理 | 关闭发布窗口并完成收尾 | 同仓一次 receipt、真实 release/MR、精确 Tag、显式 CI、失败停止后继、引用保留与生命周期锁 | B2 已完成，真实 DB/API/HTTP fixture/组件通过；C1 Full-Link Slice3 补真实 GitLab close DONE 正例，完整 UI 与恢复仍待验收 |
@@ -89,7 +91,7 @@
 | SA-010 | 发布经理挂载/解除迭代并查看窗口计划 | 同分组批量预校验，重复 attachAt 不变；Attach/Detach/Publish 零 Git、零执行 Run；窗口仓库集合为迭代仓库并集 | WindowIteration 和计划三元组/顺序可复核；分支状态面板只显示 refs 存在性，不把分支存在当作 MERGED | 新语义业务/API/组件已验证；旧 attach 建分支、detach 归档证据只作历史，本轮完整 UI 旅程未重跑 |
 | SA-011 | 测试人员在窗口详情页触发/查看风险扫描 | 冲突总数、类型分布、阻塞发布；`MERGE_CONFLICT`、`CROSS_REPO_VERSION_MISMATCH`、`REPO_AHEAD`、`SYSTEM_AHEAD`、`GIT_PERMISSION_DENIED`、`GIT_UNAVAILABLE` 已有后端冲突扫描证据和前端展示 | 冲突与 GitLab 分支/版本状态可对应；`MERGE_CONFLICT` 已有真实 feature/release 分支和冲突提交证据；`CROSS_REPO_VERSION_MISMATCH` 已有真实 feature/release 分支、两仓 targetVersion 差异和冲突扫描证据；`REPO_AHEAD`/`SYSTEM_AHEAD` 已有真实 feature 分支 `pom.xml` 版本差异和冲突扫描证据；`GIT_PERMISSION_DENIED`/`GIT_UNAVAILABLE` 已有真实 GitLab 权限不足和不可达探针证据 | 严重级别、建议处理方式、合并冲突、跨仓版本不一致、仓库版本较新、系统版本较新、Git 权限不足和 Git 不可达均已有前端观察；后续保持回归 |
 | SA-012 | 技术负责人在冲突详情中执行解决动作 | `USE_SYSTEM` / `USE_REPO` 等解决动作更新记录，重扫清零；feature 缺失、release 已存在、分支名不合规具备后端业务证据 | 必要时写回仓库或保留处理证据；分支名不合规路径已补 GitLab 分支直查与冲突扫描证据；仓库版本较新可接受仓库版本并更新系统记录 | P0 版本冲突 `USE_SYSTEM` 已闭环；`REPO_AHEAD` 已补 `USE_REPO` 解决路径；feature 缺失、release 分支已存在和分支名不合规强证据已补；后续保持回归 |
-| SA-013 | 技术负责人在窗口页选择仓库/迭代并显式集成 | WINDOW v3 由请求线程消费持久四动作；必填 Idempotency-Key，相同意图返回原 Run；冻结计划和已确认项目 ID，同仓串行与默认 FAIL_FAST，UNKNOWN 停止本仓 | MR 检查点落库；任务结果 CAS 与 Step/Item/Run/绑定/guard 同事务；精确 Item ID 重试沿用原快照，成功前缀以 INHERITED 追溯而不制造新执行 | API/真实 PG/本地 HTTP、检查点后进程硬杀、前端/静态以及固定 SHA GitLab Full-Link 5/5 通过；尚无 worker/resume，完整 UI 旅程仍未闭合 |
+| SA-013 | 技术负责人在窗口页选择仓库/迭代并显式集成 | WINDOW v3 先持久受理，返回 202/Run ID，由有界 worker 消费同一四动作执行器；必填 Idempotency-Key，相同意图返回原 Run；冻结计划/项目 ID，同仓串行与默认 FAIL_FAST，UNKNOWN 停止本仓 | MR 检查点落库；任务结果 CAS 与 Step/Item/Run/绑定/guard 同事务；精确 Item ID 重试沿用原快照，成功前缀以 INHERITED 追溯；独立进程重启只继续原 PENDING，MR POST=1、MERGE PUT=1 | C2-A 本地门禁、消费者补验 16/16 与固定 `1761572` Full-Link 5/5 已通过；过期 RUNNING 接管、已有写意图恢复及完整 UI 旅程仍未完成 |
 | SA-014 | 技术负责人在版本操作入口执行版本更新 | Run 保留统一状态与成功/失败事实，独立版本执行和结果查询仍在；共享 retry 对 VERSION_UPDATE 返回 409/RUN_007，Run 详情不提供可点重试 | 历史 Maven/Gradle release commit 与 2026-05-21 版本重试证据按日期保留；本轮真实 JPA/API 验证仓库级 VERSION_UPDATE 的 iterationKey=null，详情/日志不捏造迭代 | 历史版本 retry 不代表当前共享入口能力；版本更新的安全重试/恢复归 S4 另行验收，本轮未重跑真实写回旅程 |
 | SA-015 | 测试人员在 Run/窗口页面复核并导出执行证据 | 列表、详情、快照和报告使用同一 Run 状态；cleanup 显示仓库范围、保存的 participatingIterationKeys 和 RETAIN；RUNNING finishedAt 保留 null | API/导出保留真实 Item ID、metadata、计划/执行顺序；cleanup iterationKey=null，缺历史参与者不从实时绑定补造 | API/组件已通过；E2E fixture 编译与 route stub 不计完整旅程；cleanup 普通 retry 禁止 |
 | SA-016 | 发布经理确认关闭，可显式勾选 CI，并查看返回 Run | 短事务一次提交 CLOSED+Run+Plan；同选择重复/并发返回同一 Run，改变 CI 选择冲突；窗口锁与 RUNNING/NEEDS_REVIEW 屏障保护生命周期 | 每仓一个 null iteration Item；release→默认分支走 MR-first，Tag 对齐确认的 mergeSha，CI project/id/ref/SHA/url 精确匹配；保留分支和共享 Iteration | B2 已通过真实 PG/API/本地 HTTP fixture/组件，C1 Slice3 补真实 GitLab close DONE；完整 UI 旅程与后台 resume 未验收；CI_TRIGGERED 不代表流水线已通过 |
@@ -430,7 +432,7 @@ P0 验收焦点：
 
 - 计划仓库来自窗口迭代仓库并集；输入失效时完整拒绝，不静默缩小范围。
 - 同仓按 attachAt 稳定顺序执行；默认 FAIL_FAST，显式记录后续 SKIPPED_DUE_TO_BLOCK，其他仓库继续。
-- WINDOW v3 先原子持久化 Run、不可变快照与四动作任务，再由请求线程执行；Git 写入经过既有 journal 和仓库 guard。计划范围/顺序与已确认项目 ID 不随实时配置漂移。
+- WINDOW v3 先原子持久化 Run、不可变快照与四动作任务，返回 HTTP 202/Run ID，再由有界后台 worker 消费同一执行器；Git 写入经过既有 journal 和仓库 guard。计划范围/顺序与已确认项目 ID 不随实时配置漂移。
 - 成功项必须有 MR-first 或当前 target 包含 source SHA 的证据；分支存在不代表合并成功。
 - Run 统一为 PLANNED/RUNNING/DONE/PARTIAL_FAILED/FAILED/NEEDS_REVIEW；UNKNOWN 优先停止该仓库且不能普通重试。
 - 普通重试只接受 WINDOW_ORCHESTRATION v3 的明确 Item ID，沿用原计划和来源，不自动扩大范围；FAIL_FAST skipped 必须显式选择更早阻塞项。成功前缀任务为 INHERITED，不产生本轮新 Step；历史协议、版本更新和收尾不进入该重试协议。
@@ -439,7 +441,7 @@ P0 验收焦点：
 
 B2 最终整轮验证：普通后端 54 类 613 项（608 PASS、5 既有 SKIP），六类数据库/API/本地 HTTP fixture 70/70，前端 38 文件 149/149；typecheck、i18n、lint、build 通过，SpotBugs 0、lint 0 errors/8 个既有 warning。截至 B2 收口，未执行真实 GitLab/UI 全旅程或独立进程硬中断；这些数字保留为该阶段历史基线。
 
-S3-C1 已交付持久任务、请求幂等、MR checkpoint 与结果原子提交。最后候选 148/148、前端 170/170、最终静态及检查点后独立进程硬杀/重启通过：MR POST=1、MERGE PUT=0、重启新增 HTTP=0，原 receipt 可查且 TRY_MERGE 保持 PENDING；该证据只证明当时安全停住。四组提交已推送，固定 `e5094ba` 的 Full-Link 44899945002 为 5/5，真实首次编排和 close DONE 正例通过。当前 HEAD C2-A 已接入后台扫描、202/原回执和任务观察：本地 API/PG 67/67、真实 HTTP 29/29、独立进程 1/1、后补 worker 7/7、前端 214/214 通过，静态 `20261121-203554` 收口。新进程在原 PENDING 上完成合并，MR POST=1、MERGE PUT=1；成功前缀保留。本次提交及固定 SHA Full-Link 待收口；C2-B 再验证已领取任务接管与恢复。真实 UI 黄金旅程单独追踪，详见 [本轮研发记录](../../tasks/records/2026-11-21-sa-013-orchestration-consistency.md) 与 `docs/openspec/changes/add-durable-run-recovery/tasks.md`。
+S3-C1 已交付持久任务、请求幂等、MR checkpoint 与结果原子提交。最后候选 148/148、前端 170/170、最终静态及检查点后独立进程硬杀/重启通过：MR POST=1、MERGE PUT=0、重启新增 HTTP=0，原 receipt 可查且 TRY_MERGE 保持 PENDING；该证据只证明当时安全停住。四组提交已推送，固定 `e5094ba` 的 Full-Link 44899945002 为 5/5，真实首次编排和 close DONE 正例通过。C2-A 已交付后台扫描、202/原回执和任务观察：本地 API/PG 67/67、真实 HTTP 29/29、独立进程 1/1、后补 worker 7/7、前端 214/214 通过，静态 `20261121-203554` 收口。新进程在原 PENDING 上完成合并，MR POST=1、MERGE PUT=1；成功前缀保留。四组提交已推送，固定完整 SHA `1761572bca6c149aecba78d26a7b25cb98b5251a` 的 Full-Link 44905843754 为 5/5，最后消费者契约补验 16/16。当前唯一 HEAD C2-B1「无 operation 的过期 RUNNING 接管」尚未实现，已有写意图的核对与恢复仍在后续范围。真实 UI 黄金旅程单独追踪，详见 [本轮研发记录](../../tasks/records/2026-11-21-sa-013-orchestration-consistency.md) 与 `docs/openspec/changes/add-durable-run-recovery/tasks.md`。
 
 ### SA-014：技术负责人执行版本更新
 
@@ -522,7 +524,7 @@ P0 验收焦点：
 
 验证证据：真实 PostgreSQL 事务与并发 latch、H2 V37/V38、Spring API、本地 HTTP fixture 的请求计数/精确身份与 SHA，以及前端组件测试；最终六类 API/DB/HTTP suite 为 70/70。历史 Slice4/Playwright/真实 GitLab 记录保留，但 Java E2E fixture 本轮仅编译，接受脚本仅语法验证，不能据此宣称 B2 完整页面旅程或真实 GitLab 收尾已验收。
 
-B2 仍同步执行：受理后进程退出时，重复 close 只返回原记录，不驱动继续。后台 worker、resume、硬中断后自动恢复未实现；当前 S3-C1 的窗口集成持久四动作与检查点后安全停住已有专项证据，不扩展为收尾自动恢复，S3-C2 才补同一执行器的后台驱动与恢复。
+WINDOW_CLEANUP 仍同步执行：受理后进程退出时，重复 close 只返回原记录，不驱动继续。C2-A 已交付的 worker 和 PENDING 重启继续仅覆盖 WINDOW_ORCHESTRATION；不扩展为收尾自动恢复。收尾的任务化、后台驱动与安全恢复继续由 S4 单独验收。
 
 ## 五、第一批落地顺序
 
@@ -549,11 +551,11 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | 已闭环 | 合并冲突制造、解决和 Run retry；多窗口并行发布；批量窗口和大规模迭代 | 风险强证据、冲突解决路径、Run 失败项重试、多窗口并行发布观察、大规模迭代仓库分页和发布报告制品包均已补 |
 | 暂缓 | 批量组织重构、批量资源迁移向导 | 当前阶段不进入执行队列；后续若重新进入，必须先形成独立设计和验收出口 |
 
-以上为 2026-05 Phase 2 的历史清账和候选结论，不替代当前行为验收。2026-11-21 当前主线已完成 A/B1、B2、C1，C1 固定 SHA Full-Link 5/5 已收口，当前队首为 C2-A；完整 UI 旅程和后续恢复故障验证仍按新契约独立记录。
+以上为 2026-05 Phase 2 的历史清账和候选结论，不替代当前行为验收。2026-11-21 当前主线已完成 A/B1、B2、C1、C2-A，C1 与 C2-A 各自固定 SHA Full-Link 5/5 已收口，当前唯一队首为尚未实现的 C2-B1；完整 UI 旅程和后续恢复故障验证仍按新契约独立记录。
 
 ## 七、当前推进队列
 
-任务选择以 `docs/execution-roadmap.md` 的唯一 HEAD 为准；本矩阵记录场景证据与缺口。后续/历史已完成项保留追溯，不与 S3-C2-A 并列为当前执行任务。
+任务选择以 `docs/execution-roadmap.md` 的唯一 HEAD 为准；本矩阵记录场景证据与缺口。后续/历史已完成项保留追溯，不与 S3-C2-B1 并列为当前执行任务。
 
 | 优先级 | 场景 | 当前判断 | 下一步验收焦点 |
 |---|---|---|---|
@@ -561,9 +563,10 @@ SA-015 前端验收至少覆盖 Run 详情和发布窗口详情两条观察路�
 | 已完成 | SA-013 S1 身份隔离与持久预览 | UUID、历史隔离、预览幂等与快照已验证 | S3 复用同一 Run/Item/快照，不另建计划协议 |
 | 已交付 | SA-013 S3-A/B1 唯一编排语义 | 目标反例、数据库/API、前端与静态扫描通过，已分阶段推送 | 完整 GitLab/UI 旅程和硬中断仍单独追踪 |
 | 已完成 | SA-013/SA-016 S3-B2 仓库级收尾安全 | 同仓一次持久受理、精确 Tag/显式 CI、共享引用保留与生命周期屏障已验收并推送 | 真实 GitLab/UI 全旅程和自动恢复仍未验收，不能从 70 项隔离 suite 推断 |
-| 已完成 | SA-013 S3-C1 持久四动作与安全中断 | 唯一 WINDOW 持久路径、请求回执、MR checkpoint 和结果原子提交通过本地验收并推送，固定 `e5094ba` 的 Full-Link 44899945002 为 5/5 | 保持硬杀证据的安全停住边界，真实 UI 黄金旅程按 S5 另行验收，不宣称已交付 worker/202/租约/resume |
-| HEAD | SA-013 S3-C2-A 持久扫描、异步受理与进度观察 | 唯一单任务执行器、有界扫描、202/回执和观察已实现，本地后端/前端/静态及故障验证通过 | 本次分组提交/推送后运行固定 SHA Full-Link；PENDING 重启继续不等于 RUNNING/UNKNOWN 接管，真实 UI 旅程另验 |
-| 后续 | SA-013 S3-C2-B 已领取任务接管与证据驱动恢复 | 沿现有 Task/Journal/guard 分开历史事实与当前所有权 | 租约过期不授权重发，精确证据决定核对/继续，验证旧 worker 与迟到响应 |
+| 已完成 | SA-013 S3-C1 持久四动作与安全中断 | 唯一 WINDOW 持久路径、请求回执、MR checkpoint 和结果原子提交通过本地验收并推送，固定 `e5094ba` 的 Full-Link 44899945002 为 5/5 | 保持 C1 硬杀证据的安全停住边界，不用 C1 证据代替后续 worker/202/接管/resume 的独立验收；真实 UI 黄金旅程按 S5 另行验收 |
+| 已完成 | SA-013 S3-C2-A 持久扫描、异步受理与进度观察 | 本地后端/前端/静态及故障验证、消费者补验 16/16 和固定 `1761572` Full-Link 44905843754 的 5/5 通过，四组提交已推送 | 保持 PENDING 重启继续、202 原回执与观察边界，不扩写为 RUNNING/UNKNOWN 接管或真实 UI 黄金旅程 |
+| HEAD | SA-013 S3-C2-B1 无 operation 的过期 RUNNING 接管 | 设计与查重已完成，实现和验收尚未完成 | 锁内确认该 task 无任何 operation/Step，双 worker 只一方接管、旧 begin/complete 拒绝，强杀重启沿原任务与检查点完成；不处理已有写意图 |
+| 后续 | SA-013 S3-C2-B 已有写意图与证据驱动恢复 | 沿现有 Task/Journal/guard 分开历史事实与当前所有权 | 租约过期不授权重发，精确证据决定核对/继续，验证旧 worker 与迟到响应 |
 | 已完成 | SA-018 固定构建环境与 CI 门禁 | pnpm 10.33.0、Node 24、CI/Docker 同一版本来源和 develop/PR 触发声明已统一 | 本地 95 项单测、6 项 Pact、生产构建通过；未声称远程 CI 已运行 |
 | 已完成 | SA-004 生产 Git Token 加密配置与恢复验证 | 2026-10-05 生产默认加密、只读密文校验、SQL 备份恢复和 HTTP 凭据请求验证通过 | 保持回归；历史无标识凭据迁移、密钥轮换独立评审 |
 | 后续 | SA-002 BranchCreationMode 执行计划评审门禁 | 最小 dry-run 已实现，当前只输出四类候选、统计、JSON 结构和 Markdown 报告，且 `executionPermitted=false` | 评审 dry-run 输出是否足以进入执行计划切片；未批准前不得实现执行 API、数据库写入、迁移表或 GitLab 操作 |
