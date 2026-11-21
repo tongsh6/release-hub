@@ -2,10 +2,15 @@
 
 > 本目录是项目的长期记忆中心，按领域分层组织，供 AI 按需加载上下文。
 
+## 基础入口
+
+工程决策前读取 [唯一项目画像](PROJECT_PROFILE.yaml) 与 [Project Operating Context](../.ai/standards/patterns/project-operating-context.md)。画像维护项目事实与责任；[台账](../project-ledger.md)维护交付证据；[路线图](../execution-roadmap.md)维护任务顺序。本索引只导航，不复制画像值。
+
 ## 目录结构
 
 ```
 context/
+├── PROJECT_PROFILE.yaml # 项目事实与责任的唯一画像
 ├── business/          # 业务领域知识
 │   ├── domain-model.md      # 领域模型
 │   ├── project-plan.md      # 项目规划
@@ -26,6 +31,7 @@ context/
 
 | 场景 | 推荐加载 |
 |------|----------|
+| 工程决策与推进取舍 | `PROJECT_PROFILE.yaml` + `../.ai/standards/patterns/project-operating-context.md` |
 | 理解业务需求 | `business/` |
 | 技术实现决策 | `tech/architecture/` |
 | API 开发 | `tech/api/` |
@@ -45,7 +51,7 @@ context/
 
 ### 业务知识
 - [领域模型](business/domain-model.md) - DDD 核心概念
-- [愿景与产品规划](business/project-plan.md) - 问题定义、发布窗口与跨仓集成、MVP 边界；实际完成状态见项目台账
+- [愿景与产品规划](business/project-plan.md) - 问题定义、发布窗口与跨仓集成、已确认产品范围；实际完成状态见项目台账
 
 ### 技术文档
 - [仓库快照](tech/REPO_SNAPSHOT.md) - 技术栈、模块划分、基础命令（AI 快速理解）

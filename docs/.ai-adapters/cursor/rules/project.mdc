@@ -11,7 +11,7 @@ alwaysApply: true
 
 ## 项目概述
 
-ReleaseHub 是基于 DDD 的多仓库发布协调平台，管理 Release Windows、版本策略、分支规则和自动化版本更新。
+项目事实与生命周期读取 [唯一 Profile](../../../context/PROJECT_PROFILE.yaml)，工程取舍遵循 [Project Operating Context](../../../.ai/standards/patterns/project-operating-context.md)。愿景与范围读取 [产品规划](../../../context/business/project-plan.md)。本适配器只桥接，不复制或推断画像字段。
 
 ## 关键规则
 

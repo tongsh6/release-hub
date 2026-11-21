@@ -29,6 +29,12 @@ Context Loader（按策略加载）
 上下文摘要（去重、排序、摘要化）
 ```
 
+## 项目运行上下文先行
+
+工程决策前，先读取根 `AGENTS.md` 指定的唯一 `docs/context/PROJECT_PROFILE.yaml` 和 [Project Operating Context](project-operating-context.md)。画像提供项目事实、生命周期默认策略及责任修正，不受关键词匹配或知识层级裁剪影响；unknown 不等于 none。
+
+随后按愿景、工程原则、相关设计与任务队列选择必要业务/技术/经验资料，再核对代码和 trace。Phase Router 只选择当前任务阶段，不推断项目生命周期。此规则合入 AIEF `d0e0fb50c3e490c209225a4cc55d445ccebb1986` 的 Context Loading 更新，继续使用本项目既有五层知识结构。
+
 ## 五层加载策略
 
 ### 1. 业务上下文（最高优先级）

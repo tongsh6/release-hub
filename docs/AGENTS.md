@@ -2,11 +2,17 @@
 
 > 项目记忆入口，每次会话自动加载。详细规范按需从各子目录加载。
 
-## 项目概述
+## 项目运行上下文
 
-**ReleaseHub** 是基于 DDD 的多仓库发布协调平台，管理 Release Windows、版本策略、分支规则和自动化版本更新。
+根 [AGENTS.md](../AGENTS.md) 声明唯一 Profile：[`docs/context/PROJECT_PROFILE.yaml`](context/PROJECT_PROFILE.yaml)。项目身份、生命周期、发布事实与责任以该画像中已确认的字段为准；愿景与业务范围见 [愿景与产品规划](context/business/project-plan.md)。
 
-**核心价值**：统一多仓库发布节奏管理，降低认知、协调和执行成本。
+在设计、实现、重构、数据、兼容或交付相关工作前：
+
+1. 先读 Profile 与 [Project Operating Context](.ai/standards/patterns/project-operating-context.md)，区分 confirmed、proposed、unknown、stale。
+2. 生命周期只给默认策略；已确认业务目标、真实数据责任、外部承诺和系统不变量决定任务取舍。不得从“研发中”自动推导 MVP 范围、发布准备、从未发布或数据可丢弃。
+3. 身份、生命周期、发布、承诺和稳定约束的变更使用已有明确用户授权；没有确认的候选写入 pendingChanges，不伪造 confirmed。AI 可依据当前计划维护 operatingMode/currentFocus 及来源。
+4. Profile 不保存任务进度，台账不另行定义生命周期；AIEF 接入等级、产品生命周期和当前任务阶段分别判断。
+5. 任务级调整说明理由、范围和失效条件，不静默覆盖项目事实；已授权研发继续按现有任务队列推进。
 
 ## 全局语言规则
 
@@ -18,7 +24,8 @@
 
 | 目录 | 用途 | 何时加载 |
 |------|------|----------|
-| [project-ledger.md](project-ledger.md) | 项目事实台账（权威基线） | **每次会话首次加载**，判断项目阶段、已完成事项、当前原则和 Top Priority |
+| [context/PROJECT_PROFILE.yaml](context/PROJECT_PROFILE.yaml) | 项目身份、生命周期、责任与稳定约束的唯一画像 | **工程决策前必读**，按来源区分确认事实与未知 |
+| [project-ledger.md](project-ledger.md) | 实现与验证事实台账（交付证据基线） | **每次会话首次加载**，核对已交付能力、验收边界和风险 |
 | [execution-roadmap.md](execution-roadmap.md) | 执行路线图（唯一队首任务） | 用户要求“挑任务执行”“继续推进”“做下一项”时必读，并且只能选择 `HEAD` |
 | [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) | 项目变更日志 | 需要追溯历史变更时加载 |
 | [context/](context/INDEX.md) | 项目知识库（长期记忆） | 理解业务/技术背景 |
@@ -64,7 +71,7 @@ context/
 - **深模块**：窄接口、深实现，隐藏内部复杂性
 - **复杂时序显式建模**：状态机、RunTask、依赖、执行记录
 - **性能一等约束**：多仓库场景考虑并行、缓存、锁、聚合读模型
-- **前沿建模范式**：DDD、状态机、领域事件、Process Manager、Policy、CQRS、DAG
+- **按证据选择建模方式**：仅在现有职责无法承载且存在实际消费者时选用 DDD、状态机、事件、策略或任务模型；不把模式清单当新增抽象的要求
 
 AI 不得只完成眼前局部改动；必须评估是否破坏长期可维护性。
 
@@ -187,6 +194,7 @@ AI 在接收任务时，应自动判断任务类型并执行相应流程：
 
 | 任务涉及 | 自动加载 |
 |----------|---------|
+| 设计、实现、重构、数据、兼容、交付 | `context/PROJECT_PROFILE.yaml` + `.ai/standards/patterns/project-operating-context.md` |
 | 任何实现类任务 | `context/tech/architecture/ai-engineering-governance.md` |
 | 领域模型（ReleaseWindow/Iteration/VersionPolicy） | `context/business/domain-model.md` |
 | 发布窗口 API | `context/tech/api/release-window.md` |

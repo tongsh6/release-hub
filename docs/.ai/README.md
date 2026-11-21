@@ -69,6 +69,8 @@
 
 ### 自动上下文加载策略
 
+工程决策前先读取根 `AGENTS.md` 声明的 [唯一项目画像](../context/PROJECT_PROFILE.yaml) 与 [Project Operating Context](standards/patterns/project-operating-context.md)。项目事实、生命周期默认策略和真实责任先行；下列五层知识随后按需加载。上游来源与接入验证见 [AIEF 接入记录](../../tasks/records/2026-11-21-aief-project-operating-context.md)。
+
 AI 在执行任务前，应自动加载相关上下文：
 
 1. **业务上下文**：从 `context/business/` 加载领域模型、用户故事

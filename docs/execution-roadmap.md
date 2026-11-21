@@ -1,12 +1,12 @@
 # Execution Roadmap / 执行路线图
 
-> 本文件只回答下一步做什么；事实以 `docs/project-ledger.md`、`docs/reports/scenario-acceptance-matrix.md` 和任务记录为准。
+> 本文件只回答下一步做什么；正式生命周期与责任读取 `docs/context/PROJECT_PROFILE.yaml`，实现和验收事实以 `docs/project-ledger.md`、`docs/reports/scenario-acceptance-matrix.md` 和任务记录为准。
 
 ## 1. 当前唯一主线
 
 2026-11-21 用户授权持续研发、必要重构、分组提交与分阶段推送。先统一可核实的编排语义，再接入可恢复执行。已完成分支收敛：main/develop 同指 `d4534cc`，研发从 `feature/orchestration-consistency` 推进。
 
-- 任务只从下表唯一 HEAD 选择。
+- 任务只从下表唯一 HEAD 选择；HEAD 是当前实施队首，不是生命周期或已完成标记。按确认目标与完整蓝图推进，不从阶段标签自动裁剪范围。
 - 每个切片独立定义正反例，核实已有职责与实际消费者，验收后继续下一切片。
 - 历史验收不能替代新行为验证；测试替身不等于真实 GitLab 或完整页面旅程。
 
@@ -22,11 +22,11 @@
 
 ## 3. 当前队首验收出口
 
-S3-A/B1 已完成单元、H2/PostgreSQL/API、前端门禁、静态扫描与交叉审查，并推送到 feature。C1 独立提交树 194 项测试全过、六模块 SpotBugs 0；两个提交前组合缺陷有真实 RED→GREEN 证据。main/develop 保持共同基线。
+S3-A/B1 已完成单元、H2/PostgreSQL/API、前端门禁、静态扫描与交叉审查，并推送到 feature。A/B1 提交前 Git 基础独立树 194 项测试全过、六模块 SpotBugs 0；两个提交前组合缺陷有真实 RED→GREEN 证据。main/develop 保持共同基线。
 
 B2 已完成：普通后端 613 项（608 PASS、5 既有 SKIP）、六类数据库/API/HTTP fixture 70/70、前端 38 文件/149 项及全部门禁通过。最终静态扫描 `.ai/reports/static-scan/20261121-153304/summary.md`：SpotBugs 0、lint 0 errors/8 既有 fixture warnings，逐项处置已记录。关闭受理与 CLOSED 同事务；共享仓库只执行一次；Tag/CI 失败零后继写；release 缺失零发布副作用；共享 Iteration 和引用保留；重复/并发 close 返回原 Run；在途编排与关闭通过同一窗口锁互斥。
 
-当前 C1 将请求线程接入唯一持久任务路径，固定 ENSURE_FEATURE / ENSURE_RELEASE / ENSURE_MR / TRY_MERGE 四动作。先定义同 key 并发、MR 已创建但提交失败、Git 成功但投影失败、过期领取者及不同仓库同时提交的反例；再用真实 PostgreSQL、HTTP fixture 和独立进程中断验证。C1 的验收是可查询且安全停住，C2 才交付自动扫描和继续执行。
+当前 C1 仍在研发，尚未联合编译闭合或验收；目标是将请求线程接入唯一持久任务路径，固定 ENSURE_FEATURE / ENSURE_RELEASE / ENSURE_MR / TRY_MERGE 四动作。先定义同 key 并发、MR 已创建但提交失败、Git 成功但投影失败、过期领取者及不同仓库同时提交的反例；再用真实 PostgreSQL、HTTP fixture 和独立进程中断验证。C1 的验收是可查询且安全停住，C2 才交付自动扫描和继续执行。
 
 完整范围及分阶段依赖见 `docs/openspec/changes/add-durable-run-recovery/design.md` 与 `tasks.md`。后台 worker、自动 resume、独立进程硬中断、真实 GitLab/UI 全旅程尚未验收；B2 的 E2E 夹具只完成迁移、编译与脚本语法检查。当前真实外部写验证限明确隔离 fixture，未对业务 GitLab 仓库执行写操作。
 
@@ -37,7 +37,7 @@ B2 已完成：普通后端 613 项（608 PASS、5 既有 SKIP）、六类数据
 | RBAC、通知、CI 深集成 | 与当前编排可靠性目标无关 |
 | 批量组织重构或跨 provider 迁移 | 不引入无实际消费者的通用平台 |
 | 自动批量删除存量数据 | 仍需明确范围和可核实处置依据 |
-| 扩展新的版本更新能力 | 当前只修已有文件写入的数据一致性；不扩大发布 MVP |
+| 扩展新的版本更新能力 | 按已确认蓝图修已有文件写入的数据一致性；不因阶段标签扩大或缩小产品范围 |
 
 ## 5. 队列约束
 

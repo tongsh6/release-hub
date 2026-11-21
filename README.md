@@ -9,7 +9,8 @@
 
 核心能力：窗口/迭代/仓库与绑定、权威计划预览、显式 MR-first 编排、Run/Item 结果与证据、失败项精确重试。Attach/Detach/Publish 只维护配置和生命周期；关闭按仓库受理收尾，重复请求返回原 Run，Tag 使用确认的合并提交，CI 默认关闭并由用户显式选择。共享分支与迭代保留，结果未知时保留仓库阻断并要求核对。后台恢复执行仍在研发中。
 
-> 📋 **新会话/新成员请先读：[`docs/project-ledger.md`](docs/project-ledger.md)** — 项目事实台账（当前阶段目标 / 已验证 / Top Priority / 关键证据索引）。
+> **协作入口：[`AGENTS.md`](AGENTS.md)** — 唯一项目画像、工程规则与知识导航；生命周期、工作模式和发布事实分别记录。
+> 📋 **实现与验证事实：[`docs/project-ledger.md`](docs/project-ledger.md)** — 已交付基线、当前任务目标与验收边界。
 > 🎯 **需要挑任务时读取：[`docs/execution-roadmap.md`](docs/execution-roadmap.md)** — 当前唯一队首任务与后续执行队列。
 
 ## 项目结构
@@ -59,6 +60,8 @@ deploy/scripts/healthcheck.sh
 ## 文档
 
 - [Docker Compose 源码部署](docs/deploy/docker-compose.md) — 开源用户单机部署入口
+- [项目画像](docs/context/PROJECT_PROFILE.yaml) — 已确认生命周期、项目约束与未知责任
+- [AIEF 接入与阶段核对](tasks/records/2026-11-21-aief-project-operating-context.md) — 上游来源、代码/历史证据和专项验证
 - [架构文档](docs/context/tech/architecture/) — 系统架构与技术栈
 - [开发规范](docs/context/tech/conventions/) — 代码规范与测试策略
 - [执行路线图](docs/execution-roadmap.md) — 当前唯一队首任务

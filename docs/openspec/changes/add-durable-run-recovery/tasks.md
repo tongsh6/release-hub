@@ -1,6 +1,6 @@
 # 实施切片与验收追踪
 
-完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2 已分阶段交付，当前 HEAD 为 S3-C1 持久四动作与安全中断；C2 在同一执行器上增加后台驱动和恢复，验收逐切片记录。
+完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2 已分阶段交付，当前实施队首为 S3-C1 持久四动作与安全中断，C1 尚未联合编译闭合或验收；C2 在同一执行器上增加后台驱动和恢复，验收逐切片记录。
 
 关联：[需求](../../../requirements/in-progress/SA-013-发布编排中断恢复.md)、[提案](proposal.md)、[Run delta](specs/run/spec.md)、[窗口 delta](specs/release-window/spec.md)。依赖顺序为 S0 → S1 → S2 → S3 → S4 → S5。
 

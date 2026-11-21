@@ -2,7 +2,7 @@
 
 > **新会话强制读取入口**：任何新会话 AI 进入本项目，必须先读本文件。
 > 它替代不了 `docs/PROJECT_PROGRESS.md`（变更日志），但提供「事实基线」：
-> 当前阶段在做什么、什么已经验证过、什么不要再做。
+> 当前任务在做什么、什么已经验证过、什么不要再做。正式生命周期、身份与责任只由 [项目画像](context/PROJECT_PROFILE.yaml) 维护；本文件记录实现和验证证据。
 > 维护节奏：每个 release commit 必须更新「已验证 / Top Priority / 关键证据」三段。
 > 当用户要求“挑任务执行”时，必须再读取 `docs/execution-roadmap.md`，只执行其中唯一 `HEAD` 队首任务。
 
@@ -10,7 +10,7 @@
 
 ## 1. 当前阶段目标
 
-2026-11-21：用户已授权持续研发、必要重构和分阶段推送，项目仍在研发阶段。main/develop 已收敛到共同基线 `d4534cc`，研发位于 `feature/orchestration-consistency`。S3-A/B1 与 **S3-B2 已完成并分阶段推送**；B2 后端提交 `e127023d18b8d03b4756b2daaadf9e8674638dc1`，前端提交 `5ad0666e2dfd40ddf0da69b737f1a9ca8ddc02ac`。当前唯一队首为 **S3-C1 持久四动作与安全中断**，S3-C2 同一执行器的后台驱动、核对与恢复处于后续队列。
+2026-11-21：用户已授权持续研发、必要重构和分阶段推送；已依据 AIEF 最新协议完成生命周期校准，确认依据见 [接入记录](../tasks/records/2026-11-21-aief-project-operating-context.md)，正式值读取项目画像。main/develop 已收敛到共同基线 `d4534cc`，研发位于 `feature/orchestration-consistency`。S3-A/B1 与 **S3-B2 已完成并分阶段推送**；B2 后端提交 `e127023d18b8d03b4756b2daaadf9e8674638dc1`，前端提交 `5ad0666e2dfd40ddf0da69b737f1a9ca8ddc02ac`。当前唯一研发队首为 **S3-C1 持久四动作与安全中断**，C1 工作区仍在实施、尚未联合编译闭合或验收；该队首标记不代表已交付。S3-C2 同一执行器的后台驱动、核对与恢复处于后续队列。
 
 当前已交付纯配置 Attach/Detach/Publish、显式 MR-first 编排、统一 Run 状态与精确 Item ID 重试，以及按仓库一次受理的安全收尾。普通后端 54 类 613 项（608 PASS、5 既有 SKIP），六类数据库/API/本地 HTTP fixture 70/70，前端 38 文件 149/149；typecheck、i18n、lint、build 通过，最终静态扫描 SpotBugs 0、lint 0 errors/8 个既有 warning。B2 不提供后台 worker 或自动 resume；本轮未重跑真实 GitLab/UI 全旅程或独立进程硬中断。蓝图和验收边界见 `docs/openspec/changes/add-durable-run-recovery/design.md`、`tasks.md`。
 

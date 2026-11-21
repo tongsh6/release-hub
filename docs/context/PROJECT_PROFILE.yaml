@@ -1,0 +1,131 @@
+apiVersion: aief.dev/project-profile/v1
+kind: ProjectProfile
+
+metadata:
+  name: release-hub
+  schemaVersion: "1.0"
+
+project:
+  identity:
+    name: ReleaseHub
+    description: 发布窗口驱动的跨仓分支与集成编排系统（GitLab），围绕窗口组织多个迭代与可重叠仓库，执行过程可审计、可追踪、可重试。
+    ownership: unknown
+    purposes: [unknown]
+    productForms: [unknown]
+    audiences: [unknown]
+    horizon: unknown
+
+  lifecycle:
+    stage: development
+    operatingMode: system_refactoring
+
+  release:
+    # “尚未上线”不等于从未形成版本；历史 tag/受控候选也不证明已正式发布。
+    everReleased: null
+    channel: unknown
+
+  commitments:
+    users:
+      scope: unknown
+      support: unknown
+    deployment:
+      scope: unknown
+    data:
+      classification: unknown
+      retention: unknown
+      recovery: unknown
+    compatibility:
+      publicApi: unknown
+      internalApi: unknown
+      databaseSchema: unknown
+      userData: unknown
+    maintenance:
+      commitment: unknown
+
+  constraints:
+    - id: single-execution-path
+      statement: 研发中可按完整目标重构，删除被替代的旧执行入口、兼容写路径和双轨实现；该要求不授权删除历史执行证据、真实数据或远端资产。
+      scope: project_wide
+    - id: reuse-real-responsibility
+      statement: 新增实体、接口或设计前，查重并核实现有对象能否承责及实际消费者；按 SOLID、DRY、KISS、YAGNI 和关注点分离取舍，不为原则堆抽象。
+      scope: project_wide
+    - id: evidence-before-implementation
+      statement: 先按愿景、元原则、设计与任务队列独立定义正反例和定位依据，再核对代码、测试与 trace；现有实现和测试不构成正确性标准。
+      scope: project_wide
+    - id: reviewed-incremental-delivery
+      statement: 持续研发按可评审粒度提交已验证改动并分阶段推送；一个已授权切片验收完成后继续下一切片，反馈实际进展、阻塞和验收证据。
+      scope: project_wide
+    - id: confirmed-product-scope
+      statement: 当前范围以维护者提供的 ReleaseHub v2.6 业务约束及后续明确授权蓝图为准；优先窗口驱动跨仓集成及可靠性，采用 GitLab REST 与 MR-first；不因 development 标签自行裁成 MVP 或扩成通用平台。
+      scope: release_specific
+
+  currentFocus:
+    summary: 完善窗口驱动跨仓集成能力，统一配置与执行语义，收敛 Git 写入证据、持久执行和安全恢复，按完整蓝图逐切片交付。
+    source: docs/execution-roadmap.md
+
+governance:
+  provenance:
+    "/project/identity/name":
+      status: confirmed
+      source:
+        type: user_instruction
+        reference: "tasks/records/2026-11-21-aief-project-operating-context.md#user-baseline"
+      confirmedAt: "2026-11-21"
+    "/project/identity/description":
+      status: confirmed
+      source:
+        type: user_instruction
+        reference: "tasks/records/2026-11-21-aief-project-operating-context.md#user-baseline"
+      confirmedAt: "2026-11-21"
+    "/project/lifecycle/stage":
+      status: confirmed
+      source:
+        type: user_instruction
+        reference: "tasks/records/2026-11-21-aief-project-operating-context.md#user-baseline"
+      confirmedAt: "2026-11-21"
+    "/project/constraints/@single-execution-path":
+      status: confirmed
+      source:
+        type: user_instruction
+        reference: "tasks/records/2026-11-21-aief-project-operating-context.md#user-baseline"
+      confirmedAt: "2026-11-21"
+    "/project/constraints/@reuse-real-responsibility":
+      status: confirmed
+      source:
+        type: user_instruction
+        reference: "tasks/records/2026-11-21-aief-project-operating-context.md#user-baseline"
+      confirmedAt: "2026-11-21"
+    "/project/constraints/@evidence-before-implementation":
+      status: confirmed
+      source:
+        type: user_instruction
+        reference: "tasks/records/2026-11-21-aief-project-operating-context.md#user-baseline"
+      confirmedAt: "2026-11-21"
+    "/project/constraints/@reviewed-incremental-delivery":
+      status: confirmed
+      source:
+        type: user_instruction
+        reference: "tasks/records/2026-11-21-aief-project-operating-context.md#user-baseline"
+      confirmedAt: "2026-11-21"
+    "/project/constraints/@confirmed-product-scope":
+      status: confirmed
+      source:
+        type: user_instruction
+        reference: "tasks/records/2026-11-21-aief-project-operating-context.md#user-baseline"
+      confirmedAt: "2026-11-21"
+    "/project/lifecycle/operatingMode":
+      status: confirmed
+      source:
+        type: current_work_plan
+        reference: docs/execution-roadmap.md
+    "/project/currentFocus":
+      status: confirmed
+      source:
+        type: current_work_plan
+        reference: docs/execution-roadmap.md
+    "/project/release/everReleased":
+      status: unknown
+      source:
+        type: repository_evidence
+        reference: tasks/records/2026-11-21-aief-project-operating-context.md#release-evidence
+  pendingChanges: []
