@@ -1,6 +1,6 @@
 # 实施切片与验收追踪
 
-完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2、S3-C1 已交付；C1 分组提交至 `e5094ba`，固定 SHA 的 Full-Link 44899945002 为 5/5。当前队首为 C2-A：同一执行器的持久扫描、202 回执与进度观察；C2-B 再交付已领取任务接管和证据驱动恢复，C2 整体验收尚未完成。
+完整蓝图：[design.md](design.md)。S0、S1、S2 已完成；2026-11-21 用户授权继续研发、必要重构和分阶段推送。S3-A/B1、S3-B2、S3-C1 已交付；C1 固定 `e5094ba` 的 Full-Link 44899945002 为 5/5。C2-A 本地实现、反例与静态门禁通过，当前队首等待本次分组提交和固定 SHA Full-Link 收口；C2-B 再交付已领取任务接管及证据恢复，C2 整体尚未完成。
 
 关联：[需求](../../../requirements/in-progress/SA-013-发布编排中断恢复.md)、[提案](proposal.md)、[Run delta](specs/run/spec.md)、[窗口 delta](specs/release-window/spec.md)。依赖顺序为 S0 → S1 → S2 → S3 → S4 → S5。
 
@@ -101,12 +101,14 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 
 ### C2-A：持久扫描、异步受理与进度观察（当前队首）
 
-- [ ] 两个受理入口返回 202/Run ID，删除请求线程同步驱动；唯一执行器每次领取并完成一个 Task。
-- [ ] 有界游标扫描当前 WINDOW 协议的 RUNNING/NEEDS_REVIEW 且存在 PENDING 的 Run；资格仍由既有 claimNextTask/eligible 决定，不扫描历史/预览/其他动作。
-- [ ] 有界 worker 在实际开始后才领取；提交拒绝或排队取消不改数据库，领取后中断不回退 PENDING；不同仓可并行，同仓不越过前序。
-- [ ] 已保存原请求的回执入口不依赖当前可执行范围；窗口冻结或绑定变化后仍可用原 key/原 payload 查询 receipt，新请求仍严格校验当前范围。
-- [ ] 原请求回执、202 transport、按 Run/Task 观察以及 E2E/shell 的真实等待消费者同片迁移；轮询不重置选择、不混入另一 Run，不仅以 NEEDS_REVIEW 判断全部停止。
-- [ ] 实际受理后丢失唤醒、线程池拒绝、双 worker、阻塞前页不饥饿及 MR 检查点后独立进程重启继续通过验证；成功前缀零重放，RUNNING/UNKNOWN 不重领。
+- [x] 两个受理入口返回 202/Run ID，删除请求线程同步驱动；唯一执行器每次领取并完成一个 Task。
+- [x] 有界游标扫描当前 WINDOW 协议的 RUNNING/NEEDS_REVIEW 且存在 PENDING 的 Run；资格仍由既有 claimNextTask/eligible 决定，不扫描历史/预览/其他动作。
+- [x] 有界 worker 在实际开始后才领取；提交拒绝或排队取消不改数据库，领取后中断不回退 PENDING；不同仓可并行，同仓不越过前序。
+- [x] 已保存原请求的回执入口不依赖当前可执行范围；窗口冻结或绑定变化后仍可用原 key/原 payload 查询 receipt，新请求仍严格校验当前范围。
+- [x] 原请求回执、202 transport、按 Run/Task 观察以及 E2E/shell 的真实等待消费者同片迁移；轮询不重置选择、不混入另一 Run，不仅以 NEEDS_REVIEW 判断全部停止。
+- [x] 实际受理后丢失唤醒、线程池拒绝、双 worker、阻塞前页不饥饿及 MR 检查点后独立进程重启继续通过验证；成功前缀零重放，RUNNING/UNKNOWN 不重领。
+
+本地验收：API/PG 67/67、真实 HTTP 29/29、独立进程 1/1、后补 worker 7/7，普通后端 672 PASS/5 既有 SKIP，前端 214/214；重叠范围不累计。静态 `20261121-203554` 及 TopN 通过。本次固定 SHA Full-Link 尚待执行，未以 C1 5/5 代替，也未将队首提前出队。
 
 ### C2-B：已领取任务接管与证据驱动恢复
 

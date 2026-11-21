@@ -10,9 +10,9 @@
 
 ## 1. 当前阶段目标
 
-2026-11-21：用户已授权持续研发、必要重构和分阶段推送；生命周期与工作模式的正式值读取项目画像，AIEF 校准依据见 [接入记录](../tasks/records/2026-11-21-aief-project-operating-context.md)。main/develop 同指 `d4534cc`，研发位于 `feature/orchestration-consistency`。S3-A/B1、S3-B2、S3-C1 已分阶段推送；AIEF 对齐提交 `83998b2`，CI profile/Python 修复为 `08432e9`、`a7181fa`。C1 后端 `44e742c`、前端 `3766686`、E2E/脚本 `4c6b3e9`、文档 `e5094ba` 均已核对远端；固定 `e5094ba` 的 [Full-Link 44899945002](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 5/5 通过。当前唯一队首推进到 **S3-C2-A 持久扫描、异步受理与进度观察**；C2-B 的已领取任务接管和证据驱动恢复继续排队。
+2026-11-21：用户已授权持续研发、必要重构和分阶段推送；生命周期与工作模式的正式值读取项目画像，AIEF 校准依据见 [接入记录](../tasks/records/2026-11-21-aief-project-operating-context.md)。main/develop 同指 `d4534cc`，研发位于 `feature/orchestration-consistency`。S3-A/B1、S3-B2、S3-C1 已分阶段推送；AIEF 对齐提交 `83998b2`，CI profile/Python 修复为 `08432e9`、`a7181fa`。C1 后端 `44e742c`、前端 `3766686`、E2E/脚本 `4c6b3e9`、文档 `e5094ba` 均已核对远端；固定 `e5094ba` 的 [Full-Link 44899945002](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 5/5 通过。当前唯一队首仍为 **S3-C2-A 持久扫描、异步受理与进度观察**：本地实现、反例和静态门禁通过，分组提交及本次固定 SHA Full-Link 正在收口。C2-B 的已领取任务接管和证据驱动恢复继续排队。
 
-C1 已交付代码由请求线程消费唯一持久四动作，HTTP 200 返回 Run ID；相同 Idempotency-Key 先返回原回执，结果事务一次提交 Task/Step/Item/Run/绑定与 guard 确认。最近普通后端回归为 652 PASS/5 既有 SKIP，最后候选契约为 9 类 148/148，前端为 38 文件 170/170，以及独立 JVM 在 MR 检查点提交后被强杀、重启同 key 新增 HTTP=0 的证据。新 SHA Full-Link 已通过，并由加强后的 Slice3 验证真实首次 Orchestrate、MR 合并、重复请求和 close DONE；Slice4/5 的结构/冲突覆盖局限仍保留。迭代配置隐式建分支/归档旧入口已删除，版本初始化和 EXISTING 只读校验保留；repoConfigs 越界/重复已在写入前拒绝。后台 worker、202、lease、自动继续及当前真实 UI 黄金旅程均未交付；蓝图、证据与限制见恢复设计、tasks.md 和本轮记录。
+C2-A 当前由有界后台 worker 消费唯一持久四动作，Orchestrate/retry 返回 HTTP 202/Run ID；相同 key 只返回原回执。后台只扫描当前 WINDOW 协议的 PENDING，RUNNING/UNKNOWN 不重领。同 Run 双仓真实 HTTP 验证已通过：R1 响应在途时 R2 可进展；默认定时器与独立 JVM 重启只继续原 PENDING TRY_MERGE，MR POST=1、MERGE PUT=1。普通后端 677 项（672 PASS/5 既有 SKIP），API/数据库 67/67、HTTP 29/29、进程 1/1，后补 worker 停机断言后 7/7；重叠 suite 不累计。前端 39 文件 214/214、全部门禁与静态复扫通过。C2-A 新 SHA 的 Full-Link 待运行；租约、已领取任务恢复和真实 UI 黄金旅程尚未交付。
 
 ### 2026-10-08 历史 S2 验收记录
 
@@ -248,8 +248,8 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| S3-C2-A 持久扫描、异步受理与进度观察 | C1 已交付；已核实现有职责与实际消费者并定义独立正反例，C2-A 尚未实现 | 有界游标扫描候选 Run，worker 开始后领取单任务；同步迁移 202、receipt 和真实消费者 | 仅推进 PENDING；同仓串行、跨仓可进展；丢唤醒/重启仍可发现；拒绝提交零领取；原回执不依赖当前 scope；不重领 RUNNING |
-| 前端用户旅程自动化验证 | 2026-05-24 的 E2E 49/0/0 为历史；本轮组件 170 PASS、后端 API/GitLab fixture 均不等于页面旅程 | 按后续受控验收范围补真实 GitLab/UI 全旅程；S3-C2 才接同一执行器的后台驱动和恢复 | 页面创建/变更业务数据，API/数据库/GitLab 只作后置复核；stub 不替代真实写入证据 |
+| S3-C2-A 持久扫描、异步受理与进度观察 | 代码、真实 PostgreSQL/HTTP/独立进程、前端 214 项与静态门禁通过 | 分组提交、推送并运行本次固定 SHA Full-Link，再转 C2-B | 仅推进 PENDING；同仓串行、跨仓可进展；无内存唤醒依赖；拒绝提交零领取；原回执不依赖当前 scope；不重领 RUNNING |
+| 前端用户旅程自动化验证 | 2026-05-24 的 E2E 49/0/0 为历史；本轮组件 214 PASS、后端 API/GitLab fixture 均不等于页面旅程 | 按 S5 受控范围执行真实 GitLab/UI 全旅程；本轮 Playwright 仅迁移消费者和发现 23 项 | 页面创建/变更业务数据，API/数据库/GitLab 只作后置复核；stub 不替代真实写入证据 |
 
 ---
 
@@ -271,7 +271,7 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| HEAD | SA-013 S3-C2-A 持久扫描、异步受理与进度观察 | C1 固定 SHA Full-Link 已通过，复用唯一任务执行器 | 202 在 Git 完成前返回；PENDING 扫描与有界并发、原回执找回、任务进度观察及检查点后重启继续分别验证 |
+| HEAD | SA-013 S3-C2-A 持久扫描、异步受理与进度观察 | 本地实现与验收已完成，固定 SHA Full-Link 待收口 | 分组提交/推送后核对运行 SHA；保留检查点后 PENDING 继续、已领取不接管及 UI 旅程未验收边界 |
 | 后续 | SA-013 S3-C2-B 已领取任务接管与证据驱动恢复 | RUNNING/UNKNOWN 不因租约过期获得重发资格；历史 HTTP 事实与当前所有权需分别承责 | 精确证据、迟到响应、旧 worker 延迟发送、租约与观察版本竞争；不任意 FOUND 释放 guard |
 | 后续 | SA-002 BranchCreationMode 执行计划评审门禁 | 原队列保留，最小 dry-run 已完成 | 评审是否进入执行计划切片；未批准前不实现执行 API、数据库写入、迁移表或 GitLab 操作 |
 
@@ -281,8 +281,8 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 当前研发交付 | `tasks/records/2026-11-21-sa-013-orchestration-consistency.md` | A/B1、B2、C1 已推送；C1 `e5094ba` / Full-Link `44899945002` 为 5/5；专项 RED/GREEN、进程硬杀及 CI 修复链单列，C2-A 当前队首 |
-| 当前静态扫描 | `.ai/reports/static-scan/20261121-175548/summary.md` | C1 两项可变聚合暴露已通过 runId 回执消除；SpotBugs 0，typecheck PASS，lint 0 errors/8 既有 warnings；EOF 修正后 diff-check 0，TopN 逐项留痕 |
+| 当前研发交付 | `tasks/records/2026-11-21-sa-013-orchestration-consistency.md` | C1 `e5094ba` / Full-Link `44899945002` 为 5/5；第 13 节记录 C2-A 本地 RED/GREEN、214 项前端、真实进程继续与本次待交付状态 |
+| 当前静态扫描 | `.ai/reports/static-scan/20261121-203554/summary.md` | RunTaskWorker 的 Spring 协作者引用经独立审查做构造器级精确说明；SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings；EOF 定向复查通过，TopN 逐项留痕 |
 | 场景矩阵 | `docs/reports/scenario-acceptance-matrix.md` | C1 代码/数据库/API/组件/真实 GitLab CI 证据与未完成的 UI/自动恢复边界；历史结果不替代本轮真实旅程 |
 | 发布候选收口报告 | `docs/reports/release-candidate-2026-05-23.md` | 2026-05-24 当时分支已通过受控候选验证，交付证据包已汇总全量验收、前端 E2E、关键组件、SA-002 处置 case 页面验收和静态扫描；仍为 dogfood/staging 候选 |
 | 发布候选评审页 | `frontend/src/views/release-governance/ReleaseCandidateReview.vue` + `GET /api/v1/release-governance/candidate-review` + `POST /api/v1/release-governance/candidate-review/signoffs` | 聚合候选结论、验收证据、风险边界、检查清单和人工签核；签核不触发发布、清理、GitLab 或数据状态变更 |

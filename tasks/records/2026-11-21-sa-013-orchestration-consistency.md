@@ -1,6 +1,6 @@
 # 2026-11-21 SA-013：分支收敛与唯一编排语义
 
-状态：S3-A/B1、S3-B2、S3-C1 已完成目标验收、交叉审查、静态扫描及分阶段推送；C1 固定 e5094ba 的 Full-Link 44899945002 为 5/5，当前队首推进到 C2-A 持久扫描、异步受理与进度观察。此前业务 UNKNOWN 会话收口和最终写 URI 两个组合缺陷均已有真实 RED→GREEN。本文只记录实际结果，历史 GitLab 证据不视为本轮重跑。
+状态：S3-A/B1、S3-B2、S3-C1 已验收并分阶段推送；C1 固定 e5094ba 的 Full-Link 44899945002 为 5/5。当前 C2-A 已完成本地实现、真实反例、数据库/HTTP/进程/前端及静态验收，分组交付和本次固定 SHA Full-Link 待收口，详见第 13 节。历史证据按阶段保留，不以旧 CI 代替本次运行。
 
 ## 1. 目标与范围
 
@@ -315,3 +315,72 @@ C2-A 的正例是持久 PENDING 在请求返回、无唤醒或重启后仍可执
 真实消费者包含两个受理 controller、API 集成测试、RunTaskProcessKillIT、Slice3/Connectivity E2E、RunDetail/OrchestrationPanel、executionIntent、生成 OpenAPI、Playwright 和验收脚本。它们必须一起从“POST 已完成”迁移到“202 已受理、按原 Run/Task 观察”，有界等待不能放宽 DONE、四动作、项目/IID/SHA 和外部次数断言。既有 wait_for_run 仅看 RUNNING，须覆盖 NEEDS_REVIEW 下另仓活动。
 
 C2-B 的独立风险是当前 Journal 的历史 operation 与 Task token 绑定、task_id 唯一，以及 FOUND 证据不总是完整 checkpoint；不能仅旋转 token 或重新造 operation。历史 HTTP 事实、当前发送权和当前业务投影权分别核对，租约或单次 404 不能替代远端 fencing。各项仍未实施或验收，本节不是完成声明。
+
+## 13. C2-A：异步受理、持久扫描与回执观察
+
+状态：本地实现及验收通过，代码停止变更，正在分组交付；本次固定 SHA 的 Full-Link 待运行，尚未将 C2-A 从队首移出。
+
+### 13.1 实际责任与默认边界
+
+- RunPlanAppService 只受理；Orchestrate/Retry controller 返回 202/Run ID。移除无消费者的 OrchestrationAdmission.created，保留 cleanup 仍消费的独立 created。
+- RunAppService.executeNextTask 一次领取并提交一个任务；RunPort/JPA 只发现当前 WINDOW protocol 3、RUNNING/NEEDS_REVIEW 且有 PENDING 的候选。最终资格继续由 claimNextTask/eligible 判定。
+- 复用既有 AsyncConfig 作为唯一后台装配，移除无消费者的 EnableAsync；源码核查唯一 Scheduled 消费者是新 worker，没有顺带激活旧自动 Git 入口。
+- worker 默认启用，parallelism=2、queue-capacity=2、scan-batch-size=32、scan-delay-ms=1000。只有 test profile 默认关闭；e2e 保留启用。提交后才在 worker 线程领取，拒绝或取消排队不改数据库；无 Run 级互斥，游标轮转避免前页长期挡住后续候选。
+- 一个命令只消费一个 Task，Git I/O 不占持久化事务。异常不从内存重试、不回退 PENDING；RUNNING/UNKNOWN 的接管尚未开放。关闭不等待挂起的候选查询，查询恢复后也不能派发。
+- 页面只有一个待确认意图和最近一个已确认回执；历史复用现有 Run 列表。既有两页共同消费窄只读观察器，不另建请求队列或恢复实体。
+
+### 13.2 正反例与 RED
+
+先定义受理零 Git、单 Task 执行、DB 候选资格、有界池拒绝/取消、跨仓进展、冻结/空范围找回、NEEDS_REVIEW 继续观察，以及检查点后仅 PENDING 继续，再验证旧路径。
+
+| 范围 | 实际 RED | 最终证据 |
+|---|---|---|
+| 应用受理 | 原路径在请求线程完成四动作、retry 调用 claim；2 个断言失败、0 errors | 应用/计划/cleanup/worker 定向 90/90 |
+| API | 新任务不应在请求结束时全完成、OpenAPI 应声明 202；2 个断言失败、0 errors | RunPaged 22 + RunPlan API 25 全过 |
+| worker 新组件 | 可编译 scanOnce=0 契约骨架，6 项中 4 个断言失败；不是旧生产缺陷 | 首轮 6/6，补充关闭与挂起查询后 7/7 |
+| 页面基础 | 首轮四文件 62 项中 15 个行为断言失败 | 最终四文件 89/89 |
+| 真实 Element Plus 表格 | 轮询替换行后选中项丢失，1 个断言失败 | reserve-selection 与按 Run 重建表格后通过 |
+| 初次明确拒绝与跨快照可见性 | 4 个断言失败 | 明确拒绝与未知请求分开，RUNNING/已完成 Task 快照仍恢复观察 |
+| 确认期间收到原回执 | 4 个断言失败 | 固定原 pending key，确认后重读该 receipt，不新造 key/POST |
+| 旧页 400 先于新页同 key 202 | 独立审查发现，2 个 deferred 行为断言失败 | 先检查当前页面代次与主体，再允许清明确拒绝；旧页不得删除新页意图 |
+| E2E 原 Run 身份 | 最终消费者审查发现领域 RunId 对象与字符串直接比较，1 个断言失败、0 errors | 改为比较 ID 值，既有 fixture 测试 16/16 |
+
+首次基础设施测试误用未声明 AssertJ 导致编译失败，单列 worker-compile-preflight，不计 RED。首轮集成另暴露 test YAML 拼行和两项测试预期错误：冻结新意图依既有契约为 400/RUN_006，Repository 会翻译限量 IllegalArgumentException；修正配置和断言表达，不放宽行为约束。测试失败日志均保留。
+
+### 13.3 真实集成与范围
+
+| 验证 | 结果及界限 | 工件 |
+|---|---|---|
+| 普通后端 | 677 项：672 PASS、5 既有 SKIP；补充关闭与 E2E 身份断言之前的整轮 | c2-a-backend-final/ordinary |
+| API/数据库 | RunPaged 22、RunPlanApiIT 25、WindowRunApiIT 1、RunTaskPersistenceIT 19，共 67/67；受验源前后 hash 一致 | c2-a-backend-final/integration-corrected |
+| HTTP + PostgreSQL | GitWriteSafetyIT 29/29，含真实 worker 双仓进展；使用手动 scanOnce，不冒称定时器证明 | c2-a-integration/attempt-1 |
+| 独立进程 | 默认 Spring worker，kill exit=137；重启先扫描再查原 receipt，MR POST=1、MERGE PUT=1、成功前缀 3 项完全不变 | c2-a-integration/attempt-1 |
+| 最终 worker | 7/7，含候选查询挂起时 close 可返回、恢复后零派发 | c2-a-backend-final/worker-shutdown |
+| E2E fixture 契约 | 16/16，含原 Run ID 值相等；同时复核三脚本 bash -n 和 diff-check 均为 0 | c2-a-e2e-helper/green |
+| 运行时 OpenAPI | 冻结 JAR + 独立 PostgreSQL 启动，100 paths；两受理仅声明 202；生成 schema 与仓库文件字节一致 | c2-a-openapi |
+| 最终前端 | 39 文件 214/214；typecheck、i18n、lint、build 均通过，lint 仅 8 既有 warnings | c2a-final-*.log |
+| 消费者解析 | 3 shell 脚本 bash -n PASS；Playwright 发现 23 项，未运行真实 UI 旅程 | c2a-consumer-syntax.log 及 UI 记录 |
+
+上表存在重复测试，不累计成总数。所有工件相对 `.ai/reports/validation/`。API 的受控测试关闭 worker 并显式单任务驱动，只证明受理/事务契约；WindowRunApiIT 另启用真实默认装配，先收到 202，再观察 Git latch，HTTP 返回与 Git 完成解耦。真实 HTTP 并行反例中 R1 POST 响应仍在途，R2 feature Task 已完成，R1 后继保持 PENDING；解除后原 POST 仍恰一次。
+
+进程验证刻意停在 ENSURE_MR 已提交、TRY_MERGE 尚未领取的边界。重启使用原 numeric project/IID/冻结 SHA 完成合并和 guard 确认；不说明已有 SEND、UNKNOWN 或 RUNNING 能自动接管。
+
+### 13.4 静态处置、交叉审查与下一步
+
+最终报告：`.ai/reports/static-scan/20261121-203554/summary.md`。首扫 203333 命中一个 EI_EXPOSE_REP2；独立审查确认 RunAppService 是不可复制的 Spring 协作者，在 worker 构造器精确说明，不另造接口/包装、不扩大抑制。复扫六模块 SpotBugs=0，typecheck PASS，8 条测试 fixture warnings 逐项记录保留理由。Run delta 的 EOF 空行已定向修复，diff-check 复查为 0。
+
+独立代码审查检查了同仓资格、Run→Task→guard 锁序、局部结果投影、队列拒绝、游标公平、关闭屏障和页面迟到响应；发现的旧页 400 删除同 key 在途回执问题已 RED→GREEN，无剩余已证实提交阻断。
+
+两个 Java E2E、既有 E2ETestFixtures、Playwright 和三个 shell 消费者已迁移至 202 + 原 Run/Task 的有界等待，保留 DONE、顺序、身份和 MR 次数断言。最终消费者审查补上 RunId 值比较回归，RED→GREEN；另将 SA-006 脚本中工具编辑拼在同一行的两个合法 Bash 赋值拆回独立行，并重验三个脚本语法。未增加服务启动等待，也未加入真实业务密钥。下一步按后端、前端、E2E 消费者、文档分组提交并推送，以本次 SHA 运行 Full-Link。C1 5/5、当前本地 HTTP fixture 和组件回归都不能代替本次 CI 或真实 UI 全旅程。
+
+C2-B 的首个候选子片已只读核实：只考虑没有任何 git_operation 的过期 RUNNING，在 Run→Task 同一锁边界内重新确认后才可撤销旧 token。现有 operation 的原 token 仍承担 sending/finish/observe/ack；不得换 token 后抛弃迟到事实或另造 operation。此候选未实施，不提前宣称租约或完整恢复已交付。
+
+### 13.5 分组提交与待验门禁
+
+| 组 | 本地提交 | 内容 |
+|---|---|---|
+| 后端 | `06aee3b0282c1b56f9497a35296a47ba40da3f84` | 持久 Task 单步消费、有界后台 worker、202 与数据库/进程反例 |
+| 前端 | `b37397f5a7785eaded728bd8d2e678d2030aaad6` | 原请求回执与只读观察、迟到响应隔离、运行时 schema |
+| E2E 消费者 | `e0c635687337214f9e5247d88347a4f31ebcde55` | 202 与原 Run/Task 有界等待、RunId 值比较回归 |
+
+上述三组已提交且受验源码 hash 未变。文档为第四组，整片随后正常快进推送到 `feature/orchestration-consistency`，以该次远端精确 SHA 运行 Full-Link；门禁尚未完成，不将 C2-A 标为 DONE。`main`/`develop` 保持既有一致基线，本切片尚未合入。

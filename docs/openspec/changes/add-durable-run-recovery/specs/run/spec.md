@@ -6,7 +6,7 @@
 
 系统 SHALL 从窗口绑定关系生成仓库并集和 `(window, iteration, repository)` 计划，完整校验后，在同一受理事务保存协议 3 的 Run、不可变快照与每个 Item 的固定四动作任务，再执行 GitLab MR-first。计划包含真实 feature 分支模式、source/target、ref、提供方、仓库映射和稳定顺序；执行及重试不得重新解释这些目标。Publish/Attach 不因此获得隐式 Git 写入权限。
 
-当前 C1 契约仅覆盖 protocol 3 的 WINDOW_ORCHESTRATION，由请求线程消费任务；S3-B2 cleanup 复用 MR 规则，未迁入四动作协议。独立进程硬杀已证明提交后检查点保留及零重放，未证明整个恢复能力。C2 的 worker、202、持久扫描、lease 与自动继续，以及 S4 的其他执行类型恢复仍为目标；交付状态以任务记录和验收证据为准。
+C1 已交付 protocol 3 的 WINDOW_ORCHESTRATION 持久四动作及检查点后安全停住。当前 C2-A 目标将同一任务执行器改由持久扫描和有界 worker 消费，Orchestrate/retry 只返回 202 回执；仅继续未领取的 PENDING，不接管 RUNNING/UNKNOWN。C2-B 的租约接管与证据驱动恢复、S4 的其他执行类型恢复仍独立验收；交付状态以任务记录和真实证据为准。S3-B2 cleanup 复用 MR 规则，未迁入四动作协议。
 
 #### Scenario: 相同仓库属于多个迭代
 
@@ -143,22 +143,22 @@
 
 ### Requirement: 外部写入前持久受理
 
-系统 SHALL 在协议 3 窗口编排的每次外部写入之前，先持久化 Run、封存计划、固定四动作任务与操作意图；协调器不得用覆盖整轮网络调用的数据库事务代替检查点。C1 请求线程只消费已领取任务，重复受理不得从内存计划或旧直接循环继续执行。
+系统 SHALL 在协议 3 窗口编排的每次外部写入之前，先持久化 Run、封存计划、固定四动作任务与操作意图；协调器不得用覆盖整轮网络调用的数据库事务代替检查点。C2-A 请求线程只受理并返回持久回执，后台消费者只执行已领取任务；重复受理不得从内存计划或旧直接循环继续执行。
 
 #### Scenario: 受理提交后进程退出
 
 - **GIVEN** 协议 3 Run 已受理但没有派发外部写入
 - **WHEN** 进程重启并查询或以相同 key 和请求重新提交
 - **THEN** 原 Run 与任务仍可查询，相同请求返回原 Run
-- **AND** C1 不自动领取、重放或继续任务；数据库扫描后的继续属于 C2 目标
+- **AND** C2-A 的持久扫描只领取原计划中仍为 PENDING 且满足同仓前序约束的任务，不因查询或重复请求新增执行意图
 
 #### Scenario: 已提交 MR 后独立进程被强制终止
 
 - **GIVEN** 独立进程已完成并提交 ENSURE_MR，TRY_MERGE 尚未领取
 - **WHEN** 该进程被强制终止，新进程使用同一数据库与相同请求 key 重放受理
-- **THEN** 返回原 Run，ENSURE_MR 仍为 COMPLETED、TRY_MERGE 仍为 PENDING，MR 身份与 source SHA 保留
-- **AND** 不新增 MR POST 或 MERGE PUT，不执行自动继续
-- **AND** 此场景不作为 SEND_STARTED 后结果未提交时的恢复、lease 接管或后台最终完成的证明
+- **THEN** 返回原 Run，ENSURE_MR 保持 COMPLETED，MR 身份与 source SHA 保留
+- **AND** C2-A 后台扫描仅领取原 PENDING TRY_MERGE，以原项目/IID/SHA 完成合并及原子投影，MR POST 不增加、MERGE PUT 恰一次
+- **AND** 此场景不作为 SEND_STARTED 后结果未提交、已领取任务重领或 lease 接管的恢复证明
 
 #### Scenario: 计划预览不执行 Git 写入
 
@@ -442,18 +442,95 @@
 
 ### Requirement: 异步任务执行
 
-系统 SHALL 在后续 S3-C2 完成验收后，于显式 Orchestrate 的受理事务提交后返回 202 与 Run ID，由持久扫描和有界 worker 驱动同一任务执行器；C1 仍由请求线程消费任务，不承诺 202、后台自动继续或 lease 接管。默认 MANUAL 下 Publish 仅返回业务状态，不生成编排意图；可选 AUTO_ON_ATTACH 必须另行实现显式开关并复用唯一受理入口，不增加第二套执行路径。
+系统 SHALL 在 C2-A 的显式 Orchestrate 或精确 Item retry 受理事务提交后返回 202 与 Run ID，由数据库扫描和有界 worker 驱动同一任务执行器；不得保留请求线程同步写入的备用路径。扫描 SHALL 使用有界游标发现当前 WINDOW_ORCHESTRATION 协议、RUNNING/NEEDS_REVIEW 且存在 PENDING 的 Run，资格由既有领取协议判定。worker SHALL 在开始执行后才领取一个任务；提交拒绝、排队取消不改变持久任务，领取后异常不回退 PENDING。C2-A 不重领 RUNNING/UNKNOWN，租约接管属于 C2-B。默认 MANUAL 下 Publish 仅返回业务状态，不生成编排意图；可选 AUTO_ON_ATTACH 仍须另行实现显式开关并复用唯一受理入口。
 
 #### Scenario: 异步执行不阻塞
 
-- **GIVEN** C2 的持久扫描与 worker 已实现并通过验收
-- **WHEN** 用户显式触发 Orchestrate
-- **THEN** 系统先提交持久受理意图，再返回 202 与 Run ID
-- **AND** 后台通过同一任务执行器处理，用户能用 Run 查询进度
+- **GIVEN** C2-A 的持久扫描已启用，Git 请求被独立 latch 阻塞
+- **WHEN** 用户显式触发 Orchestrate 或合法精确 retry
+- **THEN** 系统先提交完整持久受理意图，在 Git 完成前返回 202 与 Run ID
+- **AND** 后台通过同一任务执行器处理，Git 不占受理或结果事务，用户能用原 Run 查询进度
 
 #### Scenario: 受理后唤醒丢失（C2 目标）
 
 - **GIVEN** Run、封存计划和持久任务已一起提交
 - **WHEN** AFTER_COMMIT 唤醒没有执行
-- **THEN** 后续 C2 的数据库扫描仍能发现并处理意图
+- **THEN** C2-A 的数据库扫描仍能发现原 PENDING 并处理意图，无需重新 POST 或生成新的 key
 - **AND** 不创建重复计划，不以租约过期为依据重发未决写请求
+
+#### Scenario: 提交队列被拒绝或取消
+
+- **GIVEN** 持久任务为 PENDING，后台线程池已满或正在停止
+- **WHEN** 执行命令被拒绝，或排队命令在 worker 开始前被取消
+- **THEN** 任务仍为 PENDING，没有领取 token 或 Git 写入
+- **AND** 后续扫描可再次发现；不得回退到 HTTP/扫描线程执行 Git
+
+#### Scenario: 不可领取的前页不饿死后续 Run
+
+- **GIVEN** 有界候选页中的 Run 都因同仓 RUNNING/UNKNOWN 前序不能领取，后续页有可执行 Run
+- **WHEN** 扫描继续轮转游标
+- **THEN** 后续可执行 Run 被发现并推进
+- **AND** 不无界加载所有 Run，不复制或跳过既有领取资格规则
+
+#### Scenario: 同 Run 的仓库独立推进
+
+- **GIVEN** 同一 Run 的仓库 R1 正在执行 Git，R2 仍有满足前序条件的 PENDING 任务
+- **WHEN** 另一个有界 worker 消费该 Run
+- **THEN** R2 可推进，R1 的后继任务不能越过 RUNNING 前序
+- **AND** 不用整个 Run 的执行期互斥把跨仓任务串行化
+
+#### Scenario: 扫描拒绝其他执行协议
+
+- **GIVEN** 存在 PLANNED 预览、历史 WINDOW 协议、WINDOW_CLEANUP 或 VERSION_UPDATE 记录
+- **WHEN** 后台扫描候选
+- **THEN** 它们不被当作当前 WINDOW 四动作派发，不生成猜测的任务
+
+#### Scenario: 已领取后中断仍安全停住
+
+- **GIVEN** 某任务的 RUNNING 和 claimToken 已提交，worker 随后终止
+- **WHEN** C2-A 扫描或新进程继续处理持久任务
+- **THEN** 该任务不被重新领取或改回 PENDING，同仓后继保持被阻止
+- **AND** 其他仓库的合法 PENDING 仍能推进，历史 Git 证据和 guard 保留
+
+#### Scenario: 当前范围变化后找回原回执
+
+- **GIVEN** 页面保存了原 actor、操作、key 和 payload，原请求可能已受理，窗口随后冻结或当前 scope 为空
+- **WHEN** 用户取回该原请求的回执
+- **THEN** 使用原 key 和 payload 找回同一 Run，不依赖当前勾选，不产生新 key
+- **AND** 新意图仍完整校验当前范围；已确认 Run ID 后只读查询，查询失败不再次 POST
+
+#### Scenario: 不确定回执不能被新选择静默覆盖
+
+- **GIVEN** 同一主体仍保存一个尚未确认的请求，或已确认 key 对应 Run A
+- **WHEN** 用户改变选择，或响应把同一 key 映射到 Run B
+- **THEN** 未确认意图必须保留并提供明确处理入口，不因网络错误自动创建新意图
+- **AND** 同 key 不同 Run 被显示为契约异常，保留原 Run A，不自动重试写入
+
+#### Scenario: 首次明确拒绝与未知回执分开处理
+
+- **GIVEN** 当前页面刚生成新 key 并首次发送原请求，后端返回 HTTP 400 / RUN_006
+- **WHEN** 原页面代次、主体和窗口或 sourceRun 仍当前，且该 key 尚无确认 Run ID
+- **THEN** 仅清除匹配的本地待确认记录，保留最近已确认回执，修改范围后仍须明确确认新意图
+- **AND** 已保存请求的重发、取回后的 400、409、5xx、断网或超时均不能据此删除原请求
+
+#### Scenario: 迟到响应不改变当前请求的含义
+
+- **GIVEN** 旧页请求仍在途，新页已使用同 key 取回或正在显示该请求的确认框
+- **WHEN** 旧页迟到收到成功回执或明确拒绝
+- **THEN** 成功只能确认匹配记录；新页确认后重新读取该 key 的 receipt，不生成新 key 或重复 POST
+- **AND** 已离开或换代页面的拒绝不能清除新页正在取回的同 key，即使新页 202 尚未返回
+
+#### Scenario: NEEDS_REVIEW 下仍观察其他仓库
+
+- **GIVEN** R1 的未知结果使 Run=NEEDS_REVIEW，R2 仍有 PENDING/RUNNING 任务
+- **WHEN** 页面观察原受理 Run
+- **THEN** 风险提示与其他仓库进度同时保留，只读查询继续，不自动 retry/reconcile/resume
+- **AND** 所有任务终结后停止观察；任务查询失败或短暂不一致不得被显示为执行成功
+
+#### Scenario: 观察有界且不污染页面生命周期
+
+- **GIVEN** 页面正在观察已确认的 Run，下一次查询只在上一次完成后安排
+- **WHEN** 路由切换、卸载、主体变化、页面进入后台或观察达到时限
+- **THEN** 不再排下一次查询，旧响应不能覆盖当前页面或改变当前主体的请求
+- **AND** 暂停观察不改变业务状态、不清除原回执；刷新不重置当前选择，不被另一条最新 Run 替换
+- **AND** Run 与 Task 两次读取跨越提交点时，RUNNING Run 与已完成 Task 的短暂快照差异仍能在页面恢复可见后继续核实

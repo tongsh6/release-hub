@@ -1,6 +1,6 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002 为 5/5；当前推进 C2-A 持久扫描、异步受理与进度观察，C2-B 再完成已领取任务接管与证据驱动恢复。实际已验收边界见 `s1-implementation.md`、`s2-implementation.md` 及 tasks.md。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002 为 5/5。C2-A 已实现并通过本地验证，正收口本次提交和固定 SHA Full-Link；C2-B 再完成已领取任务接管与证据驱动恢复。当前事实与历史验收分别见 tasks.md 和本轮记录。
 
 
 ## 0. 当前研发蓝图与授权（2026-11-21）
@@ -233,19 +233,19 @@ S2 核对补充：`ConflictDetectionAppService.checkMergeability` 会创建和�
 
 ## 8. API、页面与执行协议
 
-| 入口 | C1 当前行为 | 后续边界 |
+| 入口 | 当前 WINDOW 协议（C2-A） | 后续边界 |
 |---|---|---|
 | `POST /release-windows/{id}/run-plans` | 创建只读计划预览，零 Git 写；返回可查询 Run | 不把预览当可执行任务 |
-| `POST /release-windows/{id}/orchestrate` | 必填 Idempotency-Key；HTTP 200 与 `ApiResponse<String>` Run ID；请求线程驱动持久任务 | C2 改为 202 和同一执行器的后台驱动 |
+| `POST /release-windows/{id}/orchestrate` | 必填 Idempotency-Key；事务提交后 HTTP 202 与 `ApiResponse<String>` Run ID；后台唯一单任务执行器消费 | 只扫描 PENDING，RUNNING/UNKNOWN 接管归 C2-B |
 | `GET /runs/{id}`、paged、export | 后端统一 executionVersion/status；展示范围、证据和来源 | 时间戳及 HTTP 成功不表示业务完成 |
 | `GET /runs/{id}/tasks` | 只读真实任务顺序、状态和动作；INHERITED 展示原 Run/Item 来源 | 操作尝试复用既有 Git 账本，不新增同义 attempts 模型 |
-| `POST /runs/{id}/retry` | 必填 Idempotency-Key；`items` 为精确 RunItem UUID；仅 protocol 3 窗口编排的已确认失败项，成功前缀继承 | 未知结果、旧协议、版本更新及收尾不能经此入口重放 |
+| `POST /runs/{id}/retry` | 必填 Idempotency-Key；HTTP 202/Run ID；`items` 为精确 RunItem UUID，仅 protocol 3 已确认失败项，成功前缀继承 | 未知结果、旧协议、版本更新及收尾不能经此入口重放 |
 | 既有 Git operation reconcile | 外部只读核对并记录证据；不写 Git，不因 FOUND 自动解除 guard | C2 由实际 Task 消费证据，必要的聚合入口先核实职责 |
-| Run resume | C1 无此写入口 | C2 只允许证据充分的任务继续，无 force 绕过 |
+| Run resume | 当前无此写入口；重启仅由既有 scanner 消费未领取 PENDING | C2-B 只允许证据充分的任务接管或继续，无 force 绕过 |
 
 普通重试继续消费实际 Item 身份及原计划，不接受三元组拼接键、任意 taskIds 或客户端 operator。Run、Task 和操作账本通过已有身份关联；新增恢复入口不能建立平行的重试执行路径。
 
-C1 页面依据实际 Run 和 Task 事实展示，普通重试排除 UNKNOWN/NEEDS_REVIEW，历史记录只可查询。网络失败保留原请求 key，不能把超时当成未受理。C2 的 202/轮询在终态、路由离开或取消观察时停止，并补充已保存原请求的回执查询：即使当前窗口范围改变，也可取回原 receipt，同时继续拒绝不合法的新执行。
+C2-A 页面依据原 Run 和 Task 事实观察，普通重试排除 UNKNOWN/NEEDS_REVIEW，历史记录只读。保存模型是一个待确认意图与最近一个确认回执，复用现有 Run 列表承载历史。冻结、空 scope 或绑定变化后仍可用原 key/payload 找回；确认期间迟到成功必须复查同 key，不得新造意图。只有仍当前页面的新 key 首次 400/RUN_006 能清匹配的未确认记录；旧页拒绝、重发、409、5xx 或超时均保留。每次读完再排下一次，NEEDS_REVIEW 下有其他活动 Task 时继续，后台/离页/换主体及 120 秒有界暂停不改变业务状态，恢复可见时可继续核实跨 GET 快照差异。
 
 旧协议不补造任务或自动转写；版本更新与收尾在 S4 完成前不宣称获得同等恢复保障。
 关闭窗口与收尾是两个状态维度。S3-B2 的短事务保存业务 CLOSED 与持久收尾计划；收尾失败不能伪装为全部成功，也不能自动把窗口改回 PUBLISHED。后台调度、恢复与异步返回仍属于后续切片。
