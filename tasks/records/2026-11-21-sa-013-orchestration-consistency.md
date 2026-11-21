@@ -456,10 +456,52 @@ C2-B1 完成本片验收并标记 DONE。该 CI 仍是后端 API 与隔离 GitLa
 
 ## 15. S3-C2-B2：建分支成功证明与 APPLIED 结果投影恢复
 
-B1 收口后直接进入这一已授权子片，当前先固定契约与独立正反例，尚未实施。目标仅为 ENSURE_FEATURE/ENSURE_RELEASE 的 CREATE_BRANCH：统一正确的创建成功证明，并让后台在 HTTP 已确认成功、Task 结果未提交时补齐原 Task/Step/项目身份和 guard；补投影阶段零网络请求、不旋转历史 HTTP token。复用原事件 JSON、Journal、RunPort/JPA 与 executeNextTask，不新增恢复实体、API/UI 或另一条执行路径。
+B1 收口后直接进入这一已授权子片，先固定契约与独立正反例；初始真实 RED 与同一源码树本地 GREEN/静态门禁已完成，当前待分组推送与本片远端验收。目标仅为 ENSURE_FEATURE/ENSURE_RELEASE 的 CREATE_BRANCH：统一正确的创建成功证明，并让后台在 HTTP 已确认成功、Task 结果未提交时补齐原 Task/Step/项目身份和 guard；补投影阶段零网络请求、不旋转历史 HTTP token。复用原事件 JSON、Journal、RunPort/JPA 与 executeNextTask，不新增恢复实体、API/UI 或另一条执行路径。
 
-只读复审推翻了“APPLIED 摘要已足够”的首选假设：interceptor 从 commit/object 的 id/sha 依次写同一个 commitSha，合法但错误的 commit.id=B 可被 object.id=A 或 commit.sha=A 覆盖；当 A 为请求冻结 SHA 时，账本可能 APPLIED，而正常 adapter 仅验证 B 是合法 SHA，业务可错误提交 CREATED。反向例中正确 commit.id=A 被额外字段 B 覆盖，也会错误拒绝成功。上述是代码路径推导，必须先由真实 HTTP + Task 反例复现，不冒称已有 RED。
+只读复审推翻了“APPLIED 摘要已足够”的首选假设：interceptor 从 commit/object 的 id/sha 依次写同一个 commitSha，合法但错误的 commit.id=B 可被 object.id=A 或 commit.sha=A 覆盖；当 A 为请求冻结 SHA 时，账本可能 APPLIED，而正常 adapter 仅验证 B 是合法 SHA，业务可错误提交 CREATED。反向例中正确 commit.id=A 被额外字段 B 覆盖，也会错误拒绝成功。上述初始代码路径推导已由真实 HTTP + Task 反例复现，详见 15.1；没有把原实现或旧摘要当作正确性标准。
 
 独立标准依据 [GitLab 创建分支 API](https://docs.gitlab.com/api/branches/#create-repository-branch)：201 Created、匹配名称、合法且精确来自 commit.id 的 SHA；202、字段类型不符、只有 object.id、名称或冻结 SHA 不符均不构成创建成功证明。只收紧 CREATE_BRANCH 的创建确认，不改变 GET 或 Tag 契约。计划中的 plan.defaultBranch/operation.sourceRef 是命名引用，operation.target.ref 才是写前解析并固定的 SHA；补记时核对两层，不重新解析当前分支头。
 
 正反例还覆盖：完整事件/attempt/operation/guard 归属，缺证据不补造；双 worker、旧 owner 与恢复者分别先提交、UNKNOWN 先提交；结果事务故意回滚时 guard 同回滚；独立 JVM 在 APPLIED 后、Task/Step 前强杀，重启补原任务且恢复阶段 HTTP 计数不增加。事务沿 Run→Task→guard，Journal 校验加入现有事务而非 REQUIRES_NEW；外层必须真正经过 Spring 事务代理，不能依赖自调用注解。当前补投影 Step 使用本次处理起止时间，旧 Task 首次时间与 HTTP event 历史时间保留。MR、INTENT 发送权、SEND_STARTED/UNKNOWN 及其他动作继续排队。
+
+### 15.1 初始真实 RED（生产实现前）
+
+证据目录：`.ai/reports/validation/c2-b2/initial-red-jdk21/`。使用 JDK 21 和离线 Maven，两个独立阶段全 backend 源码 hash 前后一致；原始日志、命令、逐文件 hash 和新鲜 Surefire XML 已保留。运行器脚本退出 0 只表示成功采集预期 RED，下表是实际测试结果。
+
+| 范围 | 实际结果 | 失败定位 |
+|---|---|---|
+| 正常客户端完整类 | 55 项：52 PASS / 3 FAIL / 0 ERROR | HTTP 200/202/206 即使正文完整也被错误当作创建成功 |
+| 真实 HTTP → Task 业务链 | 9 项：9 FAIL / 0 ERROR | 错误 commit.id 可被 object.id 或 commit.sha 覆盖，任务错误 COMPLETED/CREATED、operation APPLIED、guard 释放；反向正确字段被干扰成 UNKNOWN；额外覆盖非 201、40/64 位大小写 SHA 与规范字段持久化缺口 |
+| PostgreSQL 原任务投影 | 18 项：15 PASS / 3 FAIL / 0 ERROR | 两类分支动作和整体回滚正例都因 executeNextTask=false 无法恢复；14 个错误/缺失证明与资格反例及 UNKNOWN owner 先提交反例均保持拒绝 |
+| 独立 JVM 中断重启 | 1 项：1 FAIL / 0 ERROR | 首进程已在 CREATE_BRANCH/APPLIED 后、completeTask 前被强制结束；重启默认 worker 运行后仍停在 ENSURE_FEATURE=RUNNING、后三项 PENDING，未形成投影检查点 |
+
+因此，错误成功已从代码推导升级为真实业务反例，而恢复缺口有原执行器和进程边界证据。成功证明只认可类型严格的 name/commit.id；合法 SHA 先校验 40/64 位十六进制，再以忽略大小写的值比较身份，branch/sourceRef 仍精确匹配。该 RED 检查点之后实施同片 GREEN；后续实际验证见 15.2。
+
+### 15.2 GREEN、独立复审与同一源码树本地门禁
+
+正常 CREATE_BRANCH 客户端、HTTP 账本和数据库恢复复用 `GitLabGitBranchAdapter.createdBranchSha`；事件仅记录整数 httpStatus、文本 name 与 commit.id 的规范来源。冻结 SHA 必须匹配；缺少完整证明的 2xx 响应保持 UNKNOWN，其他字段不能覆盖规范 commit.id。明确拒绝沿用既有 REJECTED 处理。GET/Tag 和其他动作契约未改变。
+
+`RunAppService.executeNextTask` 先消费 `RunPort.projectNextAppliedBranchTask`，补记成功即返回；没有合格投影才继续原 claim 路径。原 Run→Task→guard 结果事务验证完整过期领取、实际顺序、无当前 Step、仓内前序、唯一 operation/session/generation、同 attempt 的 sequence 2 APPLIED 与完整计划/项目/响应证明；Journal 校验显式 MANDATORY。沿原 completeTask 原子提交 Step、Item、绑定、Task/Run 和 guard。原 token、期限、首次 Task 时间、operation/events 不变；Step 使用当前 worker 时间。未新增实体、API/UI、兼容路径或恢复发送入口。
+
+扫描 SQL 与上一基线逐字一致：当前固定四动作中，合法 RUNNING 分支 Task 必有 PENDING 后继，既有扫描足以发现。未找到需要新增候选分支的生产反例，因此不增加猜测性扫描逻辑；未来改变动作图时须重新核对这项依赖。独立源码复审覆盖物理事务、自调用、flush/clear、原 owner 两个胜出顺序及未知结果；唯一发现的空 baseUrl 可规范化为空问题已在本次受验源码中拒绝 null/blank，未改查当前 Settings，也未收紧原 guard 消费者。
+
+| 门禁 | 同一 backend 源码树结果 | 证据目录 |
+|---|---|---|
+| 针对性组合 | 189/189：应用 25、HTTP 42、PG 54、独立 JVM 3、正常客户端 55、仓库范围 3、worker 7；0 FAIL/ERROR/SKIP | `.ai/reports/validation/c2-b2/initial-green-jdk21/` |
+| API | 48/48：RunPagedApiTest、RunPlanApiIT、WindowRunApiIT | `.ai/reports/validation/c2-b2/final-gates/api/` |
+| 普通后端 | 700 项：695 PASS、5 既有 SKIP；0 FAIL/ERROR | `.ai/reports/validation/c2-b2/final-gates/ordinary/` |
+| 静态 | 六模块新鲜 SpotBugs XML 均 0；typecheck PASS、lint 0 errors/8 既有 fixture warnings，TopN 逐项处置保留 | `.ai/reports/static-scan/20261121-224714/summary.md` |
+
+上述执行全程固定 JDK 21，阶段前后逐文件 hash 一致，API/普通/静态结果还与组合 GREEN 的同一 backend hash 对齐；重叠测试不累计为独立总数。前端没有代码修改，本片只复核 lint/typecheck，不将 C2-A 的 UI 214 项或完整浏览器旅程移作本片验收。
+
+新增 PG 23 cases 包括两类分支投影、错误/缺失/别名/字符串状态/项目/attempt/guard 等拒绝条件、整体回滚、MANDATORY 边界、两个并发发起投影分别返回 true/false、旧 owner 成功或 UNKNOWN 先提交，以及恢复先提交后的迟到结果拒绝。并发用例验证最终唯一性和原事实保持，不声称新增了数据库阻塞等待 trace。
+
+独立 JVM 原始结果：`PROCESS_APPLIED_BRANCH_RESUME run=bec9cda6-3f2c-4f7c-b40a-b828d939f979 killedPid=13969 exit=137 resumedPid=13978 projectionHttp=0 branchPost=1 mrPost=1 mergePut=1 preservedToken=true preservedEvents=3`。第二进程在投影事务返回后、下一 Task 前暂停，直接核对 HTTP 计数未增加、原 operation/events 整行相同、token/expiry/首次时间保持和当前 Step 时间；释放暂停后同一 Run 完成。PENDING 与 CLAIMED_UNWRITTEN 两类既有进程重启也重新通过，各保持前三项成功前缀、MR POST 1、merge PUT 1。
+
+本地门禁完成，当前 C2-B2 仍为 HEAD，等待阶段推送和本片固定 SHA Full-Link。缺少规范证明的旧 APPLIED、MR、INTENT/SEND/UNKNOWN、版本/收尾恢复不在本片交付范围；默认 60 分钟候选期限、无心跳及完整浏览器旅程边界不变。
+
+### 15.3 分组提交与阶段交付
+
+后端已按可评审职责分为两个本地提交：`fe4c0061715d2e9d679a294659ff750ac9b8671a` 修正正常建分支与账本共用的规范成功证明，含客户端及真实 HTTP 反例；`1386ccc358c81b661cfd986bf40e8e10472efde0` 沿原 Task/结果事务补记已确认分支结果，含应用、PG 与独立进程验收。提交后全部 backend 文件 hash 与 15.2 的最终测试、扫描源码仍完全一致；两个测试文件沿用原基线无文件末尾换行的格式，未在门禁后改动源码。
+
+设计、需求、台账、验收矩阵与此记录作为第三组提交。远端交付目标为 `feature/orchestration-consistency`；推送后仅以本片实际提交 SHA 对应的 Full-Link 结果作为远端验收，当前尚未将其记为完成。

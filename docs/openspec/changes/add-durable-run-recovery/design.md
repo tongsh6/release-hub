@@ -1,6 +1,6 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。当前唯一 HEAD 为 C2-B2：规范化建分支成功证明与 APPLIED 结果投影恢复，契约已定义、实现未开始。当前事实与历史验收分别见 tasks.md 和本轮记录。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。当前唯一 HEAD 为 C2-B2：规范化建分支成功证明与 APPLIED 结果投影恢复，实现与本地门禁通过，待本片远端 CI。当前事实与历史验收分别见 tasks.md 和本轮记录。
 
 
 ## 0. 当前研发蓝图与授权（2026-11-21）
@@ -105,15 +105,15 @@ PostgreSQL CURRENT_TIMESTAMP 固定为事务开始时刻，不能在长锁等待
 
 回滚先停止派发，保留任务、期限和证据；不恢复同步旧循环、不将 RUNNING 改回 PENDING。已有 INTENT 的发送权转移、APPLIED 只补投影、SEND_STARTED/UNKNOWN 精确核对与 guard 确认属于 C2-B 后续子片，不以本片完成宣称完整恢复。
 
-##### C2-B2：规范化建分支证明与投影恢复（当前子片 / HEAD，契约已定义、实现未开始）
+##### C2-B2：规范化建分支证明与投影恢复（当前子片 / HEAD，实现与本地门禁通过，待本片远端 CI）
 
-C2-B1 固定 `5441df6` 的远端验收已完成，C2-B2 为当前唯一 HEAD，契约已定义、实现未开始。正常创建成功证明的规范化与 CREATE_BRANCH/APPLIED 投影恢复在同一切片交付。用户价值是 CREATE_BRANCH 的 HTTP 结果已持久化、原 ENSURE_FEATURE/ENSURE_RELEASE 结果尚未提交时，后台只补原 Task 投影。恢复阶段不访问网络，不新增实体、API、UI、发送入口或通用恢复平台；MR、INTENT 发送权、SEND_STARTED/UNKNOWN 与其他执行类型仍分别排队。
+C2-B1 固定 `5441df6` 的远端验收已完成，C2-B2 为当前唯一 HEAD，实现与本地门禁通过，待本片远端 CI。正常创建成功证明的规范化与 CREATE_BRANCH/APPLIED 投影恢复在同一切片交付。用户价值是 CREATE_BRANCH 的 HTTP 结果已持久化、原 ENSURE_FEATURE/ENSURE_RELEASE 结果尚未提交时，后台只补原 Task 投影。恢复阶段不访问网络，不新增实体、API、UI、发送入口或通用恢复平台；MR、INTENT 发送权、SEND_STARTED/UNKNOWN 与其他执行类型仍分别排队。
 
 APPLIED 不是业务完整证明。[GitLab 创建分支契约](https://docs.gitlab.com/api/branches/#create-repository-branch)规定成功响应为 201 Created，正文包含分支 name 与 commit.id，ref 可为分支名或提交 SHA。本片仅接受 201 加完整匹配的 name/commit.id；202 Accepted 等其他 2xx 即便正文看似成功也属于未确认。正常创建与既有 HTTP event 的 evidence_json 证明必须共用该创建成功判定，规范化只允许确切 commit.id，commit.sha、object.id/object.sha 或其他字段均不得替代或覆盖；不改变 GET 分支、Tag 或其他动作契约。
 
-现 createBranch 检查 2xx、name 和 commit.id 格式，但未独立核对写前冻结 SHA；拦截器循环又会覆盖 commitSha。首要 RED 是 HTTP 201 的 name 正确、commit.id 为错误但合法的 B，而 object.id 或 commit.sha 为冻结 A：现路径可能错误 APPLIED/CREATED 并确认 guard。201 只有 object.id、202 即便正文完整仍分别保留为负例。无完整证明的旧摘要不推断成功、不补造字段，也不以额外 GET 或通用 FOUND 绕过；现拦截器判为 UNKNOWN 时会关闭响应并抛 IOException，不能假设原正文仍返回正常消费者。
+初始 RED 基线的 createBranch 只检查 2xx、name 和 commit.id 格式，拦截器循环又覆盖 commitSha，真实 HTTP 已复现错误 commit.id=B 被 object.id 或 commit.sha=冻结 A 掩盖后错误 APPLIED/CREATED 并确认 guard。现正常客户端、拦截器和恢复投影共用 createdBranchSha，201 的规范字段和冻结 SHA 匹配才确认；完整正反例已通过本地组合验证。201 只有 object.id、非 201 正文完整仍保持拒绝。无完整证明的旧摘要不推断成功、不补造字段，也不以额外 GET 或通用 FOUND 绕过；现拦截器判为 UNKNOWN 时会关闭响应并抛 IOException，不能假设原正文仍返回正常消费者。
 
-计划与 HTTP 意图分别承责：plan.defaultBranch 保留计划的原 ref 表达，现两个 ENSURE 分支动作都将它传给 createBranch；拦截器先保存 target.sourceRef，再解析并把 target.ref 固定为实际提交 SHA。投影须同时验证 sourceRef 等于已存 plan.defaultBranch、target.branch 等于对应计划分支、target.ref 是合法 SHA 且等于规范化响应 commit.id。不得把命名 ref（如 main）直接当作 SHA 比较，不重新解析当前 ref。远端身份取原 operation 的 numeric project，与同 Run/仓库已有持久 git.projectId 一致；缺少 Item 身份时只从该已持久 operation 补入，不能因当前 namespace 改向而更换项目。
+计划与 HTTP 意图分别承责：plan.defaultBranch 保留计划的原 ref 表达，现两个 ENSURE 分支动作都将它传给 createBranch；拦截器先保存 target.sourceRef，再解析并把 target.ref 固定为实际提交 SHA。投影须同时验证 sourceRef 等于已存 plan.defaultBranch、target.branch 等于对应计划分支、target.ref 是合法 SHA，双方都通过 40/64 位十六进制校验后，以忽略大小写的值比较规范化响应 commit.id；branch/sourceRef 保持精确匹配。不得把命名 ref（如 main）直接当作 SHA 比较，不重新解析当前 ref。远端身份取原 operation 的 numeric project，与同 Run/仓库已有持久 git.projectId 一致；缺少 Item 身份时只从该已持久 operation 补入，不能因当前 namespace 改向而更换项目。
 
 | 既有职责 | 本片的实际消费者与边界 |
 |---|---|
@@ -222,7 +222,7 @@ flowchart TD
 
 ## 4. 数据模型与身份
 
-当前 C1/C2 直接复用 S1/S2 的计划、操作账本和 V21 任务表。下表记录实际承载关系，C2-B1 已实现、验收并推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5；C2-B2 仍仅完成契约定义，不把未实现能力写成现有事实。
+当前 C1/C2 直接复用 S1/S2 的计划、操作账本和 V21 任务表。下表记录实际承载关系，C2-B1 已实现、验收并推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5；C2-B2 已完成实现、189/189 组合、API 48/48、普通 695 PASS/5 SKIP 与静态门禁，待分组推送及本片固定 SHA CI，不以本地通过代替远端验收。
 
 | 结构 / 责任 | 当前实际约束 |
 |---|---|

@@ -6,7 +6,7 @@
 
 系统 SHALL 从窗口绑定关系生成仓库并集和 `(window, iteration, repository)` 计划，完整校验后，在同一受理事务保存协议 3 的 Run、不可变快照与每个 Item 的固定四动作任务，再执行 GitLab MR-first。计划包含真实 feature 分支模式、source/target、ref、提供方、仓库映射和稳定顺序；执行及重试不得重新解释这些目标。Publish/Attach 不因此获得隐式 Git 写入权限。
 
-C1、C2-A 已交付持久四动作、后台扫描与 202。C2-B1 无 operation/Step 的过期 RUNNING 接管已验收并推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。当前 HEAD 为 C2-B2，规范化建分支证明与 APPLIED 投影恢复契约已定义、实现未开始。其他恢复仍待独立验收，cleanup 未迁入四动作协议。
+C1、C2-A 已交付持久四动作、后台扫描与 202。C2-B1 无 operation/Step 的过期 RUNNING 接管已验收并推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。当前 HEAD 为 C2-B2，规范化建分支证明与 APPLIED 投影恢复已实现并通过本地门禁，待分组推送和本片固定 SHA CI。其他恢复仍待独立验收，cleanup 未迁入四动作协议。
 
 #### Scenario: 相同仓库属于多个迭代
 
@@ -400,14 +400,14 @@ C1、C2-A 已交付持久四动作、后台扫描与 202。C2-B1 无 operation/S
 
 ### Requirement: 已确认建分支结果的受控投影恢复
 
-C2-B2 为当前子片与唯一 HEAD，契约已定义、实现未开始；依赖 C2-B1 的固定 SHA 远端验收已满足。规范化成功证明与 APPLIED 建分支投影恢复在同一切片交付。
+C2-B2 为当前子片与唯一 HEAD，实现与本地门禁已通过，待本片固定 SHA 远端验收；依赖 C2-B1 的固定 SHA 远端验收已满足。规范化成功证明与 APPLIED 建分支投影恢复在同一切片交付。
 
 系统 SHALL 沿现有任务与账本，只对当前 WINDOW 协议的 ENSURE_FEATURE/ENSURE_RELEASE 补原 Task 投影：Task 为完整到期 RUNNING、实际顺序为正、无当前 Step，唯一 CREATE_BRANCH/APPLIED operation 具有 HTTP 201 及匹配的规范化 name/commit.id 证明。正常创建与事件共用此判定。系统 SHALL 保留原 operation/token/期限，在 Run→Task→guard 同一结果事务提交 Step、Item、绑定、Task 终态、Run 进度并确认 guard；恢复阶段零网络。不新增实体/API/UI/通用平台，不改变 GET 分支或 Tag 契约。
 
 #### Scenario: 建分支结果已确认但投影未提交
 
 - **GIVEN** 原 CREATE_BRANCH 的 HTTP 201 与完整匹配响应证明已提交 APPLIED，进程在 Task/Step 结果事务前被强杀
-- **WHEN** 本片实现后，默认 worker 在到期后处理原任务
+- **WHEN** 默认 worker 在到期后处理原任务
 - **THEN** 仅补该 Task 的业务投影并原子确认 guard，原 Task/Item/operation 身份、token、期限、顺序与成功前缀保持
 - **AND** POST 总数仍为 1，恢复阶段 GET/POST/PUT 等远端请求均为 0，单次 worker 只完成一个任务
 
@@ -415,7 +415,7 @@ C2-B2 为当前子片与唯一 HEAD，契约已定义、实现未开始；依赖
 
 - **GIVEN** plan.defaultBranch 与 operation.target.sourceRef 保存原 ref 表达，operation.target.ref 保存写前已解析的提交 SHA
 - **WHEN** 判断分支证明是否足以补投影
-- **THEN** sourceRef 必须等于原计划 ref，target.branch 必须等于对应计划分支，target.ref 必须为合法 SHA 且等于规范化响应 commit.id
+- **THEN** sourceRef 必须精确等于原计划 ref，target.branch 必须精确等于对应计划分支；target.ref 和规范化响应 commit.id 均须为 40/64 位合法十六进制 SHA，随后以忽略大小写的值比较身份
 - **AND** 不把命名 ref 直接当作 SHA，不查询当前 ref；numeric project 取原 operation 并与同 Run/仓库已持久 git.projectId 一致，namespace 改向不能替换该身份
 
 #### Scenario: 旁支字段不能掩盖错误 commit.id
@@ -427,7 +427,7 @@ C2-B2 为当前子片与唯一 HEAD，契约已定义、实现未开始；依赖
 
 #### Scenario: HTTP 摘要不冒充业务完整证明
 
-- **GIVEN** HTTP 201 摘要只有 object.id/通用 commitSha，或 name/commit.id 类型、来源、分支、SHA、项目或 attempt 不匹配
+- **GIVEN** HTTP 201 摘要只有 object.id/通用 commitSha，或 httpStatus 不是整数，或 name/commit.id 类型、来源、分支、SHA、项目或 attempt 不匹配
 - **WHEN** operation 状态为 APPLIED，或者通用只读观察为 FOUND
 - **THEN** 不补成功 Step、不清 guard、不改变 token/期限/顺序，不补造旧摘要的证明
 - **AND** MR 的 APPLIED/FOUND、INTENT、SEND_STARTED、UNKNOWN/NEEDS_REVIEW、已有 Step 或领取事实不完整均不获得本片恢复授权

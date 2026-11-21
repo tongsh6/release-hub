@@ -10,13 +10,35 @@
 
 ## 1. 当前阶段目标
 
-2026-11-21：用户已授权持续研发、必要重构和分阶段推送；生命周期与工作模式的正式值读取项目画像，AIEF 校准依据见 [接入记录](../tasks/records/2026-11-21-aief-project-operating-context.md)。main/develop 同指 `d4534cc`，研发位于 `feature/orchestration-consistency`。S3-A/B1、S3-B2、S3-C1 已分阶段推送；AIEF 对齐提交 `83998b2`，CI profile/Python 修复为 `08432e9`、`a7181fa`。C1 后端 `44e742c`、前端 `3766686`、E2E/脚本 `4c6b3e9`、文档 `e5094ba` 均已核对远端；固定 `e5094ba` 的 [Full-Link 44899945002](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 5/5 通过。**S3-C2-A 已完成并推送**：后端 `06aee3b`、前端 `b37397f`、E2E/脚本 `e0c6356`、文档 `1761572`；固定完整 SHA `1761572bca6c149aecba78d26a7b25cb98b5251a` 的 [Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754) 为 5/5。**S3-C2-B1 已 DONE 并推送**：后端 `3f810c8`、文档 `5441df6`；固定完整 SHA `5441df6bdc971953dee390c9470d4786fe0eab44` 的 [Full-Link 44911634004](https://github.com/tongsh6/release-hub/actions/runs/44911634004) 为 5/5，feature 与远端一致，main/develop 仍为 `d4534cc`。当前唯一队首为 **S3-C2-B2：建分支成功证明与 APPLIED 结果投影恢复**，契约已定义、查重完成，**实现未开始**；MR、INTENT/SEND/UNKNOWN 的恢复继续排队。
+2026-11-21：用户已授权持续研发、必要重构和分阶段推送；生命周期与工作模式的正式值读取项目画像，AIEF 校准依据见 [接入记录](../tasks/records/2026-11-21-aief-project-operating-context.md)。main/develop 同指 `d4534cc`，研发位于 `feature/orchestration-consistency`。S3-A/B1、S3-B2、S3-C1 已分阶段推送；AIEF 对齐提交 `83998b2`，CI profile/Python 修复为 `08432e9`、`a7181fa`。C1 后端 `44e742c`、前端 `3766686`、E2E/脚本 `4c6b3e9`、文档 `e5094ba` 均已核对远端；固定 `e5094ba` 的 [Full-Link 44899945002](https://github.com/tongsh6/release-hub/actions/runs/44899945002) 5/5 通过。**S3-C2-A 已完成并推送**：后端 `06aee3b`、前端 `b37397f`、E2E/脚本 `e0c6356`、文档 `1761572`；固定完整 SHA `1761572bca6c149aecba78d26a7b25cb98b5251a` 的 [Full-Link 44905843754](https://github.com/tongsh6/release-hub/actions/runs/44905843754) 为 5/5。**S3-C2-B1 已 DONE 并推送**：后端 `3f810c8`、文档 `5441df6`；固定完整 SHA `5441df6bdc971953dee390c9470d4786fe0eab44` 的 [Full-Link 44911634004](https://github.com/tongsh6/release-hub/actions/runs/44911634004) 为 5/5，feature 与远端一致，main/develop 仍为 `d4534cc`。当前唯一队首为 **S3-C2-B2：建分支成功证明与 APPLIED 结果投影恢复**，**实现与最终本地门禁已完成**；定向189/API48/普通700及静态224714同一稳定树通过，待分组提交/推送与本片固定SHA CI，尚未DONE，MR、INTENT/SEND/UNKNOWN 的恢复继续排队。
 
 C2-A 已交付基线由有界后台 worker 消费唯一持久四动作，Orchestrate/retry 返回 HTTP 202/Run ID；相同 key 只返回原回执。C2-A 当时只扫描当前 WINDOW 协议的 PENDING，不接管 RUNNING/UNKNOWN。同 Run 双仓真实 HTTP 验证已通过：R1 响应在途时 R2 可进展；默认定时器与独立 JVM 重启只继续原 PENDING TRY_MERGE，MR POST=1、MERGE PUT=1。普通后端 677 项（672 PASS/5 既有 SKIP），API/数据库 67/67、HTTP 29/29、进程 1/1，后补 worker 停机断言后 7/7；重叠 suite 不累计。前端 39 文件 214/214、全部门禁与静态复扫通过；最后 E2E 消费者契约补验 16/16 已包含在 `e0c6356`。C2-A 固定 SHA Full-Link 5/5 已收口。B1 已交付的限定接管范围、本地与固定 SHA CI 证据见下文；已有写意图恢复和真实 UI 黄金旅程仍未交付。
 
 C2-B1 已交付范围仅接管期限已到、领取事实完整，且该 task 没有任何 git_operation 或自身 Step 的 RUNNING；Run→Task 锁内重核并按原 token CAS，保留首次领取时间及已有实际顺序，缺失顺序不补造。默认 lease 60 分钟、无心跳，NULL 期限不回填；任何已有 INTENT/SEND/APPLIED/UNKNOWN 均排除在自动接管外。静态整理前 API 48/48、普通后端 680 项（675 PASS/5 既有 SKIP）通过；最终 SQL 与构造器整理后组合再次 76/76，各轮源码 hash 前后一致，不混称同一次运行。PENDING/CLAIMED_UNWRITTEN 两个独立 JVM 硬杀均退出 137，原 Item/Task/成功 Step 保持，MR POST=1、MERGE PUT=1。最终静态 `20261121-214959` 通过，8 条既有 fixture warnings 已逐项记录保留理由。没有 UI/API 改动，前端 214 仅沿用 C2-A 基线；后端 `3f810c8`、文档 `5441df6` 已推送，本片固定 SHA Full-Link 44911634004 为 5/5，B1 交付闭合。
 
-当前 C2-B2 的契约与查重已完成，实现未开始。仅覆盖 ENSURE_FEATURE/ENSURE_RELEASE 的 CREATE_BRANCH：先将成功证明统一为 HTTP 201、匹配分支 name 和确切 commit.id，纠正错误 commit.id 被 object.id/commit.sha 覆盖后误判成功的问题；证明沿原 event 留存，在同一 Run→Task→guard 事务内仅补原 Task/Step/项目身份投影，无网络、不转移历史 token。MR、INTENT/SEND/UNKNOWN 留给后续切片。
+当前C2-B2实现与最终本地门禁已完成。定向189/189、API48/48、普通后端700项（695 PASS/5既有SKIP）与静态`20261121-224714`全部通过；三个测试阶段及静态扫描的backend hash是同一稳定树，无静态修复后的源码偏差。待分组提交/推送及本片固定SHA CI，仍为唯一HEAD，尚未DONE。范围仅为 ENSURE_FEATURE/ENSURE_RELEASE 的 CREATE_BRANCH：正常成功证明统一为 HTTP 201、文本类型且匹配的 name、确切 commit.id；规范事件必须与原 operation 属于同一 attempt。投影恢复保留原 Task 标识、token、期限和 HTTP 历史，新 Step 使用当前 worker 的 Clock；只在 Run→Task→guard 结果事务内补原投影，不 GET/POST，不兼容缺少完整证明的旧摘要。MR、INTENT/SEND/UNKNOWN 继续排队。
+
+实现前初始 RED 证据：`.ai/reports/validation/c2-b2/initial-red-jdk21/result.json` 与本轮任务记录15.1。使用JDK21，adapter/business两阶段均backend sourceStable=true，全部0 ERROR；采集脚本退出0不代表测试通过，重叠suite不累计。
+
+| 实现前初始 RED 范围 | 实际结果 | 当时复现的缺口 |
+|---|---|---|
+| 正常客户端完整类 | 55项：52 PASS／3 FAIL／0 ERROR | HTTP200/202/206即使正文完整仍被误当创建成功 |
+| 真实HTTP→Task | 9项：9 FAIL／0 ERROR | 错误commit.id被object.id/commit.sha覆盖后任务COMPLETED/CREATED、operation APPLIED且guard释放；反向正确字段被干扰成UNKNOWN，规范字段持久化也有缺口 |
+| PostgreSQL原任务投影 | 18项：15 PASS／3 FAIL／0 ERROR | 两个ENSURE动作与事务回滚正例无法投影；错误/缺失证明、资格及UNKNOWN owner先提交反例保持拒绝 |
+| 独立JVM中断重启 | 1项：1 FAIL／0 ERROR | APPLIED后、completeTask前硬杀；重启正常运行但ENSURE_FEATURE持续RUNNING、后三项PENDING |
+
+最终本地实现已验证：合法40/64位SHA按值忽略大小写比较冻结target.ref，branch/sourceRef精确匹配；规范证明与原operation同attempt。补投影不重读当前ref或改向namespace，不转移token、不续租、不改HTTP历史，新Step仅记录当前Clock的处理起止。扫描复用既有四动作中建分支任务必有PENDING后继的条件，未扩候选SQL，不扩任意末尾任务或MR恢复。
+
+| C2-B2 最终本地门禁 | 结果 | 证据与边界 |
+|---|---|---|
+| 定向联合 | 189/189，0 FAIL/ERROR/SKIP | `.ai/reports/validation/c2-b2/initial-green-jdk21/result.json`；7类 |
+| API | 48/48，0 FAIL/ERROR/SKIP | `.ai/reports/validation/c2-b2/final-gates/result.json` |
+| 普通后端 | 700项＝695 PASS＋5既有SKIP，0 FAIL/ERROR | 同上；重叠suite不累计 |
+| 稳定源码 | 定向前后、API前后、普通前后、静态后共7份hash映射均为同一495文件集合 | `initial-green-jdk21/source-*.json`与`final-gates/`各阶段快照，无静态整理后源码偏差 |
+| 静态复扫 | 六份新鲜SpotBugs XML均0，typecheck PASS，lint 0 errors/8既有fixture warnings | `.ai/reports/static-scan/20261121-224714/summary.md`逐项记录保留理由、复扫证据及风险 |
+| 独立JVM APPLIED_BRANCH | run `bec9cda6-3f2c-4f7c-b40a-b828d939f979`，killedPid13969/exit137、resumedPid13978；projectionHttp0，branchPost1/mrPost1/mergePut1，preservedToken=true、preservedEvents=3 | `initial-green-jdk21/maven.log`的PROCESS_APPLIED_BRANCH_RESUME；零HTTP限定纯DB投影阶段，后继由原执行器推进；另两类重启场景本轮也PASS |
+
+本片本地验收完成，提交/推送及固定SHA CI待验，不借用B1的5/5。前端无变更，214项仅为C2-A沿用基线，本轮实际重跑lint/typecheck；真实UI黄金旅程及Slice4/5既有覆盖边界保留。
 
 ### 2026-10-08 历史 S2 验收记录
 
@@ -276,7 +298,7 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 
 | 事项 | 当前状态 | 下一步 | 验收标准 |
 |---|---|---|---|
-| S3-C2-B2 建分支成功证明与 APPLIED 结果投影恢复 | 当前唯一 HEAD；契约已定义、查重完成，实现未开始 | 先纠正 CREATE_BRANCH 成功证明，再验证原 APPLIED 结果的无网络投影恢复 | 仅 ENSURE_FEATURE/ENSURE_RELEASE；201+name+确切commit.id，原event留证明；同 Run→Task→guard 事务仅补原Task/Step/项目身份，不转历史token |
+| S3-C2-B2 建分支成功证明与 APPLIED 结果投影恢复 | 当前唯一HEAD；最终定向189/API48/普通700及静态224714通过，同一稳定backend树 | 分组提交/推送并核对本片固定SHA Full-Link；整体交付尚未DONE | 仅两ENSURE的CREATE_BRANCH；严格201/name/commit.id与同attempt事件，纯DB补原投影，保留token/期限/HTTP历史，新Step用当前Clock |
 | 前端用户旅程自动化验证 | 2026-05-24 的 E2E 49/0/0 为历史；C2-A 组件 214 PASS 为沿用基线，B1 无 UI/API 变更；后端 API/GitLab fixture 均不等于页面旅程 | 按 S5 受控范围执行真实 GitLab/UI 全旅程；C2-A Playwright 仅迁移消费者和发现 23 项 | 页面创建/变更业务数据，API/数据库/GitLab 只作后置复核；stub 不替代真实写入证据 |
 
 ---
@@ -299,7 +321,7 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |---|---|---|---|
-| HEAD | SA-013 S3-C2-B2 建分支成功证明与 APPLIED 结果投影恢复 | B1 已 DONE；本片契约已定义、查重完成，实现未开始，需先封闭错误 commit.id 被 object.id/commit.sha 覆盖的假成功 | ENSURE_FEATURE/ENSURE_RELEASE 的 CREATE_BRANCH 只接受201+name+确切commit.id；沿原event，同Run→Task→guard事务仅补原Task/Step/项目身份，无网络、不转历史token |
+| HEAD | SA-013 S3-C2-B2 建分支成功证明与 APPLIED 结果投影恢复 | 真实RED→GREEN、最终本地门禁及独立只读review通过，无阻断；定向189/API48/普通700与static同一树 | 分组提交/推送及固定SHA CI后才DONE；不GET/POST、不转原token、不兼容旧摘要，不扩MR/INTENT/SEND/UNKNOWN范围 |
 | 后续 | SA-013 S3-C2-B 的 MR、INTENT/SEND/UNKNOWN 证据驱动恢复 | 不在当前建分支 APPLIED 投影切片内；历史 HTTP 事实与当前所有权需分别承责 | 租约过期不授权重发，验证精确证据、迟到响应与旧 worker；不任意 FOUND 释放 guard |
 | 后续 | SA-002 BranchCreationMode 执行计划评审门禁 | 原队列保留，最小 dry-run 已完成 | 评审是否进入执行计划切片；未批准前不实现执行 API、数据库写入、迁移表或 GitLab 操作 |
 
@@ -309,10 +331,11 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 
 | 证据 | 路径 | 说明 |
 |---|---|---|
-| 当前研发交付 | `tasks/records/2026-11-21-sa-013-orchestration-consistency.md` | C1 `e5094ba` / Full-Link `44899945002` 为历史 5/5；第 13 节记录 C2-A 本地 RED/GREEN、214 项前端、消费者补验 16/16、真实进程继续和固定 `1761572` / Full-Link `44905843754` 5/5；第 14 节记录 C2-B1 限定接管、各轮本地门禁、`3f810c8`/`5441df6` 交付与固定 SHA Full-Link `44911634004` 5/5；当前队首为契约已定、尚未实现的 C2-B2 |
-| 当前静态扫描 | `.ai/reports/static-scan/20261121-214959/summary.md` | 6 份新鲜 SpotBugs XML 均 0、typecheck PASS、lint 0 errors/8 既有 fixture warnings 逐项保留；首扫 `20261121-213959` raw 实际 4 项，遗漏 CT 与环境误分类已追加纠正，SQL 已修、构造器 EI/CT 精确说明 |
+| 当前研发交付 | `tasks/records/2026-11-21-sa-013-orchestration-consistency.md` | C1 `e5094ba` / Full-Link `44899945002` 为历史 5/5；第 13 节记录 C2-A 本地 RED/GREEN、214 项前端、消费者补验 16/16、真实进程继续和固定 `1761572` / Full-Link `44905843754` 5/5；第 14 节记录 C2-B1 限定接管、各轮本地门禁、`3f810c8`/`5441df6` 交付与固定 SHA Full-Link `44911634004` 5/5；第15节记录C2-B2真实RED、最终本地189/API48/普通700、APPLIED_BRANCH硬杀与静态证据；当前唯一队首本地验收完成，提交/推送/固定SHA CI待收口 |
+| C2-B2 当前静态扫描 | `.ai/reports/static-scan/20261121-224714/summary.md` | 六份新鲜SpotBugs XML均0、typecheck PASS、lint 0 errors/8既有fixture warnings逐项保留；与定向/API/普通回归同一backend树，无前端变更或规则关闭 |
+| C2-B1 已交付静态基线 | `.ai/reports/static-scan/20261121-214959/summary.md` | 6 份新鲜 SpotBugs XML 均 0、typecheck PASS、lint 0 errors/8 既有 fixture warnings 逐项保留；首扫 `20261121-213959` raw 实际 4 项，遗漏 CT 与环境误分类已追加纠正，SQL 已修、构造器 EI/CT 精确说明；仅保留B1历史，C2-B2另由本片224714独立验证 |
 | C2-A 历史静态扫描 | `.ai/reports/static-scan/20261121-203554/summary.md` | RunTaskWorker 构造器级精确说明；SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings，EOF 与 TopN 已收口 |
-| 场景矩阵 | `docs/reports/scenario-acceptance-matrix.md` | C1/C2-A/C2-B1 已交付证据与 C2-B2 当前契约边界；建分支 APPLIED 投影恢复尚未实现，其他已有写意图恢复和完整 UI 仍未完成，不跨阶段借用 CI |
+| 场景矩阵 | `docs/reports/scenario-acceptance-matrix.md` | C1/C2-A/C2-B1已交付证据与C2-B2最终本地验收；C2-B2待本片固定SHA CI，MR/INTENT/SEND/UNKNOWN恢复及完整UI仍未完成，不跨阶段借用CI |
 | 发布候选收口报告 | `docs/reports/release-candidate-2026-05-23.md` | 2026-05-24 当时分支已通过受控候选验证，交付证据包已汇总全量验收、前端 E2E、关键组件、SA-002 处置 case 页面验收和静态扫描；仍为 dogfood/staging 候选 |
 | 发布候选评审页 | `frontend/src/views/release-governance/ReleaseCandidateReview.vue` + `GET /api/v1/release-governance/candidate-review` + `POST /api/v1/release-governance/candidate-review/signoffs` | 聚合候选结论、验收证据、风险边界、检查清单和人工签核；签核不触发发布、清理、GitLab 或数据状态变更 |
 | 数据质量复核队列 | `frontend/src/views/data-quality/DataQualityReviewQueue.vue` + `POST /api/v1/data-quality/cleanup-review` | 导入 dry-run JSONL 后可按资源、风险、状态和资产范围筛选；页面展示数据源口径、命名空间、复核批次、资产范围、保留策略、处置等级、允许动作、回滚边界和审计记录；所有结果仍不允许直接执行 |
@@ -334,7 +357,8 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 | 启动脚本 | `backend/scripts/run.sh` | `mvn spring-boot:run -pl releasehub-bootstrap` |
 | 本地容器 | `releasehub-postgres`(5433) + `releasehub-gitlab`(9080) | 模式 A 常驻；端口策略见 memory `feedback_mode_a_b_port_isolation.md` |
 | Flyway 最新迁移（已随 C2-B1 交付） | `V40__add_task_claim_expiry.sql` | 可空 claim_expires_at 与现有 JPA 映射已本地验证；NULL 不从 started_at 回填，local 仅验证新列。V39 任务/Step/operation 事实与 V38/V37 历史证据保留 |
-| C2-B1 已交付测试基线 | 本轮研发记录第 14 节 | 静态整理前 API 48/48、普通后端 675 PASS/5 既有 SKIP；最终 SQL 后组合再次 76/76（PG31/HTTP33/process2/worker7/scope3），各轮 hash 一致。最终静态通过；无 UI/API 改动，214 仅沿用，固定 `5441df6` Full-Link 44911634004 为5/5；不代表未实现的C2-B2已验收 |
+| C2-B2 当前本地测试基线 | `.ai/reports/validation/c2-b2/initial-green-jdk21/`、`final-gates/` | 定向189/189、API48/48、普通700（695PASS/5既有SKIP），静态224714通过，所有阶段同一稳定backend树；APPLIED_BRANCH纯DB投影HTTP0，本片固定SHA CI待验，UI214仅旧基线 |
+| C2-B1 已交付测试基线 | 本轮研发记录第 14 节 | 静态整理前 API 48/48、普通后端 675 PASS/5 既有 SKIP；最终 SQL 后组合再次 76/76（PG31/HTTP33/process2/worker7/scope3），各轮 hash 一致。最终静态通过；无 UI/API 改动，214 仅沿用，固定 `5441df6` Full-Link 44911634004 为5/5；不代替C2-B2独立本地门禁或远端交付证据 |
 | C2-A 历史测试基线 | 本轮研发记录第 13 节、`.ai/reports/validation/c2a-final-*.log`、`.ai/reports/validation/c2-a-full-link/` | C2-A 普通后端 672 PASS/5 既有 SKIP、API/PG 67/67、HTTP 29/29、独立进程 1/1、后补 worker 7/7、前端 214/214、消费者补验 16/16；固定 SHA Full-Link 5/5，各层及重叠 suite 不累加 |
 | B2 历史测试基线 | `.ai/reports/validation/b2-backend-final.log`、`b2-api-final.log`、`b2-frontend-final.log` | 普通后端 608 PASS/5 既有 SKIP；六类数据库/API/HTTP fixture 70 PASS；前端 149 PASS，仅代表 B2 当时范围 |
 | 项目变更日志 | `docs/PROJECT_PROGRESS.md` | 246 行，承担「变更日志」职责，事实基线请看本文件 |
