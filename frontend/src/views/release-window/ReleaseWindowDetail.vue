@@ -266,6 +266,7 @@ import OrchestrationPanel from './OrchestrationPanel.vue'
 import VersionUpdateDialog from './VersionUpdateDialog.vue'
 import BranchStatusPanel from './BranchStatusPanel.vue'
 import ConflictPanel from './ConflictPanel.vue'
+import { confirmWindowClose } from './confirmClose'
 
 const route = useRoute()
 const router = useRouter()
@@ -533,10 +534,10 @@ const handleClose = async () => {
     return
   }
   try {
-    await ElMessageBox.confirm(t('releaseWindow.confirmClose'), t('common.warning'), { type: 'warning' })
-    await releaseWindowApi.close(form.value.id)
-    ElMessage.success(t('common.success'))
-    load(form.value.id)
+    const triggerCi = await confirmWindowClose(t)
+    const run = await releaseWindowApi.close(form.value.id, { triggerCi })
+    await load(form.value.id)
+    await router.push({ name: 'RunDetail', params: { runId: run.id } })
   } catch (error) {
     if (error !== 'cancel') handleError(error)
   }

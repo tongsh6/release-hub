@@ -2,6 +2,7 @@ import { apiDel, apiGet, apiPost, http } from '@/api/http'
 import type { BuildTool } from '@/types/dto'
 import type { PageQuery, PageResult } from '@/types/crud'
 import type { ApiPageResponse } from '@/api/repositoryApi'
+import type { Run } from '@/api/runApi'
 
 const BASE = '/v1'
 
@@ -150,8 +151,8 @@ export function publish(id: string): Promise<ReleaseWindowView> {
   return apiPost<ReleaseWindowView>(`${BASE}/release-windows/${id}/publish`, {})
 }
 
-export function closeWindow(id: string): Promise<ReleaseWindowView> {
-  return apiPost<ReleaseWindowView>(`${BASE}/release-windows/${id}/close`, {})
+export function closeWindow(id: string, options: { triggerCi: boolean } = { triggerCi: false }): Promise<Run> {
+  return apiPost<Run>(`${BASE}/release-windows/${id}/close`, options)
 }
 
 export function deleteWindow(id: string): Promise<boolean> {

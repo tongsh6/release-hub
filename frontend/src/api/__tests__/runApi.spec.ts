@@ -28,6 +28,21 @@ describe('run API contract', () => {
     })
   })
 
+  it('keeps a running repository cleanup unfinished and without a synthetic iteration', async () => {
+    vi.mocked(http.get).mockResolvedValue({ data: {
+      runId: 'cleanup-1', runType: 'WINDOW_CLEANUP', executionVersion: 1,
+      status: 'RUNNING', operator: 'authenticated-user', startedAt: 1000, finishedAt: null,
+      items: [{ id: 'item-1', windowKey: 'W1', repo: 'repo-1', iterationKey: null,
+        plannedOrder: 1, executedOrder: 0, finalResult: null,
+        metadata: { 'plan.participatingIterationKeys': '["I1","I2"]' }, steps: [] }]
+    } })
+    const detail = await runApi.getRunById('cleanup-1')
+    expect(detail.status).toBe('RUNNING')
+    expect(detail.finishedAt).toBeNull()
+    expect(detail.items[0]?.iterationKey).toBeNull()
+    expect(detail.items[0]?.metadata['plan.participatingIterationKeys']).toBe('["I1","I2"]')
+  })
+
   it('sends only item selection when retrying; the authenticated server supplies the actor', async () => {
     vi.mocked(http.post).mockResolvedValue({ data: 'retry-1' })
     expect(await runApi.retry('run-1', ['item-1'])).toBe('retry-1')

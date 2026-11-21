@@ -171,7 +171,9 @@
         <el-table-column v-if="failedItemKeys.length > 0" type="selection" width="48" :selectable="isSelectableRetryItem" />
         <el-table-column prop="repoId" :label="t('run.filters.repo')" />
         <el-table-column prop="windowKey" :label="t('run.filters.windowKey')" />
-        <el-table-column prop="iterationKey" :label="t('run.filters.iterationKey')" />
+        <el-table-column :label="t('run.detail.itemScope')" min-width="220">
+          <template #default="{ row }"><RunItemScope :item="row" :run-type="detail?.runType" /></template>
+        </el-table-column>
         <el-table-column prop="plannedOrder" :label="t('run.columns.plannedOrder')" width="95" />
         <el-table-column prop="executedOrder" :label="t('run.columns.executedOrder')" width="95" />
         <el-table-column prop="finalResult" :label="t('run.columns.status')" />
@@ -227,6 +229,7 @@ import { handleError } from '@/utils/error'
 import { hasPerm } from '@/utils/perm'
 import { runPlanApi, type RunPlanPreview } from '@/api/runPlanApi'
 import RunPlanSnapshotView from '@/components/run/RunPlanSnapshotView.vue'
+import RunItemScope from '@/components/run/RunItemScope.vue'
 import { isFailedResult, isSuccessfulResult, isSkippedResult, isRetryableResult, isRetryableRun, resultTagType, runTypeKey, runItemEvidence } from '@/utils/runPresentation'
 
 const route = useRoute()
@@ -314,7 +317,7 @@ async function fetchDetail() {
   try {
     detail.value = await runApi.getRunById(currentRunId.value)
     selectedRetryItemIds.value = []
-    previewPlan.value = detail.value.status === 'PLANNED' ? await runPlanApi.get(currentRunId.value) : undefined
+    previewPlan.value = detail.value.executionVersion >= 2 ? await runPlanApi.get(currentRunId.value) : undefined
   } finally {
     loading.value = false
   }

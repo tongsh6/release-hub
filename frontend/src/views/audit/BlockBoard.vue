@@ -20,7 +20,7 @@
               <div v-for="item in group.items" :key="item.id" class="block-item">
                 <div class="item-header">
                   <span class="repo-name">{{ item.repo }}</span>
-                  <el-tag size="small">{{ item.iterationKey }}</el-tag>
+                  <RunItemScope :item="item" :run-type="item.runType" />
                   <el-tag size="small" :type="resultTagType(item.result)">{{ item.result }}</el-tag>
                 </div>
                 <div class="item-desc">
@@ -46,6 +46,8 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { runApi } from '@/api/runApi'
+import type { RunType } from '@/types/dto'
+import RunItemScope from '@/components/run/RunItemScope.vue'
 import { isFailedResult, needsResultReview, blockReasonKey, resultTagType } from '@/utils/runPresentation'
 import dayjs from 'dayjs'
 
@@ -60,6 +62,8 @@ interface BlockedItem {
   runId: string
   repo: string
   iterationKey: string | null
+  runType: RunType
+  metadata: Record<string, string>
   message: string
   updatedAt: string
 }
@@ -103,6 +107,8 @@ const fetchData = async () => {
             runId: run.id,
             repo: item.repoId,
             iterationKey: item.iterationKey,
+            runType: run.runType,
+            metadata: item.metadata,
             message: msg,
             updatedAt: run.finishedAt || run.startedAt
           })

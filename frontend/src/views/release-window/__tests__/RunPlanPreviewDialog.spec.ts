@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RunPlanPreviewDialog from '../RunPlanPreviewDialog.vue'
+import RunPlanSnapshotView from '@/components/run/RunPlanSnapshotView.vue'
 import { runPlanApi, type RunPlanPreview } from '@/api/runPlanApi'
 
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
@@ -13,7 +14,8 @@ const plan: RunPlanPreview = {
   snapshot: { windowKey: 'RW-1', groupCode: 'G001', windowStatus: 'DRAFT', frozen: false, failFast: true,
     items: [{ itemId: 'item-1', plannedOrder: 1, repoId: 'repo-1', repoName: 'repo-one', iterationKey: 'ITER-1',
       gitProvider: 'GITLAB', defaultBranch: 'main', featureBranch: 'feature/saved', releaseBranch: 'release/saved',
-      baseVersion: '1.0.0', devVersion: '1.1.0-SNAPSHOT', targetVersion: '1.1.0', steps: ['TRY_MERGE'] }] }
+      baseVersion: '1.0.0', devVersion: '1.1.0-SNAPSHOT', targetVersion: '1.1.0', steps: ['TRY_MERGE'],
+      featureBranchMode: 'AUTO', participatingIterationKeys: ['ITER-1'], tagName: null, triggerCi: false, ciRef: null }] }
 }
 
 function render() {
@@ -37,6 +39,34 @@ describe('RunPlanPreviewDialog', () => {
     vi.mocked(runPlanApi.list).mockResolvedValue([{ runId: plan.runId, operator: 'admin', createdAt: plan.createdAt, itemCount: 1 }])
     vi.mocked(runPlanApi.get).mockResolvedValue(plan)
     vi.mocked(runPlanApi.create).mockResolvedValue(plan)
+  })
+
+  it('shows repository cleanup scope and confirmed CI ref from its saved snapshot', () => {
+    const cleanup: RunPlanPreview = { ...plan, status: 'DONE', snapshot: { ...plan.snapshot,
+      items: [{ ...plan.snapshot.items[0]!, iterationKey: null, featureBranch: null, featureBranchMode: null,
+        participatingIterationKeys: ['ITER-1', 'ITER-2'], tagName: 'v1.1.0', triggerCi: true, ciRef: 'v1.1.0',
+        steps: ['MERGE_TO_MASTER', 'CREATE_TAG', 'TRIGGER_CI'] }] } }
+    const wrapper = mount(RunPlanSnapshotView, { props: { plan: cleanup },
+      global: { stubs: { ElAlert: { props: ['title'], template: '<p>{{ title }}</p>' } } } })
+    expect(wrapper.text()).toContain('run.detail.repositoryCleanup')
+    expect(wrapper.text()).toContain('ITER-1, ITER-2')
+    expect(wrapper.text()).toContain('release/saved')
+    expect(wrapper.text()).toContain('main')
+    expect(wrapper.text()).toContain('v1.1.0')
+    expect(wrapper.text()).toContain('runPlan.executionSnapshotNotice')
+    expect(wrapper.text()).not.toContain('runPlan.readOnlyNotice')
+    expect(wrapper.text()).not.toContain('feature/saved')
+  })
+
+  it('does not invent participants or CI for missing cleanup snapshot fields', () => {
+    const cleanup: RunPlanPreview = { ...plan, status: 'FAILED', snapshot: { ...plan.snapshot,
+      items: [{ ...plan.snapshot.items[0]!, iterationKey: null, featureBranch: null, featureBranchMode: null,
+        participatingIterationKeys: null, tagName: null, triggerCi: false, ciRef: null }] } }
+    const wrapper = mount(RunPlanSnapshotView, { props: { plan: cleanup },
+      global: { stubs: { ElAlert: true } } })
+    expect(wrapper.text()).toContain('run.detail.notRecorded')
+    expect(wrapper.text()).toContain('runPlan.ciNotSelected')
+    expect(wrapper.text()).not.toContain('ITER-1')
   })
 
   it('loadsSavedSnapshotWithoutCreatingOrExecuting', async () => {

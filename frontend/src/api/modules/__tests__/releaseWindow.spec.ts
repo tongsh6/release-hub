@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiPost } from '@/api/http'
-import { orchestrate, type OrchestrateRequest } from '../releaseWindow'
+import { closeWindow, orchestrate, type OrchestrateRequest } from '../releaseWindow'
 
 vi.mock('@/api/http', () => ({
   apiGet: vi.fn(),
@@ -11,6 +11,18 @@ vi.mock('@/api/http', () => ({
 }))
 
 describe('releaseWindowApi.orchestrate', () => {
+  it('closes with CI disabled by default and keeps the returned cleanup Run', async () => {
+    const run = { id: 'cleanup-1', runType: 'WINDOW_CLEANUP', status: 'NEEDS_REVIEW' }
+    vi.mocked(apiPost).mockResolvedValueOnce(run)
+    expect(await closeWindow('window-1')).toBe(run)
+    expect(apiPost).toHaveBeenCalledWith('/v1/release-windows/window-1/close', { triggerCi: false })
+  })
+
+  it('sends CI only when explicitly selected', async () => {
+    await closeWindow('window-1', { triggerCi: true })
+    expect(apiPost).toHaveBeenCalledWith('/v1/release-windows/window-1/close', { triggerCi: true })
+  })
+
   beforeEach(() => {
     vi.mocked(apiPost).mockReset()
     vi.mocked(apiPost).mockResolvedValue('run-1')

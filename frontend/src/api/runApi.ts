@@ -8,7 +8,7 @@ export interface Run {
   runType: RunType
   status: RunStatus
   startedAt: string
-  finishedAt: string
+  finishedAt: string | null
   operator: string
 }
 
@@ -112,7 +112,7 @@ function normalizeRunDetail(data: RunExport): RunDetail {
     executionVersion: data.executionVersion,
     status: data.status,
     startedAt: formatExportTime(data.startedAt),
-    finishedAt: formatExportTime(data.finishedAt),
+    finishedAt: data.finishedAt === null ? null : formatExportTime(data.finishedAt),
     operator: data.operator,
     items: data.items.map(item => ({
       id: item.id,
@@ -134,6 +134,6 @@ function normalizeRunDetail(data: RunExport): RunDetail {
   }
 }
 
-function formatExportTime(value: number | null): string {
-  return value === null ? '' : new Date(value).toISOString()
+function formatExportTime(value: number): string {
+  return new Date(value).toISOString()
 }

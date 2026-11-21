@@ -1,15 +1,16 @@
-import type { SetupContext } from 'vue'
+import { createApp, nextTick, type SetupContext, type VNode } from 'vue'
 import { shallowMount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ReleaseWindowDetail from '../ReleaseWindowDetail.vue'
 import { releaseWindowApi } from '@/api/modules/releaseWindow'
 import { iterationApi } from '@/api/iterationApi'
 import { repositoryApi } from '@/api/repositoryApi'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { hasPerm } from '@/utils/perm'
 
 // 当前 Element Plus 声明错误地将返回值写成交叉类型；confirm 运行时返回 action。
-const confirmDialog = vi.hoisted(() => vi.fn<() => Promise<'confirm'>>())
+const confirmDialog = vi.hoisted(() => vi.fn<(message: unknown, ...args: unknown[]) => Promise<'confirm'>>())
+const routerPush = vi.hoisted(() => vi.fn())
 
 vi.mock('vue-i18n', () => ({
   createI18n: () => ({
@@ -25,19 +26,28 @@ vi.mock('vue-i18n', () => ({
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { id: 'window-1' } }),
-  useRouter: () => ({ back: vi.fn() })
+  useRouter: () => ({ back: vi.fn(), push: routerPush })
 }))
 
-vi.mock('element-plus', () => ({
-  ElMessage: {
-    success: vi.fn(),
-    warning: vi.fn()
-  },
-  ElMessageBox: {
-    confirm: confirmDialog
+vi.mock('element-plus', async () => {
+  const { defineComponent, h } = await import('vue')
+  return {
+    ElCheckbox: defineComponent({
+      name: 'ElCheckbox',
+      props: { modelValue: Boolean },
+      emits: ['update:modelValue'],
+      setup(props, { emit, slots }) {
+        return () => h('label', [
+          h('input', { type: 'checkbox', checked: props.modelValue,
+            onChange: (event: Event) => emit('update:modelValue', (event.target as HTMLInputElement).checked) }),
+          slots.default?.()
+        ])
+      }
+    }),
+    ElMessage: { success: vi.fn(), warning: vi.fn() },
+    ElMessageBox: { confirm: confirmDialog }
   }
-}))
-
+})
 vi.mock('@/api/modules/releaseWindow', () => ({
   releaseWindowApi: {
     get: vi.fn(),
@@ -81,6 +91,7 @@ vi.mock('@/utils/date', () => ({
 const conflictPanelRefresh = vi.fn()
 
 const stubs = {
+  ElCheckbox: false,
   ArrowLeft: true,
   ArrowDown: true,
   Download: true,
@@ -184,6 +195,13 @@ describe('ReleaseWindowDetail', () => {
     vi.mocked(iterationApi.resolveVersionConflict).mockReset()
     vi.mocked(repositoryApi.get).mockReset()
     confirmDialog.mockReset()
+    vi.mocked(releaseWindowApi.close).mockReset()
+    vi.mocked(ElMessage.success).mockClear()
+    routerPush.mockReset()
+    vi.mocked(releaseWindowApi.close).mockResolvedValue({
+      id: 'cleanup-1', runType: 'WINDOW_CLEANUP', status: 'FAILED',
+      startedAt: '', finishedAt: '', operator: 'admin'
+    })
     vi.mocked(hasPerm).mockReturnValue(true)
     openSpy.mockClear()
     conflictPanelRefresh.mockReset()
@@ -280,6 +298,53 @@ describe('ReleaseWindowDetail', () => {
       versionSource: 'SYSTEM'
     })
     vi.mocked(releaseWindowApi.detach).mockResolvedValue(true)
+  })
+
+  it.each(['FAILED', 'PARTIAL_FAILED', 'NEEDS_REVIEW'] as const)('opens the real cleanup Run for %s without a success toast', async status => {
+    vi.mocked(releaseWindowApi.close).mockResolvedValue({
+      id: 'cleanup-1', runType: 'WINDOW_CLEANUP', status,
+      startedAt: '', finishedAt: '', operator: 'admin'
+    })
+    const wrapper = mountReleaseWindowDetail()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'releaseWindow.close')!.trigger('click')
+    await flushPromises()
+    expect(releaseWindowApi.close).toHaveBeenCalledExactlyOnceWith('window-1', { triggerCi: false })
+    expect(releaseWindowApi.get).toHaveBeenCalledTimes(2)
+    expect(routerPush).toHaveBeenCalledWith({ name: 'RunDetail', params: { runId: 'cleanup-1' } })
+    expect(ElMessage.success).not.toHaveBeenCalled()
+  })
+
+  it('requires explicit CI selection in the existing close confirmation', async () => {
+    confirmDialog.mockImplementationOnce(async message => {
+      expect(typeof message).toBe('function')
+      const container = document.createElement('div')
+      const dialog = createApp(message as () => VNode)
+      dialog.mount(container)
+      const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+      expect(checkbox.checked).toBe(false)
+      checkbox.checked = true
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }))
+      await nextTick()
+      dialog.unmount()
+      return 'confirm'
+    })
+    const wrapper = mountReleaseWindowDetail()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'releaseWindow.close')!.trigger('click')
+    await flushPromises()
+    await expect(confirmDialog.mock.results[0]?.value).resolves.toBe('confirm')
+    expect(releaseWindowApi.close).toHaveBeenCalledExactlyOnceWith('window-1', { triggerCi: true })
+  })
+
+  it('does not close or navigate when the confirmation is cancelled', async () => {
+    confirmDialog.mockRejectedValueOnce('cancel')
+    const wrapper = mountReleaseWindowDetail()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'releaseWindow.close')!.trigger('click')
+    await flushPromises()
+    expect(releaseWindowApi.close).not.toHaveBeenCalled()
+    expect(routerPush).not.toHaveBeenCalled()
   })
 
   it('resolves a version conflict with USE_SYSTEM and refreshes the conflict panel', async () => {

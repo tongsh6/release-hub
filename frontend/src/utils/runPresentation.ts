@@ -56,9 +56,21 @@ const blockReasonKeys: Record<string, string> = {
 export function blockReasonKey(reason: string | undefined): string {
   return reason ? blockReasonKeys[reason] ?? 'unknown' : 'unknown'
 }
+export function participatingIterationKeys(item: Pick<RunItem, 'metadata'>): string[] | null {
+  const value = item.metadata['plan.participatingIterationKeys']
+  if (!value) return null
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return Array.isArray(parsed) && parsed.every(key => typeof key === 'string' && key.trim().length > 0)
+      ? parsed : null
+  } catch { return null }
+}
+
 export function runItemEvidence(item: RunItem) {
   return {
     itemId: item.id, windowKey: item.windowKey, repoId: item.repoId, iterationKey: item.iterationKey,
+    participatingIterationKeys: participatingIterationKeys(item),
+    referencePolicy: item.metadata['cleanup.referencePolicy'],
     plannedOrder: item.plannedOrder, executedOrder: item.executedOrder, finalResult: item.finalResult,
     projectId: item.metadata['git.projectId'],
     source: item.metadata['git.sourceBranch'],

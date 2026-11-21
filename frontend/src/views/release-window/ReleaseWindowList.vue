@@ -160,6 +160,7 @@ import SearchForm from '@/components/crud/SearchForm.vue'
 import DataTable from '@/components/crud/DataTable.vue'
 import ReleaseWindowDialog from './ReleaseWindowDialog.vue'
 import AttachIterationsDialog from './AttachIterationsDialog.vue'
+import { confirmWindowClose } from './confirmClose'
 import { releaseWindowApi, type ReleaseWindow, type ReleaseWindowStatus } from '@/api/modules/releaseWindow'
 import { groupApi, type GroupNode } from '@/api/modules/group'
 import GroupTreeSelect from '@/components/common/GroupTreeSelect.vue'
@@ -278,12 +279,10 @@ if (!hasPerm('release-window:write')) {
     return
   }
    try {
-    await ElMessageBox.confirm(t('releaseWindow.confirmClose'), t('common.warning'), {
-      type: 'warning'
-    })
-    await releaseWindowApi.close(row.id)
-    ElMessage.success(t('common.success'))
-    fetch()
+    const triggerCi = await confirmWindowClose(t)
+    const run = await releaseWindowApi.close(row.id, { triggerCi })
+    await fetch()
+    await router.push({ name: 'RunDetail', params: { runId: run.id } })
   } catch (error) {
     if (error !== 'cancel') handleError(error)
   }

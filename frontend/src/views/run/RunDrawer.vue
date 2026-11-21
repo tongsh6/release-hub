@@ -34,7 +34,9 @@
         <el-table :data="detail?.items || []" default-expand-all style="width: 100%">
           <el-table-column prop="repoId" :label="t('run.filters.repo')" />
           <el-table-column prop="windowKey" :label="t('run.filters.windowKey')" />
-          <el-table-column prop="iterationKey" :label="t('run.filters.iterationKey')" />
+          <el-table-column :label="t('run.detail.itemScope')" min-width="220">
+            <template #default="{ row }"><RunItemScope :item="row" :run-type="detail?.runType" /></template>
+          </el-table-column>
           <el-table-column prop="plannedOrder" :label="t('run.columns.plannedOrder')" width="95" />
           <el-table-column prop="executedOrder" :label="t('run.columns.executedOrder')" width="95" />
           <el-table-column prop="finalResult" :label="t('run.columns.status')" />
@@ -69,6 +71,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { runApi, type RunDetail } from '@/api/runApi'
 import MRFirstTimeline from '@/components/run/MRFirstTimeline.vue'
+import RunItemScope from '@/components/run/RunItemScope.vue'
 import EvidenceChainPanel from '@/components/common/EvidenceChainPanel.vue'
 import { resultTagType, runTypeKey, runItemEvidence } from '@/utils/runPresentation'
 

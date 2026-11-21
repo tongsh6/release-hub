@@ -1,6 +1,6 @@
 <template>
   <section class="plan-snapshot">
-    <el-alert :title="t('runPlan.readOnlyNotice')" type="info" :closable="false" show-icon />
+    <el-alert :title="t(plan.status === 'PLANNED' ? 'runPlan.readOnlyNotice' : 'runPlan.executionSnapshotNotice')" type="info" :closable="false" show-icon />
     <dl class="plan-facts">
       <div><dt>{{ t('run.columns.runId') }}</dt><dd>{{ plan.runId }}</dd></div>
       <div><dt>{{ t('runPlan.createdAt') }}</dt><dd>{{ plan.createdAt }}</dd></div>
@@ -11,14 +11,18 @@
       <table class="plan-table">
         <thead><tr>
           <th>{{ t('runPlan.order') }}</th><th>{{ t('runPlan.repository') }}</th><th>{{ t('runPlan.iteration') }}</th>
-          <th>{{ t('runPlan.featureBranch') }}</th><th>{{ t('runPlan.releaseBranch') }}</th>
-          <th>{{ t('runPlan.devVersion') }}</th><th>{{ t('runPlan.targetVersion') }}</th>
+          <th>{{ t(repositoryCleanup ? 'runPlan.sourceBranch' : 'runPlan.featureBranch') }}</th><th>{{ t(repositoryCleanup ? 'runPlan.targetBranch' : 'runPlan.releaseBranch') }}</th>
+          <template v-if="repositoryCleanup"><th>{{ t('runPlan.tagName') }}</th><th>{{ t('runPlan.ciRef') }}</th></template>
+          <template v-else><th>{{ t('runPlan.devVersion') }}</th><th>{{ t('runPlan.targetVersion') }}</th></template>
           <th>{{ t('runPlan.plannedSteps') }}</th>
         </tr></thead>
         <tbody><tr v-for="item in plan.snapshot.items" :key="item.itemId">
-          <td>{{ item.plannedOrder }}</td><td :title="item.repoId">{{ item.repoName }}</td><td>{{ item.iterationKey }}</td>
-          <td>{{ item.featureBranch }}</td><td>{{ item.releaseBranch }}</td>
-          <td>{{ item.devVersion || '—' }}</td><td>{{ item.targetVersion || '—' }}</td>
+          <td>{{ item.plannedOrder }}</td><td :title="item.repoId">{{ item.repoName }}</td>
+          <td v-if="item.iterationKey === null">{{ t('run.detail.repositoryCleanup') }}<br />{{ t('run.detail.participatingIterations') }}: {{ item.participatingIterationKeys?.length ? item.participatingIterationKeys.join(', ') : t('run.detail.notRecorded') }}</td>
+          <td v-else>{{ item.iterationKey }}</td>
+          <td>{{ repositoryCleanup ? item.releaseBranch : item.featureBranch }}</td><td>{{ repositoryCleanup ? item.defaultBranch : item.releaseBranch }}</td>
+          <template v-if="repositoryCleanup"><td>{{ item.tagName || t('run.detail.notRecorded') }}</td><td>{{ item.triggerCi ? (item.ciRef || t('run.detail.notRecorded')) : t('runPlan.ciNotSelected') }}</td></template>
+          <template v-else><td>{{ item.devVersion || '—' }}</td><td>{{ item.targetVersion || '—' }}</td></template>
           <td>{{ item.steps.map(step => t(`runPlan.steps.${step}`)).join(' → ') }}</td>
         </tr></tbody>
       </table>
@@ -28,8 +32,10 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { computed } from 'vue'
 import type { RunPlanPreview } from '@/api/runPlanApi'
-defineProps<{ plan: RunPlanPreview }>()
+const props = defineProps<{ plan: RunPlanPreview }>()
+const repositoryCleanup = computed(() => props.plan.snapshot.items.some(item => item.iterationKey === null))
 const { t } = useI18n()
 </script>
 

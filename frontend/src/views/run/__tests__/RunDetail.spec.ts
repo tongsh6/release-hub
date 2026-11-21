@@ -119,6 +119,7 @@ describe('RunDetail', () => {
   beforeEach(() => {
     vi.mocked(runApi.getRunById).mockReset()
     vi.mocked(runApi.getTasks).mockReset()
+    vi.mocked(runPlanApi.get).mockReset()
     vi.mocked(runApi.retry).mockReset()
     confirmDialog.mockReset()
     vi.mocked(hasPerm).mockReturnValue(true)
@@ -372,9 +373,23 @@ describe('RunDetail', () => {
     expect(runApi.retry).toHaveBeenCalledExactlyOnceWith('run-1', ['first-blocked', 'later-skipped'])
   })
 
+  it('loads the immutable execution snapshot for a completed cleanup run', async () => {
+    vi.mocked(runApi.getRunById).mockResolvedValueOnce({
+      id: 'run-1', executionVersion: 2, runType: 'WINDOW_CLEANUP', status: 'DONE',
+      startedAt: '', finishedAt: '', operator: 'admin', items: []
+    })
+    vi.mocked(runPlanApi.get).mockResolvedValueOnce({ runId: 'run-1', windowId: 'window-1', operator: 'admin', createdAt: '',
+      planHash: 'hash', executionVersion: 2, status: 'DONE', evidenceLevel: 'LOCAL_ONLY', executionPermitted: false,
+      snapshot: { windowKey: 'RW-1', groupCode: 'G001', windowStatus: 'PUBLISHED', frozen: false, failFast: true, items: [] } })
+    const wrapper = mountRunDetail()
+    await flushPromises()
+    expect(runPlanApi.get).toHaveBeenCalledWith('run-1')
+    expect(wrapper.findComponent({ name: 'RunPlanSnapshotView' }).props('plan').status).toBe('DONE')
+  })
+
   it('identifies cleanup runs and directs failed closeout to evidence review', async () => {
     vi.mocked(runApi.getRunById).mockResolvedValue({
-      id: 'run-cleanup', executionVersion: 1, runType: 'WINDOW_CLEANUP', status: 'FAILED',
+      id: 'run-cleanup', executionVersion: 2, runType: 'WINDOW_CLEANUP', status: 'FAILED',
       startedAt: '', finishedAt: '', operator: 'tester',
       items: [{ id: 'cleanup-item', metadata: {}, windowKey: 'WK', repoId: 'repo-1',
         iterationKey: null, plannedOrder: 1, executedOrder: 1, finalResult: 'FAILED', steps: [] }]

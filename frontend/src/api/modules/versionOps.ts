@@ -94,7 +94,7 @@ export interface VersionRunDetailDTO {
   items: Array<{
     windowKey: string
     repoId: string
-    iterationKey: string
+    iterationKey: string | null
     result: string | null
     steps: Array<{
       actionType: string

@@ -6,15 +6,20 @@ export interface RunPlanItem {
   plannedOrder: number
   repoId: string
   repoName: string
-  iterationKey: string
+  iterationKey: string | null
   gitProvider: string
   defaultBranch: string
-  featureBranch: string
+  featureBranch: string | null
+  featureBranchMode: string | null
   releaseBranch: string
   baseVersion: string | null
   devVersion: string | null
   targetVersion: string | null
   steps: string[]
+  participatingIterationKeys: string[] | null
+  tagName: string | null
+  triggerCi: boolean
+  ciRef: string | null
 }
 
 export interface RunPlanPreview {

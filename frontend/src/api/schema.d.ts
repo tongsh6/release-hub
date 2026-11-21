@@ -4,15 +4,55 @@
  */
 
 export interface paths {
-    "/api/v1/release-windows/{id}/window": {
+    "/api/v1/version-policies/{id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put: operations["configureWindow"];
+        /** 获取版本策略详情 */
+        get: operations["get"];
+        /** 更新版本策略 */
+        put: operations["update"];
+        post?: never;
+        /** 删除版本策略 */
+        delete: operations["delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repositories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get repository */
+        get: operations["get_1"];
+        /** Update repository */
+        put: operations["update_1"];
+        post?: never;
+        /** Delete repository */
+        delete: operations["delete_1"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repositories/{id}/initial-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get repository initial version */
+        get: operations["getInitialVersion"];
+        /** Set repository initial version manually */
+        put: operations["setInitialVersion"];
         post?: never;
         delete?: never;
         options?: never;
@@ -20,48 +60,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/windows/{id}/orchestrate": {
+    "/api/v1/iterations/{key}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
-        post: operations["orchestrate"];
-        delete?: never;
+        /** Get iteration */
+        get: operations["get_2"];
+        /** Update iteration */
+        put: operations["update_2"];
+        post?: never;
+        /** Delete iteration */
+        delete: operations["delete_2"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/windows/{id}/detach": {
+    "/api/v1/groups/{id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
-        post: operations["detach"];
-        delete?: never;
+        /** Get group by id */
+        get: operations["get_3"];
+        /** Update group */
+        put: operations["update_3"];
+        post?: never;
+        /** Delete group by id */
+        delete: operations["deleteById"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/windows/{id}/attach": {
+    "/api/v1/branch-rules/{id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** 获取分支规则详情 */
+        get: operations["get_4"];
+        /** 更新分支规则 */
+        put: operations["update_4"];
+        post?: never;
+        /** 删除分支规则 */
+        delete: operations["delete_3"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/version-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取所有版本策略 */
+        get: operations["list"];
         put?: never;
-        post: operations["attach"];
+        /** 创建版本策略 */
+        post: operations["create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -75,8 +142,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get ref settings */
         get: operations["getRef"];
         put?: never;
+        /** Save ref settings */
         post: operations["saveRef"];
         delete?: never;
         options?: never;
@@ -91,8 +160,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get naming settings */
         get: operations["getNaming"];
         put?: never;
+        /** Save naming settings */
         post: operations["saveNaming"];
         delete?: never;
         options?: never;
@@ -107,8 +178,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get GitLab settings */
         get: operations["getGitLab"];
         put?: never;
+        /** Save GitLab settings */
         post: operations["saveGitLab"];
         delete?: never;
         options?: never;
@@ -123,8 +196,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get blocking settings */
         get: operations["getBlocking"];
         put?: never;
+        /** Save blocking settings */
         post: operations["saveBlocking"];
         delete?: never;
         options?: never;
@@ -141,7 +216,60 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Retry run with selected items */
         post: operations["retry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List repositories */
+        get: operations["list_1"];
+        put?: never;
+        /** Create repository */
+        post: operations["create_1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repositories/{id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync repository statistics from GitLab */
+        post: operations["sync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repositories/{id}/sync-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync initial version from repository */
+        post: operations["syncInitialVersion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -155,9 +283,31 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_1"];
+        /** List release windows */
+        get: operations["list_2"];
         put?: never;
-        post: operations["create"];
+        /** Create release window */
+        post: operations["create_2"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 版本校验
+         * @description 根据 VersionPolicy 推导并校验目标版本号
+         */
+        post: operations["validateVersion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -173,6 +323,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Unfreeze release window */
         post: operations["unfreeze"];
         delete?: never;
         options?: never;
@@ -180,16 +331,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/release-windows/{id}/release": {
+    "/api/v1/release-windows/{id}/run-plans": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** 查询窗口最近 20 条计划快照 */
+        get: operations["list_3"];
         put?: never;
-        post: operations["release"];
+        /** 保存不可执行的本地计划预览 */
+        post: operations["create_3"];
         delete?: never;
         options?: never;
         head?: never;
@@ -205,7 +358,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Publish release window */
         post: operations["publish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/orchestrate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start orchestration for window */
+        post: operations["orchestrate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -221,7 +392,85 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Freeze release window */
         post: operations["freeze"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/execute/version-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 执行版本更新
+         * @description 对指定发布窗口关联的仓库执行版本号更新
+         */
+        post: operations["executeVersionUpdate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/execute/batch-version-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 批量执行版本更新
+         * @description 对指定发布窗口关联的多个仓库执行版本号更新
+         */
+        post: operations["executeBatchVersionUpdate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/detach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 解除迭代关联 */
+        post: operations["detach"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/conflicts/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 触发冲突扫描
+         * @description 对发布窗口关联的所有仓库执行四维冲突检测
+         */
+        post: operations["checkConflicts"];
         delete?: never;
         options?: never;
         head?: never;
@@ -237,7 +486,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Close release window */
         post: operations["close"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/attach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 关联迭代 */
+        post: operations["attach"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-governance/candidate-review/signoffs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 记录发布候选人工签核 */
+        post: operations["signoff"];
         delete?: never;
         options?: never;
         head?: never;
@@ -251,9 +535,79 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List iterations */
+        get: operations["list_4"];
+        put?: never;
+        /** Create iteration */
+        post: operations["create_4"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/iterations/{key}/repos/{repoId}/sync-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
         get?: never;
         put?: never;
-        post: operations["create_1"];
+        /** Sync version from repository */
+        post: operations["syncVersionFromRepo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/iterations/{key}/repos/{repoId}/resolve-conflict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve version conflict */
+        post: operations["resolveVersionConflict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/iterations/{key}/repos/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove repos from iteration */
+        post: operations["removeRepos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/iterations/{key}/repos/add": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add repos to iteration */
+        post: operations["addRepos"];
         delete?: never;
         options?: never;
         head?: never;
@@ -267,9 +621,216 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_2"];
+        /** List groups */
+        get: operations["list_5"];
         put?: never;
-        post: operations["create_2"];
+        /** Create group */
+        post: operations["create_5"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/git-operations/{id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reconcile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality/disposition-cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List data quality disposition audit cases */
+        get: operations["list_6"];
+        put?: never;
+        /** Create a data quality disposition audit case */
+        post: operations["create_6"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality/disposition-cases/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record post-handling verification evidence */
+        post: operations["verify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality/disposition-cases/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a disposition case as manually handling */
+        post: operations["start"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality/disposition-cases/{id}/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record failed disposition handling */
+        post: operations["fail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality/disposition-cases/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel disposition case handling */
+        post: operations["cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality/cleanup-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review SA-002 cleanup actions before application-level handling */
+        post: operations["review"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality/branch-creation-mode-migrations/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run read-only BranchCreationMode migration dry-run */
+        post: operations["branchCreationModeDryRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/branch-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取所有分支规则 */
+        get: operations["list_7"];
+        put?: never;
+        /** 创建分支规则 */
+        post: operations["create_7"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/branch-rules/{id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 启用分支规则 */
+        post: operations["enable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/branch-rules/{id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 禁用分支规则 */
+        post: operations["disable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/branch-rules/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 测试分支规则匹配 */
+        post: operations["test"];
         delete?: never;
         options?: never;
         head?: never;
@@ -293,14 +854,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/windows/{id}/plan": {
+    "/api/v1/version-policies/paged": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getPlan"];
+        /** 获取版本策略分页列表 */
+        get: operations["listPaged"];
         put?: never;
         post?: never;
         delete?: never;
@@ -309,14 +871,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/windows/{id}/dry-plan": {
+    "/api/v1/version-policies/applicable": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["dryPlan"];
+        /** 获取指定作用域可继承的版本策略 */
+        get: operations["applicable"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/version-ops/runs/{runId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取版本运维运行记录详情 */
+        get: operations["getRunDetail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/version-ops/runs/{runId}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取运行日志行 */
+        get: operations["getRunLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/version-ops/runs/paged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询版本运维运行记录 */
+        get: operations["listRuns"];
         put?: never;
         post?: never;
         delete?: never;
@@ -332,6 +946,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Test GitLab settings */
         get: operations["testGitLab"];
         put?: never;
         post?: never;
@@ -348,7 +963,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        /** List runs */
+        get: operations["list_8"];
         put?: never;
         post?: never;
         delete?: never;
@@ -364,7 +980,41 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get"];
+        /** Get run */
+        get: operations["get_5"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 按 Run ID 查询不可变计划快照与当前运行状态 */
+        get: operations["get_6"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{id}/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listByRun"];
         put?: never;
         post?: never;
         delete?: never;
@@ -380,6 +1030,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Export run as JSON */
         get: operations["exportJson"];
         put?: never;
         post?: never;
@@ -396,7 +1047,126 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Export run as CSV */
         get: operations["exportCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/paged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List runs (paged) */
+        get: operations["listPaged_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repositories/{id}/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_9"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repositories/{id}/gate-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get repository gate summary */
+        get: operations["getGateSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repositories/{id}/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List branches with prefix filter (for feature branch selection) */
+        get: operations["listBranches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repositories/{id}/branch-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get repository branch/MR summary */
+        get: operations["getBranchSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repositories/{id}/branch-governance/noncompliant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List active non-compliant branches for manual governance review */
+        get: operations["listNonCompliantBranches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/repositories/paged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List repositories (paged) */
+        get: operations["listPaged_2"];
         put?: never;
         post?: never;
         delete?: never;
@@ -412,7 +1182,216 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_1"];
+        /** Get release window */
+        get: operations["get_7"];
+        put?: never;
+        post?: never;
+        /** Delete release window */
+        delete: operations["delete_4"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/report.zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export release window evidence package as ZIP */
+        get: operations["exportPackage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/report.md": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export release window report as Markdown */
+        get: operations["exportMarkdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/report.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export release window report as JSON */
+        get: operations["exportJson_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/report.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export release window report as CSV */
+        get: operations["exportCsv_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get execution plan by window */
+        get: operations["getPlan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/parallel-scope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get active parallel release windows in the same group */
+        get: operations["getParallelScope"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/iterations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询窗口迭代 */
+        get: operations["list_10"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/iterations/paged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询窗口迭代 */
+        get: operations["listPaged_3"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/conflicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取最新冲突报告
+         * @description 返回最近一次扫描的冲突结果
+         */
+        get: operations["getConflicts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/{id}/branch-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get branch status for all repos in the release window */
+        get: operations["getBranchStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-windows/paged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List release windows (paged) */
+        get: operations["listPaged_4"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/release-governance/candidate-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取发布候选评审摘要 */
+        get: operations["getCandidateReview"];
         put?: never;
         post?: never;
         delete?: never;
@@ -428,6 +1407,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Ping */
         get: operations["ping"];
         put?: never;
         post?: never;
@@ -454,14 +1434,117 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/groups/{id}": {
+    "/api/v1/iterations/{key}/repos": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["get_2"];
+        /** List repos of iteration */
+        get: operations["listRepos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/iterations/{key}/repos/{repoId}/version-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get repo version info for iteration */
+        get: operations["getRepoVersionInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/iterations/{key}/repos/{repoId}/check-conflict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Check version conflict for repo in iteration */
+        get: operations["checkVersionConflict"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/iterations/{key}/repos/paged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List repos of iteration with version metadata (paged) */
+        get: operations["listReposPaged"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/iterations/{iterationKey}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取迭代的仓库版本信息列表 */
+        get: operations["listVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/iterations/{iterationKey}/repos/{repoId}/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取迭代的单个仓库版本信息 */
+        get: operations["getVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/iterations/paged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List iterations (paged) */
+        get: operations["listPaged_5"];
         put?: never;
         post?: never;
         delete?: never;
@@ -477,6 +1560,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get group tree */
         get: operations["tree"];
         put?: never;
         post?: never;
@@ -493,7 +1577,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List top-level groups */
         get: operations["topLevel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/paged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List groups (paged) */
+        get: operations["listPaged_6"];
         put?: never;
         post?: never;
         delete?: never;
@@ -509,7 +1611,110 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List children by parent code */
         get: operations["children"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/by-code/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get group by code */
+        get: operations["getByCode"];
+        put?: never;
+        post?: never;
+        /** Delete group by code */
+        delete: operations["deleteByCode"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/git-operations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality/disposition-cases/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get data quality disposition audit case */
+        get: operations["get_8"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboard/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取仪表盘统计数据 */
+        get: operations["getStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/branch-rules/paged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取分支规则分页列表 */
+        get: operations["listPaged_7"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/branch-rules/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 检查分支名称是否符合规则 */
+        get: operations["check"];
         put?: never;
         post?: never;
         delete?: never;
@@ -522,72 +1727,197 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ApiResponseVoid: {
-            success?: boolean;
-            code?: string;
-            message?: string;
-            data?: Record<string, never>;
-        };
-        ConfigureReleaseWindowRequest: {
-            startAt: string;
-            endAt: string;
-            /** Format: date-time */
-            startAtInstant?: string;
-            /** Format: date-time */
-            endAtInstant?: string;
-        };
-        ApiResponseReleaseWindowView: {
-            success?: boolean;
-            code?: string;
-            message?: string;
-            data?: components["schemas"]["ReleaseWindowView"];
-        };
-        ReleaseWindowView: {
-            id?: string;
-            windowKey?: string;
+        UpdateVersionPolicyRequest: {
             name?: string;
-            status?: string;
+            scheme?: string;
+            bumpRule?: string;
+            scopeLevel?: string;
+            scopeProjectId?: string;
+            scopeSubProjectId?: string;
+        };
+        ApiResponseVersionPolicyView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["VersionPolicyView"];
+        };
+        ScopeView: {
+            level?: string;
+            projectId?: string;
+            subProjectId?: string;
+        };
+        VersionPolicyView: {
+            id?: string;
+            name?: string;
+            scheme?: string;
+            bumpRule?: string;
+            scope?: components["schemas"]["ScopeView"];
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
             updatedAt?: string;
-            /** Format: date-time */
-            startAt?: string;
-            /** Format: date-time */
-            endAt?: string;
-            frozen?: boolean;
-            /** Format: date-time */
-            publishedAt?: string;
         };
-        OrchestrateRequest: {
-            repoIds?: string[];
-            iterationKeys?: string[];
-            failFast?: boolean;
-            operator?: string;
+        UpdateRepoRequest: {
+            name: string;
+            cloneUrl: string;
+            groupCode: string;
+            defaultBranch?: string;
+            repoType?: string;
+            gitProvider?: string;
+            gitAccessToken?: string;
+            monoRepo?: boolean;
+            initialVersion?: string;
         };
-        ApiResponseString: {
+        ApiResponseCodeRepositoryView: {
             success?: boolean;
             code?: string;
             message?: string;
-            data?: string;
+            data?: components["schemas"]["CodeRepositoryView"];
         };
-        DetachRequest: {
-            iterationKey?: string;
+        CodeRepositoryView: {
+            id?: string;
+            name?: string;
+            cloneUrl?: string;
+            defaultBranch?: string;
+            groupCode?: string;
+            repoType?: string;
+            gitProvider?: string;
+            gitAccessTokenMasked?: string;
+            monoRepo?: boolean;
+            /** Format: int32 */
+            branchCount?: number;
+            /** Format: int32 */
+            activeBranchCount?: number;
+            /** Format: int32 */
+            nonCompliantBranchCount?: number;
+            /** Format: int32 */
+            mrCount?: number;
+            /** Format: int32 */
+            openMrCount?: number;
+            /** Format: int32 */
+            mergedMrCount?: number;
+            /** Format: int32 */
+            closedMrCount?: number;
+            /** Format: date-time */
+            lastSyncAt?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        SetInitialVersionRequest: {
+            version: string;
+        };
+        ApiResponseInitialVersionView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["InitialVersionView"];
+        };
+        InitialVersionView: {
+            repoId?: string;
+            version?: string;
+            versionSource?: string;
+            branch?: string;
+            checkedPaths?: string[];
+            errorType?: string;
+            message?: string;
+        };
+        RepoBranchConfigDto: {
+            repoId?: string;
+            /** @enum {string} */
+            branchCreationMode?: "AUTO" | "NAMED" | "EXISTING";
+            customBranchName?: string;
+        };
+        UpdateIterationRequest: {
+            name?: string;
+            description?: string;
+            /** Format: date */
+            expectedReleaseAt?: string;
+            groupCode: string;
+            repoIds?: string[];
+            repoConfigs?: components["schemas"]["RepoBranchConfigDto"][];
+        };
+        ApiResponseIterationView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["IterationView"];
+        };
+        IterationView: {
+            key?: string;
+            name?: string;
+            description?: string;
+            /** Format: date */
+            expectedReleaseAt?: string;
+            groupCode?: string;
+            repoIds?: string[];
+            attachedToWindow?: boolean;
+            attachedWindowIds?: string[];
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        UpdateGroupRequest: {
+            name: string;
+            parentCode?: string;
+        };
+        ApiResponseGroupView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["GroupView"];
+        };
+        GroupView: {
+            id?: string;
+            name?: string;
+            code?: string;
+            parentCode?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        UpdateBranchRuleRequest: {
+            name?: string;
+            pattern?: string;
+            type?: string;
+            description?: string;
+            scopeLevel?: string;
+            scopeProjectId?: string;
+            scopeSubProjectId?: string;
+        };
+        ApiResponseBranchRuleView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["BranchRuleView"];
+        };
+        BranchRuleView: {
+            id?: string;
+            name?: string;
+            pattern?: string;
+            type?: string;
+            description?: string;
+            scope?: components["schemas"]["ScopeView"];
+            status?: string;
+            createdAt?: string;
+            updatedAt?: string;
+        };
+        CreateVersionPolicyRequest: {
+            name?: string;
+            scheme?: string;
+            bumpRule?: string;
+            scopeLevel?: string;
+            scopeProjectId?: string;
+            scopeSubProjectId?: string;
         };
         ApiResponseBoolean: {
             success?: boolean;
             code?: string;
             message?: string;
             data?: boolean;
-        };
-        AttachRequest: {
-            iterationKeys?: string[];
-        };
-        ApiResponseListString: {
-            success?: boolean;
-            code?: string;
-            message?: string;
-            data?: string[];
         };
         NamingRequest: {
             featureTemplate?: string;
@@ -602,32 +1932,865 @@ export interface components {
         };
         RetryRequest: {
             items?: string[];
-            operator?: string;
+        };
+        ApiResponseString: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: string;
+        };
+        CreateRepoRequest: {
+            name: string;
+            cloneUrl: string;
+            groupCode: string;
+            defaultBranch?: string;
+            repoType?: string;
+            gitProvider?: string;
+            /** @description Git 平台访问令牌 */
+            gitAccessToken?: string;
+            monoRepo?: boolean;
+            initialVersion?: string;
         };
         CreateReleaseWindowRequest: {
-            windowKey: string;
             name: string;
-        };
-        PublishReleaseWindowRequest: Record<string, never>;
-        FreezeReleaseWindowRequest: Record<string, never>;
-        CreateIterationRequest: {
-            iterationKey?: string;
             description?: string;
+            /** Format: date-time */
+            plannedReleaseAt?: string;
+            groupCode: string;
+        };
+        ApiResponseReleaseWindowView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["ReleaseWindowView"];
+        };
+        ReleaseWindowView: {
+            id?: string;
+            windowKey?: string;
+            name?: string;
+            description?: string;
+            /** Format: date-time */
+            plannedReleaseAt?: string;
+            groupCode?: string;
+            status?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+            frozen?: boolean;
+            /** Format: date-time */
+            publishedAt?: string;
+            /** Format: int32 */
+            parallelActiveWindowCount?: number;
+            parallelActiveWindowKeys?: string[];
+        };
+        VersionValidationRequest: {
+            policyId: string;
+            currentVersion: string;
+        };
+        ApiResponseVersionValidationResponse: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["VersionValidationResponse"];
+        };
+        VersionValidationResponse: {
+            valid?: boolean;
+            derivedVersion?: string;
+            derivedBranch?: string;
+            errorMessage?: string;
+        };
+        CreateRequest: {
             repoIds?: string[];
+            iterationKeys?: string[];
+            failFast?: boolean;
+        };
+        ApiResponsePlanView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["PlanView"];
+        };
+        Item: {
+            itemId?: string;
+            /** Format: int32 */
+            plannedOrder?: number;
+            repoId?: string;
+            repoName?: string;
+            iterationKey?: string | null;
+            gitProvider?: string;
+            defaultBranch?: string;
+            featureBranch?: string | null;
+            featureBranchMode?: string | null;
+            releaseBranch?: string;
+            baseVersion?: string | null;
+            devVersion?: string | null;
+            targetVersion?: string | null;
+            steps?: string[];
+            participatingIterationKeys?: string[];
+            tagName?: string | null;
+            triggerCi?: boolean;
+            ciRef?: string | null;
+        };
+        PlanView: {
+            runId?: string;
+            windowId?: string;
+            operator?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            planHash?: string;
+            /** Format: int32 */
+            executionVersion?: number;
+            status?: string;
+            evidenceLevel?: string;
+            executionPermitted?: boolean;
+            snapshot?: components["schemas"]["RunPlanSnapshot"];
+        };
+        RunPlanSnapshot: {
+            windowKey?: string;
+            groupCode?: string;
+            windowStatus?: string;
+            frozen?: boolean;
+            failFast?: boolean;
+            items?: components["schemas"]["Item"][];
+        };
+        PublishReleaseWindowRequest: unknown;
+        OrchestrateRequest: {
+            repoIds?: string[];
+            iterationKeys?: string[];
+            failFast?: boolean;
+        };
+        FreezeReleaseWindowRequest: unknown;
+        VersionUpdateRequest: {
+            repoId: string;
+            targetVersion: string;
+            /** @enum {string} */
+            buildTool: "MAVEN" | "GRADLE";
+            repoPath: string;
+            pomPath?: string;
+            gradlePropertiesPath?: string;
+        };
+        ApiResponseVersionUpdateResponse: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["VersionUpdateResponse"];
+        };
+        VersionUpdateResponse: {
+            runId?: string;
+            status?: string;
+        };
+        BatchVersionUpdateRequest: {
+            repositories: components["schemas"]["RepoVersionUpdate"][];
+            targetVersion: string;
+        };
+        RepoVersionUpdate: {
+            repoId: string;
+            /** @enum {string} */
+            buildTool: "MAVEN" | "GRADLE";
+            repoPath: string;
+            pomPath?: string;
+            gradlePropertiesPath?: string;
+        };
+        DetachRequest: {
+            iterationKey: string;
+        };
+        ApiResponseConflictReportView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["ConflictReportView"];
+        };
+        ConflictItemView: {
+            repoId?: string;
+            repoName?: string;
+            iterationKey?: string;
+            conflictType?: string;
+            sourceBranch?: string;
+            targetBranch?: string;
+            systemVersion?: string;
+            repoVersion?: string;
+            message?: string;
+            suggestion?: string;
+        };
+        ConflictReportView: {
+            windowId?: string;
+            checkedAt?: string;
+            hasConflicts?: boolean;
+            /** Format: int32 */
+            totalCount?: number;
+            conflicts?: components["schemas"]["ConflictItemView"][];
+        };
+        CloseRequest: {
+            triggerCi?: boolean;
+        };
+        ApiResponseRunView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["RunView"];
+        };
+        RunItemView: {
+            id?: string;
+            windowKey?: string;
+            repoId?: string;
+            iterationKey?: string | null;
+            finalResult?: string;
+            /** Format: int32 */
+            plannedOrder?: number;
+            /** Format: int32 */
+            executedOrder?: number;
+            metadata?: {
+                [key: string]: string;
+            };
+            steps?: components["schemas"]["RunStepView"][];
+        };
+        RunStepView: {
+            actionType?: string;
+            result?: string;
+            message?: string;
+        };
+        RunView: {
+            id?: string;
+            runType?: string;
+            status?: string;
+            startedAt?: string;
+            finishedAt?: string | null;
+            operator?: string;
+            items?: components["schemas"]["RunItemView"][];
+        };
+        AttachRequest: {
+            iterationKeys: string[];
+        };
+        ApiResponseListWindowIterationView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["WindowIterationView"][];
+        };
+        WindowIterationView: {
+            iterationKey?: string;
+            /** Format: date-time */
+            attachAt?: string;
+            releaseBranch?: string;
+            branchCreated?: boolean;
+            /** Format: date-time */
+            lastMergeAt?: string;
+        };
+        ChecklistDecisionRequest: {
+            key: string;
+            status: string;
+            note?: string;
+        };
+        ReleaseCandidateSignoffRequest: {
+            candidateId: string;
+            reviewer?: string;
+            decision: string;
+            note?: string;
+            checklist: components["schemas"]["ChecklistDecisionRequest"][];
+        };
+        ApiResponseReleaseCandidateSignoffView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["ReleaseCandidateSignoffView"];
+        };
+        ChecklistDecision: {
+            key?: string;
+            status?: string;
+            note?: string;
+        };
+        ReleaseCandidateSignoffView: {
+            id?: string;
+            candidateId?: string;
+            candidateLabel?: string;
+            reviewer?: string;
+            decision?: string;
+            note?: string;
+            checklist?: components["schemas"]["ChecklistDecision"][];
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        CreateIterationRequest: {
+            name: string;
+            description?: string;
+            /** Format: date */
+            expectedReleaseAt?: string;
+            groupCode: string;
+            repoIds?: string[];
+            repoConfigs?: components["schemas"]["RepoBranchConfigDto"][];
+        };
+        ApiResponseIterationRepoVersionInfo: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["IterationRepoVersionInfo"];
+        };
+        IterationRepoVersionInfo: {
+            repoId?: string;
+            repoName?: string;
+            baseVersion?: string;
+            devVersion?: string;
+            targetVersion?: string;
+            featureBranch?: string;
+            /** @enum {string} */
+            branchCreationMode?: "AUTO" | "NAMED" | "EXISTING";
+            /** @enum {string} */
+            versionSource?: "POM" | "GRADLE" | "MANUAL" | "SYSTEM" | "REPO";
+            /** Format: date-time */
+            versionSyncedAt?: string;
+        };
+        ResolveConflictRequest: {
+            /** @enum {string} */
+            resolution?: "USE_SYSTEM" | "USE_REPO" | "CANCEL";
+        };
+        RepoChangeRequest: {
+            repoIds?: string[];
+            /** @enum {string} */
+            branchCreationMode?: "AUTO" | "NAMED" | "EXISTING";
+            customBranchName?: string;
         };
         CreateGroupRequest: {
-            name?: string;
+            name: string;
             code?: string;
             parentCode?: string;
+        };
+        ReconcileRequest: {
+            /** Format: int64 */
+            expectedStateVersion?: number;
+        };
+        ApiResponseObservation: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["Observation"];
+        };
+        Observation: {
+            id?: string;
+            operator?: string;
+            key?: string;
+            /** Format: int64 */
+            expectedVersion?: number;
+            status?: string;
+            evidenceJson?: string;
+            /** Format: date-time */
+            observedAt?: string;
+        };
+        DispositionCaseActionRequest: {
+            resourceType: string;
+            resourceId: string;
+            riskType: string;
+            dataNamespace?: string;
+            reviewBatchId?: string;
+            assetScope?: string;
+            retentionPolicy?: string;
+            reviewStatus?: string;
+            reason?: string;
+            applicationEntry?: string;
+            preExecutionCheck?: string;
+            postExecutionVerification?: string;
+            dispositionLevel?: string;
+            allowedAction?: string;
+            rollbackBoundary?: string;
+            auditRecord?: string;
+        };
+        DispositionCaseCreateRequest: {
+            requestedBy: string;
+            sourceReport?: string;
+            action: components["schemas"]["DispositionCaseActionRequest"];
+        };
+        ApiResponseDataQualityDispositionCaseView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["DataQualityDispositionCaseView"];
+        };
+        DataQualityDispositionCaseView: {
+            id?: string;
+            caseKey?: string;
+            sourceReport?: string;
+            dataNamespace?: string;
+            reviewBatchId?: string;
+            assetScope?: string;
+            retentionPolicy?: string;
+            resourceType?: string;
+            resourceId?: string;
+            riskType?: string;
+            dispositionLevel?: string;
+            applicationEntry?: string;
+            allowedAction?: string;
+            preExecutionCheck?: string;
+            postExecutionVerification?: string;
+            rollbackBoundary?: string;
+            auditRecord?: string;
+            actionSnapshot?: string;
+            preStateSnapshot?: string;
+            postStateSnapshot?: string;
+            status?: string;
+            requestedBy?: string;
+            handledBy?: string;
+            verifiedBy?: string;
+            failureReason?: string;
+            rollbackNote?: string;
+            retryOfCaseId?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+            /** Format: date-time */
+            startedAt?: string;
+            /** Format: date-time */
+            verifiedAt?: string;
+            /** Format: date-time */
+            failedAt?: string;
+            /** Format: date-time */
+            cancelledAt?: string;
+        };
+        DispositionCaseTransitionRequest: {
+            operator: string;
+            preStateSnapshot?: string;
+            postStateSnapshot?: string;
+            failureReason?: string;
+            rollbackNote?: string;
+        };
+        CleanupActionReviewRequest: {
+            resourceType: string;
+            resourceId: string;
+            riskType: string;
+            suggestedAction?: string;
+            executed?: boolean;
+            source?: string;
+            dataNamespace?: string;
+            reviewBatchId?: string;
+            assetScope?: string;
+            retentionPolicy?: string;
+            applicationEntry?: string;
+            preExecutionCheck?: string;
+            postExecutionVerification?: string;
+            reviewDecision?: string;
+        };
+        CleanupReviewRequest: {
+            reviewer: string;
+            sourceReport?: string;
+            resourceTypeFilter?: string;
+            riskTypeFilter?: string;
+            reviewStatusFilter?: string;
+            assetScopeFilter?: string;
+            actions: components["schemas"]["CleanupActionReviewRequest"][];
+        };
+        ApiResponseCleanupReviewResult: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["CleanupReviewResult"];
+        };
+        AssetBoundarySummary: {
+            key?: string;
+            label?: string;
+            description?: string;
+            userVisible?: boolean;
+            manualReviewCandidate?: boolean;
+        };
+        AssetScopeCount: {
+            assetScope?: string;
+            /** Format: int32 */
+            count?: number;
+        };
+        CleanupActionReview: {
+            resourceType?: string;
+            resourceId?: string;
+            riskType?: string;
+            dataNamespace?: string;
+            reviewBatchId?: string;
+            assetScope?: string;
+            retentionPolicy?: string;
+            reviewStatus?: string;
+            reason?: string;
+            applicationEntry?: string;
+            preExecutionCheck?: string;
+            postExecutionVerification?: string;
+            dispositionLevel?: string;
+            allowedAction?: string;
+            rollbackBoundary?: string;
+            auditRecord?: string;
+            executionPermitted?: boolean;
+        };
+        CleanupReviewResult: {
+            reviewer?: string;
+            sourceReport?: string;
+            /** Format: int32 */
+            total?: number;
+            /** Format: int32 */
+            accepted?: number;
+            /** Format: int32 */
+            pending?: number;
+            /** Format: int32 */
+            rejected?: number;
+            assetBoundaries?: components["schemas"]["AssetBoundarySummary"][];
+            assetScopeCounts?: components["schemas"]["AssetScopeCount"][];
+            actions?: components["schemas"]["CleanupActionReview"][];
+        };
+        BranchCreationModeMigrationDryRunRequest: {
+            requestedBy: string;
+            sourceReport?: string;
+        };
+        ApiResponseBranchCreationModeMigrationDryRunResult: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["BranchCreationModeMigrationDryRunResult"];
+        };
+        BranchCreationModeMigrationCandidateView: {
+            candidateKey?: string;
+            iterationKey?: string;
+            repoId?: string;
+            currentModeRaw?: string;
+            featureBranch?: string;
+            proposedMode?: string;
+            classification?: string;
+            inferenceReason?: string;
+            requiresManualMapping?: boolean;
+            executableAfterApproval?: boolean;
+            executionPlanDraft?: string;
+            rejectionReason?: string;
+        };
+        BranchCreationModeMigrationDryRunResult: {
+            requestedBy?: string;
+            sourceReport?: string;
+            /** Format: int32 */
+            totalCandidates?: number;
+            /** Format: int32 */
+            safeAutoDefaultableCount?: number;
+            /** Format: int32 */
+            normalizeLegalValueCount?: number;
+            /** Format: int32 */
+            manualMappingRequiredCount?: number;
+            /** Format: int32 */
+            notMigratableCount?: number;
+            executionPermitted?: boolean;
+            candidates?: components["schemas"]["BranchCreationModeMigrationCandidateView"][];
+            markdownReport?: string;
+        };
+        CreateBranchRuleRequest: {
+            name?: string;
+            pattern?: string;
+            type?: string;
+            description?: string;
+            scopeLevel?: string;
+            scopeProjectId?: string;
+            scopeSubProjectId?: string;
+        };
+        ApiResponseVoid: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: unknown;
+        };
+        TestBranchRuleRequest: {
+            pattern?: string;
+            type?: string;
+            branchName?: string;
+        };
+        ApiResponseTestResultView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["TestResultView"];
+        };
+        TestResultView: {
+            ok?: boolean;
+            rendered?: string;
+            errors?: string[];
         };
         LoginRequest: {
             username: string;
             password: string;
+            rememberMe?: boolean;
+        };
+        ApiResponseTokenInfo: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["TokenInfo"];
         };
         TokenInfo: {
             token?: string;
             /** Format: date-time */
             expiresAt?: string;
+        };
+        ApiResponseListVersionPolicyView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["VersionPolicyView"][];
+        };
+        ApiPageResponseListVersionPolicyView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["VersionPolicyView"][];
+            page?: components["schemas"]["PageMeta"];
+        };
+        PageMeta: {
+            /** Format: int32 */
+            page?: number;
+            /** Format: int32 */
+            size?: number;
+            /** Format: int64 */
+            total?: number;
+            /** Format: int32 */
+            totalPages?: number;
+            hasNext?: boolean;
+            hasPrevious?: boolean;
+        };
+        ApiResponseRunDetailView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["RunDetailView"];
+        };
+        ItemView: {
+            windowKey?: string;
+            repoId?: string;
+            iterationKey?: string | null;
+            result?: string;
+            steps?: components["schemas"]["StepView"][];
+        };
+        RunDetailView: {
+            runId?: string;
+            type?: string;
+            status?: string;
+            branchName?: string;
+            startedAt?: string;
+            finishedAt?: string;
+            items?: components["schemas"]["ItemView"][];
+        };
+        StepView: {
+            actionType?: string;
+            result?: string;
+            message?: string;
+            startAt?: string;
+            endAt?: string;
+        };
+        ApiResponseRunLogsView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["RunLogsView"];
+        };
+        RunLogsView: {
+            runId?: string;
+            lines?: string[];
+        };
+        ApiPageResponseListRunSummaryView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["RunSummaryView"][];
+            page?: components["schemas"]["PageMeta"];
+        };
+        RunSummaryView: {
+            runId?: string;
+            type?: string;
+            status?: string;
+            repoUrl?: string;
+            branchName?: string;
+            startedAt?: string;
+            finishedAt?: string;
+        };
+        ApiResponseObject: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: unknown;
+        };
+        ApiResponseListRunView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["RunView"][];
+        };
+        ApiResponseListOperation: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["Operation"][];
+        };
+        Operation: {
+            id?: string;
+            repoId?: string;
+            remoteKey?: string;
+            provider?: string;
+            baseUrl?: string;
+            projectId?: string;
+            action?: string;
+            targetJson?: string;
+            runId?: string;
+            operator?: string;
+            state?: string;
+            /** Format: int64 */
+            version?: number;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+            reason?: string;
+            blocked?: boolean;
+        };
+        RunJsonView: {
+            runId?: string;
+            runType?: string;
+            operator?: string;
+            /** Format: int32 */
+            executionVersion?: number;
+            status?: string;
+            /** Format: int64 */
+            startedAt?: number;
+            /** Format: int64 */
+            finishedAt?: number;
+            items?: components["schemas"]["Item"][];
+        };
+        ApiPageResponseListRunView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["RunView"][];
+            page?: components["schemas"]["PageMeta"];
+        };
+        ApiResponseListCodeRepositoryView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["CodeRepositoryView"][];
+        };
+        ApiResponseRepoGateSummaryView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["RepoGateSummaryView"];
+        };
+        RepoGateSummaryView: {
+            protectedBranch?: boolean;
+            approvalRequired?: boolean;
+            pipelineGate?: boolean;
+            permissionDenied?: boolean;
+        };
+        ApiResponseListString: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: string[];
+        };
+        ApiResponseRepoBranchSummaryView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["RepoBranchSummaryView"];
+        };
+        RepoBranchSummaryView: {
+            /** Format: int32 */
+            totalBranches?: number;
+            /** Format: int32 */
+            activeBranches?: number;
+            /** Format: int32 */
+            nonCompliantBranches?: number;
+            /** Format: int32 */
+            activeMrs?: number;
+            /** Format: int32 */
+            mergedMrs?: number;
+            /** Format: int32 */
+            closedMrs?: number;
+        };
+        ApiResponseListNonCompliantBranchView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["NonCompliantBranchView"][];
+        };
+        NonCompliantBranchView: {
+            repositoryId?: string;
+            repositoryName?: string;
+            branchName?: string;
+            scopeProjectId?: string;
+            scopeSubProjectId?: string;
+            actionBoundary?: string;
+            guidance?: string;
+        };
+        ApiPageResponseListCodeRepositoryView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["CodeRepositoryView"][];
+            page?: components["schemas"]["PageMeta"];
+        };
+        ApiResponseListReleaseWindowView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["ReleaseWindowView"][];
+        };
+        ApiResponseListRunPlanSummary: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["RunPlanSummary"][];
+        };
+        RunPlanSummary: {
+            runId?: string;
+            operator?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: int32 */
+            itemCount?: number;
+        };
+        ItemReport: {
+            windowKey?: string;
+            repo?: string;
+            iterationKey?: string | null;
+            /** Format: int32 */
+            plannedOrder?: number;
+            /** Format: int32 */
+            executedOrder?: number;
+            finalResult?: string;
+            metadata?: {
+                [key: string]: string;
+            };
+            steps?: components["schemas"]["StepReport"][];
+        };
+        ReleaseWindowReportView: {
+            windowId?: string;
+            windowKey?: string;
+            name?: string;
+            status?: string;
+            groupCode?: string;
+            plannedReleaseAt?: string;
+            publishedAt?: string;
+            /** Format: int64 */
+            runCount?: number;
+            /** Format: int64 */
+            itemCount?: number;
+            /** Format: int64 */
+            stepCount?: number;
+            resultCounts?: {
+                [key: string]: number;
+            };
+            runs?: components["schemas"]["RunReport"][];
+        };
+        RunReport: {
+            runId?: string;
+            runType?: string;
+            status?: string;
+            operator?: string;
+            startedAt?: string;
+            finishedAt?: string;
+            items?: components["schemas"]["ItemReport"][];
+        };
+        StepReport: {
+            actionType?: string;
+            result?: string;
+            startAt?: string;
+            endAt?: string;
+            message?: string;
         };
         ApiResponseListPlanItemView: {
             success?: boolean;
@@ -644,68 +2807,116 @@ export interface components {
             /** Format: int32 */
             lastExecutedOrder?: number;
         };
-        ApiResponseListDryPlanItemView: {
+        ApiResponseReleaseWindowParallelScopeView: {
             success?: boolean;
             code?: string;
             message?: string;
-            data?: components["schemas"]["DryPlanItemView"][];
+            data?: components["schemas"]["ReleaseWindowParallelScopeView"];
         };
-        DryPlanItemView: {
+        ParallelWindowView: {
+            windowId?: string;
             windowKey?: string;
+            name?: string;
+            status?: string;
+            /** Format: date-time */
+            plannedReleaseAt?: string;
+            /** Format: int32 */
+            iterationCount?: number;
+            /** Format: int32 */
+            repoCount?: number;
+            planItems?: components["schemas"]["PlanItemView"][];
+        };
+        ReleaseWindowParallelScopeView: {
+            currentWindowId?: string;
+            currentWindowKey?: string;
+            groupCode?: string;
+            /** Format: int32 */
+            activeWindowCount?: number;
+            windows?: components["schemas"]["ParallelWindowView"][];
+        };
+        ApiPageResponseListWindowIterationView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["WindowIterationView"][];
+            page?: components["schemas"]["PageMeta"];
+        };
+        ApiResponseBranchStatusView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["BranchStatusView"];
+        };
+        BranchStatusView: {
+            windowId?: string;
+            windowKey?: string;
+            repos?: components["schemas"]["RepoBranchStatus"][];
+        };
+        FeatureBranchInfo: {
+            branchName?: string;
+            exists?: boolean;
+            latestCommit?: string;
+        };
+        ReleaseBranchInfo: {
+            branchName?: string;
+            exists?: boolean;
+            latestCommit?: string;
+        };
+        RepoBranchStatus: {
             repoId?: string;
+            repoName?: string;
+            repoCloneUrl?: string;
             iterationKey?: string;
-            featureBranchExists?: boolean;
-            releaseBranchExists?: boolean;
-            mrExists?: boolean;
-            mrMerged?: boolean;
-            /** Format: int32 */
-            mrIid?: number;
-            mrUrl?: string;
-            protectedBranch?: boolean;
-            approvalRequired?: boolean;
-            pipelineGate?: boolean;
-            permissionDenied?: boolean;
+            featureBranch?: components["schemas"]["FeatureBranchInfo"];
+            releaseBranch?: components["schemas"]["ReleaseBranchInfo"];
         };
-        ApiResponseObject: {
-            success?: boolean;
-            code?: string;
-            message?: string;
-            data?: Record<string, never>;
-        };
-        Item: {
-            windowKey?: string;
-            repo?: string;
-            iterationKey?: string;
-            /** Format: int32 */
-            plannedOrder?: number;
-            /** Format: int32 */
-            executedOrder?: number;
-            finalResult?: string;
-            steps?: components["schemas"]["Step"][];
-        };
-        RunJsonView: {
-            runId?: string;
-            runType?: string;
-            /** Format: int64 */
-            startedAt?: number;
-            /** Format: int64 */
-            finishedAt?: number;
-            items?: components["schemas"]["Item"][];
-        };
-        Step: {
-            actionType?: string;
-            result?: string;
-            /** Format: int64 */
-            startAt?: number;
-            /** Format: int64 */
-            endAt?: number;
-            message?: string;
-        };
-        ApiResponseListReleaseWindowView: {
+        ApiPageResponseListReleaseWindowView: {
             success?: boolean;
             code?: string;
             message?: string;
             data?: components["schemas"]["ReleaseWindowView"][];
+            page?: components["schemas"]["PageMeta"];
+        };
+        ApiResponseReleaseCandidateReviewSummary: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["ReleaseCandidateReviewSummary"];
+        };
+        ChecklistItem: {
+            key?: string;
+            title?: string;
+            expectedStatus?: string;
+            sourcePath?: string;
+            required?: boolean;
+        };
+        EvidenceItem: {
+            label?: string;
+            status?: string;
+            sourcePath?: string;
+            result?: string;
+        };
+        ReleaseCandidateReviewSummary: {
+            candidateId?: string;
+            candidateLabel?: string;
+            conclusion?: string;
+            recommendation?: string;
+            evidence?: components["schemas"]["EvidenceItem"][];
+            risks?: components["schemas"]["RiskItem"][];
+            checklist?: components["schemas"]["ChecklistItem"][];
+            latestSignoff?: components["schemas"]["ReleaseCandidateSignoffView"];
+        };
+        RiskItem: {
+            level?: string;
+            title?: string;
+            status?: string;
+            sourcePath?: string;
+        };
+        ApiResponseUserResponse: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["UserResponse"];
         };
         UserResponse: {
             id?: string;
@@ -713,27 +2924,75 @@ export interface components {
             displayName?: string;
             permissions?: string[];
         };
+        ApiResponseListIterationView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["IterationView"][];
+        };
+        ApiResponseSetString: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: string[];
+        };
+        ApiResponseVersionConflict: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["VersionConflict"];
+        };
+        VersionConflict: {
+            repoId?: string;
+            iterationKey?: string;
+            systemVersion?: string;
+            repoVersion?: string;
+            /** @enum {string} */
+            conflictType?: "MISMATCH" | "REPO_AHEAD" | "SYSTEM_AHEAD" | "BRANCH_EXISTS" | "BRANCH_NONCOMPLIANT" | "CROSS_REPO_VERSION_MISMATCH" | "MERGE_CONFLICT" | "GIT_PERMISSION_DENIED" | "GIT_UNAVAILABLE";
+            message?: string;
+        };
+        ApiPageResponseListIterationRepoDetailView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["IterationRepoDetailView"][];
+            page?: components["schemas"]["PageMeta"];
+        };
+        IterationRepoDetailView: {
+            repoId?: string;
+            repoName?: string;
+            cloneUrl?: string;
+            groupCode?: string;
+            defaultBranch?: string;
+            repoType?: string;
+            monoRepo?: boolean;
+            branchCreationMode?: string;
+            featureBranch?: string;
+            baseVersion?: string;
+            devVersion?: string;
+            targetVersion?: string;
+            versionSource?: string;
+            /** Format: date-time */
+            versionSyncedAt?: string;
+        };
+        ApiResponseListIterationRepoVersionInfo: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["IterationRepoVersionInfo"][];
+        };
+        ApiPageResponseListIterationView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["IterationView"][];
+            page?: components["schemas"]["PageMeta"];
+        };
         ApiResponseListGroupView: {
             success?: boolean;
             code?: string;
             message?: string;
             data?: components["schemas"]["GroupView"][];
-        };
-        GroupView: {
-            id?: string;
-            name?: string;
-            code?: string;
-            parentCode?: string;
-            /** Format: date-time */
-            createdAt?: string;
-            /** Format: date-time */
-            updatedAt?: string;
-        };
-        ApiResponseGroupView: {
-            success?: boolean;
-            code?: string;
-            message?: string;
-            data?: components["schemas"]["GroupView"];
         };
         ApiResponseListGroupNodeView: {
             success?: boolean;
@@ -751,6 +3010,82 @@ export interface components {
             /** Format: date-time */
             updatedAt?: string;
         };
+        ApiPageResponseListGroupView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["GroupView"][];
+            page?: components["schemas"]["PageMeta"];
+        };
+        ApiResponseDetail: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["Detail"];
+        };
+        Detail: {
+            operation?: components["schemas"]["Operation"];
+            events?: components["schemas"]["Event"][];
+            observations?: components["schemas"]["Observation"][];
+            moreObservations?: boolean;
+        };
+        Event: {
+            attemptId?: string;
+            /** Format: int32 */
+            sequence?: number;
+            type?: string;
+            /** Format: date-time */
+            at?: string;
+            evidenceJson?: string;
+            reason?: string;
+        };
+        ApiResponseListDataQualityDispositionCaseView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["DataQualityDispositionCaseView"][];
+        };
+        ApiResponseDashboardStatsView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["DashboardStatsView"];
+        };
+        DashboardStatsView: {
+            /** Format: int64 */
+            totalRepositories?: number;
+            /** Format: int64 */
+            totalIterations?: number;
+            /** Format: int64 */
+            activeWindows?: number;
+            /** Format: int64 */
+            totalRuns?: number;
+            /** Format: int64 */
+            recentRuns?: number;
+        };
+        ApiResponseListBranchRuleView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["BranchRuleView"][];
+        };
+        ApiPageResponseListBranchRuleView: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["BranchRuleView"][];
+            page?: components["schemas"]["PageMeta"];
+        };
+        ApiResponseBranchCheckResult: {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["BranchCheckResult"];
+        };
+        BranchCheckResult: {
+            branchName?: string;
+            compliant?: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -760,7 +3095,29 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    configureWindow: {
+    get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseVersionPolicyView"];
+                };
+            };
+        };
+    };
+    update: {
         parameters: {
             query?: never;
             header?: never;
@@ -771,7 +3128,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ConfigureReleaseWindowRequest"];
+                "application/json": components["schemas"]["UpdateVersionPolicyRequest"];
             };
         };
         responses: {
@@ -781,11 +3138,24 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseReleaseWindowView"];
+                    "*/*": components["schemas"]["ApiResponseVersionPolicyView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -795,7 +3165,29 @@ export interface operations {
             };
         };
     };
-    orchestrate: {
+    get_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCodeRepositoryView"];
+                };
+            };
+        };
+    };
+    update_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -806,7 +3198,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OrchestrateRequest"];
+                "application/json": components["schemas"]["UpdateRepoRequest"];
             };
         };
         responses: {
@@ -816,21 +3208,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseString"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseCodeRepositoryView"];
                 };
             };
         };
     };
-    detach: {
+    delete_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -839,11 +3222,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DetachRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -854,18 +3233,31 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseBoolean"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    getInitialVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseInitialVersionView"];
                 };
             };
         };
     };
-    attach: {
+    setInitialVersion: {
         parameters: {
             query?: never;
             header?: never;
@@ -876,7 +3268,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AttachRequest"];
+                "application/json": components["schemas"]["SetInitialVersionRequest"];
             };
         };
         responses: {
@@ -886,16 +3278,261 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseListString"];
+                    "*/*": components["schemas"]["ApiResponseInitialVersionView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    get_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseIterationView"];
+                };
+            };
+        };
+    };
+    update_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateIterationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseIterationView"];
+                };
+            };
+        };
+    };
+    delete_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseVoid"];
+                };
+            };
+        };
+    };
+    get_3: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseGroupView"];
+                };
+            };
+        };
+    };
+    update_3: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseGroupView"];
+                };
+            };
+        };
+    };
+    deleteById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseVoid"];
+                };
+            };
+        };
+    };
+    get_4: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBranchRuleView"];
+                };
+            };
+        };
+    };
+    update_4: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBranchRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBranchRuleView"];
+                };
+            };
+        };
+    };
+    delete_3: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseVoid"];
+                };
+            };
+        };
+    };
+    list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListVersionPolicyView"];
+                };
+            };
+        };
+    };
+    create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVersionPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseVersionPolicyView"];
                 };
             };
         };
@@ -918,15 +3555,6 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseObject"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
         };
     };
     saveRef: {
@@ -947,15 +3575,6 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseBoolean"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
         };
     };
     getNaming: {
@@ -974,15 +3593,6 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseObject"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
                 };
             };
         };
@@ -1009,15 +3619,6 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseBoolean"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
         };
     };
     getGitLab: {
@@ -1036,15 +3637,6 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseObject"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
                 };
             };
         };
@@ -1071,15 +3663,6 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseBoolean"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
         };
     };
     getBlocking: {
@@ -1098,15 +3681,6 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseObject"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
                 };
             };
         };
@@ -1131,15 +3705,6 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseBoolean"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
                 };
             };
         };
@@ -1168,18 +3733,99 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseString"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    list_1: {
+        parameters: {
+            query?: {
+                keyword?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseListCodeRepositoryView"];
                 };
             };
         };
     };
-    list_1: {
+    create_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRepoRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCodeRepositoryView"];
+                };
+            };
+        };
+    };
+    sync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCodeRepositoryView"];
+                };
+            };
+        };
+    };
+    syncInitialVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseInitialVersionView"];
+                };
+            };
+        };
+    };
+    list_2: {
         parameters: {
             query?: never;
             header?: never;
@@ -1197,18 +3843,9 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseListReleaseWindowView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
         };
     };
-    create: {
+    create_2: {
         parameters: {
             query?: never;
             header?: never;
@@ -1230,13 +3867,30 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseReleaseWindowView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    validateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionValidationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseVersionValidationResponse"];
                 };
             };
         };
@@ -1261,18 +3915,9 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseReleaseWindowView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
         };
     };
-    release: {
+    list_3: {
         parameters: {
             query?: never;
             header?: never;
@@ -1289,16 +3934,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseReleaseWindowView"];
+                    "*/*": components["schemas"]["ApiResponseListRunPlanSummary"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    create_3: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponsePlanView"];
                 };
             };
         };
@@ -1327,13 +3991,30 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseReleaseWindowView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    orchestrate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrchestrateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseString"];
                 };
             };
         };
@@ -1362,18 +4043,87 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseReleaseWindowView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    executeVersionUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseVersionUpdateResponse"];
                 };
             };
         };
     };
-    close: {
+    executeBatchVersionUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchVersionUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseVersionUpdateResponse"];
+                };
+            };
+        };
+    };
+    detach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetachRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBoolean"];
+                };
+            };
+        };
+    };
+    checkConflicts: {
         parameters: {
             query?: never;
             header?: never;
@@ -1390,21 +4140,108 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseReleaseWindowView"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseConflictReportView"];
                 };
             };
         };
     };
-    create_1: {
+    close: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CloseRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRunView"];
+                };
+            };
+        };
+    };
+    attach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListWindowIterationView"];
+                };
+            };
+        };
+    };
+    signoff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleaseCandidateSignoffRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseReleaseCandidateSignoffView"];
+                };
+            };
+        };
+    };
+    list_4: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListIterationView"];
+                };
+            };
+        };
+    };
+    create_4: {
         parameters: {
             query?: never;
             header?: never;
@@ -1423,21 +4260,114 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseString"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseIterationView"];
                 };
             };
         };
     };
-    list_2: {
+    syncVersionFromRepo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+                repoId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseIterationRepoVersionInfo"];
+                };
+            };
+        };
+    };
+    resolveVersionConflict: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+                repoId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveConflictRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseIterationRepoVersionInfo"];
+                };
+            };
+        };
+    };
+    removeRepos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepoChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseIterationView"];
+                };
+            };
+        };
+    };
+    addRepos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepoChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseIterationView"];
+                };
+            };
+        };
+    };
+    list_5: {
         parameters: {
             query?: never;
             header?: never;
@@ -1455,18 +4385,9 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseListGroupView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
         };
     };
-    create_2: {
+    create_5: {
         parameters: {
             query?: never;
             header?: never;
@@ -1488,13 +4409,340 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseString"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    reconcile: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReconcileRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseObservation"];
+                };
+            };
+        };
+    };
+    list_6: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListDataQualityDispositionCaseView"];
+                };
+            };
+        };
+    };
+    create_6: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispositionCaseCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDataQualityDispositionCaseView"];
+                };
+            };
+        };
+    };
+    verify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispositionCaseTransitionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDataQualityDispositionCaseView"];
+                };
+            };
+        };
+    };
+    start: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispositionCaseTransitionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDataQualityDispositionCaseView"];
+                };
+            };
+        };
+    };
+    fail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispositionCaseTransitionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDataQualityDispositionCaseView"];
+                };
+            };
+        };
+    };
+    cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispositionCaseTransitionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDataQualityDispositionCaseView"];
+                };
+            };
+        };
+    };
+    review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CleanupReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCleanupReviewResult"];
+                };
+            };
+        };
+    };
+    branchCreationModeDryRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BranchCreationModeMigrationDryRunRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBranchCreationModeMigrationDryRunResult"];
+                };
+            };
+        };
+    };
+    list_7: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListBranchRuleView"];
+                };
+            };
+        };
+    };
+    create_7: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBranchRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBranchRuleView"];
+                };
+            };
+        };
+    };
+    enable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseVoid"];
+                };
+            };
+        };
+    };
+    disable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseVoid"];
+                };
+            };
+        };
+    };
+    test: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestBranchRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseTestResultView"];
                 };
             };
         };
@@ -1518,26 +4766,64 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["TokenInfo"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseTokenInfo"];
                 };
             };
         };
     };
-    getPlan: {
+    listPaged: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+                keyword?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiPageResponseListVersionPolicyView"];
+                };
+            };
+        };
+    };
+    applicable: {
+        parameters: {
+            query?: {
+                scopeProjectId?: string;
+                scopeSubProjectId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListVersionPolicyView"];
+                };
+            };
+        };
+    };
+    getRunDetail: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                runId: string;
             };
             cookie?: never;
         };
@@ -1549,26 +4835,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseListPlanItemView"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseRunDetailView"];
                 };
             };
         };
     };
-    dryPlan: {
+    getRunLogs: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                runId: string;
             };
             cookie?: never;
         };
@@ -1580,16 +4857,33 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseListDryPlanItemView"];
+                    "*/*": components["schemas"]["ApiResponseRunLogsView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    listRuns: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+                status?: string;
+                repoUrl?: string;
+                branchName?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiPageResponseListRunSummaryView"];
                 };
             };
         };
@@ -1612,18 +4906,9 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseBoolean"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
         };
     };
-    list: {
+    list_8: {
         parameters: {
             query?: never;
             header?: never;
@@ -1638,21 +4923,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseObject"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseListRunView"];
                 };
             };
         };
     };
-    get: {
+    get_5: {
         parameters: {
             query?: never;
             header?: never;
@@ -1669,16 +4945,54 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseObject"];
+                    "*/*": components["schemas"]["ApiResponseRunView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    get_6: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponsePlanView"];
+                };
+            };
+        };
+    };
+    listByRun: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListOperation"];
                 };
             };
         };
@@ -1703,15 +5017,6 @@ export interface operations {
                     "application/json": components["schemas"]["RunJsonView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
         };
     };
     exportCsv: {
@@ -1734,18 +5039,179 @@ export interface operations {
                     "text/csv": string;
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    listPaged_1: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+                runType?: string;
+                operator?: string;
+                windowKey?: string;
+                repoId?: string;
+                iterationKey?: string;
+                status?: string;
+                groupCode?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiPageResponseListRunView"];
                 };
             };
         };
     };
-    get_1: {
+    list_9: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListOperation"];
+                };
+            };
+        };
+    };
+    getGateSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRepoGateSummaryView"];
+                };
+            };
+        };
+    };
+    listBranches: {
+        parameters: {
+            query?: {
+                prefix?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListString"];
+                };
+            };
+        };
+    };
+    getBranchSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRepoBranchSummaryView"];
+                };
+            };
+        };
+    };
+    listNonCompliantBranches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListNonCompliantBranchView"];
+                };
+            };
+        };
+    };
+    listPaged_2: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+                keyword?: string;
+                groupCode?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiPageResponseListCodeRepositoryView"];
+                };
+            };
+        };
+    };
+    get_7: {
         parameters: {
             query?: never;
             header?: never;
@@ -1765,13 +5231,295 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseReleaseWindowView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    delete_4: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseBoolean"];
+                };
+            };
+        };
+    };
+    exportPackage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+        };
+    };
+    exportMarkdown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/markdown": string;
+                };
+            };
+        };
+    };
+    exportJson_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseWindowReportView"];
+                };
+            };
+        };
+    };
+    exportCsv_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+        };
+    };
+    getPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListPlanItemView"];
+                };
+            };
+        };
+    };
+    getParallelScope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseReleaseWindowParallelScopeView"];
+                };
+            };
+        };
+    };
+    list_10: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListWindowIterationView"];
+                };
+            };
+        };
+    };
+    listPaged_3: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiPageResponseListWindowIterationView"];
+                };
+            };
+        };
+    };
+    getConflicts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseConflictReportView"];
+                };
+            };
+        };
+    };
+    getBranchStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBranchStatusView"];
+                };
+            };
+        };
+    };
+    listPaged_4: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+                name?: string;
+                status?: string;
+                groupCode?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiPageResponseListReleaseWindowView"];
+                };
+            };
+        };
+    };
+    getCandidateReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseReleaseCandidateReviewSummary"];
                 };
             };
         };
@@ -1794,15 +5542,6 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseString"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
         };
     };
     me: {
@@ -1820,26 +5559,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["UserResponse"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseUserResponse"];
                 };
             };
         };
     };
-    get_2: {
+    listRepos: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                key: string;
             };
             cookie?: never;
         };
@@ -1851,16 +5581,147 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseGroupView"];
+                    "*/*": components["schemas"]["ApiResponseSetString"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    getRepoVersionInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+                repoId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiResponseIterationRepoVersionInfo"];
+                };
+            };
+        };
+    };
+    checkVersionConflict: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+                repoId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseVersionConflict"];
+                };
+            };
+        };
+    };
+    listReposPaged: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiPageResponseListIterationRepoDetailView"];
+                };
+            };
+        };
+    };
+    listVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iterationKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListIterationRepoVersionInfo"];
+                };
+            };
+        };
+    };
+    getVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iterationKey: string;
+                repoId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseIterationRepoVersionInfo"];
+                };
+            };
+        };
+    };
+    listPaged_5: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+                keyword?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiPageResponseListIterationView"];
                 };
             };
         };
@@ -1883,15 +5744,6 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseListGroupNodeView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
-                };
-            };
         };
     };
     topLevel: {
@@ -1912,13 +5764,27 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseListGroupView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    listPaged_6: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseVoid"];
+                    "*/*": components["schemas"]["ApiPageResponseListGroupView"];
                 };
             };
         };
@@ -1943,13 +5809,160 @@ export interface operations {
                     "*/*": components["schemas"]["ApiResponseListGroupView"];
                 };
             };
-            /** @description Internal Server Error */
-            500: {
+        };
+    };
+    getByCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseGroupView"];
+                };
+            };
+        };
+    };
+    deleteByCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseVoid"];
+                };
+            };
+        };
+    };
+    detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDetail"];
+                };
+            };
+        };
+    };
+    get_8: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDataQualityDispositionCaseView"];
+                };
+            };
+        };
+    };
+    getStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDashboardStatsView"];
+                };
+            };
+        };
+    };
+    listPaged_7: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+                name?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiPageResponseListBranchRuleView"];
+                };
+            };
+        };
+    };
+    check: {
+        parameters: {
+            query: {
+                branchName: string;
+                scopeProjectId?: string;
+                scopeSubProjectId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBranchCheckResult"];
                 };
             };
         };
