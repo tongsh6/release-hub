@@ -67,9 +67,10 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             RepoRef repoRef = parseRepoRef(repoCloneUrl);
             String endpoint = String.format("%s/api/v4/projects/%s/repository/branches", repoRef.baseUrl, repoRef.encodedPath);
             HttpEntity<Map<String, String>> entity = new HttpEntity<>(Map.of("branch", branchName, "ref", fromBranch), headers(token));
-            var response = restTemplate.exchange(uri(endpoint), HttpMethod.POST, entity,
-                    new ParameterizedTypeReference<Map<String, Object>>() {});
-            confirmedRefSha(response, branchName, ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN);
+            var response = restTemplate.exchange(uri(endpoint), HttpMethod.POST, entity, JsonNode.class);
+            if (createdBranchSha(response.getStatusCode().value(), response.getBody(), branchName) == null) {
+                throw BusinessException.of(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN);
+            }
             return true;
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode().value() == 408) throw BusinessException.of(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN);
@@ -112,6 +113,17 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
             return MergeResult.unknown("MR_CHECKPOINT_INVALID").withEvidence(checkpoint);
         }
         return mergeWorkflow(repoCloneUrl, token, checkpoint.projectId()).tryMergeRequest(checkpoint, message);
+    }
+
+    /** Canonical creation proof shared by the client, HTTP journal and database projection. */
+    public static String createdBranchSha(int status, JsonNode body, String expectedBranch) {
+        if (status != 201 || body == null || !body.isObject() || expectedBranch == null || expectedBranch.isBlank()
+                || !body.path("name").isTextual() || !expectedBranch.equals(body.path("name").textValue())
+                || !body.path("commit").isObject() || !body.path("commit").path("id").isTextual()) {
+            return null;
+        }
+        String sha = body.path("commit").path("id").textValue();
+        return validSha(sha) ? sha : null;
     }
 
     private String confirmedRefSha(ResponseEntity<Map<String, Object>> response, String expectedName, ErrorCode failureCode) {

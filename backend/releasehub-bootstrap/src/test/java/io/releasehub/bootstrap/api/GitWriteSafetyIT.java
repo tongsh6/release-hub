@@ -87,6 +87,164 @@ class GitWriteSafetyIT {
     private void branchSuccess() {SERVER.reply("POST",canonicalEndpoint+"/repository/branches",201,
             "{\"name\":\"release/evidence\",\"commit\":{\"id\":\""+sha+"\"}}");}
     private boolean write() {return factory.getAdapter(GitProvider.GITLAB).createBranch(repo.getCloneUrl(),"fixture-token","release/evidence","main");}
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"object", "commit"})
+    void branchCreationCannotMaskWrongCommitId(String decoyLocation) throws Exception {
+        var run = admittedBranchRun();
+        String feature = run.getItems().getFirst().getMetadata().get("plan.featureBranch");
+        var body = branchResponseWithExtraHash(feature, "b".repeat(40), decoyLocation, sha);
+        SERVER.reply("POST", canonicalEndpoint + "/repository/branches", 201, body.toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        assertUnconfirmedBranchTask(run.getId().value());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"object", "commit"})
+    void branchCreationUsesCommitIdDespiteOtherHashes(String decoyLocation) throws Exception {
+        var run = admittedBranchRun();
+        String feature = run.getItems().getFirst().getMetadata().get("plan.featureBranch");
+        var body = branchResponseWithExtraHash(feature, sha, decoyLocation, "b".repeat(40));
+        SERVER.reply("POST", canonicalEndpoint + "/repository/branches", 201, body.toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        assertConfirmedBranchTask(run.getId().value(), feature);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {200, 202})
+    void branchCreationRequiresCreatedStatusEvenWithCompleteBody(int status) throws Exception {
+        var run = admittedBranchRun();
+        String feature = run.getItems().getFirst().getMetadata().get("plan.featureBranch");
+        var body = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("name", feature);
+        body.putObject("commit").put("id", sha);
+        SERVER.reply("POST", canonicalEndpoint + "/repository/branches", status, body.toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        assertUnconfirmedBranchTask(run.getId().value());
+    }
+
+    @Test
+    void branchCreationPersistsCanonicalCommitProof() throws Exception {
+        var run = admittedBranchRun();
+        String feature = run.getItems().getFirst().getMetadata().get("plan.featureBranch");
+        var body = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("name", feature);
+        body.putObject("commit").put("id", sha);
+        SERVER.reply("POST", canonicalEndpoint + "/repository/branches", 201, body.toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        assertConfirmedBranchTask(run.getId().value(), feature);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {40, 64})
+    void branchCreationMatchesFrozenShaIgnoringHexCase(int length) throws Exception {
+        sha = "aBcD".repeat(length / 4);
+        SERVER.reply("GET", canonicalEndpoint + "/repository/commits/main", 200, "{\"id\":\"" + sha + "\"}");
+        var run = admittedBranchRun();
+        String feature = run.getItems().getFirst().getMetadata().get("plan.featureBranch");
+        var body = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("name", feature);
+        body.putObject("commit").put("id", sha.toUpperCase(java.util.Locale.ROOT));
+        SERVER.reply("POST", canonicalEndpoint + "/repository/branches", 201, body.toString());
+
+        assertThat(taskService.executeNextTask(run.getId().value())).isTrue();
+
+        assertConfirmedBranchTask(run.getId().value(), feature);
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode branchResponseWithExtraHash(
+            String branch, String commitId, String decoyLocation, String decoy) {
+        var body = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("name", branch);
+        var commit = body.putObject("commit").put("id", commitId);
+        if ("object".equals(decoyLocation)) body.putObject("object").put("id", decoy);
+        else commit.put("sha", decoy);
+        return body;
+    }
+
+    private io.releasehub.domain.run.Run admittedBranchRun() {
+        String windowId = UUID.randomUUID().toString();
+        String iterationKey = "ITER-PROOF-" + UUID.randomUUID();
+        String feature = "feature/" + iterationKey;
+        String release = "release/proof-" + windowId;
+        Instant now = Instant.now();
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            taskWindows.save(io.releasehub.domain.releasewindow.ReleaseWindow.rehydrate(
+                    io.releasehub.domain.releasewindow.ReleaseWindowId.of(windowId), "RW-" + windowId,
+                    "分支证明验证", "", now, "G001", io.releasehub.domain.releasewindow.ReleaseWindowStatus.DRAFT,
+                    now, now, false, null));
+            taskIterations.save(io.releasehub.domain.iteration.Iteration.rehydrate(
+                    io.releasehub.domain.iteration.IterationKey.of(iterationKey), "分支证明迭代", "", null, "G001",
+                    Set.of(repo.getId()), io.releasehub.domain.iteration.IterationStatus.ACTIVE, now, now));
+            taskVersions.saveWithVersion(iterationKey, repo.getId().value(), "1.0.0", "1.1.0-SNAPSHOT", "1.1.0",
+                    feature, "SYSTEM", now, io.releasehub.domain.iteration.BranchCreationMode.NAMED);
+            taskBindings.attach(io.releasehub.domain.releasewindow.ReleaseWindowId.of(windowId),
+                    io.releasehub.domain.iteration.IterationKey.of(iterationKey), now);
+            taskBindings.updateReleaseBranch(windowId, iterationKey, release, now);
+        });
+        var admitted = taskPlans.admit(windowId, List.of(repo.getId().value()), List.of(iterationKey),
+                true, "branch-proof-operator", UUID.randomUUID().toString());
+        SERVER.reply("GET", canonicalEndpoint + "/repository/branches/"
+                + URLEncoder.encode(feature, StandardCharsets.UTF_8), 404, "{}");
+        SERVER.reply("GET", canonicalEndpoint + "/repository/branches/main", 200,
+                "{\"name\":\"main\",\"commit\":{\"id\":\"" + sha + "\"}}");
+        return taskRuns.findById(admitted.runId()).orElseThrow();
+    }
+
+    private void assertUnconfirmedBranchTask(String runId) {
+        var tasks = taskRuns.findTasks(runId);
+        var run = taskRuns.findById(runId).orElseThrow();
+        var operations = journal.listByRun(runId, 0, 20);
+        assertThat(tasks).hasSize(4);
+        assertThat(run.getItems()).hasSize(1);
+        assertThat(run.getItems().getFirst().getSteps()).hasSize(1);
+        assertThat(operations).hasSize(1);
+        SERVER.verify("POST", canonicalEndpoint + "/repository/branches", 1);
+        assertThat(SERVER.writeCount()).isEqualTo(1);
+        assertThat(SERVER.body("POST", canonicalEndpoint + "/repository/branches").path("ref").asText()).isEqualTo(sha);
+        var operation = operations.getFirst();
+        org.assertj.core.api.SoftAssertions.assertSoftly(soft -> {
+            soft.assertThat(tasks.getFirst().status()).as("branch task must not succeed").isEqualTo("UNKNOWN");
+            soft.assertThat(run.getItems().getFirst().getSteps().getFirst().result()).isEqualTo(RunItemResult.UNKNOWN);
+            soft.assertThat(run.getExecutionStatus().name()).isEqualTo("NEEDS_REVIEW");
+            soft.assertThat(operation.state()).as("unconfirmed response must not be APPLIED").isEqualTo("UNKNOWN");
+            soft.assertThat(operation.blocked()).as("repository guard must remain held").isTrue();
+            soft.assertThat(tasks.subList(1, tasks.size())).allMatch(task -> "SKIPPED".equals(task.status()));
+        });
+        assertThat(journal.find(operation.id()).orElseThrow().events()).noneMatch(event -> "APPLIED".equals(event.type()));
+    }
+
+    private void assertConfirmedBranchTask(String runId, String feature) throws Exception {
+        var tasks = taskRuns.findTasks(runId);
+        var run = taskRuns.findById(runId).orElseThrow();
+        var operations = journal.listByRun(runId, 0, 20);
+        assertThat(tasks).hasSize(4);
+        assertThat(tasks.getFirst().status()).isEqualTo("COMPLETED");
+        assertThat(tasks.subList(1, tasks.size())).allMatch(task -> "PENDING".equals(task.status()));
+        assertThat(run.getItems().getFirst().getSteps()).hasSize(1);
+        assertThat(run.getItems().getFirst().getSteps().getFirst().result()).isEqualTo(RunItemResult.CREATED);
+        assertThat(run.getItems().getFirst().getMetadata()).containsEntry("git.projectId", String.valueOf(project));
+        assertThat(operations).hasSize(1);
+        var operation = operations.getFirst();
+        assertThat(operation.state()).isEqualTo("APPLIED");
+        assertThat(operation.blocked()).isFalse();
+        SERVER.verify("POST", canonicalEndpoint + "/repository/branches", 1);
+        assertThat(SERVER.writeCount()).isEqualTo(1);
+        var detail = journal.find(operation.id()).orElseThrow();
+        var applied = detail.events().stream().filter(event -> "APPLIED".equals(event.type())).toList();
+        assertThat(applied).hasSize(1);
+        assertThat(applied.getFirst().sequence()).isEqualTo(2);
+        var proof = new com.fasterxml.jackson.databind.ObjectMapper().readTree(applied.getFirst().evidenceJson());
+        assertThat(proof.path("httpStatus").asInt()).isEqualTo(201);
+        assertThat(proof.path("name").isTextual()).isTrue();
+        assertThat(proof.path("name").asText()).isEqualTo(feature);
+        assertThat(proof.path("commit").path("id").isTextual()).as("persist the canonical response field").isTrue();
+        assertThat(proof.path("commit").path("id").asText()).isEqualToIgnoringCase(sha);
+    }
+
     @Test void shouldProtectEveryManagedHttpAdapter() {
         for(var adapter:context.getBeansOfType(GitBranchPort.class).values()) {
             Object target=AopTestUtils.getUltimateTargetObject(adapter);

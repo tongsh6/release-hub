@@ -11,6 +11,8 @@ import io.releasehub.domain.run.MergeStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.web.client.RestTemplate;
 import java.util.List;
@@ -62,6 +64,40 @@ class GitLabGitBranchAdapterTest {
         stubFor(post(urlPathEqualTo(ENC + "/repository/branches"))
                 .willReturn(created().withHeader("Content-Type", "application/json")
                         .withBody("{\"name\":\"release/RW-1\",\"commit\":{\"id\":\"" + SHA + "\"}}")));
+        assertTrue(adapter.createBranch(repo(wm), "token", TARGET, "main"));
+    }
+
+    @ParameterizedTest @ValueSource(ints = {200, 202, 206})
+    void shouldRejectNonCreatedStatusDespiteCompleteBranchResponse(int status, WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/repository/branches"))
+                .willReturn(aResponse().withStatus(status).withHeader("Content-Type", "application/json")
+                        .withBody("{\"name\":\"release/RW-1\",\"commit\":{\"id\":\"" + SHA + "\"}}")));
+        var error = assertThrows(BusinessException.class, () -> adapter.createBranch(repo(wm), "token", TARGET, "main"));
+        assertEquals(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN, error.getErrorCode());
+        verify(1, postRequestedFor(urlPathEqualTo(ENC + "/repository/branches")));
+    }
+
+    @ParameterizedTest @MethodSource("createdBranchResponsesWithDistractingFields")
+    void shouldAcceptCanonicalCreatedBranchWithDistractingFields(String body, WireMockRuntimeInfo wm) {
+        stubFor(post(urlPathEqualTo(ENC + "/repository/branches"))
+                .willReturn(created().withHeader("Content-Type", "application/json").withBody(body)));
+        assertTrue(adapter.createBranch(repo(wm), "token", TARGET, "main"));
+        verify(1, postRequestedFor(urlPathEqualTo(ENC + "/repository/branches")));
+    }
+
+    private static List<String> createdBranchResponsesWithDistractingFields() {
+        return List.of(
+                "{\"name\":\"release/RW-1\",\"commit\":{\"id\":\"" + SHA + "\",\"sha\":\"" + MERGE_SHA + "\"}}",
+                "{\"name\":\"release/RW-1\",\"commit\":{\"id\":\"" + SHA + "\"},\"object\":{\"id\":\""
+                        + MERGE_SHA + "\",\"sha\":\"" + MERGE_SHA + "\"}}");
+    }
+
+    @ParameterizedTest @ValueSource(ints = {40, 64})
+    void shouldAcceptCanonicalCreatedBranchShaLengthsAndCase(int length, WireMockRuntimeInfo wm) {
+        String sha = "aB".repeat(length / 2);
+        stubFor(post(urlPathEqualTo(ENC + "/repository/branches"))
+                .willReturn(created().withHeader("Content-Type", "application/json")
+                        .withBody("{\"name\":\"release/RW-1\",\"commit\":{\"id\":\"" + sha + "\"}}")));
         assertTrue(adapter.createBranch(repo(wm), "token", TARGET, "main"));
     }
 
@@ -119,11 +155,29 @@ class GitLabGitBranchAdapterTest {
         assertEquals(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN, error.getErrorCode());
     }
 
-    @Test void shouldExposeIncompleteBranchResponseAsTypedUnknown(WireMockRuntimeInfo wm) {
+    @ParameterizedTest @MethodSource("unconfirmedCreatedBranchResponses")
+    void shouldExposeIncompleteBranchResponseAsTypedUnknown(String branch, String body, WireMockRuntimeInfo wm) {
         stubFor(post(urlPathEqualTo(ENC + "/repository/branches")).willReturn(created()
-                .withHeader("Content-Type", "application/json").withBody("{}")));
-        var error = assertThrows(BusinessException.class, () -> adapter.createBranch(repo(wm), "token", SOURCE, "main"));
+                .withHeader("Content-Type", "application/json").withBody(body)));
+        var error = assertThrows(BusinessException.class, () -> adapter.createBranch(repo(wm), "token", branch, "main"));
         assertEquals(ErrorCode.GIT_WRITE_OUTCOME_UNKNOWN, error.getErrorCode());
+        verify(1, postRequestedFor(urlPathEqualTo(ENC + "/repository/branches")));
+    }
+
+    private static List<Arguments> unconfirmedCreatedBranchResponses() {
+        return List.of(
+                Arguments.of(SOURCE, ""),
+                Arguments.of(SOURCE, "{}"),
+                Arguments.of(SOURCE, "{\"name\":\"feature/ITER-1\",\"object\":{\"id\":\"" + SHA + "\"}}"),
+                Arguments.of(SOURCE, "{\"name\":\"feature/ITER-1\",\"commit\":{\"sha\":\"" + SHA + "\"}}"),
+                Arguments.of("123", "{\"name\":123,\"commit\":{\"id\":\"" + SHA + "\"}}"),
+                Arguments.of(SOURCE, "{\"name\":\"feature/ITER-1\",\"commit\":{\"id\":" + "1".repeat(40) + "}}"),
+                Arguments.of(SOURCE, "{\"name\":\"feature/ITER-1\",\"commit\":{\"id\":null}}"),
+                Arguments.of(SOURCE, "{\"name\":\"feature/ITER-1\",\"commit\":{\"id\":[\"" + SHA + "\"]}}"),
+                Arguments.of(SOURCE, "{\"name\":\"feature/ITER-1\",\"commit\":\"" + SHA + "\"}"),
+                Arguments.of(SOURCE, "{\"name\":\"FEATURE/ITER-1\",\"commit\":{\"id\":\"" + SHA + "\"}}"),
+                Arguments.of(SOURCE, "{\"name\":\"feature/ITER-1\",\"commit\":{\"id\":\"" + "a".repeat(39) + "\"}}"),
+                Arguments.of(SOURCE, "{\"name\":\"feature/ITER-1\",\"commit\":{\"id\":\"" + "g".repeat(40) + "\"}}"));
     }
 
     @Test void shouldPreserveTypedUnknownWhenArchiveCreationCannotBeConfirmed(WireMockRuntimeInfo wm) {

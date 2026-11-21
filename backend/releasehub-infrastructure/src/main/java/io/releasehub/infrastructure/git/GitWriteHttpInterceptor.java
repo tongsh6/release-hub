@@ -131,7 +131,7 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
         int status=response.getStatusCode().value();var evidence=json.createObjectNode();evidence.put("httpStatus",status);
         JsonNode parsed=null;
         try{if(bytes.length>0)parsed=json.readTree(bytes);}catch(IOException ignored){/* 保留不完整结果，不保存原始响应。 */}
-        if(parsed!=null) {
+        if(parsed!=null&&!action.equals("CREATE_BRANCH")) {
             for(String key:List.of("id","iid","number","sha","merge_commit_sha","state","name","ref")) {
                 if(parsed.hasNonNull(key)&&parsed.get(key).isValueNode())evidence.put(key,parsed.get(key).asText());
             }
@@ -150,9 +150,21 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
             if(pipeline==null)outcome=GitWriteResult.Outcome.UNKNOWN;
             else {evidence.put("projectId",pipeline.projectId());evidence.put("url",pipeline.url());}
         }
-        if(outcome==GitWriteResult.Outcome.APPLIED&&(action.equals("CREATE_BRANCH")||action.equals("CREATE_TAG"))) {
-            String name=target.path(action.equals("CREATE_BRANCH")?"branch":"tag_name").asText();
-            if(!name.equals(evidence.path("name").asText())||!target.path("ref").asText().equals(evidence.path("commitSha").asText())) {
+        if(action.equals("CREATE_BRANCH")) {
+            String branchSha=GitLabGitBranchAdapter.createdBranchSha(status,parsed,target.path("branch").textValue());
+            if(branchSha!=null) {
+                evidence.put("name",parsed.path("name").textValue());
+                evidence.putObject("commit").put("id",branchSha);
+            }
+            String frozenSha=target.path("ref").textValue();
+            if(outcome==GitWriteResult.Outcome.APPLIED&&(branchSha==null
+                    ||!GitLabGitBranchAdapter.validSha(frozenSha)||!frozenSha.equalsIgnoreCase(branchSha))) {
+                outcome=GitWriteResult.Outcome.UNKNOWN;
+            }
+        }
+        if(outcome==GitWriteResult.Outcome.APPLIED&&action.equals("CREATE_TAG")) {
+            if(!target.path("tag_name").asText().equals(evidence.path("name").asText())
+                    ||!target.path("ref").asText().equals(evidence.path("commitSha").asText())) {
                 outcome=GitWriteResult.Outcome.UNKNOWN;
             }
         }
