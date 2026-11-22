@@ -906,7 +906,7 @@ C2-B8 已 DONE，以下契约经独立 RED、一次 PG 过强断言校准及本�
 - **AND** 现操作查询需认证但无仓库级/操作者级过滤，不声称仅创建者可见，不在 B8 扩 RBAC；GitOperationsPanel 不渲染 targetJson，无新增 UI 入口
 - **AND** 原“标题不存”测试断言按完整请求可审计调整，token/认证 header/无关正文及响应证据隐私约束保留，不泛化存任意 body 或 secret；独立 RED 冻结后的契约仍须保留
 
-B9最终验收状态（不替代下列规范）：独立RED、校准与实现后，单次相关1078/1078、API48/48、普通918（913 PASS/5既有SKIP）、静态及最终源码绑定通过；113新例包含于1078。四个排序PG例直接核三个读取入口的完整步骤及末项，每批最多一次Task查询、无关联时零额外查询及completeTask复用约束以源码审查留证，不冒称运行时SQL计数。实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003attempt 1已completed/success，5 PASS / 0 FAIL，B9已DONE。B10「MERGE_MR 精确只读核对证据」已DONE，typed观察仍不改Task/Step/guard/seq2，最终证据见记录23.11。B11读取状态证明已DONE，契约及终态见下列规范与记录24.9；当前唯一HEAD为B12「无自身写意图任务的失败与重试闭环」，SEND/UNKNOWN受证据约束恢复继续排队。证据与边界见任务记录22.7–22.14；历史失败不覆盖，完整UI未扩验。
+B9最终验收状态（不替代下列规范）：独立RED、校准与实现后，单次相关1078/1078、API48/48、普通918（913 PASS/5既有SKIP）、静态及最终源码绑定通过；113新例包含于1078。四个排序PG例直接核三个读取入口的完整步骤及末项，每批最多一次Task查询、无关联时零额外查询及completeTask复用约束以源码审查留证，不冒称运行时SQL计数。实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003attempt 1已completed/success，5 PASS / 0 FAIL，B9已DONE。B10「MERGE_MR 精确只读核对证据」已DONE，typed观察仍不改Task/Step/guard/seq2，最终证据见记录23.11。B11读取状态证明已DONE，契约及终态见下列规范与记录24.9；B12失败重试闭环已DONE（记录25.10），当前唯一HEAD为B13「项目身份响应证明统一」，SEND/UNKNOWN受证据约束恢复继续排队。证据与边界见任务记录22.7–22.14；历史失败不覆盖，完整UI未扩验。
 
 ### Requirement: 完整未发送 CREATE_MR 意图的原任务接续
 
@@ -1090,7 +1090,7 @@ B9最终验收状态（不替代下列规范）：独立RED、校准与实现后
 - **THEN** 复用现JpaRepository.findAllById至多一次读取整批关联任务，无关联id时零额外query；completeTask直接复用已有任务列表
 - **AND** 不逐Run/Item/Step查询，不引入缓存、第二套存储、DTO字段或新接口
 
-B10最终验收状态（不替代下列规范）：冻结d51a0b7生产的独立27例为23 FAIL/4正控，随后独立GREEN27/27；新增adapter24仅3固定+15响应+6 locator，旧18另回归，namespace/通用错误保留的源码边界不扩称新增覆盖。三条真实HTTP未加same-key零额外GET断言，幂等沿现回归与源码核验。UI基线4/4、完整前端218/218含coverage通过；单次相关1123/1123、API48/48、普通942（937 PASS/5旧SKIP）、静态与最终源码审计均通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定SHA Full-Link44982102777 attempt 1已completed/success，5 PASS/0 FAIL，B10已DONE；证据见记录23.7–23.11。B11读取状态证明已DONE，独立契约与本地验收见记录24，实现35ca21366ec9124fe9c4d6d2ef162a09c13709fb已推送，固定SHA Full-Link44984865795 attempt 1为5 PASS/0 FAIL；当前唯一HEAD为B12「无自身写意图任务的失败与重试闭环」；本CI不扩称新观察的真实远端或完整UI旅程。
+B10最终验收状态（不替代下列规范）：冻结d51a0b7生产的独立27例为23 FAIL/4正控，随后独立GREEN27/27；新增adapter24仅3固定+15响应+6 locator，旧18另回归，namespace/通用错误保留的源码边界不扩称新增覆盖。三条真实HTTP未加same-key零额外GET断言，幂等沿现回归与源码核验。UI基线4/4、完整前端218/218含coverage通过；单次相关1123/1123、API48/48、普通942（937 PASS/5旧SKIP）、静态与最终源码审计均通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定SHA Full-Link44982102777 attempt 1已completed/success，5 PASS/0 FAIL，B10已DONE；证据见记录23.7–23.11。B11读取状态证明已DONE，独立契约与本地验收见记录24，实现35ca21366ec9124fe9c4d6d2ef162a09c13709fb已推送，固定SHA Full-Link44984865795 attempt 1为5 PASS/0 FAIL；B12失败重试闭环已DONE（记录25.10），当前唯一HEAD为B13「项目身份响应证明统一」；本CI不扩称新观察的真实远端或完整UI旅程。
 
 ### Requirement: MERGE_MR精确只读观察使用完整远端证明
 
@@ -1208,7 +1208,62 @@ B10最终验收状态（不替代下列规范）：冻结d51a0b7生产的独立2
 - **THEN** 沿既有未知/失败分类和结果事务收口，不据此确认ALREADY_MERGED、创建MR或发送merge PUT
 - **AND** 不扩大原SEND/UNKNOWN恢复权，不改变POST201与merge PUT的既有写响应资格
 
-B12当前准备状态（详细规范后续定义）：当前Run/Task锁与token核准下，首次结果提交前无任何本Task operation的UNKNOWN拟按FAILED收口，保留原message/metadata，由现新Run retry直接消费。有任何operation或历史UNKNOWN不在本片，不以FOUND直接恢复；拟由原ack返回现RunItemResult供唯一completeTask消费者使用，不新增DTO或Port方法。独立HTTP/PG测试仍仅内存准备，代码未落盘、测试未运行，详细合同后续补齐。
+B12阶段证据（不替代下列规范）：冻结59f6311生产的23新增独立RED为11 FAIL/12正控，随后三生产文件实现原事务核准结果接线，独立GREEN23/23、19.1s、0 FAIL/ERROR/SKIP，495源码稳定。旧校准审计与两个新增块字节保留已核，历史与实际结果见25.5–25.6；相关1174/1174、API旧fixture补证后48/48、普通967（962 PASS+5旧SKIP）已通过；首轮API失败及校准见25.7。静态与跨阶段源码总审计已通过，六代码文件审阅绑定及API fixture差异见25.8；实现7042f19278ff8d8bfa102a8f27d0c1f1b949539d已推送，固定SHA Full-Link44989857158 attempt 1已completed/success，5 PASS/0 FAIL，B12已DONE，终态见25.10。
+
+### Requirement: 无自身写意图的首次Task未知结果归为失败
+
+系统 SHALL 仅在当前WINDOW协议Task经原Run→Task锁与token核准、无任何自身operation且无自身Step时，将首次提议UNKNOWN归为FAILED。原ack返回已有RunItemResult，由唯一completeTask消费者贯穿Step/Item/Task/后继/binding/Run；原message、metadata、时间与身份保持。任意自身operation、历史UNKNOWN或非当前协议不进入该转换。本转换只确定当前Task为FAILED；既有新Run retry仍须源Run已结束、finishedAt非空且无RUNNING/UNKNOWN Task，并通过原窗口/范围/guard等门禁；别仓仍执行或其他Task仍UNKNOWN时，不因当前Task转FAILED而立即取得retry资格。
+
+#### Scenario: 无操作的首次未知结果一致落为FAILED
+
+- **GIVEN** 当前协议Task仍RUNNING、token匹配、无自身operation且无自身Step
+- **WHEN** 首次提交UNKNOWN并通过原结果与metadata校验
+- **THEN** ack返回FAILED，completeTask以此一致决定Step、Item、Task、后继跳过、binding分支及Run汇总
+- **AND** 原message、metadata含UNKNOWN诊断、startAt/endAt、action与领取身份保留；不制造Git operation/event/guard，不新增成功binding
+
+#### Scenario: 资格仅依据本Task的真实持久事实
+
+- **GIVEN** 本Task有任意operation，或已有Step、旧token、历史UNKNOWN状态、非当前WINDOW协议
+- **WHEN** 尝试首次结果收口
+- **THEN** 不按无意图路径归FAILED；操作存在时沿原INTENT/SEND/UNKNOWN/APPLIED等协议，其余资格失败沿原拒绝
+- **AND** 其他Task的APPLIED及其他仓库guard不算本Task操作；满足无意图资格的非UNKNOWN结果保持
+
+#### Scenario: begin先提交时结果必须消费已有意图
+
+- **GIVEN** 两个真实PG事务的begin与completeTask竞争同一Run→Task锁
+- **WHEN** begin先获得资格并提交自身operation
+- **THEN** 结果事务取得锁后必须看到该operation并沿原协议，不可依赖锁外空快照归FAILED
+- **AND** 用实际阻塞与事务提交证明竞争，不以顺序调用代替
+
+#### Scenario: 失败结果先提交时晚begin不能再写
+
+- **GIVEN** 无自身operation/Step的结果事务先持有同一Run→Task锁
+- **WHEN** 另一真实事务的begin等待，结果事务提交FAILED
+- **THEN** 晚begin取得锁后因Task已不具RUNNING发送资格而拒绝，不产生自身新意图或远端写
+- **AND** 不把数据库锁称为远端Git fencing
+
+#### Scenario: 结果回滚恢复原资格而不抹去独立事实
+
+- **GIVEN** 已进入结果事务并暂写Step/metadata等，随后Task CAS失败或外层事务回滚
+- **WHEN** 原结果事务整体回滚
+- **THEN** 本事务的Step、metadata、Task/Item、后继及Run新增变化不提交，原token/状态与既有binding等事实保持
+- **AND** 等待的begin此后仍可合法继续；已独立提交的其他operation/响应/guard不被抹去，不称永久失权或自动重放
+
+#### Scenario: ENSURE失败由新Run重新取得源证据
+
+- **GIVEN** ENSURE_MR首次无写意图失败且未形成成功MR检查点，旧读源为A、当前已为B
+- **WHEN** 经现retry入口创建新Run并继承成功前缀
+- **THEN** 新ENSURE按当前读取B完成既有证明，不把失败读取A伪装为必须续发的原意图
+- **AND** 原Run/失败证据保留，仍遵守原重试受理与写入门禁
+
+#### Scenario: TRY失败重试继承原MR检查点
+
+- **GIVEN** ENSURE_MR已成功留下I/IID/A，TRY_MERGE首次无自身写意图失败
+- **WHEN** 现新Run retry继承成功前缀与检查点
+- **THEN** TRY仍消费原I/IID/A，不重新ENSURE、不因当前源B改写原SHA或重建MR
+- **AND** 原有operation的未知结果和历史UNKNOWN仍禁止普通retry，不由一次FOUND解锁
+
+B13当前准备状态（详细规范后续定义）：拟由Resolver.resolve、Evidence.read的namespace前置及GitLabAdapter.resolveProjectId三个现入口复用现Resolver，统一actual200、object和positive integral JSON id的纯证明，不新增实体或Port。各入口定位、token与真实异常政策保持；仅long消费者另核上界，字符串身份不附加long上限。第三入口正常不可信/越界沿既有GIT_OP_004；Evidence正常非200为INCOMPLETE、200身份不符为MISMATCH。当前仅只读核对与内存测试准备，尚无新增测试落盘或运行，详细事前合同待切片基线后记录26；metadata、其他业务GET、SEND/UNKNOWN和完整UI仍独立待验。
 
 ## MODIFIED Requirements
 

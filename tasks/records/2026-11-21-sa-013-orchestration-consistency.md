@@ -1,6 +1,6 @@
 # 2026-11-21 SA-013：分支收敛与唯一编排语义
 
-状态：已交付阶段及其固定 SHA 证据按各节保留。C2-B6 实现 `4e992e9c2406586ec23fa7636292e3d48c163118`、文档 `29ec00586be20730e66cf37da12614e6450d240d` 已分阶段推送，固定实现完整 SHA 的 Full-Link 44940092094 为 5/5，B6 已 DONE，详见19.9；此前本地门禁与历史轮次不变。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。C2-B8 正常 CREATE_MR 完整请求的发送证明闭环已 DONE：独立 RED 与一次明确 PG 契约校准后，125/125 首次 GREEN、单次相关965/965、API48/48、普通877（872 PASS / 5既有SKIP）、静态及最终源码绑定通过；实现 `537588e782c2b3bb2d2e82e21804f2d37fb42fc2` 已推送，固定该 SHA 的 [Full-Link 44972473174](https://github.com/tongsh6/release-hub/actions/runs/44972473174) attempt 1 已 completed/success，五个slice分别PASSED。最终证据与边界见21.11，验收文档单独收口。C2-B9 原 CREATE_MR INTENT 的安全接续与本地收口已 DONE：相关1078/1078、API48/48、普通918（913 PASS / 5既有SKIP）、静态与最终源码审计通过，实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003 attempt 1为5 PASS / 0 FAIL。证据与边界见记录22.7–22.14，验收文档单独收口。B10「MERGE_MR 精确只读核对证据」已DONE：相关1123/API48/普通942、前端218与静态及源码审计通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定该SHA的Full-Link44982102777 attempt 1为5 PASS/0 FAIL，证据见记录23.7–23.11。B11「GitLab MR读取响应状态证明」已DONE：实现 `35ca21366ec9124fe9c4d6d2ef162a09c13709fb` 已推送，固定该SHA的Full-Link44984865795 attempt 1为5 PASS/0 FAIL，完整本地与远端证据见记录24.5–24.9。当前唯一 HEAD 为 C2-B12「无自身写意图任务的失败与重试闭环」；后续SEND/UNKNOWN窄恢复继续QUEUED，再按原顺序推进SA-002。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
+状态：已交付阶段及其固定 SHA 证据按各节保留。C2-B6 实现 `4e992e9c2406586ec23fa7636292e3d48c163118`、文档 `29ec00586be20730e66cf37da12614e6450d240d` 已分阶段推送，固定实现完整 SHA 的 Full-Link 44940092094 为 5/5，B6 已 DONE，详见19.9；此前本地门禁与历史轮次不变。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。C2-B8 正常 CREATE_MR 完整请求的发送证明闭环已 DONE：独立 RED 与一次明确 PG 契约校准后，125/125 首次 GREEN、单次相关965/965、API48/48、普通877（872 PASS / 5既有SKIP）、静态及最终源码绑定通过；实现 `537588e782c2b3bb2d2e82e21804f2d37fb42fc2` 已推送，固定该 SHA 的 [Full-Link 44972473174](https://github.com/tongsh6/release-hub/actions/runs/44972473174) attempt 1 已 completed/success，五个slice分别PASSED。最终证据与边界见21.11，验收文档单独收口。C2-B9 原 CREATE_MR INTENT 的安全接续与本地收口已 DONE：相关1078/1078、API48/48、普通918（913 PASS / 5既有SKIP）、静态与最终源码审计通过，实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003 attempt 1为5 PASS / 0 FAIL。证据与边界见记录22.7–22.14，验收文档单独收口。B10「MERGE_MR 精确只读核对证据」已DONE：相关1123/API48/普通942、前端218与静态及源码审计通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定该SHA的Full-Link44982102777 attempt 1为5 PASS/0 FAIL，证据见记录23.7–23.11。B11「GitLab MR读取响应状态证明」已DONE：实现 `35ca21366ec9124fe9c4d6d2ef162a09c13709fb` 已推送，固定该SHA的Full-Link44984865795 attempt 1为5 PASS/0 FAIL，完整本地与远端证据见记录24.5–24.9。B12「无自身写意图任务的失败与重试闭环」已DONE：实现 `7042f19278ff8d8bfa102a8f27d0c1f1b949539d` 已推送，固定该SHA的Full-Link44989857158 attempt 1为5 PASS/0 FAIL，最终证据见记录25.10。当前唯一 HEAD 为 C2-B13「项目身份响应证明统一」；后续SEND/UNKNOWN窄恢复继续QUEUED，再按原顺序推进SA-002。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
 
 ## 1. 目标与范围
 
@@ -1557,3 +1557,138 @@ B10十文档已提交推送为`62f21035a8631dfabeffb2384eb1120bde4bd4ff`，`.ai/
 独立RED→GREEN、完整本地相关/API/普通/静态、源码绑定及审阅、实现分组推送和固定SHA CI均完成，B11标DONE并出队，验收文档单独收口。28新增包含于1151、五个旧SKIP和八条原fixture warning的边界保持；前端218仅B10历史，本片未重跑组件套件。该CI只验已有backend API与隔离GitLab五切片，不扩大完整UI旅程、Slice4/5既有覆盖或SEND/UNKNOWN恢复权限。
 
 下一唯一HEAD为C2-B12「无自身写意图任务的失败与重试闭环」。当前Run/Task锁与token核准下，首次结果提交前无任何本Task operation的UNKNOWN拟按FAILED收口，保留原message/metadata，由现新Run retry直接消费。有任何operation或历史UNKNOWN不在本片，不以FOUND直接恢复；拟由原ack返回现RunItemResult供唯一completeTask消费者使用，不新增DTO或Port方法。独立HTTP/PG测试仍仅内存准备，代码未落盘、测试未运行，详细合同后续补齐。SEND/UNKNOWN窄恢复继续QUEUED，之后仍按SA-002顺序推进。
+
+## 25. C2-B12：无自身写意图任务的失败与重试闭环
+
+### 25.1 基线与独立目标
+
+B11十文档已提交推送为`59f6311d811616d9b990e714d60ce70274dc749b`，`.ai/reports/validation/c2-b12/baseline.json`冻结backend495/frontend222，productionUnchangedBeforeIndependentRed=true。记录24全文封存；B11的本地和固定SHA CI结果不是B12验证。本片目标是把当前Task尚未形成自身写意图的首次失败接入现有安全重试，同时保留真正远端未知的保护。
+
+### 25.2 独立合同与真实消费者
+
+当前WINDOW协议的RUNNING Task经原Run→Task锁、当前token和结果输入核准后，实时确认没有任何自身operation且没有自身Step，才将提议UNKNOWN归为FAILED；非UNKNOWN保持。原message、metadata含git.blockReason=UNKNOWN诊断、startAt/endAt、action与Task/token身份不改。有任意自身operation均沿原协议，已有Step、旧token、非当前协议及历史UNKNOWN不取得该首次转换资格；其他Task的APPLIED或其他仓库guard不冒充当前写意图。
+
+原ack返回既有RunItemResult，唯一completeTask消费者用同一结果贯穿Step/Item/Task/skip/binding/Run。失败不新增成功binding，ENSURE_MR只保留前序绑定。现RunPlanAppService在278–289拒绝NEEDS_REVIEW/RUNNING/UNKNOWN，在311/435–437只接纳失败、阻塞或因阻塞跳过项；copyRetryCheckpoint 404–421区分ENSURE前无检查点与TRY继承I/IID/A，RunJpa inheritedPrefix 179–209继承成功前缀。因此ENSURE失败后的新Run可重新读当前B，TRY失败后的新Run须继续原I/IID/A，不改历史Run或UNKNOWN。
+
+Run.java 75–93按Step/Item结果汇总，不读取git.blockReason作为UNKNOWN判据，保留诊断不应重新阻断FAILED。现前端runPresentation.ts 18/35–37已有当前WINDOW v3失败重试判定，RunList.vue 103和RunDetail.vue 259/287为实际消费者；本片不修改它们，不将源码接线描述成真实UI点击验收。
+
+### 25.3 责任查重、最强反例与影响
+
+定位依据：`GitOperationPersistenceAdapter.acknowledgeTask` 335–340现已锁定Task并按taskId查询操作，空集却直接void返回；`lockTask/lockTaskOwner` 486–506复用Run→Task顺序、协议与token校验。现`GitOperationJournalPort` 42只有该既有方法，唯一生产调用在`RunJpaPersistenceAdapter.completeTask` 399–461；其后Step/Item、skipAfterFailure、binding分支、Task CAS和Run汇总仍消费原step.result。返回已有结果即可让真正持有账本事实的一方裁定，再由原结果事务一致落库，不新增DTO、Port方法、状态、实体、schema、额外网络调用或第二套重试判定。
+
+| 独立正反例 | 事前期望 |
+|---|---|
+| 无自身op/Step的首次UNKNOWN；非UNKNOWN正控；其他Task已APPLIED或别仓有guard | 只将合格UNKNOWN归FAILED并保留诊断/身份；其他事实及非UNKNOWN保持 |
+| 自身任意op、已有Step、旧token、错误协议、历史UNKNOWN | 不进入无意图转换；原资格/保护协议不放宽 |
+| begin先commit，结果后取得真实PG锁 | 必须看到自身op并沿原协议，不使用锁外空快照 |
+| 结果先持锁并commit，晚begin真正等待 | Task失败后晚begin拒绝，无新意图/写请求 |
+| 结果在Step/metadata等暂写后CAS失败或外层rollback | 本事务新增变化整体不提交；晚begin此后可合法继续，原独立事实保持 |
+| ENSURE读取A后无意图失败，retry时源B；TRY已有I/IID/A后无意图失败 | 新ENSURE读B；新TRY继承I/IID/A，不重建MR或更换原SHA |
+
+最强反例是“结果事务暂时看不到operation，但并发begin仍可能取得资格”：只有真实共享锁与提交顺序能关闭竞争窗口，顺序测试或锁外计数不足；结果回滚不能被说成永久失权。二阶影响是FAILED让现retry和失败传播可用，三阶风险是各层若继续读取旧UNKNOWN，会把Step、队列、binding和Run汇总写成矛盾事实；同一个核准结果必须贯穿原事务，其他真实未知仍可使整Run保持NEEDS_REVIEW。
+
+### 25.4 事前验收与旧测试调整计划
+
+PG20预计9 FAIL/11 PASS，真实HTTP3预计2 FAIL/1 PASS；这些仅是独立反例设计与预计展开，本节不将计划作为运行结果。先冻结59f6311生产，由根侧统一执行独立RED，不能将编译/fixture错误计为产品RED；再实现上述结果传递与资格检查并验证GREEN。
+
+新RED后，旧5个PG fixture计划补真实write UNKNOWN以保持原保护目的；HTTP5个既有方法的12个期望需按新合同单独校准。保留原证据与校准补丁，说明为何改变，不能称所有旧断言原样保留，也不能先改旧期望掩盖新RED。
+
+后续门禁为真实PG竞争/回滚、真实HTTP与原重试闭环、完整相关/API/普通后端、静态TopN逐项处理、源码绑定和独立审阅，以及分组提交推送与固定SHA CI。现前端消费者保持，完整UI旅程仍另行验收；当前B12唯一HEAD，不提前写GREEN/DONE或推动下一片。未验收不交付，缺陷以修复提交处理；历史执行与guard保留，不清数据、不重发未知请求，SEND/UNKNOWN恢复与SA-002顺序保持。
+
+### 25.5 实际独立RED与实现前证据冻结
+
+25.1–25.4的事前记录保持原文。以下两组均固定`59f6311d811616d9b990e714d60ce70274dc749b`生产，分别只overlay对应新测试，无生产签名seam；每组sourceStable/rootProductionStable均为true，0 ERROR/SKIP。证据目录为`.ai/reports/validation/c2-b12/`。
+
+| 实际阶段 | 结果 | 耗时 |
+|---|---|---|
+| `red-pg-frozen-jdk21/result.json` | 20新增=9 FAIL/11正控PASS | 15.4s |
+| `red-http-frozen-jdk21/result.json` | 3新增=2 FAIL/1正控PASS | 15.7s |
+| 两组独立新增合计 | 23=11 FAIL/12正控PASS；不是实现GREEN | 不以重复运行或重叠套件累加 |
+
+PG九个失败逐项对应目标行为：四种action的Step预期FAILED而实际UNKNOWN；结果先提交用例的Run预期FAILED而实际NEEDS_REVIEW；外层回滚用例的事务内投影预期FAILED而实际UNKNOWN；CAS用例因旧UNKNOWN未命中针对FAILED的触发条件，实际未抛出预期异常；两种仓库策略的当前Task仍UNKNOWN而不是FAILED。均为断言失败，不是编译或fixture ERROR。
+
+HTTP两个失败分别为新ENSURE与TRY链中的Step预期FAILED、实际UNKNOWN（冻结文件884/999行）；真实PUT未知保护正控PASS。失败先定位于结果投影，尚不能据此宣称其后新Run retry、晚begin或回滚后置断言已通过。
+
+首次PG RED执行前，补齐了新用例首注释“仅首次UNKNOWN转换”的范围，并在outer rollback后加入实际beginCreateMrIntent，以检查原token仍能合法取得INTENT；这属于首轮执行前的用例完备化，20例数量不变。冻结PG新增块502行、HTTP新增块285行，独立RED时旧测试全文仍保留。外层用例在本轮先于该后置验证失败，其完整回滚/late begin结论须待GREEN，不能将存在断言写成已验通过。
+
+事前合同的retry措辞已精确为：本转换只确定当前Task FAILED，现retry仍要求源Run结束、finishedAt非空、无RUNNING/UNKNOWN Task及原窗口/范围/guard门禁，其他仓仍执行或存在其他UNKNOWN时不立即取得资格；这是原受理条件的明确化，不扩大范围。25.3中“GitOperationJournalPort 42”只指该行的既有声明；规划时全仓生产源码的acknowledgeTask共声明、实现、唯一completeTask调用三处，不表示整个Port只有一个方法。
+
+独立RED齐后才进入生产修改，并授权旧5个PG fixture补真实write UNKNOWN、HTTP5方法12期望按新合同单独校准，实际补丁和验证后续追加。记录本节时尚无GREEN，未完成本地全门禁/提交/CI；B12仍唯一HEAD，不提前验收或出队。
+
+### 25.6 三处生产接线、旧测试校准与独立GREEN
+
+独立RED之后的生产变化仅在三个既有文件，无新DTO、Port方法、状态或实体/schema。实际源码与独立只读审查均确认原结果事务的责任边界：
+
+| 既有生产责任 | 实际实现 |
+|---|---|
+| GitOperationJournalPort 41–42 | acknowledgeTask原位返回已有RunItemResult，不增加方法、重载或兼容路径 |
+| GitOperationPersistenceAdapter 334–396 | 保持MANDATORY及原Run→Task/token核准，复用taskOperations按本Task查询；无自身operation且提议UNKNOWN时查自身Step，存在则拒绝、无则返回FAILED；非UNKNOWN原样返回，任意自身operation继续原协议并返回原结果 |
+| RunJpaPersistenceAdapter 423–459 | 唯一completeTask调用获取核准result，同一值进入Step、Item、skipAfterFailure、binding分支、Task CAS及Run汇总；原action/message/时间/token和validated metadata patch继续使用 |
+
+归FAILED的路径没有新增成功binding，也未创建Git操作/事件/guard。ENSURE_MR的前序绑定保持；原token与协议核验沿现lockTask责任保留。源码独立审查无阻断，不能把它扩大成未运行的完整回归结论。
+
+`old-test-calibration/result.json`为PASS，附两份独立patch。HTTP旧5方法只校准12行期望（+12/-12）；PG旧5方法共六处编辑（+23/-1），为原未知保护场景补真实begin→sending→finish(UNKNOWN)，并将一处claimLastTask改为`claimMergedMrTask("MR_REUSED", 40)`，使用独立project避免遗留guard干扰。两个独立新增块与对应冻结RED逐字节一致：HTTP285行、PG502行，newIndependentBlockUnchanged=true，且oldFilePreservedBeforeRed=true。这里证明调整边界，不表示旧5个方法已由本次新例选择器运行；其完整执行仍待相关回归。
+
+`green-independent-jdk21/result.json`已实测23/23 PASS（真实HTTP3+PG20），19.1s，0 FAIL/ERROR/SKIP、exitCode=0，495源码before/after稳定。已核对应XML：双向真实Run→Task锁竞争、FAILED投影触发的CAS回滚、外层回滚后原token实际late begin、新ENSURE重读B、TRY继承I/IID/A及真实write UNKNOWN保护全部通过；25.5中未越过失败位置的后置断言现已完成，不回写原RED结果。
+
+记录本节时完整相关回归已启动但尚无终态，API/普通/静态及最终源码总审计、代码commit/push与固定SHA CI均未完成。25.5及此前历史保持，B12仍唯一HEAD；独立GREEN不等于最终交付或完整UI旅程验收。
+
+### 25.7 API旧fixture补证与本地回归
+
+以下实际结果在`.ai/reports/validation/c2-b12/`下；25.6及此前的当时状态保持，不回写失败或待验历史。
+
+| 阶段与证据 | 实际结果 |
+|---|---|
+| `regression-final-jdk21/result.json` | 单次14 suites，1174/1174 PASS，347.0s；含HTTP188、PG440、多JVM21，0 FAIL/ERROR/SKIP |
+| `api-final-jdk21/result.json` | 首轮48=47 PASS/1 FAIL，48.2s，0 ERROR/SKIP；原失败保留 |
+| `api-verified-jdk21/result.json` | fixture补证后48/48 PASS，51.1s，0 FAIL/ERROR/SKIP |
+| `ordinary-final-jdk21/result.json` | 原58 suites，967=962 PASS+5既有SKIP，14.2s，0 FAIL/ERROR |
+
+API首轮唯一失败为RunPlanApiIT.unresolvedOrchestrationPreventsCloseBeforeAnyCleanupGit：旧fixture未为本Task建立任何operation，却直接提交UNKNOWN并期待Run NEEDS_REVIEW，实际按B12契约成为FAILED。该例原目的仍是“真实未决写必须阻止close及cleanup”，因此补方法局部真实Journal CREATE_BRANCH→sending→finish(UNKNOWN)事实，再执行原结果提交与close断言；不把期望409改为成功，也不修改生产规则迎合旧fixture。
+
+`api-fixture-calibration/result.json`与`RunPlanApiIT.patch`已审计：仅该测试fixture变化，+45/-10；原方法语句按序保留，原close409、Task UNKNOWN、窗口PUBLISHED、零cleanup计划和零Git交互等断言不变，删除行只是try内缩进调整。原setup与PreciseClock保持，finally按原配置存在与否精确恢复raw settings，并断言GLOBAL整行与原快照相等；逆变换可恢复原文。API复验已实际执行这一路径并通过。
+
+当前待交付代码共6文件（3生产+3测试）。API补证只改变RunPlanApiIT，该文件不在已通过的独立23和相关1174选择器内；`api-fixture-calibration/result.json`核定其余494个backend文件与GREEN/related一致。因此前两轮实际执行的生产及选中测试未变，无需机械重跑无关套件。各运行内部的495快照前后稳定不等于跨阶段所有495文件相同：API补证前后的唯一差异必须在最终源码总审计中明确保留，不能写成十份495快照完全一致。
+
+记录本节时静态任务仍执行，最终源码总审计、代码commit/push及固定SHA CI尚未完成；B12继续唯一HEAD，不提前出队或扩大完整UI覆盖。旧PG/HTTP校准用例已纳入1174相关回归通过，API首轮失败与本次补证为另一个独立证据链。
+
+### 25.8 完整本地门禁与跨阶段源码审计
+
+`final-gates/static-result.json`已PASS，22.3s；本次报告为`.ai/reports/static-scan/20261122-132559/summary.md`。六模块fresh SpotBugs XML各0，typecheck PASS，lint 0 errors/8既有fixture warnings。根侧已重读两份fixture实际定义，八条逐项保留理由写入报告，未关闭规则；raw lint SHA256为`b5496961a4422b7ea5154e6aead19f4c751cd8e76575656cf0b4b92a6fea0faa`，与B11逐字节一致。
+
+`local-evidence-audit.json`为PASS，明确区分同次运行内部稳定与API补证前后的跨阶段差异：
+
+| 审计范围 | 实际结论 |
+|---|---|
+| 通过阶段的10份backend快照，每份495文件 | 后6份495文件完全相同；前4份仅未被独立/相关选择器选中的RunPlanApiIT不同 |
+| 全部通过阶段共享的其余494文件 | 全部一致；已执行生产及独立23/相关1174所选测试未漂移 |
+| 本片23个独立新增用例 | 全部包含于1174相关回归并通过，不把23再次加到1174 |
+| 2份frontend222快照 | 相同且与B11一致；218/218仅B10历史，本片未重跑组件套件，typecheck/lint为本次运行 |
+| 五个普通后端SKIP与API首轮失败 | SKIP身份保持，`api-final-jdk21/result.json`原失败保留，校准另有patch与审计 |
+
+六代码文件（3生产+3测试）的审阅由首批五文件与API fixture增量组成，绑定tree `bfb133f73461a8fbc26ad4e15f2d5d71d960aa86`；原五文件哈希与首次review树`9652a4560d0e0b46a64075697bc05a2dfedd0cb3`一致。独立生产审查、测试交叉核验及API校准补证无阻断。不能将该结论改写成十份495源码完全相同，或声称为API fixture变更重跑了无关的完整相关套件。
+
+至此独立23、单次相关1174、API复验48、普通967（962 PASS+5旧SKIP）、静态TopN及最终源码审计均通过。25.7及此前记录保持原时态；记录本节时实现代码尚待commit/push与固定SHA CI，B12仍唯一HEAD，最终交付出口未完成。
+
+### 25.9 实现分组推送与固定SHA CI待验
+
+实现已单独commit/push为`7042f19278ff8d8bfa102a8f27d0c1f1b949539d`，父提交`59f6311d811616d9b990e714d60ce70274dc749b`，6文件（3生产+3测试）、+889/-39。验收文档单独收口；`implementation-commit.json`核定validatedCodeMatchesCommit=true，当前495个backend及222个frontend文件均匹配最终验证树。25.8所列早期API fixture差异仍保留，不将此提交绑定解释为所有历史快照相同。
+
+`implementation-push.json`已核远端恰三heads：feature/orchestration-consistency为上述完整SHA，main/develop仍同`d4534ccc34fedb9bbf394ced89b4726f43ec197c`，未将main/develop描述为已集成B12。提交前冻结文档的`implementation-doc-gates/result.json`为PASS，包含roadmap/OpenSpec strict、EOF/diff及495/222源码稳定；hooks保持。
+
+[Full-Link44989857158](https://github.com/tongsh6/release-hub/actions/runs/44989857158)已实际dispatch，创建于2026-11-22T05:32:38Z（北京时间13:32:38）。`full-link/dispatch.json`与`full-link/run.json`核到headSha精确为`7042f19278ff8d8bfa102a8f27d0c1f1b949539d`，记录本节时status=in_progress、conclusion为空，尚无最终CI结果。B12仍唯一HEAD，提交推送项完成、最终CI出口未勾选；25.1–25.8历史保持，不提前出队或扩大backend API/隔离GitLab之外的完整UI验收。
+
+### 25.10 固定实现SHA CI最终验收与B12出队
+
+[Full-Link44989857158](https://github.com/tongsh6/release-hub/actions/runs/44989857158) attempt 1已completed/success，headSha精确为`7042f19278ff8d8bfa102a8f27d0c1f1b949539d`，watchExitCode=0。最终updatedAt为2026-11-22T05:43:06Z（北京时间13:43:06）；job137108323800全部14步骤success。本节追加终态，25.1–25.9原文保持，尤其不将25.9当时in_progress回写为已成功。
+
+| 证据（`.ai/reports/validation/c2-b12/full-link/`下） | 最终事实 |
+|---|---|
+| `result.json` | 固定完整SHA、attempt 1、job及14步骤均completed/success，watch退出0 |
+| `business-result.json`及原始`job.log` | Slice1..5分别PASSED，5 PASS/0 FAIL；完成时间依次为05:40:58、05:41:18、05:42:00、05:42:21、05:42:43Z |
+| `job.log` | SHA256为`176eb3f3f2e2f14fdde340cb7f850d64fa040387e69655e9351cdee8d1274966`；05:42:43.5114338Z原始摘要为Passed: 5 / Failed: 0 |
+| artifact14741706332 | e2e-logs，633066 bytes，取证时expired=false |
+
+独立RED→23 GREEN、单次相关1174、API补证后48、普通967、静态与最终源码审计、六代码文件分组推送及固定SHA CI均完成，B12标DONE并出队，验收文档单独收口。API首轮失败、旧fixture校准和10份快照中前4份仅API fixture差异等边界均保留；前端218仅B10历史，本片未重跑。CI只验已有backend API与隔离GitLab五切片，不扩大完整UI旅程或Slice4/5既有覆盖，也不赋予真实SEND/UNKNOWN新的恢复权限。
+
+下一唯一HEAD为C2-B13「项目身份响应证明统一」。拟由Resolver.resolve、Evidence.read的namespace前置及GitLabAdapter.resolveProjectId三个现入口复用现Resolver，统一actual200、object和positive integral JSON id的纯证明，不新增实体或Port。各入口定位、token与真实异常政策保持；仅long消费者另核上界，字符串身份不附加long上限。第三入口正常不可信/越界沿既有GIT_OP_004；Evidence正常非200为INCOMPLETE、200身份不符为MISMATCH。当前仅只读核对与内存测试准备，尚无新增测试落盘或运行，详细事前合同待切片基线后记录26；metadata、其他业务GET、SEND/UNKNOWN和完整UI仍独立待验。后续任务仍按既定SA-002顺序推进。
