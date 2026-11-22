@@ -906,7 +906,7 @@ C2-B8 已 DONE，以下契约经独立 RED、一次 PG 过强断言校准及本�
 - **AND** 现操作查询需认证但无仓库级/操作者级过滤，不声称仅创建者可见，不在 B8 扩 RBAC；GitOperationsPanel 不渲染 targetJson，无新增 UI 入口
 - **AND** 原“标题不存”测试断言按完整请求可审计调整，token/认证 header/无关正文及响应证据隐私约束保留，不泛化存任意 body 或 secret；独立 RED 冻结后的契约仍须保留
 
-B9最终验收状态（不替代下列规范）：独立RED、校准与实现后，单次相关1078/1078、API48/48、普通918（913 PASS/5既有SKIP）、静态及最终源码绑定通过；113新例包含于1078。四个排序PG例直接核三个读取入口的完整步骤及末项，每批最多一次Task查询、无关联时零额外查询及completeTask复用约束以源码审查留证，不冒称运行时SQL计数。实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003attempt 1已completed/success，5 PASS / 0 FAIL，B9已DONE。B10「MERGE_MR 精确只读核对证据」已DONE，typed观察仍不改Task/Step/guard/seq2，最终证据见记录23.11。当前唯一HEAD为B11「GitLab MR读取响应状态证明」，详细契约下一阶段定义；SEND/UNKNOWN受证据约束恢复继续排队。证据与边界见任务记录22.7–22.14；历史失败不覆盖，完整UI未扩验。
+B9最终验收状态（不替代下列规范）：独立RED、校准与实现后，单次相关1078/1078、API48/48、普通918（913 PASS/5既有SKIP）、静态及最终源码绑定通过；113新例包含于1078。四个排序PG例直接核三个读取入口的完整步骤及末项，每批最多一次Task查询、无关联时零额外查询及completeTask复用约束以源码审查留证，不冒称运行时SQL计数。实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003attempt 1已completed/success，5 PASS / 0 FAIL，B9已DONE。B10「MERGE_MR 精确只读核对证据」已DONE，typed观察仍不改Task/Step/guard/seq2，最终证据见记录23.11。B11读取状态证明已DONE，契约及终态见下列规范与记录24.9；当前唯一HEAD为B12「无自身写意图任务的失败与重试闭环」，SEND/UNKNOWN受证据约束恢复继续排队。证据与边界见任务记录22.7–22.14；历史失败不覆盖，完整UI未扩验。
 
 ### Requirement: 完整未发送 CREATE_MR 意图的原任务接续
 
@@ -1090,7 +1090,7 @@ B9最终验收状态（不替代下列规范）：独立RED、校准与实现后
 - **THEN** 复用现JpaRepository.findAllById至多一次读取整批关联任务，无关联id时零额外query；completeTask直接复用已有任务列表
 - **AND** 不逐Run/Item/Step查询，不引入缓存、第二套存储、DTO字段或新接口
 
-B10最终验收状态（不替代下列规范）：冻结d51a0b7生产的独立27例为23 FAIL/4正控，随后独立GREEN27/27；新增adapter24仅3固定+15响应+6 locator，旧18另回归，namespace/通用错误保留的源码边界不扩称新增覆盖。三条真实HTTP未加same-key零额外GET断言，幂等沿现回归与源码核验。UI基线4/4、完整前端218/218含coverage通过；单次相关1123/1123、API48/48、普通942（937 PASS/5旧SKIP）、静态与最终源码审计均通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定SHA Full-Link44982102777 attempt 1已completed/success，5 PASS/0 FAIL，B10已DONE；证据见记录23.7–23.11。当前唯一HEAD为B11「GitLab MR读取响应状态证明」，只读定位原GET实际状态资格，详细合同下一阶段补齐，测试未落盘/未运行；本CI不扩称新观察的真实远端或完整UI旅程。
+B10最终验收状态（不替代下列规范）：冻结d51a0b7生产的独立27例为23 FAIL/4正控，随后独立GREEN27/27；新增adapter24仅3固定+15响应+6 locator，旧18另回归，namespace/通用错误保留的源码边界不扩称新增覆盖。三条真实HTTP未加same-key零额外GET断言，幂等沿现回归与源码核验。UI基线4/4、完整前端218/218含coverage通过；单次相关1123/1123、API48/48、普通942（937 PASS/5旧SKIP）、静态与最终源码审计均通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定SHA Full-Link44982102777 attempt 1已completed/success，5 PASS/0 FAIL，B10已DONE；证据见记录23.7–23.11。B11读取状态证明已DONE，独立契约与本地验收见记录24，实现35ca21366ec9124fe9c4d6d2ef162a09c13709fb已推送，固定SHA Full-Link44984865795 attempt 1为5 PASS/0 FAIL；当前唯一HEAD为B12「无自身写意图任务的失败与重试闭环」；本CI不扩称新观察的真实远端或完整UI旅程。
 
 ### Requirement: MERGE_MR精确只读观察使用完整远端证明
 
@@ -1169,6 +1169,46 @@ B10最终验收状态（不替代下列规范）：冻结d51a0b7生产的独立2
 - **WHEN** 相同actor/key和原expectedVersion再次请求核对
 - **THEN** 沿现幂等路径返回已有观察，不新增并行接口或自动恢复动作
 - **AND** GET位于账本事务外，提交时核版本；现UI只展示观察和原执行状态，不把FOUND扩展为恢复动作
+
+### Requirement: GitLab MR读取须先证明实际GET成功状态
+
+系统 SHALL 在GitLabMergeRequestAdapter既有getMap/readPages出口先核实际GET状态，仅200可继续正文与分页证明。未抛异常而返回非200须为INCOMPLETE/null；既有异常分类保持。分页任一后页失败须丢弃累计匹配并停止后续读取，readSource/read/find/contains不得以部分证据确认存在、包含或完整缺席。
+
+#### Scenario: 完整200仍须通过原正文证明
+
+- **GIVEN** readSource/read/find/contains使用既有GET出口
+- **WHEN** 实际响应为200
+- **THEN** 继续原正文、身份、SHA、URL与分页完整性校验；合法完整证据保留原结果，空正文等既有反例仍拒绝
+- **AND** 不因新增状态检查放宽任何原证明
+
+#### Scenario: 非200正文不能成为成功证据
+
+- **GIVEN** GET未抛异常而实际返回201、206或其他非200状态
+- **WHEN** 正文看似完整匹配、空列表或带结束分页头
+- **THEN** 在消费正文和分页头前返回INCOMPLETE/null，不产生FOUND或完整缺席结论
+
+#### Scenario: 后页失败丢弃前页匹配
+
+- **GIVEN** 首个200页已有MR或target匹配，仍指向下一页
+- **WHEN** 后页非200正常返回，或抛出现有读取异常
+- **THEN** 丢弃累计匹配且无部分结果；正常返回非200为INCOMPLETE/null，抛异常沿现分类
+- **AND** 不再请求随后页，不因已有匹配提前成功
+
+#### Scenario: 异常分类与200分页正控保持
+
+- **GIVEN** 现GET抛出401/403、404或网络等异常，或各页均为200且满足原完整分页规则
+- **WHEN** 两个既有出口处理结果
+- **THEN** 异常仍按原FORBIDDEN、NOT_FOUND、UNAVAILABLE返回；完整200分页仍可按原正文规则产生FOUND
+- **AND** 不新增重试、缓存、接口或target快照
+
+#### Scenario: 实际编排消费者拒绝不具资格的读取
+
+- **GIVEN** fresh ENSURE_MR、prepared ENSURE_MR或TRY_MERGE沿现workflow消费上述结果
+- **WHEN** 分页、包含关系或MR详情只取得非200正常返回的正文
+- **THEN** 沿既有未知/失败分类和结果事务收口，不据此确认ALREADY_MERGED、创建MR或发送merge PUT
+- **AND** 不扩大原SEND/UNKNOWN恢复权，不改变POST201与merge PUT的既有写响应资格
+
+B12当前准备状态（详细规范后续定义）：当前Run/Task锁与token核准下，首次结果提交前无任何本Task operation的UNKNOWN拟按FAILED收口，保留原message/metadata，由现新Run retry直接消费。有任何operation或历史UNKNOWN不在本片，不以FOUND直接恢复；拟由原ack返回现RunItemResult供唯一completeTask消费者使用，不新增DTO或Port方法。独立HTTP/PG测试仍仅内存准备，代码未落盘、测试未运行，详细合同后续补齐。
 
 ## MODIFIED Requirements
 

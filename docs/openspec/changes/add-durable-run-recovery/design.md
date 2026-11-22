@@ -1,6 +1,6 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。C2-B2 已分组推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5；规范化建分支成功证明与 APPLIED 结果投影恢复已交付。C2-B3 后端 d87dfa8、文档 544983b 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE；本地最终 403/48/738、静态与历史轮次证据见记录 16.2–16.6。C2-B4、B5 已完成本地与各自固定 SHA CI 验收并推送，证据见记录 17.5、18.9。C2-B6 原 MERGE 未发送意图的本地收口已完成：相关单次 749/API 48/普通 816、前端 217 与静态通过，实现 4e992e9、文档 29ec005 已推送，固定实现 SHA 的 Full-Link 44940092094 为 5/5（记录 19.9）。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。B8 已完成独立 RED、定向 125/125、单次相关 965/965、API 48/48、普通 877（872 PASS / 5 既有 SKIP）与静态验收；实现 `537588e782c2b3bb2d2e82e21804f2d37fb42fc2` 已推送，固定该 SHA 的 [Full-Link 44972473174](https://github.com/tongsh6/release-hub/actions/runs/44972473174) attempt 1 为 5 PASS / 0 FAIL，B8 已 DONE。详见任务记录 21.6–21.11。B9 原 CREATE_MR INTENT 的安全接续与本地收口已 DONE：相关1078/1078、API48/48、普通918（913 PASS / 5既有SKIP）、静态与最终源码审计通过，实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003 attempt 1为5 PASS / 0 FAIL。证据与边界见记录22.7–22.14，验收文档单独收口。B10「MERGE_MR 精确只读核对证据」已DONE：相关1123/API48/普通942、前端218与静态及源码审计通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定该SHA的Full-Link44982102777 attempt 1为5 PASS/0 FAIL，证据见记录23.7–23.11。当前唯一 HEAD 为 C2-B11「GitLab MR读取响应状态证明」；后续SEND/UNKNOWN窄恢复继续QUEUED，再按原顺序推进SA-002。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。C2-B2 已分组推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5；规范化建分支成功证明与 APPLIED 结果投影恢复已交付。C2-B3 后端 d87dfa8、文档 544983b 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE；本地最终 403/48/738、静态与历史轮次证据见记录 16.2–16.6。C2-B4、B5 已完成本地与各自固定 SHA CI 验收并推送，证据见记录 17.5、18.9。C2-B6 原 MERGE 未发送意图的本地收口已完成：相关单次 749/API 48/普通 816、前端 217 与静态通过，实现 4e992e9、文档 29ec005 已推送，固定实现 SHA 的 Full-Link 44940092094 为 5/5（记录 19.9）。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。B8 已完成独立 RED、定向 125/125、单次相关 965/965、API 48/48、普通 877（872 PASS / 5 既有 SKIP）与静态验收；实现 `537588e782c2b3bb2d2e82e21804f2d37fb42fc2` 已推送，固定该 SHA 的 [Full-Link 44972473174](https://github.com/tongsh6/release-hub/actions/runs/44972473174) attempt 1 为 5 PASS / 0 FAIL，B8 已 DONE。详见任务记录 21.6–21.11。B9 原 CREATE_MR INTENT 的安全接续与本地收口已 DONE：相关1078/1078、API48/48、普通918（913 PASS / 5既有SKIP）、静态与最终源码审计通过，实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003 attempt 1为5 PASS / 0 FAIL。证据与边界见记录22.7–22.14，验收文档单独收口。B10「MERGE_MR 精确只读核对证据」已DONE：相关1123/API48/普通942、前端218与静态及源码审计通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定该SHA的Full-Link44982102777 attempt 1为5 PASS/0 FAIL，证据见记录23.7–23.11。B11「GitLab MR读取响应状态证明」已DONE：实现 `35ca21366ec9124fe9c4d6d2ef162a09c13709fb` 已推送，固定该SHA的Full-Link44984865795 attempt 1为5 PASS/0 FAIL，完整本地与远端证据见记录24.5–24.9。当前唯一 HEAD 为 C2-B12「无自身写意图任务的失败与重试闭环」；后续SEND/UNKNOWN窄恢复继续QUEUED，再按原顺序推进SA-002。
 
 
 ## 0. 当前研发蓝图与授权（2026-11-21）
@@ -373,7 +373,7 @@ begin 与当前 owner sending 都核 typed 请求/hash/marker。sending 还须 o
 | source A→响应 B；历史 B3 APPLIED/已有进程 trace | UNKNOWN/guard/无 TRY 和原纯 DB 投影同时保持，不追加请求/hash 门禁 |
 | 现 targetJson API 与隐私消费者 | 返回受支持完整命令；认证/secret/无关正文和响应隐私仍受约束，无新 UI 入口 |
 
-独立 RED 的 125 例在旧实现上为 107 FAIL / 18 正控 PASS；校准与历史失败均保留。首轮 GREEN 125/125 后只调整一个旧 PG fixture，最终单次 13 suites 965/965（含全部 125 新例、368 PG 与 15 进程强杀例）、API 48/48、普通 877（872 PASS / 5 既有 SKIP）通过，八份最终 backend 快照 495 文件一致。静态 `.ai/reports/static-scan/20261122-093043/summary.md` 为六模块 SpotBugs 0、typecheck PASS、lint 0 errors / 8 既有 fixture warnings，TopN 逐项留痕。前端 217 为历史结果，本片未重跑；222 文件与既有基线一致。实现 `537588e` 已推送，本片固定 SHA CI 44972473174 attempt 1 为 5 PASS / 0 FAIL，已出队。CI 覆盖后端 API 与隔离 GitLab，不扩大完整 UI 或 Slice4/5 的既有较弱验收边界。无新实体、表、schema、DTO、Port、执行器、缓存或用户入口；回滚停派发并保留原事实。B9 原 INTENT 已DONE，契约与最终验收见下节；B10精确只读核对已DONE，B11 GitLab MR读取响应状态证明为唯一HEAD，后续SEND/UNKNOWN恢复与完整UI仍独立排队。
+独立 RED 的 125 例在旧实现上为 107 FAIL / 18 正控 PASS；校准与历史失败均保留。首轮 GREEN 125/125 后只调整一个旧 PG fixture，最终单次 13 suites 965/965（含全部 125 新例、368 PG 与 15 进程强杀例）、API 48/48、普通 877（872 PASS / 5 既有 SKIP）通过，八份最终 backend 快照 495 文件一致。静态 `.ai/reports/static-scan/20261122-093043/summary.md` 为六模块 SpotBugs 0、typecheck PASS、lint 0 errors / 8 既有 fixture warnings，TopN 逐项留痕。前端 217 为历史结果，本片未重跑；222 文件与既有基线一致。实现 `537588e` 已推送，本片固定 SHA CI 44972473174 attempt 1 为 5 PASS / 0 FAIL，已出队。CI 覆盖后端 API 与隔离 GitLab，不扩大完整 UI 或 Slice4/5 的既有较弱验收边界。无新实体、表、schema、DTO、Port、执行器、缓存或用户入口；回滚停派发并保留原事实。B9 原 INTENT 已DONE，契约与最终验收见下节；B10精确只读核对已DONE，B11 GitLab MR读取响应状态证明已DONE，B12「无自身写意图任务的失败与重试闭环」为唯一HEAD，后续SEND/UNKNOWN恢复与完整UI仍独立排队。
 
 ##### C2-B9：原 CREATE_MR INTENT 的安全接续与本地收口（DONE）
 
@@ -446,7 +446,7 @@ workflow独立RED如需新增参数才能编译，只在8cfc294冻结导出树�
 
 既有steps数组的顺序已纠正，字段和接口保持；BlockBoard、RunDrawer、RunDetail及原结果返回共同消费，不新增前端排序分支。四个PG展开例在真实持久事实之上控制已加载集合的排列，直接核findById/findAll/findPaged完整steps及末项，不声称数据库物理返回了该控制排列。一次批量读取、无关联零额外query和completeTask复用ordered列表由源码复核确认，四例没有SQL计数或completeTask返回值的专属断言。无新实体、schema、字段、DTO或API；详细证据分界见记录22.11。
 
-**B9最终验收与交付状态。** 单次13 suites相关1078/1078、API48/48、普通918（913 PASS / 5既有SKIP）通过；113新增例已包含在1078中，不相加计算。静态 `.ai/reports/static-scan/20261122-105808/summary.md` 为六份fresh SpotBugs XML零问题、typecheck PASS、lint零error/八条既有fixture warning；保留理由逐项记录。最终十份backend快照495文件完全一致；frontend222文件与B8一致，217测试为历史证据，本片未重跑。实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的[Full-Link 44978661003](https://github.com/tongsh6/release-hub/actions/runs/44978661003)attempt 1已completed/success，五个slice分别PASSED、0 FAIL，B9已DONE。原始失败、校准、测试与源码复核的覆盖分界见记录22.7–22.14；不扩大完整UI或Slice4/5的既有验收边界。B10「MERGE_MR 精确只读核对证据」已DONE：只核I/IID/A对象当前merged及typed观察事实；FOUND不代表原PUT成功或原业务计划满足，source/target实际变化照实保留，不改Task/Step/guard/seq2。详细契约与最终验收见下节及记录23，当前唯一HEAD为B11「GitLab MR读取响应状态证明」；后续SEND/UNKNOWN受证据约束恢复保持QUEUED，SA-002顺序不变。
+**B9最终验收与交付状态。** 单次13 suites相关1078/1078、API48/48、普通918（913 PASS / 5既有SKIP）通过；113新增例已包含在1078中，不相加计算。静态 `.ai/reports/static-scan/20261122-105808/summary.md` 为六份fresh SpotBugs XML零问题、typecheck PASS、lint零error/八条既有fixture warning；保留理由逐项记录。最终十份backend快照495文件完全一致；frontend222文件与B8一致，217测试为历史证据，本片未重跑。实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的[Full-Link 44978661003](https://github.com/tongsh6/release-hub/actions/runs/44978661003)attempt 1已completed/success，五个slice分别PASSED、0 FAIL，B9已DONE。原始失败、校准、测试与源码复核的覆盖分界见记录22.7–22.14；不扩大完整UI或Slice4/5的既有验收边界。B10「MERGE_MR 精确只读核对证据」已DONE：只核I/IID/A对象当前merged及typed观察事实；FOUND不代表原PUT成功或原业务计划满足，source/target实际变化照实保留，不改Task/Step/guard/seq2。详细契约与最终验收见下节及记录23；B11读取状态证明已DONE（记录24.9），当前唯一HEAD为B12「无自身写意图任务的失败与重试闭环」；后续SEND/UNKNOWN受证据约束恢复保持QUEUED，SA-002顺序不变。
 
 ##### C2-B10：MERGE_MR 精确只读核对证据（DONE）
 
@@ -485,9 +485,24 @@ FOUND不证明原PUT造成了该结果，也不证明原计划target满足。实
 
 **最终门禁与固定SHA验收。** 单次14 suites相关1123/1123（含新增27、HTTP182/PG420/process21/adapter42）、API48/48、普通942（937 PASS/5既有SKIP）、完整前端218/218通过。静态 `.ai/reports/static-scan/20261122-114305/summary.md` 为六份fresh SpotBugs XML零问题、typecheck PASS、lint零error/八条旧fixture warning，逐项源码复核并保留理由，未关闭规则。最终10份backend495与6份frontend222快照分别一致，唯一前端变化为既有组件测试。实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送；固定此SHA的[Full-Link44982102777](https://github.com/tongsh6/release-hub/actions/runs/44982102777) attempt 1已completed/success，五个slice全部PASSED、0 FAIL，B10标DONE并出队。分轮、源码绑定和终态见记录23.9–23.11；CI仅为既有backend API与隔离GitLab五切片，不等于新观察的真实远端或完整UI旅程。
 
-##### C2-B11：GitLab MR读取响应状态证明（HEAD / 只读定位）
+##### C2-B11：GitLab MR读取响应状态证明（DONE）
 
-已只读定位GitLabMergeRequestAdapter.getMap/readPages未核实际HTTP状态，现readSource/read/find/contains四个消费者可能把201/206响应当作FOUND或完整缺席。本片范围仅收敛原GET成功status=200；实际返回而未抛异常的非200为INCOMPLETE，既有403/404/network异常语义保持，不新增实体、接口或target快照。独立测试仍在内存准备，未落盘、未运行；详细契约下一阶段补齐，不宣称B11已实现。SEND/UNKNOWN窄恢复继续QUEUED，完整UI与真实远端旅程边界不变。
+目标是使现有MR读取链只消费取得成功状态资格的完整证据。查重确认GitLabMergeRequestAdapter.getMap已服务readSource/read，readPages已服务find/contains；GitMergeWorkflow的contains在58/77/148/160/195行立即影响ENSURE_MR、TRY_MERGE和已合并结果核对。责任落在这两个现有GET出口，不新增接口、实体、target快照或消费路径。
+
+| 原GET结果 | B11契约 |
+|---|---|
+| 实际status=200 | 才能进入既有正文、身份、SHA、URL和分页完整性校验；200本身不保证FOUND |
+| 未抛异常而返回非200，即使正文完整或为空 | 在业务消费已返回正文及分页头前返回INCOMPLETE/null，不接受整个2xx家族 |
+| 抛出401/403、404或网络等异常 | 分别保留现FORBIDDEN、NOT_FOUND、UNAVAILABLE分类，不改为统一INCOMPLETE |
+| 前页已匹配，后页非200正常返回或抛异常 | 丢弃累计匹配；前者INCOMPLETE/null，后者沿现异常分类且无部分值；不再请求后续页 |
+
+最强反例是首个200页已含目标匹配，第二页206带完整正文和空X-Next-Page：不能提前确认复用/包含关系，也不能把未匹配的部分列表解释为完整缺席。只在两个出口增加实际状态核验，保留已有分页上限、next页规则及正文验证，避免四个消费者分叉出不同成功语义。错误证明会进一步形成错误检查点、重复CREATE_MR或无依据的merge PUT，并污染后继队列与审计，因此继续复用现结果分类与同事务收口，不扩SEND/UNKNOWN恢复权。
+
+独立方案为新增25 adapter与3真实Spring/HTTP/PG用例，adapter另选5个既有正控；先冻结生产取得RED，再实现两处状态检查。实际独立RED为33选择例=19 FAIL/14正控，0 ERROR/SKIP；HTTP两处快照SQL排序字段由id改为task_id后重新取得3 FAIL，业务合同和断言不变，首轮保留，详见记录24。两处生产状态检查已取得独立GREEN33/33、相关1151/1151、API48/48、普通967（962 PASS+5旧SKIP），静态与最终源码审计通过；实现35ca21366ec9124fe9c4d6d2ef162a09c13709fb已推送，固定SHA Full-Link44984865795 attempt 1已completed/success，5 PASS/0 FAIL，B11已DONE，终态见记录24.9；前端无本片改动，B10的218为历史验收沿用，不称本片重跑。缺陷以修复提交处理，保留已有执行/观察/guard事实，不清数据或重发未知请求。
+
+##### C2-B12：无自身写意图任务的失败与重试闭环（HEAD / 只读准备）
+
+当前Run/Task锁与token核准下，首次结果提交前无任何本Task operation的UNKNOWN拟按FAILED收口，保留原message/metadata，由现新Run retry直接消费。有任何operation或历史UNKNOWN不在本片，不以FOUND直接恢复；拟由原ack返回现RunItemResult供唯一completeTask消费者使用，不新增DTO或Port方法。独立HTTP/PG测试仍仅内存准备，代码未落盘、测试未运行，详细合同后续补齐。
 
 ### 分阶段依赖与交付
 
