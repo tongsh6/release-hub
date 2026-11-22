@@ -332,12 +332,17 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
     }
 
     @Override @Transactional(propagation=Propagation.MANDATORY)
-    public void acknowledgeTask(RunPort.TaskFence fence, RunItemResult result, Map<String, String> resultMetadata) {
+    public RunItemResult acknowledgeTask(RunPort.TaskFence fence, RunItemResult result, Map<String, String> resultMetadata) {
         if (result == null || resultMetadata == null) throw invalid();
         var task = lockTask(fence, true);
-        var operations = em.createQuery("select o from GitOperationEntity o where o.taskId=:task", GitOperationEntity.class)
-                .setParameter("task", fence.taskId()).getResultList();
-        if (operations.isEmpty()) return;
+        var operations = taskOperations(task.getId());
+        if (operations.isEmpty()) {
+            if (result != RunItemResult.UNKNOWN) return result;
+            Number steps = (Number) em.createNativeQuery("select count(*) from {h-schema}run_step where task_id=?1")
+                    .setParameter(1, task.getId()).getSingleResult();
+            if (steps.longValue() != 0) throw stale();
+            return RunItemResult.FAILED;
+        }
         if (operations.size() != 1) throw stale();
         var op = operations.get(0);
         lock(op.getRemoteKey());
@@ -388,6 +393,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         }
         guard.setUpdatedAt(now());
         em.flush();
+        return result;
     }
 
     @Override @Transactional(propagation=Propagation.REQUIRES_NEW, readOnly=true)

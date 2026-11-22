@@ -3,6 +3,7 @@ package io.releasehub.bootstrap.api;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.releasehub.application.gitlab.GitLabPort;
+import io.releasehub.application.gitoperation.GitOperationJournalPort;
 import io.releasehub.application.iteration.IterationPort;
 import io.releasehub.application.iteration.IterationRepoPort;
 import io.releasehub.application.port.out.GitBranchAdapterFactory;
@@ -12,6 +13,7 @@ import io.releasehub.application.gitoperation.GitWriteResult;
 import io.releasehub.application.port.out.GitLabFilePort;
 import io.releasehub.application.releasewindow.ReleaseWindowPort;
 import io.releasehub.application.repo.CodeRepositoryPort;
+import io.releasehub.application.settings.SettingsPort;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.application.run.RunPort;
 import io.releasehub.application.run.plan.RunPlanPort;
@@ -110,6 +112,8 @@ class RunPlanApiIT {
     @Autowired RunPlanAppService planService;
     @Autowired RunPlanPort persistedPlans;
     @Autowired RunPort runs;
+    @Autowired GitOperationJournalPort journal;
+    @Autowired SettingsPort settings;
     @Autowired io.releasehub.application.run.RunAppService taskDriver;
     @MockBean GitLabPort gitLab;
     @MockBean GitLabFilePort gitFiles;
@@ -720,16 +724,47 @@ class RunPlanApiIT {
                 "admin", UUID.randomUUID().toString());
         Run source = runs.findById(admission.runId()).orElseThrow();
         RunPort.TaskClaim claim = runs.claimNextTask(source.getId().value()).orElseThrow();
-        Run unresolved = runs.completeTask(claim, new RunStep(claim.actionType(), RunItemResult.UNKNOWN,
-                claim.startedAt(), claim.startedAt().plusMillis(1), "fixture unknown result"), Map.of());
-        assertThat(unresolved.getExecutionStatus().name()).isEqualTo("NEEDS_REVIEW");
-        assertThat(runs.findTasks(source.getId().value()).getFirst().status()).isEqualTo("UNKNOWN");
-        mvc.perform(post(closePath()).header("Authorization", "Bearer " + token))
-                .andExpect(status().isConflict());
-        assertThat(jdbc.queryForObject("select status from release_window where id = ?", String.class, windowId)).isEqualTo("PUBLISHED");
-        assertThat(jdbc.queryForObject("select count(*) from run_plan p join run r on r.id = p.run_id where p.window_id = ? and r.run_type = 'WINDOW_CLEANUP'",
-                Integer.class, windowId)).isZero();
-        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+        var previousSettings = jdbc.queryForList("select * from system_settings where id='GLOBAL'");
+        try {
+            String base = "https://gitlab.invalid";
+            String project = Long.toString(Long.parseLong(windowId.replace("-", "").substring(0, 13), 16) + 1000);
+            String remote = GitOperationJournalPort.remoteKey("GITLAB", base, project);
+            String operationId = UUID.randomUUID().toString();
+            var repository = repos.findById(claim.repo()).orElseThrow();
+            String branch = claim.metadata().get("plan.featureBranch");
+            String ref = "a".repeat(40);
+            var body = json.createObjectNode().put("branch", branch).put("ref", ref);
+            var target = json.createObjectNode().put("method", "POST").put("suffix", "/repository/branches")
+                    .put("branch", branch).put("ref", ref).put("sourceRef", claim.metadata().get("plan.defaultBranch"));
+            settings.saveGitLab(new SettingsPort.SettingsGitLab(base, "isolated-plan-journal-token"));
+            // This existing API guard fixture requires a dispatched write with an unknown response.
+            journal.begin(new GitOperationJournalPort.Command(operationId, claim.repo().value(),
+                    GitOperationJournalPort.mappingHash(repository.getGitProvider().name(), repository.getCloneUrl()),
+                    remote, "GITLAB", base, project, "CREATE_BRANCH", target.toString(),
+                    io.releasehub.infrastructure.git.GitLabGitBranchAdapter.branchRequestHash(remote, body),
+                    claim.runId(), claim.operator(), claim.fence().claimToken(), claim.fence()));
+            journal.sending(operationId, claim.fence());
+            journal.finish(operationId, claim.fence(), GitWriteResult.Outcome.UNKNOWN, "{}", "RESPONSE_UNCONFIRMED");
+            Run unresolved = runs.completeTask(claim, new RunStep(claim.actionType(), RunItemResult.UNKNOWN,
+                    claim.startedAt(), claim.startedAt().plusMillis(1), "fixture unknown result"), Map.of());
+            assertThat(unresolved.getExecutionStatus().name()).isEqualTo("NEEDS_REVIEW");
+            assertThat(runs.findTasks(source.getId().value()).getFirst().status()).isEqualTo("UNKNOWN");
+            mvc.perform(post(closePath()).header("Authorization", "Bearer " + token))
+                    .andExpect(status().isConflict());
+            assertThat(jdbc.queryForObject("select status from release_window where id = ?", String.class, windowId)).isEqualTo("PUBLISHED");
+            assertThat(jdbc.queryForObject("select count(*) from run_plan p join run r on r.id = p.run_id where p.window_id = ? and r.run_type = 'WINDOW_CLEANUP'",
+                    Integer.class, windowId)).isZero();
+            verifyNoInteractions(gitLab, gitFiles, gitBranches);
+        } finally {
+            if (previousSettings.isEmpty()) {
+                jdbc.update("delete from system_settings where id='GLOBAL'");
+            } else {
+                var previous = previousSettings.getFirst();
+                jdbc.update("update system_settings set gitlab_base_url=?,gitlab_token=? where id='GLOBAL'",
+                        previous.get("gitlab_base_url"), previous.get("gitlab_token"));
+            }
+            assertThat(jdbc.queryForList("select * from system_settings where id='GLOBAL'")).isEqualTo(previousSettings);
+        }
     }
 
     @Test

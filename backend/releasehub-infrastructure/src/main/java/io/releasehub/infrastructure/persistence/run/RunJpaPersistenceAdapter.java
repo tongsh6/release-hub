@@ -420,23 +420,23 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 .collect(Collectors.toMap(RunTaskJpaEntity::getId, value -> value));
         Instant finished = now();
 
-        // 先用原检查点与无 Step 事实确认操作；后续 Task CAS 失败时，操作、事件与 guard 一起回滚。
-        journal.acknowledgeTask(claim.fence(), step.result(), patch);
+        // 在原检查点与 Step 改写前核准持久结果；后续 Task CAS 失败时，本事务的结果及操作变更一起回滚。
+        RunItemResult result = journal.acknowledgeTask(claim.fence(), step.result(), patch);
         requireOne(update("INSERT INTO {h-schema}run_step(run_item_id,action_type,result,start_at,end_at,message,task_id) "
-                + "VALUES (?1,?2,?3,?4,?5,?6,?7)", item.getId(), step.actionType().name(), step.result().name(),
+                + "VALUES (?1,?2,?3,?4,?5,?6,?7)", item.getId(), step.actionType().name(), result.name(),
                 stamp(step.startAt()), stamp(step.endAt()), step.message(), task.getId()));
         persistMetadata(item.getId(), item.getMetadata(), patch);
-        if (step.result() == RunItemResult.UNKNOWN || step.result().isFailure()) {
+        if (result == RunItemResult.UNKNOWN || result.isFailure()) {
             requireOne(update("UPDATE {h-schema}run_item SET final_result=?1,updated_at=?2 WHERE id=?3",
-                    step.result().name(), stamp(finished), item.getId()));
-            skipAfterFailure(task, item, ordered, items, step.result(), finished);
+                    result.name(), stamp(finished), item.getId()));
+            skipAfterFailure(task, item, ordered, items, result, finished);
         } else if (step.actionType() == ActionType.TRY_MERGE) {
             requireOne(update("UPDATE {h-schema}run_item SET final_result=?1,updated_at=?2 WHERE id=?3",
-                    step.result().name(), stamp(finished), item.getId()));
+                    result.name(), stamp(finished), item.getId()));
         } else {
             requireOne(update("UPDATE {h-schema}run_item SET updated_at=?1 WHERE id=?2", stamp(finished), item.getId()));
         }
-        if (!step.result().isFailure() && step.result() != RunItemResult.UNKNOWN) {
+        if (!result.isFailure() && result != RunItemResult.UNKNOWN) {
             String window = item.getMetadata().get("plan.windowId");
             if (step.actionType() == ActionType.ENSURE_RELEASE) {
                 bindings.updateReleaseBranch(window, item.getIterationKey(), item.getMetadata().get("plan.releaseBranch"), finished);
@@ -444,8 +444,8 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 bindings.updateLastMergeAt(window, item.getIterationKey(), finished);
             }
         }
-        String status = step.result() == RunItemResult.UNKNOWN ? "UNKNOWN"
-                : step.result().isFailure() ? "FAILED" : "COMPLETED";
+        String status = result == RunItemResult.UNKNOWN ? "UNKNOWN"
+                : result.isFailure() ? "FAILED" : "COMPLETED";
         requireOne(update("UPDATE {h-schema}run_task SET status=?1,finished_at=?2,error_message=?3 "
                 + "WHERE id=?4 AND status='RUNNING' AND claim_token=?5", status, stamp(finished),
                 "COMPLETED".equals(status) ? null : step.message(), task.getId(), claim.fence().claimToken()));
