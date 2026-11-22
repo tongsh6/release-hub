@@ -3120,6 +3120,269 @@ class GitWriteSafetyIT {
         }
     }
 
+    @Test
+    void mergeObservationBeforeFinishPreservesTheRecordedSenderAndGuard() throws Exception {
+        String runId = mergeIntentReadyRun();
+        var claim = taskRuns.claimNextTask(runId).orElseThrow();
+        assertThat(claim.actionType()).isEqualTo(ActionType.TRY_MERGE);
+        var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try (var gate = new MergeIntentGate(false, true)) {
+            try {
+                var sender = workers.submit(() -> {
+                    try (var scope = GitOperationContext.withTask(claim)) {
+                        return factory.getAdapter(GitProvider.GITLAB).tryMergeRequest(repo.getCloneUrl(), "fixture-token",
+                                checkpoint(claim), "Merge feature into main");
+                    }
+                });
+                assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                gate.release.countDown();
+                assertThat(gate.responseEntered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                String operationId = gate.operationId.get();
+                var before = journal.find(operationId).orElseThrow();
+                var originalIdentity = mergeIntentIdentity(operationId);
+                var originalRun = jdbc.queryForMap("select * from run where id=?", runId);
+                var originalItem = jdbc.queryForMap("select * from run_item where id=?", claim.itemId());
+                var originalTasks = jdbc.queryForList("select * from run_task where run_id=? order by task_order", runId);
+                var originalSteps = jdbc.queryForList("select * from run_step where run_item_id=? order by task_id", claim.itemId());
+                var originalMetadata = mergeNotSentMetadata(claim.itemId());
+                var originalGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", gate.command.get().remoteKey());
+                assertThat(before.operation().state()).isEqualTo("SEND_STARTED");
+                assertThat(before.operation().blocked()).isTrue();
+                assertThat(before.events()).extracting(GitOperationJournalPort.Event::type)
+                        .containsExactly("INTENT_RECORDED", "SEND_STARTED");
+                assertThat(before.observations()).isEmpty();
+                SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 1);
+
+                SERVER.reply("GET", canonicalEndpoint + "/merge_requests/7", 200, mergedRequest());
+                int readStart = SERVER.requests.size();
+                var observed = service.reconcile(operationId, "merge-observer", UUID.randomUUID().toString(),
+                        before.operation().version());
+
+                assertThat(observed.status()).isEqualTo("FOUND");
+                var after = journal.find(operationId).orElseThrow();
+                assertThat(after.operation().version()).isGreaterThan(before.operation().version());
+                assertThat(after.operation().state()).isEqualTo("SEND_STARTED");
+                assertThat(after.operation().reason()).isEqualTo(before.operation().reason());
+                assertThat(after.operation().blocked()).isTrue();
+                assertThat(after.events()).isEqualTo(before.events());
+                assertThat(after.observations()).containsExactly(observed);
+                assertThat(mergeIntentIdentity(operationId)).isEqualTo(originalIdentity);
+                assertThat(jdbc.queryForMap("select * from run where id=?", runId)).isEqualTo(originalRun);
+                assertThat(jdbc.queryForMap("select * from run_item where id=?", claim.itemId())).isEqualTo(originalItem);
+                assertThat(jdbc.queryForList("select * from run_task where run_id=? order by task_order", runId)).isEqualTo(originalTasks);
+                assertThat(jdbc.queryForList("select * from run_step where run_item_id=? order by task_id", claim.itemId())).isEqualTo(originalSteps);
+                assertThat(mergeNotSentMetadata(claim.itemId())).isEqualTo(originalMetadata);
+                assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", gate.command.get().remoteKey()))
+                        .isEqualTo(originalGuard);
+                assertThat(SERVER.requests.subList(readStart, SERVER.requests.size()))
+                        .extracting(GitLabHttpFixture.Request::method).containsExactly("GET", "GET");
+                assertThat(SERVER.requests.subList(readStart, SERVER.requests.size()))
+                        .extracting(GitLabHttpFixture.Request::path).containsExactly(endpoint, canonicalEndpoint + "/merge_requests/7");
+                assertThat(SERVER.writeCount()).isEqualTo(1);
+
+                gate.releaseResponse.countDown();
+                var result = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> sender.get(5, java.util.concurrent.TimeUnit.SECONDS));
+                assertThat(result.status()).isEqualTo(io.releasehub.domain.run.MergeStatus.SUCCESS);
+                var applied = journal.find(operationId).orElseThrow();
+                assertThat(applied.events()).extracting(GitOperationJournalPort.Event::type)
+                        .containsExactly("INTENT_RECORDED", "SEND_STARTED", "APPLIED");
+                assertThat(applied.events().subList(0, 2)).isEqualTo(before.events());
+                assertThat(applied.observations()).containsExactly(observed);
+                mergeIntentAssertSender(operationId, claim.fence());
+                var completed = taskRuns.completeTask(claim, taskStep(claim, RunItemResult.MERGED), RunPort.mrResultUpdates(result));
+                assertThat(completed.getExecutionStatus()).isEqualTo(io.releasehub.domain.run.RunExecutionStatus.DONE);
+                assertTaskStatus(claim, "COMPLETED");
+                assertThat(journal.find(operationId).orElseThrow().operation().blocked()).isFalse();
+                SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 0);
+                SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 1);
+                assertThat(SERVER.writeCount()).isEqualTo(1);
+            } finally {
+                gate.releaseAll();
+                workers.shutdownNow();
+                assertThat(workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
+
+    @Test
+    void mergeObservationReadBeforeFinishCannotCommitAfterItsVersionChanges() throws Exception {
+        String runId = mergeIntentReadyRun();
+        var claim = taskRuns.claimNextTask(runId).orElseThrow();
+        assertThat(claim.actionType()).isEqualTo(ActionType.TRY_MERGE);
+        Object evidence = AopTestUtils.getUltimateTargetObject(context.getBean(
+                io.releasehub.infrastructure.git.GitRemoteEvidenceAdapter.class));
+        var observationHttp = (RestTemplate) ReflectionTestUtils.getField(evidence, "http");
+        assertThat(observationHttp).isNotNull();
+        var originalInterceptors = List.copyOf(observationHttp.getInterceptors());
+        var readEntered = new java.util.concurrent.CountDownLatch(1);
+        var releaseRead = new java.util.concurrent.CountDownLatch(1);
+        var firstRead = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var interceptors = new java.util.ArrayList<>(originalInterceptors);
+        interceptors.add((request, body, execution) -> {
+            var response = execution.execute(request, body);
+            if (request.getMethod() == org.springframework.http.HttpMethod.GET
+                    && request.getURI().getRawPath().equals(canonicalEndpoint + "/merge_requests/7")
+                    && firstRead.compareAndSet(true, false)) {
+                holdFixtureResponse(response, readEntered, releaseRead);
+            }
+            return response;
+        });
+        var workers = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try (var gate = new MergeIntentGate(false, true)) {
+            try {
+                observationHttp.setInterceptors(interceptors);
+                var sender = workers.submit(() -> {
+                    try (var scope = GitOperationContext.withTask(claim)) {
+                        return factory.getAdapter(GitProvider.GITLAB).tryMergeRequest(repo.getCloneUrl(), "fixture-token",
+                                checkpoint(claim), "Merge feature into main");
+                    }
+                });
+                assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                gate.release.countDown();
+                assertThat(gate.responseEntered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                String operationId = gate.operationId.get();
+                var before = journal.find(operationId).orElseThrow();
+                var originalRun = jdbc.queryForMap("select * from run where id=?", runId);
+                var originalItem = jdbc.queryForMap("select * from run_item where id=?", claim.itemId());
+                var originalTasks = jdbc.queryForList("select * from run_task where run_id=? order by task_order", runId);
+                var originalSteps = jdbc.queryForList("select * from run_step where run_item_id=? order by task_id", claim.itemId());
+                var originalMetadata = mergeNotSentMetadata(claim.itemId());
+                assertThat(before.events()).extracting(GitOperationJournalPort.Event::type)
+                        .containsExactly("INTENT_RECORDED", "SEND_STARTED");
+                assertThat(before.observations()).isEmpty();
+
+                SERVER.reply("GET", canonicalEndpoint + "/merge_requests/7", 200, mergedRequest());
+                int readStart = SERVER.requests.size();
+                var reader = workers.submit(() -> service.reconcile(operationId, "late-merge-observer",
+                        UUID.randomUUID().toString(), before.operation().version()));
+                assertThat(readEntered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                gate.releaseResponse.countDown();
+                var result = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> sender.get(5, java.util.concurrent.TimeUnit.SECONDS));
+                assertThat(result.status()).isEqualTo(io.releasehub.domain.run.MergeStatus.SUCCESS);
+                var applied = journal.find(operationId).orElseThrow();
+                var appliedRow = jdbc.queryForMap("select * from git_operation where id=?", operationId);
+                var appliedGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", gate.command.get().remoteKey());
+                assertThat(applied.operation().state()).isEqualTo("APPLIED");
+                assertThat(applied.operation().version()).isGreaterThan(before.operation().version());
+                assertThat(applied.events()).extracting(GitOperationJournalPort.Event::type)
+                        .containsExactly("INTENT_RECORDED", "SEND_STARTED", "APPLIED");
+                assertThat(applied.observations()).isEmpty();
+                assertTaskStatus(claim, "RUNNING");
+                assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class, claim.fence().taskId()))
+                        .isZero();
+
+                // Finish is the only intervening writer; completeTask must remain after this stale observation.
+                releaseRead.countDown();
+                var failure = org.junit.jupiter.api.Assertions.assertThrows(java.util.concurrent.ExecutionException.class,
+                        () -> reader.get(5, java.util.concurrent.TimeUnit.SECONDS));
+                assertThat(failure.getCause()).isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.getErrorCode()).isEqualTo(io.releasehub.common.exception.ErrorCode.GIT_OPERATION_STALE));
+                var after = journal.find(operationId).orElseThrow();
+                assertThat(after.observations()).isEmpty();
+                assertThat(after.events()).isEqualTo(applied.events());
+                assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).isEqualTo(appliedRow);
+                assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", gate.command.get().remoteKey()))
+                        .isEqualTo(appliedGuard);
+                assertThat(jdbc.queryForMap("select * from run where id=?", runId)).isEqualTo(originalRun);
+                assertThat(jdbc.queryForMap("select * from run_item where id=?", claim.itemId())).isEqualTo(originalItem);
+                assertThat(jdbc.queryForList("select * from run_task where run_id=? order by task_order", runId)).isEqualTo(originalTasks);
+                assertThat(jdbc.queryForList("select * from run_step where run_item_id=? order by task_id", claim.itemId())).isEqualTo(originalSteps);
+                assertThat(mergeNotSentMetadata(claim.itemId())).isEqualTo(originalMetadata);
+                assertThat(SERVER.requests.subList(readStart, SERVER.requests.size()))
+                        .extracting(GitLabHttpFixture.Request::method).containsExactly("GET", "GET");
+                assertThat(SERVER.requests.subList(readStart, SERVER.requests.size()))
+                        .extracting(GitLabHttpFixture.Request::path).containsExactly(endpoint, canonicalEndpoint + "/merge_requests/7");
+
+                mergeIntentAssertSender(operationId, claim.fence());
+                var completed = taskRuns.completeTask(claim, taskStep(claim, RunItemResult.MERGED), RunPort.mrResultUpdates(result));
+                assertThat(completed.getExecutionStatus()).isEqualTo(io.releasehub.domain.run.RunExecutionStatus.DONE);
+                assertTaskStatus(claim, "COMPLETED");
+                assertThat(journal.find(operationId).orElseThrow().operation().blocked()).isFalse();
+                SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 0);
+                SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 1);
+                assertThat(SERVER.writeCount()).isEqualTo(1);
+            } finally {
+                gate.releaseAll();
+                releaseRead.countDown();
+                workers.shutdownNow();
+                try {
+                    assertThat(workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                } finally {
+                    observationHttp.setInterceptors(originalInterceptors);
+                }
+            }
+        }
+    }
+
+    @Test
+    void mergeObservationFoundAtRetargetedMrKeepsTheRealUnknownResult() throws Exception {
+        var run = prepareMrMergeRun(false);
+        String runId = run.getId().value();
+        String itemId = run.getItems().getFirst().getId().value();
+        var response = mrMergeResponse(run);
+        response.remove("merge_commit_sha");
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 200, response.toString());
+        assertThat(taskService.executeNextTask(runId)).isTrue();
+        assertUnconfirmedMrMerge(run, false);
+        var operation = journal.listByRun(runId, 0, 20).stream()
+                .filter(value -> value.action().equals("MERGE_MR")).findFirst().orElseThrow();
+        var before = journal.find(operation.id()).orElseThrow();
+        var originalIdentity = mergeIntentIdentity(operation.id());
+        var originalRun = jdbc.queryForMap("select * from run where id=?", runId);
+        var originalItem = jdbc.queryForMap("select * from run_item where id=?", itemId);
+        var originalTasks = jdbc.queryForList("select * from run_task where run_id=? order by task_order", runId);
+        var originalSteps = jdbc.queryForList("select * from run_step where run_item_id=? order by task_id", itemId);
+        var originalMetadata = mergeNotSentMetadata(itemId);
+        var originalGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", operation.remoteKey());
+        assertThat(before.events()).extracting(GitOperationJournalPort.Event::type)
+                .containsExactly("INTENT_RECORDED", "SEND_STARTED", "UNKNOWN");
+        assertThat(before.observations()).isEmpty();
+
+        // A current remote observation may have a different target; it is not the original business checkpoint.
+        var remote = mrMergeResponse(run).put("target_branch", "retargeted").putNull("merge_commit_sha");
+        assertThat(remote.path("target_branch").asText()).isNotEqualTo(originalMetadata.get("git.targetBranch"));
+        SERVER.reply("GET", canonicalEndpoint + "/merge_requests/7", 200, remote.toString());
+        int readStart = SERVER.requests.size();
+        var observed = service.reconcile(operation.id(), "unknown-merge-observer", UUID.randomUUID().toString(), operation.version());
+
+        assertThat(observed.status()).isEqualTo("FOUND");
+        var after = journal.find(operation.id()).orElseThrow();
+        assertThat(after.operation().version()).isGreaterThan(operation.version());
+        assertThat(after.operation().state()).isEqualTo("UNKNOWN");
+        assertThat(after.operation().reason()).isEqualTo(before.operation().reason());
+        assertThat(after.operation().blocked()).isTrue();
+        assertThat(after.events()).isEqualTo(before.events());
+        assertThat(after.observations()).containsExactly(observed);
+        assertThat(mergeIntentIdentity(operation.id())).isEqualTo(originalIdentity);
+        assertThat(jdbc.queryForMap("select * from run where id=?", runId)).isEqualTo(originalRun);
+        assertThat(jdbc.queryForMap("select * from run_item where id=?", itemId)).isEqualTo(originalItem);
+        assertThat(jdbc.queryForList("select * from run_task where run_id=? order by task_order", runId)).isEqualTo(originalTasks);
+        assertThat(jdbc.queryForList("select * from run_step where run_item_id=? order by task_id", itemId)).isEqualTo(originalSteps);
+        assertThat(mergeNotSentMetadata(itemId)).isEqualTo(originalMetadata);
+        assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", operation.remoteKey())).isEqualTo(originalGuard);
+        assertThat(SERVER.requests.subList(readStart, SERVER.requests.size()))
+                .extracting(GitLabHttpFixture.Request::method).containsExactly("GET", "GET");
+        assertThat(SERVER.requests.subList(readStart, SERVER.requests.size()))
+                .extracting(GitLabHttpFixture.Request::path).containsExactly(endpoint, canonicalEndpoint + "/merge_requests/7");
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 1);
+        assertThat(SERVER.writeCount()).isEqualTo(2);
+
+        var evidence = new com.fasterxml.jackson.databind.ObjectMapper().readTree(observed.evidenceJson());
+        org.assertj.core.api.SoftAssertions.assertSoftly(soft -> {
+            for (String field : List.of("project_id", "source_project_id", "target_project_id", "iid")) {
+                soft.assertThat(evidence.path(field).isIntegralNumber()).as(field + " keeps the provider JSON type").isTrue();
+                soft.assertThat(evidence.path(field)).as(field + " keeps the observed identity").isEqualTo(remote.path(field));
+            }
+            for (String field : List.of("source_branch", "target_branch", "sha", "state", "web_url")) {
+                soft.assertThat(evidence.path(field).isTextual()).as(field + " keeps the provider JSON type").isTrue();
+                soft.assertThat(evidence.path(field)).as(field + " keeps the current remote fact").isEqualTo(remote.path(field));
+            }
+            soft.assertThat(evidence.has("merge_commit_sha")).isTrue();
+            soft.assertThat(evidence.path("merge_commit_sha").isNull()).isTrue();
+        });
+    }
+
     private Map<String, String> mergeNotSentMetadata(String itemId) {
         Map<String, String> values = new LinkedHashMap<>();
         jdbc.query("select metadata_key,metadata_value from run_item_metadata where run_item_id=?",

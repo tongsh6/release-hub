@@ -44,6 +44,63 @@ describe('Git 操作证据', () => {
     expect(calls[0]).toEqual(calls[1])
     expect(calls[0]?.[1]).toBe(4)
   })
+  it('FOUND核对刷新后仍展示原UNKNOWN与阻断且没有恢复入口', async () => {
+    const unknownDetail = {
+      ...detail,
+      events: [
+        { attemptId: 'attempt-1', sequence: 0, type: 'INTENT_RECORDED', at: operation.createdAt, evidenceJson: '{}' },
+        { attemptId: 'attempt-1', sequence: 1, type: 'SEND_STARTED', at: operation.createdAt, evidenceJson: '{}' },
+        { attemptId: 'attempt-1', sequence: 2, type: 'UNKNOWN', at: operation.createdAt, evidenceJson: '{}' },
+      ],
+    }
+    const observed = {
+      id: 'observation-1',
+      status: 'FOUND',
+      observedAt: '2026-10-08T00:00:01Z',
+      evidenceJson: JSON.stringify({
+        project_id: 17,
+        source_project_id: 17,
+        target_project_id: 17,
+        iid: 7,
+        source_branch: 'feature',
+        target_branch: 'release/retargeted',
+        sha: 'a'.repeat(40),
+        state: 'merged',
+        web_url: 'https://gitlab.invalid/acme/repo/-/merge_requests/7',
+        merge_commit_sha: null,
+      }),
+    }
+    const observedOperation = { ...operation, action: 'MERGE_MR', version: operation.version + 1 }
+    const initialOperation = { ...operation, action: 'MERGE_MR' }
+    vi.mocked(gitOperationApi.list).mockResolvedValueOnce([initialOperation]).mockResolvedValueOnce([observedOperation])
+    vi.mocked(gitOperationApi.get)
+      .mockResolvedValueOnce({ ...unknownDetail, operation: initialOperation })
+      .mockResolvedValueOnce({ ...unknownDetail, operation: observedOperation, observations: [observed] })
+    vi.mocked(gitOperationApi.reconcile).mockResolvedValueOnce(observed)
+    const wrapper = mount(GitOperationsPanel, { props: { repoId: 'repo-1' } })
+    await flushPromises()
+    await wrapper.get('[data-action="detail"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-action="reconcile"]').trigger('click')
+    await flushPromises()
+
+    expect(gitOperationApi.reconcile).toHaveBeenCalledWith(operation.id, operation.version, expect.any(String))
+    expect(gitOperationApi.get).toHaveBeenCalledTimes(2)
+    expect(gitOperationApi.list).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('gitOperation.observed.FOUND')
+    expect(wrapper.text()).toContain('gitOperation.states.UNKNOWN')
+    expect(wrapper.text()).toContain('gitOperation.blocked')
+    expect(wrapper.text()).toContain('gitOperation.readOnlyNotice')
+    expect(wrapper.text()).toContain('gitOperation.events.SEND_STARTED')
+    expect(wrapper.text()).toContain('gitOperation.events.UNKNOWN')
+    expect(wrapper.text()).toContain('"project_id": 17')
+    expect(wrapper.text()).toContain('"target_branch": "release/retargeted"')
+    expect(wrapper.text()).toContain('"merge_commit_sha": null')
+    expect(wrapper.text()).not.toContain('gitOperation.states.APPLIED')
+    expect(wrapper.find('[data-action="resume"]').exists()).toBe(false)
+  })
+
   it('Run 页面只请求该 Run 的证据', async () => {
     mount(GitOperationsPanel, { props: { runId: 'run-1' } })
     await flushPromises()

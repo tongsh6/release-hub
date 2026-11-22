@@ -50,14 +50,14 @@ public class GitRemoteEvidenceAdapter implements GitOperationEvidencePort {
             if(identity==null||!identity.path("id").asText().equals(op.projectId()))return result(GitReadResult.Status.MISMATCH,json.createObjectNode());
             String project=base+"/api/v4/projects/"+encode(op.projectId());
             JsonNode target=json.readTree(op.targetJson());
+            if(op.action().equals("MERGE_MR"))return readMergedMr(op,project,headers,target);
             String suffix=target.path("suffix").asText();
             if(op.action().equals("CREATE_MR"))return findMergeRequest(detail,project,headers,target);
-            if(op.action().equals("MERGE_MR")||op.action().equals("UPDATE_MR")) {
+            if(op.action().equals("UPDATE_MR")) {
                 JsonNode mr=get(project+suffix.replaceFirst("/merge$",""),headers).getBody();
                 if(mr==null)return result(GitReadResult.Status.INCOMPLETE,json.createObjectNode());
-                String wanted=op.action().equals("MERGE_MR")?"merged":"closed";
                 var evidence=summary(mr);
-                boolean matches=mr.path("state").asText().equals(wanted)
+                boolean matches=mr.path("state").asText().equals("closed")
                         &&(!target.has("sha")||target.path("sha").asText().equals(mr.path("sha").asText()));
                 return result(matches?GitReadResult.Status.FOUND:GitReadResult.Status.MISMATCH,evidence);
             }
@@ -104,6 +104,28 @@ public class GitRemoteEvidenceAdapter implements GitOperationEvidencePort {
             log.warn("Git 证据查询失败：operation={} error={}",op.id(),e.getClass().getSimpleName());
             return result(GitReadResult.Status.UNAVAILABLE,json.createObjectNode());
         }
+    }
+    private GitReadResult<String> readMergedMr(GitOperationJournalPort.Operation op,String project,HttpHeaders headers,JsonNode target) {
+        if(target==null||!target.isObject()||!"PUT".equals(target.path("method").textValue()))
+            return result(GitReadResult.Status.INCOMPLETE,json.createObjectNode());
+        String suffix=target.path("suffix").textValue();
+        String expectedSha=target.path("sha").textValue();
+        if(suffix==null||!suffix.matches("/merge_requests/[1-9][0-9]*/merge")||!GitLabGitBranchAdapter.validSha(expectedSha))
+            return result(GitReadResult.Status.INCOMPLETE,json.createObjectNode());
+        String iid=suffix.substring("/merge_requests/".length(),suffix.length()-"/merge".length());
+        var response=get(project+"/merge_requests/"+iid,headers);
+        JsonNode mr=response.getBody();
+        if(mr==null||!mr.isObject())return result(GitReadResult.Status.INCOMPLETE,json.createObjectNode());
+        // 只证明原 I/IID/A 对象当前 merged；实际分支保留为观察事实，不推定原 PUT 或业务计划成功。
+        boolean matches=GitLabMergeRequestAdapter.confirmedMergedMr(
+                response.getStatusCode().value(),mr,op.projectId(),iid,expectedSha).isPresent();
+        var evidence=json.createObjectNode();
+        for(String key:java.util.List.of("project_id","source_project_id","target_project_id","iid",
+                "source_branch","target_branch","sha","web_url","state","merge_commit_sha")) {
+            JsonNode value=mr.get(key);
+            if(value!=null&&value.isValueNode())evidence.set(key,value);
+        }
+        return result(matches?GitReadResult.Status.FOUND:GitReadResult.Status.MISMATCH,evidence);
     }
     private GitReadResult<String> findMergeRequest(GitOperationJournalPort.Detail detail,String project,HttpHeaders headers,JsonNode target) throws Exception {
         String id=evidenceId(detail,"iid");var matches=new ArrayList<JsonNode>();String marker="ReleaseHub-Operation: "+detail.operation().id();
