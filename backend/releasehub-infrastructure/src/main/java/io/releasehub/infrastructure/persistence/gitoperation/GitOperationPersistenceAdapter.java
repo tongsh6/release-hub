@@ -60,7 +60,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         long changedIdentity=em.createQuery("select count(o) from GitOperationEntity o where o.repoId=:repo and o.remoteKey<>:remote and exists (select g.remoteKey from RepoExecutionGuardEntity g where g.remoteKey=o.remoteKey and g.sessionId=o.sessionId)",Long.class)
                 .setParameter("repo",c.repoId()).setParameter("remote",c.remoteKey()).getSingleResult();
         if(changedIdentity>0)throw blocked();
-        if (c.taskFence() != null && ("MERGE_MR".equals(c.action()) || "CREATE_BRANCH".equals(c.action()))) {
+        if (c.taskFence() != null && ("MERGE_MR".equals(c.action()) || "CREATE_BRANCH".equals(c.action()) || "CREATE_MR".equals(c.action()))) {
             var originals = taskOperations(c.taskFence().taskId());
             if (!originals.isEmpty()) {
                 if (originals.size() != 1) throw blocked();
@@ -142,7 +142,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         if (outcome == null) throw invalid();
         var op = operationForUpdate(id, fence); var guard = ownGuard(op);
         if (!"SEND_STARTED".equals(op.getState())
-                || op.getTaskId() != null && ("MERGE_MR".equals(op.getAction()) || "CREATE_BRANCH".equals(op.getAction()))
+                || op.getTaskId() != null && ("MERGE_MR".equals(op.getAction()) || "CREATE_BRANCH".equals(op.getAction()) || "CREATE_MR".equals(op.getAction()))
                     && !sentBy(op, fence)) throw stale();
         op.setState(outcome.name()); op.setReason(reason); op.setUpdatedAt(now());
         guard.setReason(outcome == GitWriteResult.Outcome.UNKNOWN ? "REMOTE_RESULT_UNKNOWN" : null);
@@ -181,7 +181,8 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
     public Optional<Operation> prepareUnsentTaskClaim(RunPort.TaskClaim claim) {
         if (claim == null || (claim.actionType() != ActionType.TRY_MERGE
                 && claim.actionType() != ActionType.ENSURE_FEATURE
-                && claim.actionType() != ActionType.ENSURE_RELEASE)) return Optional.empty();
+                && claim.actionType() != ActionType.ENSURE_RELEASE
+                && claim.actionType() != ActionType.ENSURE_MR)) return Optional.empty();
         var task = lockTask(claim.fence(), true);
         var run = em.find(RunJpaEntity.class, task.getRunId());
         var item = em.find(RunItemJpaEntity.class, task.getTargetId());
@@ -303,7 +304,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
                 || !"GITLAB".equals(op.getProvider()) || !claim.runId().equals(op.getRunId())
                 || !claim.repo().value().equals(op.getRepoId()) || !claim.operator().equals(op.getOperator())
                 || !historicalOwner(op)
-                || (("MERGE_MR".equals(action) || "CREATE_BRANCH".equals(action)) ? !sentBy(op, claim.fence())
+                || (("MERGE_MR".equals(action) || "CREATE_BRANCH".equals(action) || "CREATE_MR".equals(action)) ? !sentBy(op, claim.fence())
                     : !claim.fence().claimToken().equals(op.getClaimToken()))
                 || op.getProjectId() == null || !op.getProjectId().matches("[1-9][0-9]*")
                 || op.getBaseUrl() == null || op.getBaseUrl().isBlank()
@@ -341,7 +342,8 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         var op = operations.get(0);
         lock(op.getRemoteKey());
         em.refresh(op, LockModeType.PESSIMISTIC_WRITE);
-        boolean usesCurrentSender = "MERGE_MR".equals(op.getAction()) || "CREATE_BRANCH".equals(op.getAction());
+        boolean usesCurrentSender = "MERGE_MR".equals(op.getAction()) || "CREATE_BRANCH".equals(op.getAction())
+                || "CREATE_MR".equals(op.getAction());
         if (!taskOperationIdentity(task, op) || !historicalOwner(op)
                 || (usesCurrentSender
                     ? "INTENT_RECORDED".equals(op.getState()) ? !onlyIntentEvent(op) : !sentBy(op, fence)
@@ -354,7 +356,9 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
             var item = em.find(RunItemJpaEntity.class, task.getTargetId());
             if (!validUnsentOperation(task, item, op)) throw stale();
             boolean validResult = "CREATE_BRANCH".equals(op.getAction())
-                    ? validUnsentBranchResult(op, result, resultMetadata) : validUnsentMergeResult(result, resultMetadata);
+                    ? validUnsentBranchResult(op, result, resultMetadata)
+                    : "CREATE_MR".equals(op.getAction()) ? validUnsentCreateMrResult(op, result, resultMetadata)
+                    : validUnsentMergeResult(result, resultMetadata);
             if (!validResult) throw stale();
             String reason = resultMetadata.get("git.blockReason");
             var evidence = JSON.createObjectNode().put("taskId", fence.taskId())
@@ -464,7 +468,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         lock(op.getRemoteKey());
         em.refresh(op, LockModeType.PESSIMISTIC_WRITE);
         if (task != null && (!taskOperationIdentity(task, op) || !historicalOwner(op)
-                || !("MERGE_MR".equals(op.getAction()) || "CREATE_BRANCH".equals(op.getAction()))
+                || !("MERGE_MR".equals(op.getAction()) || "CREATE_BRANCH".equals(op.getAction()) || "CREATE_MR".equals(op.getAction()))
                     && !fence.claimToken().equals(op.getClaimToken()))) throw stale();
         return op;
     }
@@ -553,7 +557,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         return steps.longValue() == 0;
     }
 
-    /** 正常 CREATE_MR 的当前发送证明；不授予过期领取或本地 NOT_SENT 资格。 */
+    /** 同一份完整原意图证明覆盖 Task 接管、发送和本地未发送结果；非 Task 会话仍自行持有意图。 */
     private boolean validCreateMrIntent(GitOperationEntity op, RepoExecutionGuardEntity guard) {
         JsonNode target = objectJson(op.getTargetJson());
         if (!"CREATE_MR".equals(op.getAction()) || !"INTENT_RECORDED".equals(op.getState()) || op.getReason() != null
@@ -569,16 +573,16 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         var task = em.find(RunTaskJpaEntity.class, op.getTaskId());
         if (task == null) return false;
         var item = em.find(RunItemJpaEntity.class, task.getTargetId());
-        return taskOperationIdentity(task, op) && historicalOwner(op)
-                && Objects.equals(task.getClaimToken(), op.getClaimToken())
-                && validCreateMrTaskPlan(task, item, target)
-                && consistentProject(task.getRunId(), item.getRepoId(), op.getProjectId(), op.getRemoteKey());
+        var operations = taskOperations(task.getId());
+        return operations.size() == 1 && op.getId().equals(operations.getFirst().getId())
+                && validUnsentOperation(task, item, op);
     }
 
     private boolean validUnsentOperation(RunTaskJpaEntity task, RunItemJpaEntity item, GitOperationEntity op) {
-        if (item == null || !java.util.Set.of("TRY_MERGE", "ENSURE_FEATURE", "ENSURE_RELEASE").contains(task.getTaskType())
+        if (item == null || !java.util.Set.of("TRY_MERGE", "ENSURE_FEATURE", "ENSURE_RELEASE", "ENSURE_MR").contains(task.getTaskType())
                 || !taskOperationIdentity(task, op)
-                || task.getStartedAt() == null || task.getClaimToken() == null || task.getClaimExpiresAt() == null
+                || task.getStartedAt() == null || task.getClaimToken() == null || task.getClaimToken().isBlank()
+                || task.getClaimExpiresAt() == null
                 || task.getFinishedAt() != null || item.getExecutedOrder() <= 0 || !historicalOwner(op)
                 || !"INTENT_RECORDED".equals(op.getState()) || op.getReason() != null
                 || !"GITLAB".equals(op.getProvider()) || !"GITLAB".equals(item.getMetadata().get("plan.gitProvider"))
@@ -592,8 +596,13 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
                         "select count(*) from {h-schema}run_step where task_id=?1")
                 .setParameter(1, task.getId()).getSingleResult();
         if (steps.longValue() != 0) return false;
-        boolean completeRequest = "CREATE_BRANCH".equals(op.getAction())
-                ? completeBranchRequest(task, op, item.getMetadata()) : completeMergeRequest(op, item.getMetadata());
+        boolean completeRequest = switch (op.getAction()) {
+            case "CREATE_BRANCH" -> completeBranchRequest(task, op, item.getMetadata());
+            case "CREATE_MR" -> completeCreateMrRequest(op.getId(), objectJson(op.getTargetJson()), op.getRemoteKey(), op.getRequestHash())
+                    && validCreateMrTaskPlan(task, item, objectJson(op.getTargetJson()));
+            case "MERGE_MR" -> completeMergeRequest(op, item.getMetadata());
+            default -> false;
+        };
         if (!completeRequest) return false;
         var guard = matchingGuard(op);
         return guard.isPresent() && "INTENT_PENDING".equals(guard.get().getReason());
@@ -626,6 +635,34 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         return (result == RunItemResult.FAILED || result == RunItemResult.UNKNOWN)
                 && (reason == null || java.util.Arrays.stream(MergeBlockReason.values())
                         .anyMatch(value -> value.name().equals(reason)));
+    }
+
+    private boolean validUnsentCreateMrResult(GitOperationEntity op, RunItemResult result, Map<String, String> patch) {
+        if (!java.util.Set.of("git.projectId", "git.sourceBranch", "git.targetBranch", "git.sourceSha",
+                        "git.mrIid", "git.mrUrl", "git.mergeSha", "git.mrDisposition", "git.blockReason", "git.requestId")
+                .containsAll(patch.keySet()) || !patch.containsKey("git.blockReason")
+                || patch.get("git.requestId") != null || patch.get("git.mergeSha") != null) return false;
+        JsonNode target = objectJson(op.getTargetJson());
+        if (patch.containsKey("git.projectId") && !op.getProjectId().equals(patch.get("git.projectId"))
+                || patch.containsKey("git.sourceBranch") && !matches(target, "source_branch", patch.get("git.sourceBranch"))
+                || patch.containsKey("git.targetBranch") && !matches(target, "target_branch", patch.get("git.targetBranch"))
+                || patch.containsKey("git.sourceSha") && (patch.get("git.sourceSha") == null
+                    || !target.path("sha").textValue().equalsIgnoreCase(patch.get("git.sourceSha")))) return false;
+        String reason = patch.get("git.blockReason");
+        if (result == RunItemResult.MR_REUSED || result == RunItemResult.ALREADY_MERGED) {
+            if (reason != null || !result.name().equals(patch.get("git.mrDisposition"))) return false;
+            return GitMergeWorkflow.isValidCheckpoint(RunPort.mrCheckpoint(patch));
+        }
+        // Explicit nulls delete stale checkpoint fields; failures must never invent a reusable MR.
+        if (patch.get("git.mrIid") != null || patch.get("git.mrUrl") != null
+                || patch.get("git.mrDisposition") != null) return false;
+        return switch (result) {
+            case UNKNOWN -> "UNKNOWN".equals(reason);
+            case FAILED -> reason == null || "UNKNOWN".equals(reason);
+            case MERGE_BLOCKED -> reason != null && !"UNKNOWN".equals(reason)
+                    && java.util.Arrays.stream(MergeBlockReason.values()).anyMatch(value -> value.name().equals(reason));
+            default -> false;
+        };
     }
 
     private boolean validUnsentMergeResult(RunItemResult result, Map<String, String> patch) {

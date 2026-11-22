@@ -174,7 +174,7 @@ class GitWriteSafetyIT {
         String runId = run.getId().value();
         String branch = branchIntentBranch(run, action);
         var workers = java.util.concurrent.Executors.newFixedThreadPool(2);
-        try (var gate = new BranchIntentGate(action, true)) {
+        try (var gate = new CreationIntentGate(action, true)) {
             try {
                 var oldOwner = workers.submit(() -> taskService.executeNextTask(runId));
                 assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
@@ -270,7 +270,7 @@ class GitWriteSafetyIT {
         String runId = run.getId().value();
         String branch = branchIntentBranch(run, action);
         var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
-        try (var gate = new BranchIntentGate(action, false)) {
+        try (var gate = new CreationIntentGate(action, false)) {
             try {
                 var oldOwner = workers.submit(() -> taskService.executeNextTask(runId));
                 assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
@@ -345,7 +345,7 @@ class GitWriteSafetyIT {
         var run = branchIntentReadyRun(action);
         String runId = run.getId().value();
         var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
-        try (var gate = new BranchIntentGate(action, false)) {
+        try (var gate = new CreationIntentGate(action, false)) {
             try {
                 var oldOwner = workers.submit(() -> taskService.executeNextTask(runId));
                 assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
@@ -390,7 +390,7 @@ class GitWriteSafetyIT {
         var claim = taskRuns.claimNextTask(run.getId().value()).orElseThrow();
         assertThat(claim.actionType()).isEqualTo(action);
         var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
-        try (var gate = new BranchIntentGate(action, true)) {
+        try (var gate = new CreationIntentGate(action, true)) {
             try {
                 var sender = workers.submit(() -> {
                     try (var scope = GitOperationContext.withTask(claim)) {
@@ -436,7 +436,7 @@ class GitWriteSafetyIT {
     void branchIntentObservationKeepsExecutionFacts() throws Exception {
         var run = branchIntentReadyRun(ActionType.ENSURE_FEATURE);
         var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
-        try (var gate = new BranchIntentGate(ActionType.ENSURE_FEATURE, false)) {
+        try (var gate = new CreationIntentGate(ActionType.ENSURE_FEATURE, false)) {
             try {
                 var owner = workers.submit(() -> taskService.executeNextTask(run.getId().value()));
                 assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
@@ -527,7 +527,7 @@ class GitWriteSafetyIT {
     }
 
     /** Observe real claims and pause after the real Journal proxy commits; never replace its decisions. */
-    private final class BranchIntentGate implements AutoCloseable {
+    private final class CreationIntentGate implements AutoCloseable {
         private final java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
         private final java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
         private final java.util.concurrent.CountDownLatch responseEntered = new java.util.concurrent.CountDownLatch(1);
@@ -542,7 +542,7 @@ class GitWriteSafetyIT {
         private final Object serviceTarget;
         private final RunPort originalRuns;
 
-        private BranchIntentGate(ActionType action, boolean holdResponse) {
+        private CreationIntentGate(ActionType action, boolean holdResponse) {
             interceptor = context.getBean(io.releasehub.infrastructure.git.GitWriteHttpInterceptor.class);
             originalJournal = (GitOperationJournalPort) ReflectionTestUtils.getField(interceptor, "journal");
             Object adapter = AopTestUtils.getUltimateTargetObject(factory.getAdapter(GitProvider.GITLAB));
@@ -565,10 +565,11 @@ class GitWriteSafetyIT {
                         try { result = method.invoke(originalJournal, arguments); }
                         catch (java.lang.reflect.InvocationTargetException error) { throw error.getCause(); }
                         if (method.getName().equals("begin") && arguments[0] instanceof GitOperationJournalPort.Command value
-                                && value.action().equals("CREATE_BRANCH") && command.compareAndSet(null, value)) {
+                                && value.action().equals(action == ActionType.ENSURE_MR ? "CREATE_MR" : "CREATE_BRANCH")
+                                && command.compareAndSet(null, value)) {
                             operationId.set(((GitOperationJournalPort.Operation) result).id());
                             entered.countDown();
-                            if (!release.await(15, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("Branch INTENT gate timed out");
+                            if (!release.await(15, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("Creation INTENT gate timed out");
                         }
                         return result;
                     });
@@ -576,7 +577,8 @@ class GitWriteSafetyIT {
             if (holdResponse) interceptors.add((request, body, execution) -> {
                 var response = execution.execute(request, body);
                 if (request.getMethod() == org.springframework.http.HttpMethod.POST
-                        && request.getURI().getRawPath().equals(canonicalEndpoint + "/repository/branches")) {
+                        && request.getURI().getRawPath().equals(canonicalEndpoint
+                        + (action == ActionType.ENSURE_MR ? "/merge_requests" : "/repository/branches"))) {
                     holdFixtureResponse(response, responseEntered, releaseResponse);
                 }
                 return response;
@@ -846,6 +848,294 @@ class GitWriteSafetyIT {
                     && request.path().equals(canonicalEndpoint + "/merge_requests")).count()).as("actual MR POST count").isZero();
             soft.assertThat(SERVER.writeCount()).as("all actual HTTP writes").isZero();
         });
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {40, 64})
+    void createMrIntentResumesOriginalPostAndRecordsCurrentSender(int shaLength) throws Exception {
+        sha = "aBcD".repeat(shaLength / 4);
+        var run = prepareMrCreationRun();
+        String runId = run.getId().value();
+        String source = run.getItems().getFirst().getMetadata().get("plan.featureBranch");
+        String target = run.getItems().getFirst().getMetadata().get("plan.releaseBranch");
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, mrCreationResponse(run, "mergeable").toString());
+        var workers = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try (var gate = new CreationIntentGate(ActionType.ENSURE_MR, true)) {
+            try {
+                var oldOwner = workers.submit(() -> taskService.executeNextTask(runId));
+                assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var command = gate.command.get();
+                String operationId = gate.operationId.get();
+                var original = mergeIntentIdentity(operationId);
+                var intent = journal.find(operationId).orElseThrow().events().getFirst();
+                var metadata = new LinkedHashMap<>(gate.claims.getFirst().metadata());
+                gate.expire();
+
+                var newOwner = workers.submit(() -> taskService.executeNextTask(runId));
+                assertThat(gate.responseEntered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .as("complete CREATE_MR intent must resume the original POST").isTrue();
+                var current = gate.claims.getLast();
+                assertThat(current.fence().claimToken()).isNotEqualTo(command.taskFence().claimToken());
+                assertThat(current.metadata()).isEqualTo(metadata);
+                assertThat(mergeNotSentMetadata(current.itemId())).isEqualTo(metadata);
+                assertThat(journal.find(operationId).orElseThrow().operation().state()).isEqualTo("SEND_STARTED");
+                assertThat(mergeIntentIdentity(operationId)).isEqualTo(original);
+                mergeIntentAssertSender(operationId, current.fence());
+
+                assertThatThrownBy(() -> taskRuns.completeTask(current, taskStep(current, RunItemResult.UNKNOWN),
+                        Map.of("git.blockReason", "UNKNOWN"))).isInstanceOf(BusinessException.class);
+                assertTaskStatus(current, "RUNNING");
+                assertThat(journal.find(operationId).orElseThrow().events()).hasSize(2);
+                gate.release.countDown();
+                assertThatThrownBy(() -> oldOwner.get(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .isInstanceOf(java.util.concurrent.ExecutionException.class).hasCauseInstanceOf(BusinessException.class);
+                assertTaskStatus(current, "RUNNING");
+                gate.releaseResponse.countDown();
+
+                boolean resumed = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> newOwner.get(5, java.util.concurrent.TimeUnit.SECONDS));
+                assertThat(resumed).isTrue();
+                branchIntentAssertApplied(operationId, current.fence(), intent);
+                assertThat(mergeIntentIdentity(operationId)).isEqualTo(original);
+                assertConfirmedMrCreation(runId);
+                createMrRequestAssertCompleteProof(journal.find(operationId).orElseThrow().operation(),
+                        source, target, "Merge " + source + " into " + target);
+                assertThat(jdbc.queryForObject("select count(*) from git_operation where task_id=?",
+                        Integer.class, current.fence().taskId())).isEqualTo(1);
+                System.out.printf("HTTP_CREATE_MR_INTENT_RESUME shaLength=%d run=%s task=%s operation=%s attempt=%s "
+                                + "post=1 originalBytes=true currentSender=true oldOwnerRevoked=true%n",
+                        shaLength, runId, current.fence().taskId(), operationId, intent.attemptId());
+            } finally {
+                gate.releaseAll(); workers.shutdown();
+                assertThat(workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest(name = "createMrIntentPreflight={0}")
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"contained_advanced", "contained_deleted", "reused_advanced",
+            "source_advanced", "source_deleted", "source_forbidden", "detail_advanced", "detail_fork", "detail_missing",
+            "rebound_initial", "rebound_before_post"})
+    void createMrIntentPreflightClosesOriginalIntentWithoutPost(String observation) throws Exception {
+        sha = "aBcD".repeat(10);
+        var run = prepareMrCreationRun();
+        String runId = run.getId().value();
+        String source = run.getItems().getFirst().getMetadata().get("plan.featureBranch");
+        String target = run.getItems().getFirst().getMetadata().get("plan.releaseBranch");
+        String sourcePath = canonicalEndpoint + "/repository/branches/" + URLEncoder.encode(source, StandardCharsets.UTF_8);
+        String refsPath = canonicalEndpoint + "/repository/commits/" + sha + "/refs";
+        String mrPath = canonicalEndpoint + "/merge_requests";
+        String reboundEndpoint = "/api/v4/projects/" + (project + 10000);
+        SERVER.reply("POST", mrPath, 201, mrCreationResponse(run, "mergeable").toString());
+        var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try (var gate = new CreationIntentGate(ActionType.ENSURE_MR, false)) {
+            try {
+                var oldOwner = workers.submit(() -> taskService.executeNextTask(runId));
+                assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var command = gate.command.get();
+                String operationId = gate.operationId.get();
+                var original = mergeIntentIdentity(operationId);
+                var intent = journal.find(operationId).orElseThrow().events().getFirst();
+                var originalMetadata = new LinkedHashMap<>(gate.claims.getFirst().metadata());
+                var originalTask = jdbc.queryForMap("select * from run_task where id=?", command.taskFence().taskId());
+                int requestsBeforeResume = SERVER.requests.size();
+                gate.expire();
+
+                switch (observation) {
+                    case "contained_advanced", "contained_deleted" -> {
+                        SERVER.reply("GET", refsPath, 200, new com.fasterxml.jackson.databind.ObjectMapper()
+                                .valueToTree(List.of(Map.of("type", "branch", "name", target))).toString());
+                        SERVER.reply("GET", sourcePath, observation.equals("contained_deleted") ? 404 : 200,
+                                observation.equals("contained_deleted") ? "{}" : branchIntentResponse(source, "b".repeat(40)));
+                        SERVER.reply("GET", mrPath, 503, "{}");
+                    }
+                    case "reused_advanced" -> {
+                        SERVER.reply("GET", sourcePath, 200, branchIntentResponse(source, "b".repeat(40)));
+                        SERVER.reply("GET", mrPath, 200, "[" + mrCreationResponse(run, "mergeable") + "]");
+                        SERVER.reply("GET", mrPath + "/7", 200, mrCreationResponse(run, "mergeable")
+                                .put("sha", sha.toUpperCase(java.util.Locale.ROOT)).toString());
+                    }
+                    case "source_advanced" -> SERVER.reply("GET", sourcePath, 200, branchIntentResponse(source, "b".repeat(40)));
+                    case "source_deleted" -> SERVER.reply("GET", sourcePath, 404, "{}");
+                    case "source_forbidden" -> SERVER.reply("GET", sourcePath, 403, "{\"message\":\"Forbidden\"}");
+                    case "detail_advanced", "detail_fork", "detail_missing" -> {
+                        SERVER.reply("GET", mrPath, 200, "[" + mrCreationResponse(run, "mergeable") + "]");
+                        var detail = mrCreationResponse(run, "mergeable");
+                        if (observation.equals("detail_advanced")) detail.put("sha", "b".repeat(40));
+                        if (observation.equals("detail_fork")) detail.put("source_project_id", project + 10000);
+                        if (observation.equals("detail_missing")) detail.remove("target_project_id");
+                        SERVER.reply("GET", mrPath + "/7", 200, detail.toString());
+                    }
+                    case "rebound_initial" -> SERVER.reply("GET", endpoint, 200, "{\"id\":" + (project + 10000) + "}");
+                    case "rebound_before_post" -> {
+                        var interceptors = new java.util.ArrayList<>(gate.http.getInterceptors());
+                        interceptors.add((request, body, execution) -> {
+                            var response = execution.execute(request, body);
+                            if (request.getMethod() == org.springframework.http.HttpMethod.GET
+                                    && request.getURI().getRawPath().equals(sourcePath)) {
+                                SERVER.reply("GET", endpoint, 200, "{\"id\":" + (project + 10000) + "}");
+                            }
+                            return response;
+                        });
+                        gate.http.setInterceptors(interceptors);
+                    }
+                    default -> throw new AssertionError(observation);
+                }
+
+                boolean resumed = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> taskService.executeNextTask(runId));
+                assertThat(resumed).isTrue();
+                var current = gate.claims.getLast();
+                assertThat(current.fence().claimToken()).isNotEqualTo(command.taskFence().claimToken());
+                assertThat(current.metadata()).isEqualTo(originalMetadata);
+                RunItemResult result = observation.startsWith("contained_") ? RunItemResult.ALREADY_MERGED
+                        : observation.equals("reused_advanced") ? RunItemResult.MR_REUSED
+                        : observation.equals("source_forbidden") ? RunItemResult.MERGE_BLOCKED : RunItemResult.UNKNOWN;
+                var patch = createMrIntentLocalPatch(observation, source, target);
+                mergeNotSentAssertEvent(operationId, current.fence().taskId(), current.fence().claimToken(), result, patch, intent);
+                assertThat(mergeIntentIdentity(operationId)).isEqualTo(original);
+                var metadata = new LinkedHashMap<>(originalMetadata);
+                patch.forEach((key, value) -> { if (value == null) metadata.remove(key); else metadata.put(key, value); });
+                assertThat(mergeNotSentMetadata(current.itemId())).isEqualTo(metadata);
+                boolean complete = result == RunItemResult.ALREADY_MERGED || result == RunItemResult.MR_REUSED;
+                assertTaskStatus(current, complete ? "COMPLETED" : result == RunItemResult.UNKNOWN ? "UNKNOWN" : "FAILED");
+                assertThat(jdbc.queryForMap("select started_at,task_order from run_task where id=?", current.fence().taskId()))
+                        .containsEntry("started_at", originalTask.get("started_at")).containsEntry("task_order", originalTask.get("task_order"));
+                assertThat(jdbc.queryForList("select result from run_step where task_id=?", current.fence().taskId()))
+                        .singleElement().satisfies(row -> assertThat(row).containsEntry("result", result.name()));
+                assertThat(taskRuns.findTasks(runId).getLast().status()).isEqualTo(complete ? "PENDING" : "SKIPPED");
+                assertThat(taskRuns.findById(runId).orElseThrow().getExecutionStatus().name())
+                        .isEqualTo(complete ? "RUNNING" : result == RunItemResult.UNKNOWN ? "NEEDS_REVIEW" : "FAILED");
+                assertThat(journal.listByRun(runId, 0, 20)).hasSize(1);
+                assertThat(SERVER.writeCount()).isZero();
+                var resumedRequests = List.copyOf(SERVER.requests.subList(requestsBeforeResume, SERVER.requests.size()));
+                assertThat(resumedRequests).noneMatch(request -> request.path().startsWith(reboundEndpoint + "/"));
+                if (observation.startsWith("contained_")) {
+                    assertThat(resumedRequests).noneMatch(request -> request.path().equals(sourcePath)
+                            || request.path().equals(mrPath) || request.path().startsWith(mrPath + "/"));
+                } else if (observation.equals("reused_advanced") || observation.startsWith("detail_")) {
+                    assertThat(resumedRequests).noneMatch(request -> request.path().equals(sourcePath));
+                    assertThat(resumedRequests.stream().filter(request -> request.path().equals(mrPath + "/7")).count()).isEqualTo(1);
+                } else if (observation.equals("rebound_initial")) {
+                    assertThat(resumedRequests).noneMatch(request -> request.path().startsWith(canonicalEndpoint + "/"));
+                }
+
+                var closedTask = jdbc.queryForMap("select * from run_task where id=?", current.fence().taskId());
+                var closedOperation = jdbc.queryForMap("select * from git_operation where id=?", operationId);
+                var closedEvents = journal.find(operationId).orElseThrow().events();
+                gate.release.countDown();
+                assertThatThrownBy(() -> oldOwner.get(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .isInstanceOf(java.util.concurrent.ExecutionException.class).hasCauseInstanceOf(BusinessException.class);
+                assertThat(jdbc.queryForMap("select * from run_task where id=?", current.fence().taskId())).isEqualTo(closedTask);
+                assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).isEqualTo(closedOperation);
+                assertThat(journal.find(operationId).orElseThrow().events()).isEqualTo(closedEvents);
+                assertThat(SERVER.writeCount()).isZero();
+
+                if (result == RunItemResult.UNKNOWN) {
+                    int requestsBeforeNext = SERVER.requests.size();
+                    assertThat(taskService.executeNextTask(runId)).isFalse();
+                    assertThat(SERVER.requests).hasSize(requestsBeforeNext);
+                    int runsBeforeRetry = jdbc.queryForObject("select count(*) from run", Integer.class);
+                    assertThatThrownBy(() -> taskPlans.admitRetry(taskRuns.findById(runId).orElseThrow(),
+                            List.of(current.itemId()), "fixture-task-operator", UUID.randomUUID().toString()))
+                            .isInstanceOf(BusinessException.class);
+                    assertThat(jdbc.queryForObject("select count(*) from run", Integer.class)).isEqualTo(runsBeforeRetry);
+                } else if (complete) {
+                    if (observation.equals("contained_deleted")) SERVER.reply("GET", refsPath, 200, "[]");
+                    if (observation.equals("reused_advanced")) {
+                        SERVER.reply("PUT", mrPath + "/7/merge", 200, mrCreationResponse(run, "mergeable")
+                                .put("state", "merged").put("merge_commit_sha", "c".repeat(40)).toString());
+                    }
+                    boolean tried = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> taskService.executeNextTask(runId));
+                    assertThat(tried).isTrue();
+                    var afterTry = taskRuns.findById(runId).orElseThrow();
+                    assertThat(afterTry.getItems().getFirst().getSteps().getLast().result())
+                            .isEqualTo(observation.equals("contained_deleted") ? RunItemResult.UNKNOWN
+                                    : observation.equals("reused_advanced") ? RunItemResult.MERGED : RunItemResult.ALREADY_MERGED);
+                    assertThat(afterTry.getExecutionStatus().name())
+                            .isEqualTo(observation.equals("contained_deleted") ? "NEEDS_REVIEW" : "DONE");
+                    SERVER.verify("POST", mrPath, 0);
+                    SERVER.verify("PUT", mrPath + "/7/merge", observation.equals("reused_advanced") ? 1 : 0);
+                    if (observation.equals("reused_advanced")) {
+                        assertThat(SERVER.body("PUT", mrPath + "/7/merge").path("sha").textValue()).isEqualTo(sha);
+                    }
+                    assertThat(journal.find(operationId).orElseThrow().events()).isEqualTo(closedEvents);
+                }
+                System.out.printf("HTTP_CREATE_MR_INTENT_LOCAL observation=%s run=%s task=%s operation=%s result=%s "
+                                + "createPost=0 guardReleased=true originalIdentity=true%n",
+                        observation, runId, current.fence().taskId(), operationId, result);
+            } finally {
+                gate.releaseAll(); workers.shutdown();
+                assertThat(workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
+
+    @Test
+    void createMrIntentKeepsUnknownAfterGetAAndPostResponseB() throws Exception {
+        sha = "aBcD".repeat(10);
+        var run = prepareMrCreationRun();
+        String runId = run.getId().value();
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, mrCreationResponse(run, "mergeable").toString());
+        var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try (var gate = new CreationIntentGate(ActionType.ENSURE_MR, false)) {
+            try {
+                var oldOwner = workers.submit(() -> taskService.executeNextTask(runId));
+                assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                String operationId = gate.operationId.get();
+                var original = mergeIntentIdentity(operationId);
+                var intent = journal.find(operationId).orElseThrow().events().getFirst();
+                gate.expire();
+                SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, mrCreationResponse(run, "mergeable")
+                        .put("sha", "b".repeat(40)).toString());
+
+                boolean resumed = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> taskService.executeNextTask(runId));
+                assertThat(resumed).isTrue();
+                var current = gate.claims.getLast();
+                assertThat(current.fence().claimToken()).isNotEqualTo(gate.command.get().taskFence().claimToken());
+                assertUnconfirmedMrCreation(runId);
+                var detail = journal.find(operationId).orElseThrow();
+                assertThat(detail.events()).extracting(GitOperationJournalPort.Event::type)
+                        .containsExactly("INTENT_RECORDED", "SEND_STARTED", "UNKNOWN");
+                assertThat(detail.events().getFirst()).isEqualTo(intent);
+                mergeIntentAssertSender(operationId, current.fence());
+                assertThat(mergeIntentIdentity(operationId)).isEqualTo(original);
+                assertThat(new com.fasterxml.jackson.databind.ObjectMapper().readTree(detail.operation().targetJson())
+                        .path("sha").textValue()).isEqualTo(sha);
+                assertThat(SERVER.body("POST", canonicalEndpoint + "/merge_requests").has("sha")).isFalse();
+                assertThat(taskService.executeNextTask(runId)).isFalse();
+                assertThat(taskRuns.findById(runId).orElseThrow().getItems().getFirst().getSteps())
+                        .noneMatch(step -> step.actionType() == ActionType.TRY_MERGE || step.result() == RunItemResult.CREATED);
+                var unknownEvents = detail.events();
+                gate.release.countDown();
+                assertThatThrownBy(() -> oldOwner.get(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .isInstanceOf(java.util.concurrent.ExecutionException.class).hasCauseInstanceOf(BusinessException.class);
+                assertThat(journal.find(operationId).orElseThrow().events()).isEqualTo(unknownEvents);
+                assertThat(journal.find(operationId).orElseThrow().operation().blocked()).isTrue();
+                assertThat(SERVER.writeCount()).isEqualTo(1);
+                System.out.printf("HTTP_CREATE_MR_INTENT_POST_RACE run=%s task=%s operation=%s post=1 "
+                        + "responseB=UNKNOWN originalA=true try=0 guardRetained=true%n", runId, current.fence().taskId(), operationId);
+            } finally {
+                gate.releaseAll(); workers.shutdown();
+                assertThat(workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
+
+    private Map<String, String> createMrIntentLocalPatch(String observation, String source, String target) {
+        if (observation.startsWith("rebound_")) return Map.of("git.blockReason", "UNKNOWN");
+        boolean contained = observation.startsWith("contained_");
+        boolean reused = observation.equals("reused_advanced");
+        Map<String, String> patch = new LinkedHashMap<>();
+        patch.put("git.requestId", null);
+        patch.put("git.blockReason", contained || reused ? null : observation.equals("source_forbidden") ? "PERMISSION_DENIED" : "UNKNOWN");
+        patch.put("git.projectId", String.valueOf(project));
+        patch.put("git.sourceBranch", source);
+        patch.put("git.targetBranch", target);
+        patch.put("git.mrIid", reused ? "7" : null);
+        patch.put("git.mrUrl", reused ? SERVER.baseUrl() + "/" + path + "/-/merge_requests/7" : null);
+        patch.put("git.sourceSha", sha);
+        patch.put("git.mergeSha", null);
+        patch.put("git.mrDisposition", contained ? "ALREADY_MERGED" : reused ? "MR_REUSED" : null);
+        return patch;
     }
 
     private void createMrRequestAssertNoTaskMetadata(GitOperationJournalPort.Operation operation) {

@@ -1,8 +1,10 @@
 package io.releasehub.infrastructure.git;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.releasehub.application.gitoperation.GitReadResult;
 import io.releasehub.application.gitoperation.GitOperationContext;
+import io.releasehub.application.gitoperation.GitMergeRequestPort.SourceRevision;
 import io.releasehub.application.gitoperation.GitWriteResult;
 
 import io.releasehub.application.port.out.GitBranchPort;
@@ -36,6 +38,7 @@ import java.util.regex.Pattern;
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "releasehub.gitlab.real-adapter", havingValue = "true")
 public class GitLabGitBranchAdapter implements GitBranchPort {
 
+    private static final ObjectMapper JSON = new ObjectMapper();
     private static final int MERGE_READINESS_MAX_ATTEMPTS = 80;
     private static final long MERGE_READINESS_POLL_MILLIS = 250L;
 
@@ -104,7 +107,28 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
     @Override
     public GitWriteResult<MrEvidence> ensureMergeRequest(String repoCloneUrl, String token, String sourceBranch,
                                                         String targetBranch, String message) {
-        return mergeWorkflow(repoCloneUrl, token, null).ensureMergeRequest(sourceBranch, targetBranch, message);
+        var prepared = GitOperationContext.unsentOperation();
+        SourceRevision original = null;
+        if (prepared != null) {
+            JsonNode target;
+            try {
+                target = JSON.readTree(prepared.targetJson());
+            } catch (com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException error) {
+                throw BusinessException.of(ErrorCode.GIT_OPERATION_STALE);
+            }
+            var request = GitLabMergeRequestAdapter.recordedCreateMrRequest(target, prepared.id());
+            if (request == null || !"CREATE_MR".equals(prepared.action()) || !"GITLAB".equals(prepared.provider())
+                    || !GitRemoteIdentityResolver.validProjectId(prepared.projectId())
+                    || !prepared.projectId().equals(GitOperationContext.expectedProjectId())
+                    || !java.util.Objects.equals(sourceBranch, request.path("source_branch").textValue())
+                    || !java.util.Objects.equals(targetBranch, request.path("target_branch").textValue())) {
+                throw BusinessException.of(ErrorCode.GIT_OPERATION_STALE);
+            }
+            original = new SourceRevision(
+                    prepared.projectId(), target.path("sha").textValue());
+        }
+        return mergeWorkflow(repoCloneUrl, token, original == null ? null : original.projectId())
+                .ensureMergeRequest(sourceBranch, targetBranch, message, original);
     }
 
     @Override
@@ -168,6 +192,11 @@ public class GitLabGitBranchAdapter implements GitBranchPort {
 
     private io.releasehub.application.gitoperation.GitMergeWorkflow mergeWorkflow(String cloneUrl, String token, String expectedProjectId) {
         var identity = resolveIdentity(cloneUrl, token, "/merge_requests", expectedProjectId);
+        var prepared = GitOperationContext.unsentOperation();
+        if (prepared != null && "CREATE_MR".equals(prepared.action())
+                && !java.util.Objects.equals(prepared.remoteKey(), identity.remoteKey())) {
+            throw BusinessException.of(ErrorCode.GIT_OPERATION_STALE);
+        }
         var client = new GitLabMergeRequestAdapter(restTemplate, identity, token);
         return new io.releasehub.application.gitoperation.GitMergeWorkflow(client, MERGE_READINESS_MAX_ATTEMPTS, () -> {
             try { Thread.sleep(MERGE_READINESS_POLL_MILLIS); }

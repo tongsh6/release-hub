@@ -50,6 +50,7 @@ public final class GitOperationContext {
         if (original != null) {
             String action = switch (claim.actionType()) {
                 case ENSURE_FEATURE, ENSURE_RELEASE -> "CREATE_BRANCH";
+                case ENSURE_MR -> "CREATE_MR";
                 case TRY_MERGE -> "MERGE_MR";
                 default -> "";
             };

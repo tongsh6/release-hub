@@ -494,6 +494,66 @@ class GitLabMergeRequestAdapterTest {
         server.verify();
     }
 
+    // B9 independent contract: detail identity must survive the raw response boundary.
+    @Test
+    void createMrIntentDetailAcceptsAllThreeNumericProjectIdentities() throws Exception {
+        var body = createdMr("mergeable");
+        server.expect(requestTo(ENDPOINT + "/17")).andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(body.toString(), MediaType.APPLICATION_JSON));
+
+        var result = adapter.read("17");
+
+        assertEquals(GitReadResult.Status.FOUND, result.status());
+        assertNotNull(result.evidence());
+        assertEquals("7", result.evidence().projectId());
+        assertEquals("17", result.evidence().id());
+        assertEquals("feature/IT-1", result.evidence().sourceBranch());
+        assertEquals("release/RW-1", result.evidence().targetBranch());
+        assertEquals(SHA, result.evidence().sourceSha());
+        server.verify();
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"project_id", "source_project_id", "target_project_id"})
+    void createMrIntentDetailRequiresEveryProjectIdentity(String field) throws Exception {
+        var body = createdMr("mergeable");
+        body.remove(field);
+        server.expect(requestTo(ENDPOINT + "/17")).andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(body.toString(), MediaType.APPLICATION_JSON));
+
+        var result = adapter.read("17");
+
+        assertEquals(GitReadResult.Status.INCOMPLETE, result.status());
+        assertNull(result.evidence());
+        server.verify();
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"project_id", "source_project_id", "target_project_id"})
+    void createMrIntentDetailRejectsAnotherProjectEvenWhenNamesAndShaMatch(String field) throws Exception {
+        var body = createdMr("mergeable").put(field, 8);
+        server.expect(requestTo(ENDPOINT + "/17")).andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(body.toString(), MediaType.APPLICATION_JSON));
+
+        var result = adapter.read("17");
+
+        assertEquals(GitReadResult.Status.MISMATCH, result.status());
+        assertNull(result.evidence());
+        server.verify();
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"project_id", "source_project_id", "target_project_id"})
+    void createMrIntentDetailDoesNotCoerceTextIntoNumericIdentity(String field) throws Exception {
+        var body = createdMr("mergeable").put(field, "7");
+        server.expect(requestTo(ENDPOINT + "/17")).andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(body.toString(), MediaType.APPLICATION_JSON));
+
+        var result = adapter.read("17");
+
+        assertEquals(GitReadResult.Status.INCOMPLETE, result.status());
+        assertNull(result.evidence());
+        server.verify();
+    }
+    // End B9 independent contract.
+
     private static com.fasterxml.jackson.databind.node.ObjectNode mergedMr() throws Exception {
         return createdMr("mergeable").put("state", "merged").put("merge_commit_sha", "b".repeat(40));
     }

@@ -82,6 +82,25 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
             throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
         if(merge&&(input==null||!expectedSha.equals(input.path("sha").textValue())))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
         ObjectNode target=json.createObjectNode();
+        var preparedCreateMr=createMr?GitOperationContext.unsentOperation():null;
+        if(preparedCreateMr!=null) {
+            JsonNode originalTarget=json.readTree(preparedCreateMr.targetJson());
+            var originalBody=GitLabMergeRequestAdapter.recordedCreateMrRequest(originalTarget,preparedCreateMr.id());
+            if(originalBody==null||!"CREATE_MR".equals(preparedCreateMr.action())
+                    ||!identity.repoId().equals(preparedCreateMr.repoId())
+                    ||!identity.remoteKey().equals(preparedCreateMr.remoteKey())
+                    ||!identity.provider().equals(preparedCreateMr.provider())
+                    ||!identity.baseUrl().equals(preparedCreateMr.baseUrl())
+                    ||!identity.projectId().equals(preparedCreateMr.projectId())
+                    ||!input.path("source_branch").equals(originalBody.path("source_branch"))
+                    ||!input.path("target_branch").equals(originalBody.path("target_branch"))
+                    ||!expectedSha.equalsIgnoreCase(originalTarget.path("sha").textValue())) {
+                throw BusinessException.of(ErrorCode.GIT_OPERATION_STALE);
+            }
+            id=preparedCreateMr.id();
+            expectedSha=originalTarget.path("sha").textValue();
+            input=originalBody;
+        }
         if(branch||action.equals("CREATE_TAG")) {
             String ref=input.path("ref").asText();
             if(action.equals("CREATE_TAG")&&!GitLabGitBranchAdapter.validSha(ref))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
@@ -121,7 +140,7 @@ public class GitWriteHttpInterceptor implements ClientHttpRequestInterceptor {
             target.put("beforeContentHash",before.path("content_sha256").asText());
             input.put("commit_message",input.path("commit_message").asText()+"\nReleaseHub-Operation: "+id);
         }
-        if(action.equals("CREATE_MR")||action.equals("CREATE_PR")) {
+        if(createMr&&preparedCreateMr==null||action.equals("CREATE_PR")) {
             String field=action.equals("CREATE_MR")?"description":"body";
             input.put(field,input.path(field).asText("")+"\nReleaseHub-Operation: "+id);
         }

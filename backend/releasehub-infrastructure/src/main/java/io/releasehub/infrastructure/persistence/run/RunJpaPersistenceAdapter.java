@@ -97,15 +97,13 @@ public class RunJpaPersistenceAdapter implements RunPort {
     @Override
     @Transactional(readOnly = true)
     public Optional<Run> findById(String runId) {
-        return repository.findById(runId).map(this::toDomain);
+        return repository.findById(runId).map(entity -> toDomains(List.of(entity)).getFirst());
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<Run> findAll() {
-        return repository.findAll().stream()
-                         .map(this::toDomain)
-                         .collect(Collectors.toList());
+        return toDomains(repository.findAll());
     }
 
     @Override
@@ -115,9 +113,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
         if (normalizedWindowKey == null) {
             return List.of();
         }
-        return repository.findByWindowKey(normalizedWindowKey).stream()
-                         .map(this::toDomain)
-                         .collect(Collectors.toList());
+        return toDomains(repository.findByWindowKey(normalizedWindowKey));
     }
 
     @Override
@@ -143,9 +139,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 normalizedGroupCode,
                 pageable
         );
-        List<Run> items = result.getContent().stream()
-                                .map(this::toDomain)
-                                .collect(Collectors.toList());
+        List<Run> items = toDomains(result.getContent());
         return new PageResult<>(items, result.getTotalElements());
     }
 
@@ -324,7 +318,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
             Map<String, String> metadata = taskMetadata(run, item);
             GitOperationJournalPort.Operation unsentOperation = null;
             if (!initialClaim && !recoverableWithoutEvidence(task, databaseTime)) {
-                if (!Set.of("TRY_MERGE", "ENSURE_FEATURE", "ENSURE_RELEASE").contains(task.getTaskType())) continue;
+                if (!Set.of("TRY_MERGE", "ENSURE_FEATURE", "ENSURE_RELEASE", "ENSURE_MR").contains(task.getTaskType())) continue;
                 Number steps = (Number) entityManager.createNativeQuery(
                         "SELECT count(*) FROM {h-schema}run_step WHERE task_id=?1")
                         .setParameter(1, task.getId()).getSingleResult();
@@ -422,6 +416,8 @@ public class RunJpaPersistenceAdapter implements RunPort {
         Map<String, String> patch = validatedPatch(run, item, claim.actionType(), metadataUpdates);
         var ordered = tasks.findByRunIdOrderByTaskOrderAsc(run.getId());
         Map<String, RunItemJpaEntity> items = taskItems(run, ordered);
+        Map<String, RunTaskJpaEntity> taskIndex = ordered.stream()
+                .collect(Collectors.toMap(RunTaskJpaEntity::getId, value -> value));
         Instant finished = now();
 
         // 先用原检查点与无 Step 事实确认操作；后续 Task CAS 失败时，操作、事件与 guard 一起回滚。
@@ -455,14 +451,14 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 "COMPLETED".equals(status) ? null : step.message(), task.getId(), claim.fence().claimToken()));
         entityManager.flush();
         entityManager.clear();
-        Run restored = toDomain(repository.findById(run.getId()).orElseThrow(this::stale));
+        Run restored = toDomain(repository.findById(run.getId()).orElseThrow(this::stale), taskIndex);
         boolean pending = tasks.findByRunIdOrderByTaskOrderAsc(run.getId()).stream()
                 .anyMatch(value -> Set.of("PENDING", "RUNNING").contains(value.getStatus()));
         restored.refreshTaskProgress(pending, finished);
         requireOne(update("UPDATE {h-schema}run SET execution_status=?1,finished_at=?2,updated_at=?3,version=version+1 WHERE id=?4",
                 restored.getExecutionStatus().name(), stamp(restored.getFinishedAt()), stamp(finished), run.getId()));
         entityManager.clear();
-        return toDomain(repository.findById(run.getId()).orElseThrow(this::stale));
+        return toDomain(repository.findById(run.getId()).orElseThrow(this::stale), taskIndex);
     }
 
     private void validateResult(RunStep step) {
@@ -546,7 +542,8 @@ public class RunJpaPersistenceAdapter implements RunPort {
 
     private String repositoryProjectId(RunJpaEntity run, String repoId) {
         try {
-            return toDomain(run).repositoryProjectId(RepoId.of(repoId)).orElse(null);
+            // 本调用只汇总项目 metadata，不为未消费的 Step 顺序查询 Task。
+            return toDomain(run, Map.of()).repositoryProjectId(RepoId.of(repoId)).orElse(null);
         } catch (IllegalStateException error) {
             throw stale();
         }
@@ -611,9 +608,24 @@ public class RunJpaPersistenceAdapter implements RunPort {
         return trimmed.isBlank() ? null : trimmed;
     }
 
-    private Run toDomain(RunJpaEntity entity) {
+    /** 本次读取的 Step 一次取得现有 Task；无关联 Step 时不增加查询。 */
+    private List<Run> toDomains(List<RunJpaEntity> entities) {
+        Set<String> taskIds = entities.stream()
+                .flatMap(run -> run.getItems().stream())
+                .flatMap(item -> item.getSteps().stream())
+                .map(RunStepJpaEmbeddable::getTaskId)
+                .filter(id -> id != null && !id.isBlank())
+                .collect(Collectors.toSet());
+        Map<String, RunTaskJpaEntity> taskIndex = new HashMap<>();
+        if (!taskIds.isEmpty()) {
+            for (var task : tasks.findAllById(taskIds)) taskIndex.put(task.getId(), task);
+        }
+        return entities.stream().map(entity -> toDomain(entity, taskIndex)).collect(Collectors.toList());
+    }
+
+    private Run toDomain(RunJpaEntity entity, Map<String, RunTaskJpaEntity> taskIndex) {
         List<RunItem> items = entity.getItems().stream()
-                                    .map(this::toDomainItem)
+                                    .map(item -> toDomainItem(entity.getId(), item, taskIndex))
                                     .collect(Collectors.toList());
 
         return Run.rehydrate(
@@ -631,8 +643,16 @@ public class RunJpaPersistenceAdapter implements RunPort {
         );
     }
 
-    private RunItem toDomainItem(RunItemJpaEntity entity) {
+    private RunItem toDomainItem(String runId, RunItemJpaEntity entity, Map<String, RunTaskJpaEntity> taskIndex) {
+        // 关联 Task 按原任务顺序展示；未关联事实排在其后，组间顺序不是因果证据。
+        // 非 Task 只按现有时间展示；相同时间键保留所有行，不推造真实执行先后。
+        Comparator<RunStepJpaEmbeddable> stepOrder = Comparator.comparing(
+                (RunStepJpaEmbeddable step) -> taskOrderForStep(runId, entity.getId(), step, taskIndex),
+                Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(RunStepJpaEmbeddable::getStartAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(RunStepJpaEmbeddable::getEndAt, Comparator.nullsLast(Comparator.naturalOrder()));
         List<RunStep> steps = entity.getSteps().stream()
+                                    .sorted(stepOrder)
                                     .map(s -> new RunStep(
                                             ActionType.valueOf(s.getActionType()),
                                             RunItemResult.valueOf(s.getResult()),
@@ -656,6 +676,16 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 entity.getUpdatedAt(),
                 0L // RunItemJpaEntity doesn't have version field, defaulting to 0
         );
+    }
+
+    private Integer taskOrderForStep(String runId, String itemId, RunStepJpaEmbeddable step,
+                                     Map<String, RunTaskJpaEntity> taskIndex) {
+        if (step.getTaskId() == null) return null;
+        var task = taskIndex.get(step.getTaskId());
+        if (task == null || !Objects.equals(runId, task.getRunId())
+                || !"RUN_ITEM".equals(task.getTargetType()) || !Objects.equals(itemId, task.getTargetId())
+                || !Objects.equals(step.getActionType(), task.getTaskType())) return null;
+        return task.getTaskOrder();
     }
 
     private RunJpaEntity toEntity(Run domain) {

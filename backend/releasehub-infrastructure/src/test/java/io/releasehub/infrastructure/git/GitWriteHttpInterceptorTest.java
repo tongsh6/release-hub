@@ -606,6 +606,188 @@ class GitWriteHttpInterceptorTest {
         verify(journal, never()).finish(anyString(), any(), any(), anyString(), any());
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {40, 64})
+    void createMrIntentSendsOriginalBodyMarkerAndShaUnderCurrentFence(int shaLength) {
+        String frozenSha = "aBcD".repeat(shaLength / 4);
+        var claim = createMrIntentClaim(frozenSha, null);
+        var original = claim.unsentOperation();
+        var json = new ObjectMapper();
+        var candidate = createMrRequestInput().put("title", "new producer title")
+                .put("description", "new producer description");
+        var sent = new AtomicInteger();
+
+        assertDoesNotThrow(() -> {
+            try (var scope = GitOperationContext.withTask(claim);
+                 var response = interceptor.intercept(createMrRequest(null, frozenSha),
+                         json.writeValueAsBytes(candidate), (outbound, body) -> {
+                             sent.incrementAndGet();
+                             var command = (GitOperationJournalPort.Command) singleJournalInvocation("begin").getArgument(0);
+                             var expected = createMrIntentBody(original.id());
+                             assertEquals(original.id(), command.operationId());
+                             assertEquals(json.readTree(original.targetJson()), json.readTree(command.targetJson()));
+                             assertEquals(claim.fence(), command.taskFence());
+                             assertEquals(claim.fence().claimToken(), command.sessionId());
+                             assertArrayEquals(expected.toString().getBytes(StandardCharsets.UTF_8), body);
+                             assertEquals(createMrRequestDigest(("POST|" + command.remoteKey() + "|/merge_requests||"
+                                     + createMrRequestDigest(body) + "|" + frozenSha).getBytes(StandardCharsets.UTF_8)),
+                                     command.requestHash());
+                             assertEquals(1, expected.path("description").textValue().lines()
+                                     .filter(("ReleaseHub-Operation: " + original.id())::equals).count());
+                             assertEquals("/api/v4/projects/17/merge_requests", outbound.getURI().getRawPath());
+                             assertNull(outbound.getURI().getRawQuery());
+                             assertNull(outbound.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_SHA));
+                             verify(journal).sending(original.id(), claim.fence());
+                             return createMrRequestResponse(frozenSha, "feature/IT-1", "release/W-1");
+                         })) {
+                assertEquals(HttpStatus.CREATED, response.getStatusCode());
+            }
+        });
+
+        assertEquals(1, sent.get());
+        verify(journal).finish(eq(original.id()), eq(claim.fence()),
+                eq(GitWriteResult.Outcome.APPLIED), anyString(), isNull());
+        verify(identities, never()).metadata(any(), anyString(), any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SOURCE", "TARGET", "SHA"})
+    void createMrIntentRejectsDifferentCandidateIdentityBeforeAdmission(String defect) {
+        String frozenSha = "aBcD".repeat(10);
+        var claim = createMrIntentClaim(frozenSha, null);
+        var input = createMrRequestInput();
+        if (defect.equals("SOURCE")) input.put("source_branch", "feature/different");
+        if (defect.equals("TARGET")) input.put("target_branch", "release/different");
+        var sent = new AtomicInteger();
+        var error = assertThrows(BusinessException.class, () -> {
+            try (var scope = GitOperationContext.withTask(claim)) {
+                interceptor.intercept(createMrRequest(null, defect.equals("SHA") ? "b".repeat(40) : frozenSha),
+                        input.toString().getBytes(StandardCharsets.UTF_8), (request, body) -> {
+                            sent.incrementAndGet();
+                            return createMrRequestResponse(frozenSha, "feature/IT-1", "release/W-1");
+                        });
+            }
+        });
+        assertEquals(ErrorCode.GIT_OPERATION_STALE, error.getErrorCode());
+        assertEquals(0, sent.get());
+        verifyNoInteractions(journal);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MISSING_DESCRIPTION", "FOREIGN_MARKER"})
+    void createMrIntentRejectsIncompleteOrForeignRecordedBodyBeforeAdmission(String defect) {
+        var claim = createMrIntentClaim("aBcD".repeat(10), defect);
+        var sent = new AtomicInteger();
+        assertThrows(BusinessException.class, () -> {
+            try (var scope = GitOperationContext.withTask(claim)) {
+                interceptor.intercept(createMrRequest(null, "aBcD".repeat(10)),
+                        createMrRequestInput().toString().getBytes(StandardCharsets.UTF_8), (request, body) -> {
+                            sent.incrementAndGet();
+                            return createMrRequestResponse("aBcD".repeat(10), "feature/IT-1", "release/W-1");
+                        });
+            }
+        });
+        assertEquals(0, sent.get());
+        verifyNoInteractions(journal);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ID", "TARGET"})
+    void createMrIntentChecksTheJournalReturnBeforeSending(String defect) {
+        var claim = createMrIntentClaim("aBcD".repeat(10), null);
+        doAnswer(call -> {
+            GitOperationJournalPort.Command c = call.getArgument(0);
+            var target = (com.fasterxml.jackson.databind.node.ObjectNode) new ObjectMapper().readTree(c.targetJson());
+            if (defect.equals("TARGET")) target.put("title", "changed after admission");
+            return new GitOperationJournalPort.Operation(defect.equals("ID") ? "foreign-operation" : c.operationId(),
+                    c.repoId(), c.remoteKey(), c.provider(), c.baseUrl(), c.projectId(), c.action(), target.toString(),
+                    c.runId(), c.operator(), "INTENT_RECORDED", 19, java.time.Instant.EPOCH,
+                    java.time.Instant.EPOCH, null, true);
+        }).when(journal).begin(any());
+        var sent = new AtomicInteger();
+        assertThrows(BusinessException.class, () -> {
+            try (var scope = GitOperationContext.withTask(claim)) {
+                interceptor.intercept(createMrRequest(null, "aBcD".repeat(10)),
+                        createMrRequestInput().toString().getBytes(StandardCharsets.UTF_8), (request, body) -> {
+                            sent.incrementAndGet();
+                            return createMrRequestResponse("aBcD".repeat(10), "feature/IT-1", "release/W-1");
+                        });
+            }
+        });
+        verify(journal).begin(any());
+        verify(journal, never()).sending(anyString(), any());
+        verify(journal, never()).finish(anyString(), any(), any(), anyString(), any());
+        assertEquals(0, sent.get());
+    }
+
+    @Test
+    void createMrIntentSnapshotCannotBypassTheCurrentSendingFence() {
+        var claim = createMrIntentClaim("aBcD".repeat(10), null);
+        doThrow(BusinessException.of(ErrorCode.GIT_OPERATION_STALE)).when(journal)
+                .sending(claim.unsentOperation().id(), claim.fence());
+        var sent = new AtomicInteger();
+        var error = assertThrows(BusinessException.class, () -> {
+            try (var scope = GitOperationContext.withTask(claim)) {
+                interceptor.intercept(createMrRequest(null, "aBcD".repeat(10)),
+                        createMrRequestInput().toString().getBytes(StandardCharsets.UTF_8), (request, body) -> {
+                            sent.incrementAndGet();
+                            return createMrRequestResponse("aBcD".repeat(10), "feature/IT-1", "release/W-1");
+                        });
+            }
+        });
+        assertEquals(ErrorCode.GIT_OPERATION_STALE, error.getErrorCode());
+        verify(journal).begin(any());
+        verify(journal).sending(claim.unsentOperation().id(), claim.fence());
+        verify(journal, never()).finish(anyString(), any(), any(), anyString(), any());
+        assertEquals(0, sent.get());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ADVANCED_RESPONSE", "LOST_RESPONSE"})
+    void createMrIntentKeepsUnknownResponseOnOriginalOperationAndCurrentSender(String outcome) {
+        var claim = createMrIntentClaim("aBcD".repeat(10), null);
+        var sent = new AtomicInteger();
+        assertThrows(IOException.class, () -> {
+            try (var scope = GitOperationContext.withTask(claim)) {
+                interceptor.intercept(createMrRequest(null, "aBcD".repeat(10)),
+                        createMrRequestInput().toString().getBytes(StandardCharsets.UTF_8), (request, body) -> {
+                            sent.incrementAndGet();
+                            if (outcome.equals("LOST_RESPONSE")) throw new IOException("response lost after original POST");
+                            return createMrRequestResponse("b".repeat(40), "feature/IT-1", "release/W-1");
+                        });
+            }
+        });
+        assertEquals(1, sent.get());
+        verify(journal).sending(claim.unsentOperation().id(), claim.fence());
+        verify(journal).finish(eq(claim.unsentOperation().id()), eq(claim.fence()),
+                eq(GitWriteResult.Outcome.UNKNOWN), anyString(), anyString());
+        verify(journal, never()).completeSession(anyString(), anyBoolean());
+    }
+
+    private io.releasehub.application.run.RunPort.TaskClaim createMrIntentClaim(String frozenSha, String defect) {
+        String id = "11111111-1111-4111-8111-111111111111";
+        var target = new ObjectMapper().createObjectNode().put("method", "POST").put("suffix", "/merge_requests");
+        target.setAll(createMrIntentBody(id));
+        target.put("sha", frozenSha);
+        if ("MISSING_DESCRIPTION".equals(defect)) target.remove("description");
+        if ("FOREIGN_MARKER".equals(defect)) target.put("description", "ReleaseHub-Operation: another-operation");
+        var original = new GitOperationJournalPort.Operation(id, "repo", "a".repeat(64), "GITLAB",
+                "https://gitlab.invalid", "17", "CREATE_MR", target.toString(), "run-create-intent", "tester",
+                "INTENT_RECORDED", 7, java.time.Instant.EPOCH, java.time.Instant.EPOCH, null, true);
+        return new io.releasehub.application.run.RunPort.TaskClaim(
+                new io.releasehub.application.run.RunPort.TaskFence("task-create-intent", "current-create-owner"),
+                "run-create-intent", "item-create-intent", io.releasehub.domain.repo.RepoId.of("repo"),
+                io.releasehub.domain.run.ActionType.ENSURE_MR, java.time.Instant.EPOCH, "tester", java.util.Map.of(
+                        "plan.featureBranch", "feature/IT-1", "plan.releaseBranch", "release/W-1",
+                        "plan.gitProvider", "GITLAB"), original);
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode createMrIntentBody(String operationId) {
+        return new ObjectMapper().createObjectNode().put("source_branch", "feature/IT-1")
+                .put("target_branch", "release/W-1").put("title", " 原标题 \"发布\" \n第二行 ")
+                .put("description", "原说明\n\nReleaseHub-Operation: " + operationId).put("remove_source_branch", false);
+    }
+
     private MockClientHttpRequest createMrRequest(String query, String sha) {
         var request = new MockClientHttpRequest(HttpMethod.POST, URI.create(
                 "https://gitlab.invalid/api/v4/projects/acme%2Frepo/merge_requests" + (query == null ? "" : "?" + query)));

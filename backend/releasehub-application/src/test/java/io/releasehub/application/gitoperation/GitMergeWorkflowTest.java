@@ -279,7 +279,7 @@ class GitMergeWorkflowTest {
     @Test void ensureMustReturnBeforeAnyMergeOrReadinessPolling() {
         when(port.create("source", "target", SHA, "title")).thenReturn(GitWriteResult.applied(
                 mr("17", SHA, State.OPENED, Readiness.PENDING, null)));
-        var ensured = workflow().ensureMergeRequest("source", "target", "title");
+        var ensured = workflow().ensureMergeRequest("source", "target", "title", null);
         assertEquals(GitWriteResult.Outcome.APPLIED, ensured.outcome());
         assertEquals(MrDisposition.CREATED, ensured.evidence().disposition());
         assertTrue(GitMergeWorkflow.isValidCheckpoint(ensured.evidence()));
@@ -298,7 +298,7 @@ class GitMergeWorkflowTest {
                 ? GitReadResult.found(true) : GitReadResult.unavailable());
         var workflow = workflow();
 
-        var ensured = workflow.ensureMergeRequest("source", "target", "title");
+        var ensured = workflow.ensureMergeRequest("source", "target", "title", null);
         assertEquals(GitWriteResult.Outcome.APPLIED, ensured.outcome());
         var result = workflow.tryMergeRequest(ensured.evidence(), "title");
 
@@ -323,7 +323,7 @@ class GitMergeWorkflowTest {
                 new MergeRequest("17", ready.url(), "7", "source", "target", observed, null,
                         State.OPENED, Readiness.PENDING, null, null)));
 
-        var result = workflow().ensureMergeRequest("source", "target", "title");
+        var result = workflow().ensureMergeRequest("source", "target", "title", null);
 
         assertEquals(GitWriteResult.Outcome.APPLIED, result.outcome());
         assertEquals(MrDisposition.CREATED, result.evidence().disposition());
@@ -388,6 +388,198 @@ class GitMergeWorkflowTest {
         assertEquals(MergeStatus.UNKNOWN, workflow().tryMergeRequest(checkpoint(MrDisposition.CREATED, null), "title").status());
         verifyNoWrites();
     }
+
+    // B9 independent contract: a prepared CREATE_MR keeps its original project and revision.
+    @ParameterizedTest @ValueSource(strings = {"MOVED", "MISSING"})
+    void createMrIntentContainedRevisionNeedsNoSourceOrMrReads(String currentSource) {
+        when(port.readSource("source")).thenReturn("MOVED".equals(currentSource)
+                ? GitReadResult.found(new SourceRevision("7", "c".repeat(40)))
+                : new GitReadResult<>(GitReadResult.Status.NOT_FOUND, null));
+        when(port.contains("target", SHA)).thenReturn(GitReadResult.found(true));
+        when(port.find("source", "target", State.OPENED)).thenReturn(GitReadResult.unavailable());
+        when(port.find("source", "target", State.MERGED)).thenReturn(GitReadResult.unavailable());
+
+        var result = workflow().ensureMergeRequest("source", "target", "title", new SourceRevision("7", SHA));
+
+        assertEquals(GitWriteResult.Outcome.APPLIED, result.outcome());
+        assertCreateMrIntentIdentity(result.evidence(), SHA);
+        assertAll(
+                () -> assertEquals(MrDisposition.ALREADY_MERGED, result.evidence().disposition()),
+                () -> assertNull(result.evidence().iid()),
+                () -> assertNull(result.evidence().url()),
+                () -> assertNull(result.evidence().mergeSha()),
+                () -> assertNull(result.evidence().blockReason()));
+        assertTrue(GitMergeWorkflow.isValidCheckpoint(result.evidence()));
+        verify(port).contains("target", SHA);
+        verifyNoMoreInteractions(port);
+    }
+
+    @ParameterizedTest @ValueSource(ints = {40, 64})
+    void createMrIntentReusesOpenedOriginalRevisionWithoutReadingMovedSource(int length) {
+        String frozen = "aBcD".repeat(length / 4);
+        String observed = frozen.toLowerCase(java.util.Locale.ROOT);
+        var existing = mr("17", observed, State.OPENED, Readiness.MERGEABLE, null);
+        when(port.readSource("source")).thenReturn(GitReadResult.found(new SourceRevision("7", "c".repeat(length))));
+        when(port.contains("target", frozen)).thenReturn(GitReadResult.found(false));
+        when(port.contains("target", "c".repeat(length))).thenReturn(GitReadResult.found(false));
+        when(port.find("source", "target", State.OPENED)).thenReturn(GitReadResult.found(List.of(existing)));
+        when(port.read("17")).thenReturn(GitReadResult.found(existing));
+
+        var result = workflow().ensureMergeRequest("source", "target", "title", new SourceRevision("7", frozen));
+
+        assertEquals(GitWriteResult.Outcome.APPLIED, result.outcome());
+        assertCreateMrIntentIdentity(result.evidence(), frozen);
+        assertAll(
+                () -> assertEquals(MrDisposition.MR_REUSED, result.evidence().disposition()),
+                () -> assertEquals("17", result.evidence().iid()),
+                () -> assertEquals(existing.url(), result.evidence().url()),
+                () -> assertNull(result.evidence().mergeSha()));
+        assertTrue(GitMergeWorkflow.isValidCheckpoint(result.evidence()));
+        verify(port).contains("target", frozen);
+        verify(port).read("17");
+        verify(port, never()).readSource(anyString());
+        verifyNoWrites();
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"MOVED", "MISSING", "UNAVAILABLE", "FOREIGN_PROJECT"})
+    void createMrIntentWithoutAnOpenedMrCannotReplaceTheOriginalSource(String currentSource) {
+        GitReadResult<SourceRevision> sourceRead = switch (currentSource) {
+            case "MOVED" -> GitReadResult.found(new SourceRevision("7", "c".repeat(40)));
+            case "MISSING" -> new GitReadResult<>(GitReadResult.Status.NOT_FOUND, null);
+            case "UNAVAILABLE" -> GitReadResult.unavailable();
+            case "FOREIGN_PROJECT" -> GitReadResult.found(new SourceRevision("8", SHA));
+            default -> throw new AssertionError(currentSource);
+        };
+        when(port.readSource("source")).thenReturn(sourceRead);
+        when(port.contains("target", "c".repeat(40))).thenReturn(GitReadResult.found(false));
+        when(port.create(anyString(), anyString(), anyString(), anyString())).thenReturn(GitWriteResult.applied(ready));
+
+        var result = workflow().ensureMergeRequest("source", "target", "title", new SourceRevision("7", SHA));
+
+        assertCreateMrIntentUnsentFailure(result, GitWriteResult.Outcome.UNKNOWN);
+        verify(port).contains("target", SHA);
+        verify(port).find("source", "target", State.OPENED);
+        verify(port).readSource("source");
+        verify(port, never()).read(anyString());
+    }
+
+    @Test
+    void createMrIntentCreatesOnceOnlyWhenTheLiveSourceStillMatchesTheOriginalRevision() {
+        when(port.create("source", "target", SHA, "title")).thenReturn(GitWriteResult.applied(ready));
+
+        var result = workflow().ensureMergeRequest("source", "target", "title", new SourceRevision("7", SHA));
+
+        assertEquals(GitWriteResult.Outcome.APPLIED, result.outcome());
+        assertCreateMrIntentIdentity(result.evidence(), SHA);
+        assertEquals(MrDisposition.CREATED, result.evidence().disposition());
+        assertEquals("17", result.evidence().iid());
+        assertTrue(GitMergeWorkflow.isValidCheckpoint(result.evidence()));
+        verify(port).contains("target", SHA);
+        verify(port).find("source", "target", State.OPENED);
+        verify(port).readSource("source");
+        verify(port, times(1)).create("source", "target", SHA, "title");
+        verify(port, never()).read(anyString());
+        verify(port, never()).merge(anyString(), anyString(), anyString());
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"MULTIPLE", "INCOMPLETE", "FOREIGN_PROJECT"})
+    void createMrIntentUnconfirmedOpenedListCannotBorrowAnMrOrAuthorizeCreation(String observation) {
+        GitReadResult<List<MergeRequest>> opened = switch (observation) {
+            case "MULTIPLE" -> GitReadResult.found(List.of(ready,
+                    mr("18", SHA, State.OPENED, Readiness.MERGEABLE, null)));
+            case "INCOMPLETE" -> new GitReadResult<>(GitReadResult.Status.INCOMPLETE, null);
+            case "FOREIGN_PROJECT" -> GitReadResult.found(List.of(new MergeRequest("17", ready.url(), "8",
+                    "source", "target", SHA, MERGE_SHA, State.OPENED, Readiness.MERGEABLE, null, null)));
+            default -> throw new AssertionError(observation);
+        };
+        when(port.find("source", "target", State.OPENED)).thenReturn(opened);
+
+        var result = workflow().ensureMergeRequest("source", "target", "title", new SourceRevision("7", SHA));
+
+        assertCreateMrIntentUnsentFailure(result, GitWriteResult.Outcome.UNKNOWN);
+        verify(port).contains("target", SHA);
+        verify(port, never()).readSource(anyString());
+        verify(port, never()).read(anyString());
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"SHA", "PROJECT", "CLOSED", "UNAVAILABLE", "FORBIDDEN"})
+    void createMrIntentUnconfirmedDetailCannotPolluteTheOriginalCheckpoint(String observation) {
+        when(port.find("source", "target", State.OPENED)).thenReturn(GitReadResult.found(List.of(ready)));
+        GitReadResult<MergeRequest> detail = switch (observation) {
+            case "SHA" -> GitReadResult.found(mr("17", "c".repeat(40), State.OPENED, Readiness.MERGEABLE, null));
+            case "PROJECT" -> GitReadResult.found(new MergeRequest("17", ready.url(), "8", "source", "target",
+                    SHA, MERGE_SHA, State.OPENED, Readiness.MERGEABLE, null, null));
+            case "CLOSED" -> GitReadResult.found(mr("17", SHA, State.CLOSED, Readiness.UNKNOWN, null));
+            case "UNAVAILABLE" -> GitReadResult.unavailable();
+            case "FORBIDDEN" -> new GitReadResult<>(GitReadResult.Status.FORBIDDEN, null);
+            default -> throw new AssertionError(observation);
+        };
+        when(port.read("17")).thenReturn(detail);
+
+        var result = workflow().ensureMergeRequest("source", "target", "title", new SourceRevision("7", SHA));
+
+        assertCreateMrIntentUnsentFailure(result, "FORBIDDEN".equals(observation)
+                ? GitWriteResult.Outcome.REJECTED : GitWriteResult.Outcome.UNKNOWN);
+        if ("FORBIDDEN".equals(observation)) {
+            assertEquals(MergeBlockReason.PERMISSION_DENIED, result.evidence().blockReason());
+        }
+        verify(port).contains("target", SHA);
+        verify(port).read("17");
+        verify(port, never()).readSource(anyString());
+    }
+
+    @Test
+    void createMrIntentResponseForAdvancedSourceRemainsUnknownWithoutAnotherWrite() {
+        var observed = mr("17", "c".repeat(40), State.OPENED, Readiness.MERGEABLE, null);
+        when(port.create("source", "target", SHA, "title")).thenReturn(
+                new GitWriteResult<>(GitWriteResult.Outcome.UNKNOWN, observed, "INCOMPLETE_RESPONSE"));
+
+        var result = workflow().ensureMergeRequest("source", "target", "title", new SourceRevision("7", SHA));
+
+        assertEquals(GitWriteResult.Outcome.UNKNOWN, result.outcome());
+        assertCreateMrIntentIdentity(result.evidence(), SHA);
+        assertEquals("17", result.evidence().iid(), "a sent response may retain its known iid for diagnosis");
+        assertNull(result.evidence().disposition());
+        assertFalse(GitMergeWorkflow.isValidCheckpoint(result.evidence()));
+        verify(port, times(1)).create("source", "target", SHA, "title");
+        verify(port, never()).merge(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void createMrIntentUnknownContainmentDoesNotReadUnrelatedEvidenceOrCreate() {
+        when(port.contains("target", SHA)).thenReturn(GitReadResult.unavailable());
+
+        var result = workflow().ensureMergeRequest("source", "target", "title", new SourceRevision("7", SHA));
+
+        assertCreateMrIntentUnsentFailure(result, GitWriteResult.Outcome.UNKNOWN);
+        verify(port).contains("target", SHA);
+        verify(port, never()).readSource(anyString());
+        verify(port, never()).find(anyString(), anyString(), any());
+        verify(port, never()).read(anyString());
+    }
+
+    private void assertCreateMrIntentUnsentFailure(GitWriteResult<GitBranchPort.MrEvidence> result,
+                                                    GitWriteResult.Outcome outcome) {
+        assertEquals(outcome, result.outcome());
+        assertCreateMrIntentIdentity(result.evidence(), SHA);
+        assertAll(
+                () -> assertNull(result.evidence().iid()),
+                () -> assertNull(result.evidence().url()),
+                () -> assertNull(result.evidence().mergeSha()),
+                () -> assertNull(result.evidence().disposition()));
+        assertFalse(GitMergeWorkflow.isValidCheckpoint(result.evidence()));
+        verifyNoWrites();
+    }
+
+    private void assertCreateMrIntentIdentity(GitBranchPort.MrEvidence evidence, String frozenSha) {
+        assertNotNull(evidence);
+        assertAll(
+                () -> assertEquals("7", evidence.projectId()),
+                () -> assertEquals("source", evidence.sourceBranch()),
+                () -> assertEquals("target", evidence.targetBranch()),
+                () -> assertEquals(frozenSha, evidence.sourceSha()));
+    }
+    // End B9 independent contract.
 
     private GitBranchPort.MrEvidence checkpoint(MrDisposition disposition, String mergeSha) {
         return new GitBranchPort.MrEvidence("7", "source", "target", "17", ready.url(), SHA, mergeSha, disposition, null);

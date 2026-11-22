@@ -83,6 +83,12 @@ public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
     @Override public GitReadResult<MergeRequest> read(String id) {
         var result = getMap(endpoint + "/" + encode(id));
         if (result.status() != GitReadResult.Status.FOUND) return new GitReadResult<>(result.status(), null);
+        JsonNode body = ERROR_JSON.valueToTree(result.evidence());
+        for (String field : List.of("project_id", "source_project_id", "target_project_id")) {
+            JsonNode project = body.path(field);
+            if (!positiveInteger(project)) return incomplete();
+            if (!projectId.equals(project.asText())) return mismatch();
+        }
         var mr = evidence(result.evidence());
         if (!complete(mr) || !id.equals(mr.id())) return incomplete();
         return GitReadResult.found(mr);
