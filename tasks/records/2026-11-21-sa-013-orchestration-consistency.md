@@ -1,6 +1,6 @@
 # 2026-11-21 SA-013：分支收敛与唯一编排语义
 
-状态：已交付阶段及其固定 SHA 证据按各节保留。C2-B6 实现 `4e992e9c2406586ec23fa7636292e3d48c163118`、文档 `29ec00586be20730e66cf37da12614e6450d240d` 已分阶段推送，固定实现完整 SHA 的 Full-Link 44940092094 为 5/5，B6 已 DONE，详见19.9；此前本地门禁与历史轮次不变。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。C2-B8 正常 CREATE_MR 完整请求的发送证明闭环已 DONE：独立 RED 与一次明确 PG 契约校准后，125/125 首次 GREEN、单次相关965/965、API48/48、普通877（872 PASS / 5既有SKIP）、静态及最终源码绑定通过；实现 `537588e782c2b3bb2d2e82e21804f2d37fb42fc2` 已推送，固定该 SHA 的 [Full-Link 44972473174](https://github.com/tongsh6/release-hub/actions/runs/44972473174) attempt 1 已 completed/success，五个slice分别PASSED。最终证据与边界见21.11，验收文档单独收口。当前唯一 HEAD 为 C2-B9 原 CREATE_MR INTENT 的安全接续与本地收口，仅开展独立只读边界分析，源码与测试尚未修改。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
+状态：已交付阶段及其固定 SHA 证据按各节保留。C2-B6 实现 `4e992e9c2406586ec23fa7636292e3d48c163118`、文档 `29ec00586be20730e66cf37da12614e6450d240d` 已分阶段推送，固定实现完整 SHA 的 Full-Link 44940092094 为 5/5，B6 已 DONE，详见19.9；此前本地门禁与历史轮次不变。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。C2-B8 正常 CREATE_MR 完整请求的发送证明闭环已 DONE：独立 RED 与一次明确 PG 契约校准后，125/125 首次 GREEN、单次相关965/965、API48/48、普通877（872 PASS / 5既有SKIP）、静态及最终源码绑定通过；实现 `537588e782c2b3bb2d2e82e21804f2d37fb42fc2` 已推送，固定该 SHA 的 [Full-Link 44972473174](https://github.com/tongsh6/release-hub/actions/runs/44972473174) attempt 1 已 completed/success，五个slice分别PASSED。最终证据与边界见21.11，验收文档单独收口。C2-B9 原 CREATE_MR INTENT 的安全接续与本地收口已 DONE：相关1078/1078、API48/48、普通918（913 PASS / 5既有SKIP）、静态与最终源码审计通过，实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003 attempt 1为5 PASS / 0 FAIL。证据与边界见记录22.7–22.14，验收文档单独收口。当前唯一 HEAD 为 C2-B10「MERGE_MR 精确只读核对证据」；后续SEND/UNKNOWN受证据约束恢复继续QUEUED，再按原顺序推进SA-002。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
 
 ## 1. 目标与范围
 
@@ -1189,3 +1189,157 @@ B8继续保持唯一HEAD，等待本片固定SHA远端结果与验收文档收�
 B8已完成独立RED与明确PG校准、125/125、单次965/965、API48/48、普通877（872 PASS/5既有SKIP）、静态、最终源码绑定、审阅、实现分组提交/推送及本片固定完整SHA远端验收，标记 **DONE**。验收文档单独收口；main/develop仍同 `d4534ccc34fedb9bbf394ced89b4726f43ec197c`。首次GREEN与最终树的一处旧fixture差异、8条既有warning、前端217为B6历史结果等边界继续按21.8–21.9保留。
 
 下一唯一HEAD为 **C2-B9 原 CREATE_MR INTENT 的安全接续与本地收口**。截至本节仅开展独立只读边界分析，B9源码和新测试尚未修改，不把B8完整正常请求证明当作恢复授权。当前prepare/takeover/Context resume/NOT_SENT仍关闭CREATE_MR，历史B3 APPLIED投影不追加新请求/hash门禁；B9需独立定义原A决策、原意图资格与真实本地结果。SEND/UNKNOWN、其他动作和完整UI继续按原队列独立验收，SA-002顺序不变，C2整体未完成。
+
+## 22. C2-B9：原 CREATE_MR INTENT 的安全接续与本地收口
+
+### 22.1 独立目标、基线与反例
+
+本节记录B9的事前契约，不是测试运行或实现完成证据。B8代码 `537588e782c2b3bb2d2e82e21804f2d37fb42fc2` 与验收文档 `8cfc294c58f0ae53817a44565801936888a03bb1` 已分阶段推送；本片以8cfc294为定位基线，仍是唯一HEAD。详细规范与待验清单同步到既有design、Run spec、tasks，实际RED、必要校准及验收结果另行追加。
+
+首要问题是续接“原项目I、期望SHA A的命令”，不能把当前source已为B重新解释成原意图。反过来，source前进或删除也不能一概阻断：target已包含A时无需再查source，唯一opened MR的详情仍为原I/source/target/A时可以复用该检查点。最强反例仍是GitLab创建POST无sha-CAS：即使预检读A，实际响应B也只能UNKNOWN/保留guard、不能CREATED或进入TRY。快照完整不等于发送权，当前fence和数据库内完整事实须分别成立。
+
+### 22.2 已有职责与定位依据
+
+| 既有位置 | 核实后的责任与本片消费者 |
+|---|---|
+| RunJpa领取、Journal.prepareUnsentTaskClaim、现TaskClaim/Context | 原Run→Task→remote锁序内核资格并给原Task换权；已有Operation快照只传值，无新候选扫描/执行器 |
+| GitMergeRequestPort.SourceRevision；GitMergeWorkflow.ensureMergeRequest与merge；GitLabGitBranchAdapter.ensureMergeRequest | 已有SourceRevision(projectId,sha)承载原I/A；现workflow.merge和adapter.ensure两个真实调用者直接迁移到新增第4个nullable参数，fresh/cleanup传null |
+| GitLabMergeRequestAdapter.read / GitWriteHttpInterceptor | 原始三个项目身份须在映射前核验；prepared复用原id/body/marker/hash，实际POST从begin返回Operation重建 |
+| Journal.sending/finish/ack、原Task结果事务与RunPort metadata | 实时发送权与真实seq1 sender由Journal承责；原检查点、TRY、队列消费结果，git.requestId继续表示已有远端请求证据 |
+
+定位已读现workflow中merge调用和ensure声明（25–38）、adapter调用（105–107）、SourceRevision定义（11）及RunPort写git.requestId的现消费者（40、66）；根侧另行独立核对RunJpa、Context与Journal方法边界。这里列的是契约来源，不声称已运行B9测试。
+
+### 22.3 完整资格、换权与历史事实
+
+仅原ENSURE_MR对应的CREATE_MR进入本片：同Task恰一operation、同operation/attempt唯一合法seq0、INTENT_RECORDED且reason=null、无SEND和自身Step；B8严格八字段typed target/canonical hash/唯一原marker，以及原repo/remote/GITLAB/base/正整数项目I、run/operator、历史owner/session/claimToken/generation、原计划source-target/consistentProject与INTENT_PENDING guard全部成立。旧摘要、缺损、额外事实或不匹配guard不得自动补齐。
+
+lease只决定换权；当前fence由原锁序下的实体事实核准。接管只换Task当前token/lease与op观察version，保留原id/attempt/session/claimToken/generation/seq0、首次时间和已有实际顺序。seq1记真实新sender，finish/ack/APPLIED投影核seq1；不能改写历史owner，也不能用snapshot.version或一次准备替代sending实时核准。
+
+### 22.4 原I/A预检、发送和本地结果
+
+adapter必须先固定原I，再传已有SourceRevision(I,A)。prepared顺序为：contains(target,A)确认true即idless ALREADY_MERGED且零source/list/detail/POST；确认false才看完整opened列表，唯一候选详情I/I/I、原source/target、A、OPENED才MR_REUSED；只有确空列表才readSource，真实I/A才续发原POST。列表不完整、多候选、详情不符、source B/删除/读取未知均零POST，权限按既有blocked分类。重用A的MR不要求当前source仍为A，TRY独立重读并以A约束merge。
+
+read在映射现MergeRequest前核原始三个数值项目身份；prepared失败context保原I/source/target/A，不能借B或foreign的iid/url/mergeSha/disposition。SHA比较ignoreCase，但新prepared检查点保原A字面，原target/hash/body字节不改。fresh/cleanup原mergeSha补充与B3已SEND后failedWrite的部分IID诊断保留。interceptor复用原id和唯一marker，从begin返回Operation重建正文；snapshot不授权，无网络持锁。
+
+完整noSEND可按实际MR_REUSED/ALREADY_MERGED/FAILED/MERGE_BLOCKED/UNKNOWN同事务NOT_SENT：MR_REUSED须真实MR检查点，ALREADY_MERGED允许无IID/URL，UNKNOWN允许现消费者最小blockReason patch，任何已提供身份不得矛盾；CREATED或非空git.requestId拒绝本地收口。NOT_SENT event、Task/Step/metadata、队列/绑定/Run及匹配guard释放共同提交/回滚。Task UNKNOWN仍禁后继和普通retry；SEND无seq2不得提前本地UNKNOWN，真实seq2 UNKNOWN保guard。REQUIRES_NEW已提交的INTENT/SEND/响应不随外层回滚消失，不把已知APPLIED改成远端UNKNOWN。
+
+历史B3三字段target/任意hash APPLIED继续原201/三处project/source-target/SHA/IID/URL响应投影，不新增完整请求/hash门禁。原投影经ignoreCase验证后保留响应SHA字面，不强制改成原A；真实新sender仍须seq1证明。非Task cleanup保留B8正常发送能力，不扩大接管。
+
+### 22.5 独立正反例与明确迁移
+
+| 正反例 | 事前判据 |
+|---|---|
+| 原I/A，target已含A；source已B或删除 | idless ALREADY_MERGED、原A检查点、source/list/detail/POST均0，不为补字段增加查询 |
+| target不含A，唯一opened详情I/I/I/source-target/A/OPENED；当前source已B | MR_REUSED、原A与有效IID/URL；创建POST0，TRY独立重读并sha=A |
+| 完整空列表后真实source I/A；I→J、A→B/删除/未知或权限对照 | 仅I/A可原POST；其他零POST，真实分类/原context保持，不把失败当空 |
+| 完整资格逐项损坏、旧摘要、错owner/fence/guard、额外op/event/自身Step | 零非法换权/SEND/POST，不补造历史；begin后的破坏由sending重核 |
+| noSEND五种真实结果、最小UNKNOWN patch、错误身份/CREATED/requestId | 合法形状NOT_SENT，非法形状拒绝；Task UNKNOWN继续阻断后继和普通retry |
+| PG锁竞争、真实CAS=0、结果事务实际写入后抛错、SEND与NOT_SENT竞争 | 不双赢、不留半条收口；当前未提交变化回滚，独立提交历史保留 |
+| INTENT kill→新owner SEND→APPLIED再次kill→第三JVM投影 | 原A/body/marker保持，MR POST总数1；APPLIED投影HTTP0，seq1记录真实sender；本地NOT_SENT独立场景POST0 |
+| 历史B3 APPLIED、B8非Task、GET→POST响应B | 原响应投影与正常非Task仍成立；响应B仍UNKNOWN/guard/无TRY，不扩大恢复或UI结论 |
+
+B8两条阶段负控必须有依据迁移：合法完整INTENT到期由“不接管”转为安全接管正例；原owner显式noSEND UNKNOWN由“保留INTENT/guard”转为NOT_SENT原子结果。损坏、旧摘要、SEND/UNKNOWN禁区继续保持。记录21的历史结果不改写，也不声称所有旧断言只是机械迁移。
+
+### 22.6 独立RED的源码准备与验收边界
+
+workflow测试如需新增参数才能编译，仅在8cfc294冻结导出树做三处无行为API适配：ensure声明增加第4个nullable SourceRevision参数而旧逻辑忽略它，两个现有生产调用补null；原工作区生产不因此修改，不留兼容overload。该RED树不是纯测试overlay，必须保留精确适配patch、基线和源码绑定；PG/HTTP可直接用原冻结生产。编译失败不算行为RED，实际运行结果和必要校准以后另记。
+
+后续须完成独立RED→实现GREEN、workflow/真实HTTP/PG/多JVM、原检查点/TRY/队列/retry/API回归，以及相关/API/普通后端/静态TopN、源码绑定和审阅，再分组commit/push、固定完整SHA CI验收。契约本身不代表这些步骤通过，B9在实际证据齐备前保持HEAD。
+
+无新entity/table/schema/DTO/Port/executor/cache/UI或自由正文入口，复用既有targetJson与结果消费者。回滚停派发并保留原事实，不清数据、不重发SEND未知；S3整体、后续SEND/UNKNOWN/其他动作与完整UI仍需独立验收，SA-002顺序不变。
+
+### 22.7 六层冻结RED及其证据边界
+
+实际证据见 `.ai/reports/validation/c2-b9/red-evidence-audit-final.json`。下列六层均针对 `8cfc294c58f0ae53817a44565801936888a03bb1` 冻结生产基线验行为，合计106例：81 FAIL、25正控PASS，最终有效轮次均0 ERROR/0 SKIP。workflow导出树包含22.6约定的三处无行为签名适配，旧逻辑忽略新增参数；其他五层没有生产适配，不把整个RED树称作纯测试overlay。
+
+| 层与证据目录（c2-b9下） | 例数 | assertion FAIL | 正控PASS |
+|---|---:|---:|---:|
+| workflow / red-workflow-detail-frozen-jdk21 | 19 | 17 | 2 |
+| detail / red-detail-frozen-jdk21 | 10 | 8 | 2 |
+| interceptor / red-interceptor-frozen-jdk21 | 12 | 7 | 5 |
+| HTTP / red-http-frozen-jdk21 | 14 | 14 | 0 |
+| PostgreSQL / red-pg-frozen-jdk21-delimiter-fixed | 45 | 31 | 14 |
+| 多JVM / red-process-frozen-jdk21 | 6 | 4 | 2 |
+
+首次workflow包装器期望跨application/infrastructure共29例，但Maven reactor fail-fast实际只执行19个workflow例并跳过下游模块，原expectedRed=false保留；另一次独立detail运行补齐10例。首次PG运行45例为29 assertion FAIL、2 SQL fixture ERROR、14正控PASS；仅修复两个触发器fixture的四个美元定界字符后，在同一冻结基线得到31 FAIL/14 PASS。不能将首轮SQL错误算成产品RED或覆盖失败日志。多JVM四个FAIL是原ENSURE_MR仍RUNNING、TRY仍PENDING，已经通过启动及前序分支任务，不是启动错误；两个SEND/UNKNOWN正控PASS。
+
+### 22.8 分类校准、首次核心GREEN与消费者核对
+
+按实际RunAppService.ensureTaskMergeRequest消费者，FAILED只接受blockReason为null或UNKNOWN，MERGE_BLOCKED必须为合法且非UNKNOWN的枚举，UNKNOWN必须为UNKNOWN。PG一条FAILED正例的reason由PERMISSION_DENIED校准为UNKNOWN；这是明确的契约样本修正，不宣称所有新断言未变。随后独立新增FAILED/PERMISSION_DENIED、MERGE_BLOCKED/UNKNOWN、MERGE_BLOCKED/null三个反例，在初版B9宽松实现上得到3 FAIL/0 ERROR/0 SKIP（`red-classification-refinement-jdk21`）。该增量RED针对当时B9实现及其source-before快照，不能混称为8cfc294生产上的第107–109例。
+
+首次名为 `green-independent-100-jdk21` 的尝试实际因workflow替换残留额外右花括号而编译失败，执行0例，不能算GREEN；只去掉该括号，保留原失败证据。分类收紧后的 `green-independent-103-jdk21/result.json` 实际103/103 PASS、0 FAIL/ERROR/SKIP：workflow19、detail10、interceptor12、HTTP14、PG48；该次495文件前后快照稳定。103例不包括后续多JVM六例，不把不同阶段源码说成完全相同。
+
+审计记录workflow、detail、interceptor、HTTP、process五份独立测试文件的RED与当前hash相同；PG文件有已记载的定界修复、分类正例校准及三个增量反例。B8两项阶段负控在B9独立GREEN后按22.5契约迁移：完整到期INTENT安全接管、原owner真实noSEND UNKNOWN原子NOT_SENT，Task仍UNKNOWN。历史结果和其他损坏/SEND/UNKNOWN禁区保留。
+
+ENSURE_MR本地结果消费者复用了原Task结果事务；真实minimal failure patch及显式null删除值得到区分，非空requestId/mergeSha、失败中的非空IID/URL/disposition和外来身份不被接受。对22.4中“队列/绑定/Run”的表述补充动作边界：ENSURE_MR不新增binding写入，验收核的是前序binding事实保持；本片不声称制造了ENSURE_MR binding写入再验证其回滚。实际原子写入范围是NOT_SENT event、Task/Step/metadata、队列/Run及匹配guard，既有REQUIRES_NEW事实仍独立保留。
+
+### 22.9 首次相关回归1074与步骤顺序验收阻断
+
+`.ai/reports/validation/c2-b9/regression-green-jdk21/result.json` 虽沿用该目录名，实际单次13 suites为1074例、1073 PASS/1 FAIL、0 ERROR/SKIP，passed=false；495文件前后快照稳定。RunTaskProcessKillIT的21例全部PASS，包含六个B9新增强杀/重启例；这不等于整组相关回归通过。
+
+唯一失败为 `GitWriteSafetyIT.createMrIntentResumesOriginalPostAndRecordsCurrentSender(int)[2]`（64位SHA），共享helper按steps位置2期望CREATED却读到ALREADY_EXISTS。源码核实RunItemJpaEntity.steps是未声明排序的ElementCollection，RunJpaPersistenceAdapter.toDomainItem直接沿集合顺序映射。真实消费者BlockBoard.vue:100取最后step的message作为阻塞原因，RunDrawer/RunDetail按steps顺序展示，因此这是生产读取/投影责任缺失，不能仅改变测试为按action检索或重试到偶然通过。
+
+截至本节，排序修复尚未验收，API/普通后端/静态/实现提交推送与固定SHA CI也没有本片新的完成结果；B9继续HEAD，不出队。首次1074失败、103核心GREEN及冻结RED分别保留。
+
+### 22.10 步骤顺序的追加事前契约
+
+先查重再确定责任：V10的run_step没有id，不引入假定存在的只读自增id映射；现RunStepJpaEmbeddable已有taskId，RunTaskJpaEntity已有taskOrder。原Run持久化映射统一承担排序，既有API的steps数组顺序有意纠正，字段不变，BlockBoard/RunDrawer/RunDetail及原结果返回立即消费；无新entity/schema/字段/DTO/API或前端排序分支。
+
+每批Runs先汇集关联taskId，复用现JpaRepository.findAllById一次读取；无关联id则零额外query，局部Map仅用于本次映射，不缓存。先核Task与Step的run、targetType=RUN_ITEM、targetId及actionType/taskType一致，核准关联步骤按taskOrder在前；无关联、关联缺失或身份不符的步骤保留在后，按startAt/endAt作有限退化。completeTask复用已加载ordered任务列表，不制造逐Run/Item/Step查询。
+
+最强反例是两个关联步骤K1/K2的taskOrder正序、时间戳逆序，另一个无关联步骤U的时间戳居中：“双方有关联比taskOrder，否则比时间”会形成K1<K2<U<K1的比较环。必须先分组再排序，外来run/item/action的Task不得参与顺序证明。无Task且时间戳相同的历史步骤无法据现有数据还原真实先后，明确保留这一边界，不添字段制造假事实。
+
+独立验收限定四个已有职责内的正反例：关联taskOrder胜过集合/时间序，归属污染不能借序，混合与无Task退化不丢步骤且比较传递，批量读取/零关联/completeTask复用不产生N+1。先冻结这些判据与RED，再改生产排序；此处仅是追加契约，不是排序GREEN或1074已修复的结论。
+
+### 22.11 步骤顺序的独立RED、编译修正与GREEN
+
+本节续接22.9–22.10，不改写首次1074失败或当时的事前契约。`.ai/reports/validation/c2-b9/red-step-order-frozen-jdk21/result.json` 固定8cfc294生产、仅overlay既有PG测试文件，实际4例均为断言FAIL、0 ERROR/SKIP，14.8秒；导出树及根工作区生产源码稳定，没有生产适配缝或先改实现再回填RED。
+
+首次 `green-step-order-jdk21/result.json` 实际执行0例、exitCode=1：lambda参数task遮蔽了completeTask已有局部变量，属于编译失败，不能计GREEN或产品RED。保留该尝试后，只把该参数改为value；`green-step-order-compile-fixed-jdk21/result.json` 为4/4 PASS、0 FAIL/ERROR/SKIP，13.3秒，495文件前后快照稳定。
+
+四个展开例分别是 `runStepOrderUsesTaskOrderDespiteControlledLoadedPermutationAndResultTimes` 的SAME_TIME/REVERSED_TIME两例、`runStepOrderRetainsRepeatedCleanupActionsWithoutInventingTasks`、`runStepOrderKeepsForeignLinkedFactsAfterKnownTasksWithoutBorrowingTheirOrder`。它们经真实PG写入、重新加载原Step/Task事实，在回滚事务内控制已加载集合的排列，分别调用实际findById/findAll/findPaged，核完整steps列表和末项，再核持久事实未被该控制排列改写。它们证明已关联taskOrder优先、无Task的重复cleanup动作不丢失、foreign身份不借序及混合排序边界；不声称PostgreSQL物理返回了人为控制的行序。
+
+批量与性能约束另外由源码复核承担：RunJpaPersistenceAdapter.toDomains汇集本批次非空taskId，只在集合非空时调用一次findAllById，以局部Map服务整批映射；taskOrderForStep核run、RUN_ITEM、targetId及actionType/taskType；toDomainItem按核准taskOrder（无效关联放后）、startAt、endAt组成完整比较器。completeTask复用原findByRunIdOrderByTaskOrderAsc已加载的ordered列表，不新增逐Item/Step排序查询。四个PG用例没有SQL计数或completeTask返回顺序的专属断言，不能将源码证据写成这些测试的运行覆盖。读取入口还包括findByWindowKey；它的共用映射接线经源码复核，不扩称为四例直接覆盖。最终该生产文件SHA256为 `b6af9f0445fffd92a14009fcaa662a330ec0216076cc561bfa66dfd3330066a1`。
+
+原steps数组的顺序得到纠正，数据字段/API形状不变。BlockBoard末项阻塞原因、RunDrawer/RunDetail列表以及原结果返回仍直接消费同一顺序，无新增前端排序分支、entity/schema/字段/DTO/API。无Task且时间戳相同的历史事实仍不能还原真实先后，不能用这次GREEN消除该数据边界；ENSURE_MR仍只保持前序binding事实。
+
+### 22.12 最终本地门禁、源码绑定与覆盖边界
+
+最终结果在同一已冻结源码上完成，下列测试数量具有重叠，不能相加为独立覆盖数。1078已包含113个新增例：workflow19、MR详情10、interceptor12、HTTP14、PG48、多JVM6、步骤排序4（核心109加排序4）。
+
+| 门禁与证据（`.ai/reports/validation/c2-b9/` 下） | 实际结果 |
+|---|---|
+| `regression-final-jdk21/result.json` | 单次13 suites，1078/1078 PASS、0 FAIL/ERROR/SKIP，347.3秒；含PG420、HTTP179、多JVM21 |
+| `api-final-jdk21/result.json` | 48/48 PASS、0 FAIL/ERROR/SKIP，47.3秒 |
+| `ordinary-final-jdk21/result.json` | 918总例=913 PASS+5既有SKIP，0 FAIL/ERROR，14.1秒；五个SKIP身份与B8一致 |
+| `.ai/reports/static-scan/20261122-105808/summary.md`（仓库根路径） | 六份fresh SpotBugs XML均零问题；typecheck PASS；lint 0 errors/8既有fixture warnings，逐项读源码并记录保留理由，未关闭规则 |
+| `local-evidence-audit.json` | 最终十份backend快照495文件完全一致，均匹配最终工作区；113新例全部在最终1078 XML内PASS |
+
+首次1074之后的backend源码只在RunJpaPersistenceAdapter与RunTaskPersistenceIT两个路径变化，不把首次回归与最终树说成完全相同。步骤排序修正后的相关/API/普通/静态前后及排序4/4的十份快照则完全相同；实现完整审阅、排序复审和跨链独立审查均已记录在local-evidence-audit.json，测试结果与源码接线证据分别保留。
+
+普通后端五个既有SKIP仍是GroupAppServiceTest的一例、GroupDeleteTest的两例、GroupGetByCodeTest的两例，与B8逐项身份一致。八条lint warning仍来自既有GroupTreeSelect.spec.ts/GroupDialog.spec.ts的fixture定义，根侧重读两文件实际定义并在静态ignored summary逐项保留理由；raw lint输出与B8逐字节一致，SHA256为 `b5496961a4422b7ea5154e6aead19f4c751cd8e76575656cf0b4b92a6fea0faa`。frontend222文件与B8相同；217个前端测试是已绑定的历史结果，本片没有重跑UI套件，只有typecheck/lint本次新跑。
+
+本地验收涵盖原I/A预检、完整原意图接续、真实HTTP/PG竞争和原子NOT_SENT，以及强杀后恢复/第三JVM的APPLIED纯DB投影。SEND无seq2与真实UNKNOWN仍保留写入保护；历史B3投影资格、非Task正常B8链、最小失败patch及失败分类边界保持。新能力没有扩大到非Task接管、其他动作、SEND/UNKNOWN自动重放或完整UI；S3/C2整体继续独立推进。本地门禁通过不代替固定实现SHA的远端验收。
+
+### 22.13 实现分组推送与固定SHA CI待验
+
+实现已由根侧单独提交并推送：`666acdc7a60c0922db2f05713cbfefd23eed8265`，父提交为 `8cfc294c58f0ae53817a44565801936888a03bb1`，提交信息 `feat(run): resume original unsent MR intents safely`。本组13个backend文件（7生产、6测试），2143行新增/130行删除；implementation-commit.json确认提交源码与最终已验证源码及495文件快照匹配，文档另行收口。
+
+`.ai/reports/validation/c2-b9/implementation-push.json` 已核远端feature/orchestration-consistency为该完整SHA；远端仅main、develop和此feature三个分支，main/develop仍同 `d4534ccc34fedb9bbf394ced89b4726f43ec197c`。推送使用现有认证账号的本命令credential helper，hooks未变；不将本次推送描述为main/develop已集成B9。
+
+根侧已派发[Full-Link 44978661003](https://github.com/tongsh6/release-hub/actions/runs/44978661003)，创建于2026-11-22T03:00:55Z；按branch ref发起后核headSha为上述完整实现SHA。记录本节时运行尚待最终验收，B9仍为唯一HEAD，不标DONE，不提前提升下一片。后续必须追加真实终态和业务摘要；该CI的既有边界是后端API与隔离GitLab，不能扩写完整UI覆盖。
+
+### 22.14 固定实现SHA CI最终验收与B9出队
+
+[Full-Link 44978661003](https://github.com/tongsh6/release-hub/actions/runs/44978661003)的attempt 1已completed/success，固定headSha为 `666acdc7a60c0922db2f05713cbfefd23eed8265`，watchExitCode=0。最终updatedAt为2026-11-22T03:10:09Z（北京时间11:10:09）；job137074110296的14个步骤全部success，包括实际Run vertical slice tests。此终态追加在22.13当时待验记录之后，不覆盖此前失败、编译修正、校准或pending事实。
+
+| 远端证据（`.ai/reports/validation/c2-b9/full-link/` 下） | 已核事实 |
+|---|---|
+| `result.json` | run、attempt、完整headSha、job与全部步骤终态一致；completed/success |
+| `business-result.json` | Slice1..5分别PASSED，passedSlices=5、failedSlices=0；实际完成时间依次为03:08:27、03:08:41、03:09:15、03:09:29、03:09:43Z |
+| `job.log` | 原始日志SHA256为 `3af924df2ef5fc165c64d73126f3592e0f7baa884470c7879cc9eb5b497acf27`，保留业务输出而非仅凭workflow绿色图标验收 |
+| GitHub artifact14736604004 | e2e-logs，666214 bytes；取证时expired=false |
+
+本片独立RED、已说明的校准、核心与排序GREEN、最终相关/API/普通/静态、源码绑定和独立审阅，以及分组实现推送与固定SHA远端验收已完成，B9标DONE并出队，验收文档单独收口。相关1078中的113个新增例、五个既有SKIP、八条既有fixture warnings及217前端测试仅为历史结果的边界保持。Full-Link只证明既有后端API与隔离GitLab链路，不扩称完整UI或提升Slice4/5既有较弱验收边界；main/develop尚未因此集成本片。
+
+当前唯一HEAD顺延为C2-B10「MERGE_MR 精确只读核对证据」，目标仅为I/IID/A对象当前merged及typed观察事实。FOUND不代表原PUT成功或原业务计划满足，实际source/target变化照实保留；不改Task/Step/guard/seq2。B10详细契约与新测试留待下一阶段，本节不宣称已实现。后续SEND/UNKNOWN受证据约束恢复继续QUEUED，之后仍为SA-002；C2/S3整体与完整UI没有随B9一并完成。

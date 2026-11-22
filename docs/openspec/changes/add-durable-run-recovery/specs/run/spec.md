@@ -806,7 +806,7 @@ C2-B7 已 DONE，验收证据见任务记录第 20 节，当前任务以执行�
 
 ### Requirement: 正常 CREATE_MR 完整请求的发送证明闭环
 
-C2-B8 已 DONE，以下契约经独立 RED、一次 PG 过强断言校准及本地 125/125 与相关 965/965 验证；实现 `537588e` 已推送，固定 SHA CI 44972473174 attempt 1 为 5 PASS / 0 FAIL。B9 原 INTENT 另作独立验收。系统 SHALL 沿现 producer → adapter/interceptor → Journal begin/sending → 实际 HTTP → B3 响应 → 原结果消费者证明正常 CREATE_MR 发送了已接纳的完整请求；同时覆盖 ENSURE_MR Task 及现 cleanup/GitMergeWorkflow 非 Task producer，不新建实体、schema、DTO、Port 或用户入口，也不开放 CREATE_MR 恢复。
+C2-B8 已 DONE，以下契约经独立 RED、一次 PG 过强断言校准及本地 125/125 与相关 965/965 验证；实现 `537588e` 已推送，固定 SHA CI 44972473174 attempt 1 为 5 PASS / 0 FAIL。B9 原 INTENT 另作独立验收。系统 SHALL 沿现 producer → adapter/interceptor → Journal begin/sending → 实际 HTTP → B3 响应 → 原结果消费者证明正常 CREATE_MR 发送了已接纳的完整请求；同时覆盖 ENSURE_MR Task 及现 cleanup/GitMergeWorkflow 非 Task producer，不新建实体、schema、DTO、Port 或用户入口，该正常发送契约本身不授予 CREATE_MR 接管或重放权。
 
 #### Scenario: 正常 producer 提供严格五字段请求
 
@@ -870,16 +870,16 @@ C2-B8 已 DONE，以下契约经独立 RED、一次 PG 过强断言校准及本�
 - **AND** Task 沿既有结果确认/APPLIED 投影边界，非 Task 沿既有会话收口保持必要 guard
 - **AND** 不因回滚自动重放，不抹去已发生的 HTTP 证据
 
-#### Scenario: 完整 CREATE_MR INTENT 仍无恢复资格
+#### Scenario: B8阶段的完整 CREATE_MR INTENT 尚无恢复资格
 
-- **GIVEN** 完整 CREATE_MR/INTENT 已持久化且 Task 期限已到
+- **GIVEN** 在B8交付基线中，完整 CREATE_MR/INTENT 已持久化且 Task 期限已到
 - **WHEN** 默认 worker、prepareUnsentTaskClaim 或 RunJpa 领取路径检查候选
 - **THEN** 0 token 换权、0 SEND、0 Step、0 POST
 - **AND** validUnsentOperation 恢复白名单、Context resume 快照和 NOT_SENT 不扩大到 CREATE_MR；B9 另行定义 workflow 按原 A 决策及真实本地结果
 
-#### Scenario: 原 owner 主动报告 UNKNOWN 不等于恢复或 NOT_SENT
+#### Scenario: B8阶段原 owner 主动报告 UNKNOWN 尚非恢复或 NOT_SENT
 
-- **GIVEN** 原 owner 仍有当前 Task fence，完整 CREATE_MR INTENT 只有唯一 seq0、未 SEND
+- **GIVEN** 在B8交付基线中，原 owner 仍有当前 Task fence，完整 CREATE_MR INTENT 只有唯一 seq0、未 SEND
 - **WHEN** 原 owner 沿既有失败消费者主动确认 UNKNOWN
 - **THEN** 原 Task 与本地 Step 为 UNKNOWN，原 operation 仍 INTENT_RECORDED、seq0 与 token 不变，guard 保留 REMOTE_RESULT_UNKNOWN
 - **AND** 无 SEND/POST、不标 NOT_SENT，不授权后继或普通 retry；该路径不同于到期自动扫描/领取
@@ -905,6 +905,190 @@ C2-B8 已 DONE，以下契约经独立 RED、一次 PG 过强断言校准及本�
 - **THEN** 该既有字段返回受支持的完整 title/description/布尔值等请求信息，不宣称数据仅在 DB 内部或 API 数据完全不变
 - **AND** 现操作查询需认证但无仓库级/操作者级过滤，不声称仅创建者可见，不在 B8 扩 RBAC；GitOperationsPanel 不渲染 targetJson，无新增 UI 入口
 - **AND** 原“标题不存”测试断言按完整请求可审计调整，token/认证 header/无关正文及响应证据隐私约束保留，不泛化存任意 body 或 secret；独立 RED 冻结后的契约仍须保留
+
+B9最终验收状态（不替代下列规范）：独立RED、校准与实现后，单次相关1078/1078、API48/48、普通918（913 PASS/5既有SKIP）、静态及最终源码绑定通过；113新例包含于1078。四个排序PG例直接核三个读取入口的完整步骤及末项，每批最多一次Task查询、无关联时零额外查询及completeTask复用约束以源码审查留证，不冒称运行时SQL计数。实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003attempt 1已completed/success，5 PASS / 0 FAIL，B9已DONE。当前唯一HEAD为B10「MERGE_MR 精确只读核对证据」，仅推进精确对象的typed只读观察，不改Task/Step/guard/seq2；详细契约另行定义，SEND/UNKNOWN受证据约束恢复继续排队。证据与边界见任务记录22.7–22.14；历史失败不覆盖，完整UI未扩验。
+
+### Requirement: 完整未发送 CREATE_MR 意图的原任务接续
+
+系统 SHALL 仅为ENSURE_MR的完整、确未发送CREATE_MR意图接续原任务，复用原Operation/TaskClaim/Context/Journal/workflow并按原项目I与期望SHA A决策。当前fence和数据库内的完整证明决定发送权，原快照只提供值；不将该能力扩大到非Task、旧摘要、SEND/UNKNOWN或其他动作。
+
+#### Scenario: 完整意图在原锁序内取得接续资格
+
+- **GIVEN** 同一ENSURE_MR Task恰有一个CREATE_MR operation，状态INTENT_RECORDED且reason=null
+- **WHEN** 原领取或prepare路径按Run→Task→remote锁序重核候选
+- **THEN** 必须具备B8严格八字段typed target/canonical hash/唯一原marker、同operation/attempt唯一合法seq0、无SEND及自身Step
+- **AND** 原repo/remote/provider/base/正整数项目I、run/operator、历史owner/session/claimToken/generation、原计划source/target、consistentProject与INTENT_PENDING guard均须自洽
+
+#### Scenario: 破损与旧摘要不被补全后接管
+
+- **GIVEN** 意图缺完整字段、hash/marker不符、存在额外operation/event/自身Step，或历史身份与guard不匹配
+- **WHEN** 扫描、prepare、begin或sending检查其资格
+- **THEN** 拒绝相应接管或发送，零非法SEND/POST，不补造身份、请求、seq0或guard
+- **AND** SEND/UNKNOWN及非ENSURE_MR动作不因租约到期或任意FOUND取得本片资格
+
+#### Scenario: 租约只决定换权而原历史身份保持
+
+- **GIVEN** 完整原意图满足资格，当前Task领取事实成立
+- **WHEN** 到期的新owner在同事务取得原Task
+- **THEN** 只更换Task当前token/lease并推进operation观察version，保留原operation id/attempt/session/claimToken/generation/seq0、首次时间和已有实际顺序
+- **AND** 当前owner的发送仍核实时fence，不以租约时钟或snapshot.version替代权限；原历史owner不改写为新sender
+
+#### Scenario: 业务预检前固定原项目和原SourceRevision
+
+- **GIVEN** 现TaskClaim/Context携带已准备的原Operation
+- **WHEN** GitLab adapter构造workflow并开始预检
+- **THEN** 先固定原项目I，再把已有SourceRevision(I,A)传入ensure方法的nullable参数
+- **AND** 现workflow.merge与adapter.ensure两个调用者直接迁移，无旧签名兼容overload；fresh/cleanup传null
+- **AND** namespace重映射不得让预检访问错误项目的branch/MR业务端点，网络不持数据库锁
+
+#### Scenario: target已经包含原A时不依赖当前source
+
+- **GIVEN** prepared命令的原I/source/target/A完整
+- **WHEN** contains(target,A)已确认true
+- **THEN** 直接产生允许无IID/URL的ALREADY_MERGED检查点，sourceSha保留原A字面
+- **AND** 零source GET、opened列表、MR详情与CREATE_MR POST，即使source已前进或删除也不另造MR
+
+#### Scenario: 唯一原A的opened MR可以重用
+
+- **GIVEN** contains(target,A)已确认false，完整opened列表只有一个候选
+- **WHEN** 候选详情确认原始三个数值项目身份均为I、source/target匹配、SHA与A语义相等且state=OPENED
+- **THEN** 返回MR_REUSED及有效IID/URL，prepared检查点保留原A字面，零创建POST
+- **AND** 不先要求当前source仍为A；原TRY独立重读MR，并以A约束merge请求
+
+#### Scenario: 列表或详情未证实不能当作空列表
+
+- **GIVEN** contains未确认，或opened列表不完整/多候选，或详情project/source/target/SHA/state不符
+- **WHEN** prepared预检判断是否创建
+- **THEN** 按既有UNKNOWN/blocked等真实分类停止，零POST，不挑选第一条或将失败结果默认为空
+- **AND** 失败context保留原I/source/target/A，不从B或foreign响应借用iid/url/mergeSha/disposition
+
+#### Scenario: 仅确空列表和真实原I/A允许原创建
+
+- **GIVEN** contains已确认false且完整opened列表确为空
+- **WHEN** 随后的readSource确认真实项目I及与A语义相等的SHA
+- **THEN** 才允许沿原operation继续一次CREATE_MR，不用当前读取值改写原target/hash
+- **AND** prepared workflow新生成的检查点保留原A字面，实际正文仍是原五字段，不新增GitLab不支持的sha条件
+
+#### Scenario: 空列表后source前进删除或读取失败不创建
+
+- **GIVEN** prepared路径已确认target不含A且opened列表确空
+- **WHEN** source已为B、删除或读取未知，或当前读取明确权限拒绝
+- **THEN** B/删除/读取未知形成UNKNOWN，权限拒绝保持既有blocked分类，零POST
+- **AND** 原I/source/target/A保持，不能把新的B作为原意图续发或用未证实MR字段形成成功检查点
+
+#### Scenario: 详情读取先核原始三处项目身份
+
+- **GIVEN** GitLabMergeRequestAdapter.read收到MR原始响应
+- **WHEN** 映射为已有MergeRequest
+- **THEN** 在映射前核project_id/source_project_id/target_project_id的原始数值身份并全部对应预期I
+- **AND** prepared重用再核OPENED/source/target/A；fresh/cleanup原有mergeSha补充语义保持，不为本片删除现返回字段
+
+#### Scenario: prepared发送沿原id和唯一marker重建正文
+
+- **GIVEN** 原完整operation已由当前fence准备，原id/body/marker/hash保持
+- **WHEN** interceptor执行begin并取得已有Operation
+- **THEN** 不生成替代id或追加第二个marker，核返回身份/状态/target后从返回值重建原五字段HTTP正文
+- **AND** sending在现数据库锁内实时重核当前权力与完整证明；换权、收口或破损后的旧快照零非法SEND/POST
+
+#### Scenario: 新sender的真实事件支持后续纯DB投影
+
+- **GIVEN** 新owner安全接管原意图后，原历史owner/session/attempt/seq0未改
+- **WHEN** 实际SEND、finish、ack或APPLIED后的恢复执行
+- **THEN** seq1记录真实新sender，finish/ack/APPLIED投影核该seq1与当前资格
+- **AND** INTENT后强杀、接续APPLIED后再强杀的第三JVM仅补原结果，投影HTTP=0，全场景MR POST总数1，原body/marker和期望A保持
+
+#### Scenario: 原B3响应投影与已发送诊断边界保持
+
+- **GIVEN** 历史B3 APPLIED有三字段target/任意hash及完整原201/三处项目/source-target/SHA/IID/URL响应证明
+- **WHEN** 原ENSURE_MR结果投影执行
+- **THEN** 不新增完整请求/hash门禁；SHA按原ignoreCase语义验证并保留响应SHA字面，不要求强行改成原A字面
+- **AND** 真实sender仍核seq1；B3已SEND后failedWrite的部分IID诊断不因prepared预检规则被删除
+
+#### Scenario: 非Task与创建后源竞争仍沿现有安全边界
+
+- **GIVEN** 非Task cleanup正常调用，或合法预检读A后原POST的实际响应已为B
+- **WHEN** 正常B8请求链及B3响应消费者执行
+- **THEN** 非Task继续正常完整请求且不获得接管资格；响应B仍UNKNOWN/guard保留、无CREATED检查点或后继TRY
+- **AND** 创建POST没有sha-CAS，完整本地命令或一次读取都不能替代远端原子条件
+
+### Requirement: 未发送 CREATE_MR 的真实本地结果原子收口
+
+系统 SHALL 仅在完整原CREATE_MR意图、当前fence、唯一seq0且无SEND/自身Step的证明下，把实际MR_REUSED、ALREADY_MERGED、FAILED、MERGE_BLOCKED或UNKNOWN作为NOT_SENT与原Task结果同事务收口。该本地结论不声称远端创建成功，不允许CREATED、非空git.requestId或矛盾身份；UNKNOWN的后继与普通retry限制保持。
+
+#### Scenario: 成功预检使用真实检查点形状
+
+- **GIVEN** prepared workflow实际重用了原A的MR，或确认target包含原A
+- **WHEN** 原结果事务接收MR_REUSED或ALREADY_MERGED
+- **THEN** MR_REUSED必须带原I/source/target/A及有效IID/URL，ALREADY_MERGED允许无IID/URL
+- **AND** 无需为补字段额外查询或写入GitLab，实际CREATE_MR POST为0，结果身份不得与原意图矛盾
+
+#### Scenario: 失败与UNKNOWN接受既有最小结果patch
+
+- **GIVEN** 完整意图确未SEND，实际结果为FAILED、MERGE_BLOCKED或UNKNOWN
+- **WHEN** 原结果消费者提交真实结果patch
+- **THEN** 保留既有失败/阻塞分类，UNKNOWN可只含blockReason等现有最小字段，不强制成功MR专属字段
+- **AND** 已提供项目、source/target、SHA或MR身份不得矛盾；CREATED或非空git.requestId拒绝NOT_SENT
+
+#### Scenario: NOT_SENT与结果及匹配guard一起提交
+
+- **GIVEN** 当前fence与完整noSEND证明在原结果事务中再次核准
+- **WHEN** 写入实际本地结果
+- **THEN** NOT_SENT本地事件、Task/Step/metadata、队列/Run与匹配guard释放同事务提交
+- **AND** ENSURE_MR仅保持前序binding事实，不新增binding写入，不声称本动作验证了binding写入回滚
+- **AND** Task UNKNOWN继续NEEDS_REVIEW/后继阻断及普通retry限制，不因reservation释放获得自动重放权
+
+#### Scenario: 竞争或结果回滚不留下半条收口
+
+- **GIVEN** 新旧owner、sending与NOT_SENT竞争，或结果事务已执行实际本地变更
+- **WHEN** 当前fence失效、真实Task CAS=0或外层结果事务回滚
+- **THEN** 发送与本地收口不能双赢；本次未提交NOT_SENT/Task/Step/metadata/队列/Run/guard变化整体回滚，零非法POST
+- **AND** 此前REQUIRES_NEW已提交的INTENT/SEND/响应事实保持，不能把前置拒绝冒充经过写入阶段的回滚
+
+#### Scenario: SEND尚无响应时不得提前本地UNKNOWN
+
+- **GIVEN** 原SEND_STARTED已提交而同attempt尚无seq2
+- **WHEN** 当前或迟到worker试图按本地UNKNOWN完成Task
+- **THEN** 拒绝提前完成，保留真实finish入口，不形成NOT_SENT或抹去在途事实
+- **AND** 已有真实seq2 UNKNOWN仍保留guard，不自动重发、不转换为NOT_SENT
+
+#### Scenario: B8的两条阶段负控按B9资格迁移
+
+- **GIVEN** B8阶段曾拒绝完整INTENT自动接管，并在原owner显式UNKNOWN时保留INTENT/guard
+- **WHEN** B9完整资格与当前fence成立
+- **THEN** 合法到期意图成为安全接管正例，原owner的真实noSEND UNKNOWN成为NOT_SENT原子收口
+- **AND** 损坏、旧摘要、已SEND或UNKNOWN远端事实的禁区保持；本地NOT_SENT的真实HTTP计数为0，历史B8证据不改写
+
+### Requirement: 运行步骤按已有任务事实呈现顺序
+
+系统 SHALL 在原Run持久化映射职责内，复用Step.taskId和RunTask.taskOrder输出步骤顺序；核准归属的关联步骤在前，无关联或无可信关联的步骤保留在后并按已有时间字段退化。既有列表、详情与结果返回共享该顺序，不新增实体、字段、schema、DTO或API，不把数据库集合行序当执行事实。
+
+#### Scenario: 关联步骤以真实任务顺序为准
+
+- **GIVEN** Step.taskId可解析到同run、targetType=RUN_ITEM、同targetId且taskType匹配actionType的现Task
+- **WHEN** 原Run映射生成steps列表
+- **THEN** 关联步骤按taskOrder排列，即使数据库集合顺序或时间戳顺序与之相反
+- **AND** BlockBoard取最后step、RunDrawer/RunDetail按列表展示以及原结果返回均消费同一顺序，不靠修改测试或前端另行排序掩盖错误
+
+#### Scenario: 不借用外来任务的排序权
+
+- **GIVEN** 关联Task缺失，或run/targetType/targetId/actionType任一不符
+- **WHEN** 判断该Step的顺序依据
+- **THEN** 不借用该Task.taskOrder，也不删除原Step；作为无可信关联的步骤保留
+- **AND** 复用已有taskId/taskOrder；run_step没有id，不新增假定存在的自增id映射
+
+#### Scenario: 混合步骤排序保持传递性与历史边界
+
+- **GIVEN** 同一Item混有核准关联步骤和无关联步骤，时间戳可能交错或相同
+- **WHEN** 形成最终顺序
+- **THEN** 先将核准关联步骤按taskOrder排列，再将其余步骤按startAt/endAt退化，使用完整分组规则
+- **AND** 不使用“双方有关联则比taskOrder、否则比时间”的非传递比较器；无Task且同时间戳时不声称恢复了真实先后
+
+#### Scenario: 批量读取复用现有任务来源
+
+- **GIVEN** 一批Run的steps需要映射，或completeTask已加载ordered任务列表
+- **WHEN** 收集关联taskId并构造当前调用的局部Map
+- **THEN** 复用现JpaRepository.findAllById至多一次读取整批关联任务，无关联id时零额外query；completeTask直接复用已有任务列表
+- **AND** 不逐Run/Item/Step查询，不引入缓存、第二套存储、DTO字段或新接口
 
 ## MODIFIED Requirements
 
