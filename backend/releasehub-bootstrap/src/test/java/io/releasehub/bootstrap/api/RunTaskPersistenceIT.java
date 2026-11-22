@@ -3916,6 +3916,610 @@ class RunTaskPersistenceIT {
         verifyNoInteractions(gitLab, gitFiles, gitBranches);
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"true,40", "false,64"})
+    void createMrRequestNormalTaskAndNonTaskPreserveTheCompleteCommand(boolean taskOwned, int shaLength) throws Exception {
+        var claim = taskOwned ? claimMrTask() : null;
+        String operationId = taskOwned ? UUID.randomUUID().toString() : " cleanup-" + UUID.randomUUID().toString().substring(0, 8) + " ";
+        var target = createMrRequestTarget(claim, operationId, shaLength);
+        var command = createMrRequestCommand(claim, operationId, target, projectionProjectId());
+
+        var admitted = journal.begin(command);
+
+        assertThat(admitted.id()).isEqualTo(operationId);
+        assertThat(admitted.action()).isEqualTo("CREATE_MR");
+        assertThat(admitted.state()).isEqualTo("INTENT_RECORDED");
+        assertThat(admitted.reason()).isNull();
+        assertThat(admitted.blocked()).isTrue();
+        assertThat(json.readTree(admitted.targetJson())).isEqualTo(target);
+        assertThat(jdbc.queryForMap("select target_json,request_hash,session_id,claim_token from git_operation where id=?", operationId))
+                .containsEntry("target_json", target.toString()).containsEntry("request_hash", command.requestHash())
+                .containsEntry("session_id", command.sessionId())
+                .containsEntry("claim_token", claim == null ? null : claim.fence().claimToken());
+        assertThat(target.path("description").textValue().lines().filter(
+                ("ReleaseHub-Operation: " + operationId)::equals)).hasSize(1);
+
+        journal.sending(operationId, command.taskFence());
+        var sender = json.readTree(journal.find(operationId).orElseThrow().events().get(1).evidenceJson());
+        if (claim == null) assertThat(sender.size()).isZero();
+        else {
+            assertThat(sender.path("taskId").textValue()).isEqualTo(claim.fence().taskId());
+            assertThat(sender.path("claimToken").textValue()).isEqualTo(claim.fence().claimToken());
+        }
+        journal.finish(operationId, command.taskFence(), GitWriteResult.Outcome.APPLIED,
+                createMrRequestProof(target, command.projectId()).toString(), null);
+        if (claim == null) {
+            journal.completeSession(command.sessionId(), true);
+        } else {
+            var checkpoint = new java.util.LinkedHashMap<>(createdMrCheckpoint(claim));
+            checkpoint.put("git.sourceSha", target.path("sha").textValue());
+            checkpoint.put("git.mergeSha", null);
+            checkpoint.put("git.blockReason", null);
+            checkpoint.put("git.requestId", null);
+            runs.completeTask(claim, step(claim, RunItemResult.CREATED), checkpoint);
+            assertThat(runs.claimNextTask(claim.runId()).orElseThrow().metadata())
+                    .containsEntry("git.sourceSha", target.path("sha").textValue()).containsEntry("git.mrIid", "11");
+        }
+        assertThat(journal.find(operationId).orElseThrow().events())
+                .extracting(GitOperationJournalPort.Event::type)
+                .containsExactly("INTENT_RECORDED", "SEND_STARTED", "APPLIED");
+        assertThat(journal.find(operationId).orElseThrow().operation().state()).isEqualTo("APPLIED");
+        assertThat(projectionGuard(operationId)).containsEntry("session_id", null).containsEntry("reason", null);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "MISSING_METHOD", "QUERY_SUFFIX", "MISSING_TITLE", "TITLE_TYPE", "BLANK_TITLE",
+            "MISSING_DESCRIPTION", "NULL_DESCRIPTION", "DESCRIPTION_TYPE", "MISSING_REMOVE_SOURCE",
+            "STRING_REMOVE_SOURCE", "TRUE_REMOVE_SOURCE", "SHA_TYPE", "EXTRA_FIELD",
+            "HASH_DIFFERENT", "HASH_REORDERED_BODY", "HASH_LOWERCASED_SHA",
+            "MARKER_MISSING", "MARKER_FOREIGN", "MARKER_DUPLICATE", "MARKER_NOT_FINAL", "MARKER_NOT_STANDALONE",
+            "EMPTY_ID", "BLANK_ID", "CR_ID", "LF_ID", "CURRENT_STEP"
+    })
+    void createMrRequestBeginRejectsMalformedTypedRequestsWithoutPersistingIntent(String contradiction) {
+        var claim = claimMrTask();
+        String operationId = switch (contradiction) {
+            case "EMPTY_ID" -> "";
+            case "BLANK_ID" -> "   ";
+            case "CR_ID" -> "b8\roperation";
+            case "LF_ID" -> "b8\noperation";
+            default -> UUID.randomUUID().toString();
+        };
+        var target = createMrRequestTarget(claim, operationId, 40);
+        switch (contradiction) {
+            case "MISSING_METHOD" -> target.remove("method");
+            case "QUERY_SUFFIX" -> target.put("suffix", "/merge_requests?");
+            case "MISSING_TITLE" -> target.remove("title");
+            case "TITLE_TYPE" -> target.put("title", 17);
+            case "BLANK_TITLE" -> target.put("title", " \t");
+            case "MISSING_DESCRIPTION" -> target.remove("description");
+            case "NULL_DESCRIPTION" -> target.putNull("description");
+            case "DESCRIPTION_TYPE" -> target.set("description", json.createArrayNode());
+            case "MISSING_REMOVE_SOURCE" -> target.remove("remove_source_branch");
+            case "STRING_REMOVE_SOURCE" -> target.put("remove_source_branch", "false");
+            case "TRUE_REMOVE_SOURCE" -> target.put("remove_source_branch", true);
+            case "SHA_TYPE" -> target.put("sha", new java.math.BigInteger("1".repeat(40)));
+            case "EXTRA_FIELD" -> target.put("unrelated_private_body", "must-not-be-stored");
+            case "MARKER_MISSING" -> target.put("description", "ordinary text");
+            case "MARKER_FOREIGN" -> target.put("description", "\nReleaseHub-Operation: another-operation");
+            case "MARKER_DUPLICATE" -> target.put("description", "ReleaseHub-Operation: earlier\nReleaseHub-Operation: " + operationId);
+            case "MARKER_NOT_FINAL" -> target.put("description", "\nReleaseHub-Operation: " + operationId + "\ntrailing text");
+            case "MARKER_NOT_STANDALONE" -> target.put("description", "embedded ReleaseHub-Operation: " + operationId);
+            default -> { }
+        }
+        if (contradiction.equals("CURRENT_STEP")) {
+            assertThat(jdbc.update("insert into run_step(run_item_id,action_type,result,start_at,end_at,message,task_id) "
+                            + "values (?,'ENSURE_MR','UNKNOWN',clock_timestamp(),clock_timestamp(),'retained original result',?)",
+                    claim.itemId(), claim.fence().taskId())).isEqualTo(1);
+        }
+        var base = createMrRequestCommand(claim, operationId, target, projectionProjectId());
+        String hash = base.requestHash();
+        if (contradiction.equals("HASH_DIFFERENT")) hash = "0".repeat(64);
+        if (contradiction.equals("HASH_LOWERCASED_SHA")) {
+            hash = createMrRequestHash(base.remoteKey(), target.deepCopy().put("sha", target.path("sha").textValue().toLowerCase(java.util.Locale.ROOT)));
+        }
+        if (contradiction.equals("HASH_REORDERED_BODY")) {
+            var reverse = json.createObjectNode();
+            for (String key : List.of("remove_source_branch", "description", "title", "target_branch", "source_branch")) {
+                reverse.set(key, target.get(key));
+            }
+            hash = mergeIntentSha256("POST|" + base.remoteKey() + "|/merge_requests||"
+                    + mergeIntentSha256(reverse.toString()) + "|" + target.path("sha").textValue());
+        }
+        var command = new GitOperationJournalPort.Command(base.operationId(), base.repoId(), base.repositoryMapping(),
+                base.remoteKey(), base.provider(), base.baseUrl(), base.projectId(), base.action(), base.targetJson(),
+                hash, base.runId(), base.operator(), base.sessionId(), base.taskFence());
+        var tasks = jdbc.queryForList("select * from run_task where run_id=? order by task_order", claim.runId());
+
+        assertThatThrownBy(() -> journal.begin(command)).as(contradiction).isInstanceOf(BusinessException.class);
+
+        assertThat(jdbc.queryForObject("select count(*) from git_operation where task_id=?", Integer.class,
+                claim.fence().taskId())).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from git_operation_event where operation_id=?", Integer.class, operationId)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from repo_execution_guard where remote_key=?", Integer.class, command.remoteKey())).isZero();
+        assertThat(jdbc.queryForList("select * from run_task where run_id=? order by task_order", claim.runId())).isEqualTo(tasks);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "TITLE_TYPE", "HASH_DIFFERENT", "MARKER_FOREIGN", "SOURCE_TYPE", "TARGET_BLANK",
+            "PROJECT_ZERO", "PROJECT_NEGATIVE", "PROJECT_TEXT", "PROJECT_LEADING_ZERO"
+    })
+    void createMrRequestNonTaskAdmissionUsesTheSameProofAndNumericIdentity(String contradiction) {
+        String operationId = UUID.randomUUID().toString();
+        var target = createMrRequestTarget(null, operationId, 64);
+        String project = switch (contradiction) {
+            case "PROJECT_ZERO" -> "0";
+            case "PROJECT_NEGATIVE" -> "-1";
+            case "PROJECT_TEXT" -> "acme/project";
+            case "PROJECT_LEADING_ZERO" -> "0" + projectionProjectId();
+            default -> projectionProjectId();
+        };
+        switch (contradiction) {
+            case "TITLE_TYPE" -> target.put("title", false);
+            case "MARKER_FOREIGN" -> target.put("description", "\nReleaseHub-Operation: another-operation");
+            case "SOURCE_TYPE" -> target.put("source_branch", 17);
+            case "TARGET_BLANK" -> target.put("target_branch", " ");
+            default -> { }
+        }
+        var base = createMrRequestCommand(null, operationId, target, project);
+        var command = new GitOperationJournalPort.Command(base.operationId(), base.repoId(), base.repositoryMapping(),
+                base.remoteKey(), base.provider(), base.baseUrl(), base.projectId(), base.action(), base.targetJson(),
+                contradiction.equals("HASH_DIFFERENT") ? "0".repeat(64) : base.requestHash(),
+                base.runId(), base.operator(), base.sessionId(), null);
+
+        assertThatThrownBy(() -> journal.begin(command)).as(contradiction).isInstanceOf(BusinessException.class);
+
+        assertThat(jdbc.queryForObject("select count(*) from git_operation where id=?", Integer.class, operationId)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from git_operation_event where operation_id=?", Integer.class, operationId)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from repo_execution_guard where remote_key=?", Integer.class, command.remoteKey())).isZero();
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "TITLE_REMOVED", "MARKER_FOREIGN", "REMOVE_SOURCE_TRUE", "SHA_TYPE", "HASH_CHANGED",
+            "PLAN_SOURCE_CHANGED", "PLAN_TARGET_CHANGED", "FROZEN_PROJECT_CHANGED",
+            "PROJECT_ZERO", "REMOTE_IDENTITY_MISMATCH", "PROVIDER_CHANGED", "BASE_NOT_CANONICAL", "REASON",
+            "MISSING_CLAIM_EXPIRY", "MISSING_FIRST_START", "CURRENT_STEP", "WRONG_EVENT_ATTEMPT", "WRONG_GUARD", "OWNER_CHANGED"
+    })
+    void createMrRequestCurrentOwnerSendingRechecksDamagedPersistedProof(String contradiction) {
+        var claim = claimMrTask();
+        String operationId = UUID.randomUUID().toString();
+        var target = createMrRequestTarget(claim, operationId, 40);
+        var command = createMrRequestCommand(claim, operationId, target, projectionProjectId());
+        journal.begin(command);
+        int changed = switch (contradiction) {
+            case "TITLE_REMOVED", "MARKER_FOREIGN", "REMOVE_SOURCE_TRUE", "SHA_TYPE" -> {
+                switch (contradiction) {
+                    case "TITLE_REMOVED" -> target.remove("title");
+                    case "MARKER_FOREIGN" -> target.put("description", "\nReleaseHub-Operation: another-operation");
+                    case "REMOVE_SOURCE_TRUE" -> target.put("remove_source_branch", true);
+                    case "SHA_TYPE" -> target.put("sha", new java.math.BigInteger("1".repeat(40)));
+                    default -> throw new AssertionError(contradiction);
+                }
+                yield jdbc.update("update git_operation set target_json=?,request_hash=? where id=?",
+                        target.toString(), createMrRequestHash(command.remoteKey(), target), operationId);
+            }
+            case "HASH_CHANGED" -> jdbc.update("update git_operation set request_hash=? where id=?", "0".repeat(64), operationId);
+            case "PLAN_SOURCE_CHANGED", "PLAN_TARGET_CHANGED", "FROZEN_PROJECT_CHANGED" -> {
+                String key = contradiction.equals("PLAN_SOURCE_CHANGED") ? "plan.featureBranch"
+                        : contradiction.equals("PLAN_TARGET_CHANGED") ? "plan.releaseBranch" : "git.projectId";
+                yield jdbc.update("update run_item_metadata set metadata_value=? where run_item_id=? and metadata_key=?",
+                        claim.metadata().get(key) + "1", claim.itemId(), key);
+            }
+            case "PROJECT_ZERO" -> jdbc.update("update git_operation set project_id='0' where id=?", operationId);
+            case "REMOTE_IDENTITY_MISMATCH" -> jdbc.update("update git_operation set project_id=? where id=?",
+                    command.projectId() + "1", operationId);
+            case "PROVIDER_CHANGED" -> jdbc.update("update git_operation set provider='GITHUB' where id=?", operationId);
+            case "BASE_NOT_CANONICAL" -> jdbc.update("update git_operation set base_url=? where id=?", command.baseUrl() + "/", operationId);
+            case "REASON" -> jdbc.update("update git_operation set reason='UNCONFIRMED' where id=?", operationId);
+            case "MISSING_CLAIM_EXPIRY" -> jdbc.update("update run_task set claim_expires_at=null where id=?", claim.fence().taskId());
+            case "MISSING_FIRST_START" -> jdbc.update("update run_task set started_at=null where id=?", claim.fence().taskId());
+            case "CURRENT_STEP" -> jdbc.update("insert into run_step(run_item_id,action_type,result,start_at,end_at,message,task_id) "
+                            + "values (?,'ENSURE_MR','UNKNOWN',clock_timestamp(),clock_timestamp(),'retained original result',?)",
+                    claim.itemId(), claim.fence().taskId());
+            case "WRONG_EVENT_ATTEMPT" -> jdbc.update("update git_operation_event set attempt_id=? where operation_id=?",
+                    UUID.randomUUID().toString(), operationId);
+            case "WRONG_GUARD" -> jdbc.update("update repo_execution_guard set generation=generation+1 where operation_id=?", operationId);
+            case "OWNER_CHANGED" -> jdbc.update("update run_task set claim_token=? where id=?",
+                    UUID.randomUUID().toString(), claim.fence().taskId());
+            default -> throw new AssertionError(contradiction);
+        };
+        assertThat(changed).isEqualTo(1);
+        var before = projectionFacts(claim, operationId);
+
+        assertThatThrownBy(() -> journal.sending(operationId, claim.fence())).as(contradiction).isInstanceOf(BusinessException.class);
+
+        assertThat(projectionFacts(claim, operationId)).isEqualTo(before);
+        assertThat(journal.find(operationId).orElseThrow().operation().state()).isEqualTo("INTENT_RECORDED");
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void createMrRequestRepeatedAdmissionRejectsDamagedExistingIntent() {
+        var claim = claimMrTask();
+        String operationId = UUID.randomUUID().toString();
+        var target = createMrRequestTarget(claim, operationId, 40);
+        var command = createMrRequestCommand(claim, operationId, target, projectionProjectId());
+        journal.begin(command);
+        target.remove("description");
+        assertThat(jdbc.update("update git_operation set target_json=? where id=?", target.toString(), operationId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select request_hash from git_operation where id=?", String.class, operationId))
+                .isEqualTo(command.requestHash());
+        var before = projectionFacts(claim, operationId);
+
+        assertThatThrownBy(() -> journal.begin(command))
+                .as("the existing-id path must validate the stored request, even when the original Command and hash match")
+                .isInstanceOf(BusinessException.class);
+
+        assertThat(projectionFacts(claim, operationId)).isEqualTo(before);
+        assertThat(journal.find(operationId).orElseThrow().events())
+                .extracting(GitOperationJournalPort.Event::type).containsExactly("INTENT_RECORDED");
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"HASH", "MARKER", "PROJECT"})
+    void createMrRequestNonTaskSendingAlsoRechecksPersistedProof(String contradiction) {
+        String operationId = UUID.randomUUID().toString();
+        var target = createMrRequestTarget(null, operationId, 64);
+        var command = createMrRequestCommand(null, operationId, target, projectionProjectId());
+        journal.begin(command);
+        switch (contradiction) {
+            case "HASH" -> jdbc.update("update git_operation set request_hash=? where id=?", "0".repeat(64), operationId);
+            case "MARKER" -> {
+                target.put("description", "\nReleaseHub-Operation: another-operation");
+                jdbc.update("update git_operation set target_json=?,request_hash=? where id=?",
+                        target.toString(), createMrRequestHash(command.remoteKey(), target), operationId);
+            }
+            case "PROJECT" -> jdbc.update("update git_operation set project_id=? where id=?", command.projectId() + "1", operationId);
+            default -> throw new AssertionError(contradiction);
+        }
+        var before = createMrRequestNonTaskFacts(operationId);
+
+        assertThatThrownBy(() -> journal.sending(operationId, null)).as(contradiction).isInstanceOf(BusinessException.class);
+
+        assertThat(createMrRequestNonTaskFacts(operationId)).isEqualTo(before);
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void createMrRequestExpiredIntentIsNotAutomaticallyTakenOverOrCompleted() {
+        var claim = claimMrTask();
+        String operationId = UUID.randomUUID().toString();
+        var target = createMrRequestTarget(claim, operationId, 40);
+        journal.begin(createMrRequestCommand(claim, operationId, target, projectionProjectId()));
+        expireClaim(claim);
+        var before = projectionFacts(claim, operationId);
+
+        var prepared = new TransactionTemplate(transactions).execute(tx -> journal.prepareUnsentTaskClaim(claim));
+        assertThat(prepared).isEmpty();
+        assertThat(runs.claimNextTask(claim.runId())).isEmpty();
+        assertThat(taskService.executeNextTask(claim.runId())).isFalse();
+        assertThat(projectionFacts(claim, operationId)).isEqualTo(before);
+        assertThat(jdbc.queryForObject("select claim_token from run_task where id=?", String.class,
+                claim.fence().taskId())).isEqualTo(claim.fence().claimToken());
+        assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class,
+                claim.fence().taskId())).isZero();
+        assertThat(journal.find(operationId).orElseThrow().events())
+                .extracting(GitOperationJournalPort.Event::type).containsExactly("INTENT_RECORDED");
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void createMrRequestOriginalOwnerCanReportUnknownWithoutClaimingNotSent() {
+        var claim = claimMrTask();
+        String operationId = UUID.randomUUID().toString();
+        journal.begin(createMrRequestCommand(claim, operationId,
+                createMrRequestTarget(claim, operationId, 40), projectionProjectId()));
+        var before = projectionFacts(claim, operationId);
+
+        runs.completeTask(claim, step(claim, RunItemResult.UNKNOWN), Map.of("git.blockReason", "UNKNOWN"));
+
+        assertThat(jdbc.queryForObject("select status from run_task where id=?", String.class,
+                claim.fence().taskId())).isEqualTo("UNKNOWN");
+        assertThat(jdbc.queryForList("select result from run_step where task_id=?", String.class,
+                claim.fence().taskId())).containsExactly("UNKNOWN");
+        assertThat(jdbc.queryForObject("select claim_token from run_task where id=?", String.class,
+                claim.fence().taskId())).isEqualTo(claim.fence().claimToken());
+        assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId))
+                .isEqualTo(before.get("operation"));
+        assertThat(jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence",
+                operationId)).isEqualTo(before.get("events"));
+        assertThat(journal.find(operationId).orElseThrow().operation().state()).isEqualTo("INTENT_RECORDED");
+        assertThat(journal.find(operationId).orElseThrow().events())
+                .extracting(GitOperationJournalPort.Event::type).containsExactly("INTENT_RECORDED");
+        assertThat(projectionGuard(operationId)).containsEntry("session_id", claim.fence().claimToken())
+                .containsEntry("operation_id", operationId).containsEntry("reason", "REMOTE_RESULT_UNKNOWN");
+        assertThat(runs.claimNextTask(claim.runId())).isEmpty();
+        assertThat(taskService.executeNextTask(claim.runId())).isFalse();
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void createMrRequestHistoricalAppliedSummaryDoesNotAcquireTheNewSendingRequirements() {
+        var claim = claimMrTask();
+        String operationId = UUID.randomUUID().toString();
+        var target = createMrRequestTarget(claim, operationId, 40).put("sha", "a".repeat(40));
+        var command = createMrRequestCommand(claim, operationId, target, projectionProjectId());
+        journal.begin(command);
+        journal.sending(operationId, claim.fence());
+        journal.finish(operationId, claim.fence(), GitWriteResult.Outcome.APPLIED, createdMrProof(claim).toString(), null);
+        // Reconstruct historical APPLIED evidence only after a valid fresh write; no legacy INTENT is admitted.
+        assertThat(jdbc.update("update git_operation set target_json=?,request_hash=? where id=?",
+                createdMrTarget(claim).toString(), "historical-request-summary", operationId)).isEqualTo(1);
+        expireClaim(claim);
+        var before = projectionFacts(claim, operationId);
+
+        assertThat(taskService.executeNextTask(claim.runId())).isTrue();
+
+        assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).isEqualTo(before.get("operation"));
+        assertThat(jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence", operationId))
+                .isEqualTo(before.get("events"));
+        assertThat(jdbc.queryForObject("select claim_token from run_task where id=?", String.class, claim.fence().taskId()))
+                .isEqualTo(claim.fence().claimToken());
+        assertThat(jdbc.queryForObject("select result from run_step where task_id=?", String.class, claim.fence().taskId()))
+                .isEqualTo("CREATED");
+        assertThat(projectionGuard(operationId)).containsEntry("session_id", null).containsEntry("reason", null);
+        var next = runs.claimNextTask(claim.runId()).orElseThrow();
+        assertThat(next.actionType()).isEqualTo(ActionType.TRY_MERGE);
+        assertThat(next.metadata()).containsAllEntriesOf(createdMrCheckpoint(claim))
+                .doesNotContainKeys("git.mergeSha", "git.blockReason", "git.requestId");
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void createMrRequestAdmissionTransactionRollsBackAfterIntentAndGuardWereWritten() {
+        var claim = claimMrTask();
+        String operationId = UUID.randomUUID().toString();
+        var command = createMrRequestCommand(claim, operationId, createMrRequestTarget(claim, operationId, 40), projectionProjectId());
+        var tasks = jdbc.queryForList("select * from run_task where run_id=? order by task_order", claim.runId());
+        String probe = createMrRequestInstallRollbackProbe(operationId, 0);
+        try {
+            assertThatThrownBy(() -> journal.begin(command)).isInstanceOf(RuntimeException.class)
+                    .hasStackTraceContaining("B8_ROLLBACK_AFTER_INTENT_RECORDED");
+            assertThat(jdbc.queryForObject("select is_called from " + probe + "_reached", Boolean.class)).isTrue();
+            assertThat(jdbc.queryForObject("select count(*) from git_operation where id=?", Integer.class, operationId)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from git_operation_event where operation_id=?", Integer.class, operationId)).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from repo_execution_guard where remote_key=?", Integer.class, command.remoteKey())).isZero();
+            assertThat(jdbc.queryForList("select * from run_task where run_id=? order by task_order", claim.runId())).isEqualTo(tasks);
+            verifyNoInteractions(gitLab, gitFiles, gitBranches);
+        } finally {
+            createMrRequestRemoveRollbackProbe(probe);
+        }
+    }
+
+    @Test
+    void createMrRequestSendingTransactionRollsBackAfterSendAndGuardWereWritten() {
+        var claim = claimMrTask();
+        String operationId = UUID.randomUUID().toString();
+        journal.begin(createMrRequestCommand(claim, operationId, createMrRequestTarget(claim, operationId, 40), projectionProjectId()));
+        var before = projectionFacts(claim, operationId);
+        String probe = createMrRequestInstallRollbackProbe(operationId, 1);
+        try {
+            assertThatThrownBy(() -> journal.sending(operationId, claim.fence())).isInstanceOf(RuntimeException.class)
+                    .hasStackTraceContaining("B8_ROLLBACK_AFTER_SEND_STARTED");
+            assertThat(jdbc.queryForObject("select is_called from " + probe + "_reached", Boolean.class)).isTrue();
+            assertThat(projectionFacts(claim, operationId)).isEqualTo(before);
+            assertThat(journal.find(operationId).orElseThrow().events())
+                    .extracting(GitOperationJournalPort.Event::type).containsExactly("INTENT_RECORDED");
+            verifyNoInteractions(gitLab, gitFiles, gitBranches);
+        } finally {
+            createMrRequestRemoveRollbackProbe(probe);
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"INTENT_RECORDED", "SEND_STARTED", "APPLIED"})
+    void createMrRequestOuterTaskRollbackRetainsIndependentFactsAndOriginalProjection(String stage) {
+        var claim = claimMrTask();
+        String operationId = UUID.randomUUID().toString();
+        var target = createMrRequestTarget(claim, operationId, 40).put("sha", "a".repeat(40));
+        var command = createMrRequestCommand(claim, operationId, target, projectionProjectId());
+        var committed = new java.util.concurrent.atomic.AtomicReference<Map<String, Object>>();
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            journal.begin(command);
+            if (!stage.equals("INTENT_RECORDED")) journal.sending(operationId, claim.fence());
+            if (stage.equals("APPLIED")) {
+                journal.finish(operationId, claim.fence(), GitWriteResult.Outcome.APPLIED, createdMrProof(claim).toString(), null);
+            }
+            committed.set(projectionFacts(claim, operationId));
+            if (stage.equals("APPLIED")) {
+                var checkpoint = new java.util.LinkedHashMap<>(createdMrCheckpoint(claim));
+                checkpoint.put("git.mergeSha", null);
+                checkpoint.put("git.blockReason", null);
+                checkpoint.put("git.requestId", null);
+                runs.completeTask(claim, step(claim, RunItemResult.CREATED), checkpoint);
+                assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class,
+                        claim.fence().taskId())).isEqualTo(1);
+                assertThat(projectionGuard(operationId)).containsEntry("session_id", null);
+            } else {
+                assertThat(jdbc.update("update run_item set executed_order=executed_order+100 where id=?", claim.itemId())).isEqualTo(1);
+            }
+            tx.setRollbackOnly();
+        });
+
+        assertThat(projectionFacts(claim, operationId)).isEqualTo(committed.get());
+        assertThat(journal.find(operationId).orElseThrow().operation().state()).isEqualTo(stage);
+        assertThat(journal.find(operationId).orElseThrow().events()).hasSize(
+                stage.equals("INTENT_RECORDED") ? 1 : stage.equals("SEND_STARTED") ? 2 : 3);
+        assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class, claim.fence().taskId())).isZero();
+        if (stage.equals("APPLIED")) {
+            var events = committed.get().get("events");
+            expireClaim(claim);
+            assertThat(taskService.executeNextTask(claim.runId())).isTrue();
+            assertThat(journal.find(operationId).orElseThrow().operation().state()).isEqualTo("APPLIED");
+            assertThat(jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence", operationId))
+                    .isEqualTo(events);
+            assertThat(runs.claimNextTask(claim.runId()).orElseThrow().metadata()).containsAllEntriesOf(createdMrCheckpoint(claim));
+        }
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void createMrRequestNonTaskRollbackKeepsAppliedEvidenceThroughSessionClosure() {
+        String operationId = UUID.randomUUID().toString();
+        var target = createMrRequestTarget(null, operationId, 40);
+        var command = createMrRequestCommand(null, operationId, target, projectionProjectId());
+        var binding = jdbc.queryForMap("select * from window_iteration where window_id=? and iteration_key=?", windowId, firstIteration);
+        var committed = new java.util.concurrent.atomic.AtomicReference<Map<String, Object>>();
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            journal.begin(command);
+            journal.sending(operationId, null);
+            journal.finish(operationId, null, GitWriteResult.Outcome.APPLIED,
+                    createMrRequestProof(target, command.projectId()).toString(), null);
+            committed.set(createMrRequestNonTaskFacts(operationId));
+            assertThat(jdbc.update("update window_iteration set branch_created=not branch_created where window_id=? and iteration_key=?",
+                    windowId, firstIteration)).isEqualTo(1);
+            tx.setRollbackOnly();
+        });
+
+        assertThat(createMrRequestNonTaskFacts(operationId)).isEqualTo(committed.get());
+        assertThat(jdbc.queryForMap("select * from window_iteration where window_id=? and iteration_key=?", windowId, firstIteration))
+                .isEqualTo(binding);
+        assertThat(journal.find(operationId).orElseThrow().operation().state()).isEqualTo("APPLIED");
+        journal.completeSession(command.sessionId(), false);
+        var detail = journal.find(operationId).orElseThrow();
+        assertThat(detail.operation().state()).isEqualTo("NEEDS_REVIEW");
+        assertThat(detail.operation().reason()).isEqualTo("LOCAL_RESULT_UNCONFIRMED");
+        assertThat(detail.events()).extracting(GitOperationJournalPort.Event::type)
+                .containsExactly("INTENT_RECORDED", "SEND_STARTED", "APPLIED", "LOCAL_RESULT_UNCONFIRMED");
+        assertThat(jdbc.queryForList("select * from git_operation_event where operation_id=? and event_sequence<=2 order by event_sequence", operationId))
+                .isEqualTo(committed.get().get("events"));
+        assertThat(projectionGuard(operationId)).containsEntry("session_id", command.sessionId())
+                .containsEntry("operation_id", operationId).containsEntry("reason", "LOCAL_RESULT_UNCONFIRMED");
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    @Test
+    void createMrRequestSenderRechecksTheProofAfterActuallyWaitingOnPostgres() throws Exception {
+        var claim = claimMrTask();
+        String operationId = UUID.randomUUID().toString();
+        var target = createMrRequestTarget(claim, operationId, 40);
+        var command = createMrRequestCommand(claim, operationId, target, projectionProjectId());
+        journal.begin(command);
+        var damaged = target.deepCopy().put("title", " ");
+        var holderReady = new CountDownLatch(1);
+        var releaseHolder = new CountDownLatch(1);
+        var holderPid = new java.util.concurrent.atomic.AtomicInteger();
+        var damagedFacts = new java.util.concurrent.atomic.AtomicReference<Map<String, Object>>();
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            try {
+                var holder = pool.submit(() -> new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+                    holderPid.set(jdbc.queryForObject("select pg_backend_pid()", Integer.class));
+                    jdbc.queryForObject("select id from run where id=? for update", String.class, claim.runId());
+                    assertThat(jdbc.update("update git_operation set target_json=?,request_hash=? where id=?",
+                            damaged.toString(), createMrRequestHash(command.remoteKey(), damaged), operationId)).isEqualTo(1);
+                    damagedFacts.set(projectionFacts(claim, operationId));
+                    holderReady.countDown();
+                    awaitMergeIntentLatch(releaseHolder);
+                }));
+                assertThat(holderReady.await(5, TimeUnit.SECONDS)).isTrue();
+                var sender = pool.submit(() -> {
+                    try {
+                        journal.sending(operationId, claim.fence());
+                        return (RuntimeException) null;
+                    } catch (RuntimeException rejected) {
+                        return rejected;
+                    }
+                });
+                int senderPid = awaitMergeIntentWaiter(holderPid.get());
+                awaitMergeIntentBlockers(senderPid, Set.of(holderPid.get()));
+                releaseHolder.countDown();
+                holder.get(10, TimeUnit.SECONDS);
+                assertThat(sender.get(10, TimeUnit.SECONDS))
+                        .as("the current owner must recheck the newly committed request after the real row-lock wait")
+                        .isInstanceOf(BusinessException.class);
+            } finally {
+                releaseHolder.countDown();
+            }
+        }
+        assertThat(projectionFacts(claim, operationId)).isEqualTo(damagedFacts.get());
+        verifyNoInteractions(gitLab, gitFiles, gitBranches);
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode createMrRequestTarget(RunPort.TaskClaim claim,
+            String operationId, int shaLength) {
+        String source = claim == null ? "feature/" + firstIteration : claim.metadata().get("plan.featureBranch");
+        String target = claim == null ? "release/" + windowId : claim.metadata().get("plan.releaseBranch");
+        return json.createObjectNode().put("method", "POST").put("suffix", "/merge_requests")
+                .put("source_branch", source).put("target_branch", target)
+                .put("title", " Merge \"" + source + "\" → " + target + " \n验证 ")
+                .put("description", "说明 \"原值\"\n第二行\nReleaseHub-Operation: " + operationId)
+                .put("remove_source_branch", false).put("sha", "aA".repeat(shaLength / 2));
+    }
+
+    private GitOperationJournalPort.Command createMrRequestCommand(RunPort.TaskClaim claim, String operationId,
+            com.fasterxml.jackson.databind.node.ObjectNode target, String project) {
+        String base = "https://gitlab.invalid";
+        settings.saveGitLab(new SettingsPort.SettingsGitLab(base, "isolated-projection-token"));
+        String repoId = claim == null ? firstRepo : claim.repo().value();
+        var repository = repositories.findById(RepoId.of(repoId)).orElseThrow();
+        String remote = GitOperationJournalPort.remoteKey("GITLAB", base, project);
+        return new GitOperationJournalPort.Command(operationId, repoId,
+                GitOperationJournalPort.mappingHash("GITLAB", repository.getCloneUrl()), remote, "GITLAB", base, project,
+                "CREATE_MR", target.toString(), createMrRequestHash(remote, target),
+                claim == null ? "cleanup-" + windowId : claim.runId(),
+                claim == null ? "cleanup-operator" : claim.operator(),
+                claim == null ? UUID.randomUUID().toString() : claim.fence().claimToken(),
+                claim == null ? null : claim.fence());
+    }
+
+    private String createMrRequestHash(String remote, com.fasterxml.jackson.databind.node.ObjectNode target) {
+        // Independent protocol oracle: no production canonicalizer, validation helper, or repaired missing fields.
+        var body = json.createObjectNode();
+        for (String key : List.of("source_branch", "target_branch", "title", "description", "remove_source_branch")) {
+            if (target.has(key)) body.set(key, target.get(key));
+        }
+        return mergeIntentSha256("POST|" + remote + "|/merge_requests||"
+                + mergeIntentSha256(body.toString()) + "|" + target.path("sha").asText());
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode createMrRequestProof(
+            com.fasterxml.jackson.databind.node.ObjectNode target, String project) {
+        long numericProject = Long.parseLong(project);
+        return json.createObjectNode().put("httpStatus", 201).put("project_id", numericProject)
+                .put("source_project_id", numericProject).put("target_project_id", numericProject)
+                .put("iid", 11).put("source_branch", target.path("source_branch").textValue())
+                .put("target_branch", target.path("target_branch").textValue())
+                .put("sha", target.path("sha").textValue()).put("state", "opened")
+                .put("web_url", "https://gitlab.invalid/project/-/merge_requests/11");
+    }
+
+    private Map<String, Object> createMrRequestNonTaskFacts(String operationId) {
+        return Map.of("operation", jdbc.queryForMap("select * from git_operation where id=?", operationId),
+                "events", jdbc.queryForList("select * from git_operation_event where operation_id=? order by event_sequence", operationId),
+                "guard", projectionGuard(operationId));
+    }
+
+    private String createMrRequestInstallRollbackProbe(String operationId, int sequence) {
+        // Deferred PG trigger verifies staged rows before aborting; sequence calls survive rollback as a reachability witness.
+        String probe = "b8_mr_abort_" + UUID.randomUUID().toString().replace("-", "");
+        String state = sequence == 0 ? "INTENT_RECORDED" : "SEND_STARTED";
+        String reason = sequence == 0 ? "INTENT_PENDING" : "REQUEST_IN_FLIGHT";
+        jdbc.execute("create sequence " + probe + "_reached");
+        jdbc.execute("create function " + probe + "() returns trigger language plpgsql as $$ begin "
+                + "if not exists (select 1 from git_operation o join repo_execution_guard g on g.remote_key=o.remote_key "
+                + "where o.id=new.operation_id and o.state='" + state + "' and g.operation_id=o.id "
+                + "and g.session_id=o.session_id and g.generation=o.generation and g.reason='" + reason + "' "
+                + "and new.attempt_id=o.attempt_id and new.event_type='" + state + "') then "
+                + "raise exception 'B8_PROBE_BEFORE_EXPECTED_WRITES'; end if; "
+                + "perform nextval('" + probe + "_reached'); raise exception 'B8_ROLLBACK_AFTER_" + state + "'; end; $$");
+        jdbc.execute("create constraint trigger " + probe + " after insert on git_operation_event "
+                + "deferrable initially deferred for each row when (new.operation_id='" + operationId
+                + "' and new.event_sequence=" + sequence + ") execute function " + probe + "()");
+        return probe;
+    }
+
+    private void createMrRequestRemoveRollbackProbe(String probe) {
+        jdbc.execute("drop trigger if exists " + probe + " on git_operation_event");
+        jdbc.execute("drop function if exists " + probe + "()");
+        jdbc.execute("drop sequence if exists " + probe + "_reached");
+    }
+
     private String beginBranchIntent(RunPort.TaskClaim claim, int shaLength) {
         settings.saveGitLab(new SettingsPort.SettingsGitLab("https://gitlab.invalid", "isolated-projection-token"));
         return journal.begin(branchIntentCommand(claim, branchIntentTarget(claim, shaLength))).id();
@@ -4235,17 +4839,15 @@ class RunTaskPersistenceIT {
     }
 
     private String recordAppliedCreatedMr(RunPort.TaskClaim claim) {
-        String baseUrl = "https://gitlab.invalid";
-        settings.saveGitLab(new SettingsPort.SettingsGitLab(baseUrl, "isolated-projection-token"));
-        var repo = repositories.findById(claim.repo()).orElseThrow();
-        String target = createdMrTarget(claim).toString();
-        String operationId = journal.begin(new GitOperationJournalPort.Command(UUID.randomUUID().toString(),
-                claim.repo().value(), GitOperationJournalPort.mappingHash("GITLAB", repo.getCloneUrl()),
-                GitOperationJournalPort.remoteKey("GITLAB", baseUrl, projectionProjectId()), "GITLAB", baseUrl,
-                projectionProjectId(), "CREATE_MR", target, GitOperationJournalPort.mappingHash("CREATE_MR", target),
-                claim.runId(), claim.operator(), claim.fence().claimToken(), claim.fence())).id();
+        String operationId = UUID.randomUUID().toString();
+        var request = createMrRequestTarget(claim, operationId, 40).put("sha", "a".repeat(40));
+        journal.begin(createMrRequestCommand(claim, operationId, request, projectionProjectId()));
         journal.sending(operationId, claim.fence());
         journal.finish(operationId, claim.fence(), GitWriteResult.Outcome.APPLIED, createdMrProof(claim).toString(), null);
+        // Historical B3 projection keeps its original summary/hash; only fresh sending requires the complete request.
+        String target = createdMrTarget(claim).toString();
+        assertThat(jdbc.update("update git_operation set target_json=?,request_hash=? where id=?",
+                target, GitOperationJournalPort.mappingHash("CREATE_MR", target), operationId)).isEqualTo(1);
         return operationId;
     }
 

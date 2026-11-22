@@ -43,6 +43,10 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
     private final io.releasehub.application.settings.SettingsPort settings;
 
     @Override public Operation begin(Command c) {
+        if ("CREATE_MR".equals(c.action())
+                && (!validCreateMrIdentity(c.provider(), c.baseUrl(), c.projectId(), c.remoteKey())
+                || c.sessionId() == null || c.sessionId().isBlank()
+                || !completeCreateMrRequest(c.operationId(), objectJson(c.targetJson()), c.remoteKey(), c.requestHash()))) throw invalid();
         validateTaskCommand(c);
         if(!GitOperationJournalPort.remoteKey(c.provider(),c.baseUrl(),c.projectId()).equals(c.remoteKey()))throw BusinessException.of(ErrorCode.GIT_OPERATION_INVALID);
         jdbc.query("select pg_advisory_xact_lock_shared(hashtextextended('git-mapping-admission', 2))",(RowCallbackHandler) r->{});
@@ -73,10 +77,21 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         }
         var existing = em.find(GitOperationEntity.class, c.operationId());
         if (existing != null) {
+            boolean createMr = "CREATE_MR".equals(c.action());
+            if (createMr) {
+                if (!Objects.equals(c.remoteKey(), existing.getRemoteKey())) throw stale();
+                em.refresh(existing, LockModeType.PESSIMISTIC_WRITE);
+            }
             if (!existing.getRequestHash().equals(c.requestHash()) || !existing.getOperator().equals(c.operator())
                     || !Objects.equals(existing.getRunId(), c.runId()) || !existing.getSessionId().equals(c.sessionId())
                     || !Objects.equals(existing.getTaskId(), c.taskFence() == null ? null : c.taskFence().taskId())
                     || !Objects.equals(existing.getClaimToken(), c.taskFence() == null ? null : c.taskFence().claimToken())) throw stale();
+            if (createMr && (!Objects.equals(c.repoId(), existing.getRepoId())
+                    || !Objects.equals(c.remoteKey(), existing.getRemoteKey()) || !Objects.equals(c.action(), existing.getAction())
+                    || !Objects.equals(c.provider(), existing.getProvider()) || !Objects.equals(c.baseUrl(), existing.getBaseUrl())
+                    || !Objects.equals(c.projectId(), existing.getProjectId())
+                    || !Objects.equals(objectJson(c.targetJson()), objectJson(existing.getTargetJson()))
+                    || !validCreateMrIntent(existing, ownGuard(existing)))) throw stale();
             return view(existing);
         }
         if (c.taskFence() != null && em.createQuery("select count(o) from GitOperationEntity o where o.taskId=:task", Long.class)
@@ -106,7 +121,9 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
 
     @Override public void sending(String id, RunPort.TaskFence fence) {
         var op = operationForUpdate(id, fence); var guard = ownGuard(op);
-        if (!"INTENT_RECORDED".equals(op.getState()) || !onlyIntentEvent(op)
+        if ("CREATE_MR".equals(op.getAction())) {
+            if (!validCreateMrIntent(op, guard)) throw stale();
+        } else if (!"INTENT_RECORDED".equals(op.getState()) || !onlyIntentEvent(op)
                 || !"INTENT_PENDING".equals(guard.getReason())) throw stale();
         if (op.getTaskId() != null && "CREATE_BRANCH".equals(op.getAction())) {
             var task = em.find(RunTaskJpaEntity.class, op.getTaskId());
@@ -510,6 +527,54 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
                 && run.getOperator().equals(op.getOperator()) && action.equals(op.getAction());
     }
 
+    private boolean validCreateMrIdentity(String provider, String baseUrl, String projectId, String remoteKey) {
+        return "GITLAB".equals(provider) && projectId != null && projectId.matches("[1-9][0-9]*")
+                && baseUrl != null && !baseUrl.isBlank()
+                && GitOperationJournalPort.configuredBaseUrl(baseUrl).equals(baseUrl)
+                && GitOperationJournalPort.remoteKey(provider, baseUrl, projectId).equals(remoteKey);
+    }
+
+    private boolean completeCreateMrRequest(String operationId, JsonNode target, String remoteKey, String requestHash) {
+        var body = GitLabMergeRequestAdapter.recordedCreateMrRequest(target, operationId);
+        if (body == null) return false;
+        String fingerprint = GitLabMergeRequestAdapter.createMrRequestHash(remoteKey, body, target.path("sha").textValue());
+        return fingerprint != null && fingerprint.equals(requestHash);
+    }
+
+    private boolean validCreateMrTaskPlan(RunTaskJpaEntity task, RunItemJpaEntity item, JsonNode target) {
+        if (item == null || !"ENSURE_MR".equals(task.getTaskType())
+                || task.getStartedAt() == null || task.getClaimToken() == null || task.getClaimToken().isBlank()
+                || task.getClaimExpiresAt() == null || task.getFinishedAt() != null || item.getExecutedOrder() <= 0
+                || !"GITLAB".equals(item.getMetadata().get("plan.gitProvider"))
+                || !matches(target, "source_branch", item.getMetadata().get("plan.featureBranch"))
+                || !matches(target, "target_branch", item.getMetadata().get("plan.releaseBranch"))) return false;
+        Number steps = (Number) em.createNativeQuery("select count(*) from {h-schema}run_step where task_id=?1")
+                .setParameter(1, task.getId()).getSingleResult();
+        return steps.longValue() == 0;
+    }
+
+    /** 正常 CREATE_MR 的当前发送证明；不授予过期领取或本地 NOT_SENT 资格。 */
+    private boolean validCreateMrIntent(GitOperationEntity op, RepoExecutionGuardEntity guard) {
+        JsonNode target = objectJson(op.getTargetJson());
+        if (!"CREATE_MR".equals(op.getAction()) || !"INTENT_RECORDED".equals(op.getState()) || op.getReason() != null
+                || op.getSessionId() == null || op.getSessionId().isBlank()
+                || !validCreateMrIdentity(op.getProvider(), op.getBaseUrl(), op.getProjectId(), op.getRemoteKey())
+                || !completeCreateMrRequest(op.getId(), target, op.getRemoteKey(), op.getRequestHash())
+                || !"INTENT_PENDING".equals(guard.getReason()) || !onlyIntentEvent(op)) return false;
+        if (op.getTaskId() == null) {
+            return op.getClaimToken() == null && (op.getRunId() == null
+                    || em.createQuery("select count(t) from RunTaskJpaEntity t where t.runId=:run", Long.class)
+                    .setParameter("run", op.getRunId()).getSingleResult() == 0);
+        }
+        var task = em.find(RunTaskJpaEntity.class, op.getTaskId());
+        if (task == null) return false;
+        var item = em.find(RunItemJpaEntity.class, task.getTargetId());
+        return taskOperationIdentity(task, op) && historicalOwner(op)
+                && Objects.equals(task.getClaimToken(), op.getClaimToken())
+                && validCreateMrTaskPlan(task, item, target)
+                && consistentProject(task.getRunId(), item.getRepoId(), op.getProjectId(), op.getRemoteKey());
+    }
+
     private boolean validUnsentOperation(RunTaskJpaEntity task, RunItemJpaEntity item, GitOperationEntity op) {
         if (item == null || !java.util.Set.of("TRY_MERGE", "ENSURE_FEATURE", "ENSURE_RELEASE").contains(task.getTaskType())
                 || !taskOperationIdentity(task, op)
@@ -672,9 +737,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
                     && branchCommand(command, target, metadata.get("plan.featureBranch"), metadata.get("plan.defaultBranch"));
             case "ENSURE_RELEASE" -> branchCommand(command, target, metadata.get("plan.releaseBranch"), metadata.get("plan.defaultBranch"));
             case "ENSURE_MR" -> "CREATE_MR".equals(command.action())
-                    && matches(target, "source_branch", metadata.get("plan.featureBranch"))
-                    && matches(target, "target_branch", metadata.get("plan.releaseBranch"))
-                    && validSha(target.path("sha").asText());
+                    && validCreateMrTaskPlan(task, item, target);
             case "TRY_MERGE" -> "MERGE_MR".equals(command.action())
                     && command.projectId().equals(metadata.get("git.projectId"))
                     && matches(target, "sha", metadata.get("git.sourceSha"))

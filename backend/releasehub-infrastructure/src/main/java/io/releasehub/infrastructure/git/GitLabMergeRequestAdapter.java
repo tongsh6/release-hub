@@ -91,7 +91,7 @@ public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
     @Override public GitWriteResult<MergeRequest> create(String source, String target, String expectedSourceSha, String title) {
         if (!validSha(expectedSourceSha)) return GitWriteResult.rejected("SOURCE_REVISION_REQUIRED");
         return write(writeEndpoint, HttpMethod.POST, Map.of("source_branch", source, "target_branch", target,
-                "title", title, "remove_source_branch", false), false, expectedSourceSha, null);
+                "title", title, "description", "", "remove_source_branch", false), false, expectedSourceSha, null);
     }
 
     @Override public GitWriteResult<MergeRequest> merge(String id, String sourceSha, String message) {
@@ -133,6 +133,48 @@ public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
         } catch (RestClientException e) {
             return GitWriteResult.unknown("RESPONSE_UNCONFIRMED");
         }
+    }
+
+    /** CREATE 正文的五个有类型字段；入站 marker 与已记录 marker 在各自边界验证。 */
+    public static ObjectNode canonicalCreateMrRequest(JsonNode body) {
+        if (body == null || !body.isObject() || body.size() != 5
+                || !body.path("source_branch").isTextual() || body.path("source_branch").textValue().isBlank()
+                || !body.path("target_branch").isTextual() || body.path("target_branch").textValue().isBlank()
+                || !body.path("title").isTextual() || body.path("title").textValue().isBlank()
+                || !body.path("description").isTextual()
+                || !body.path("remove_source_branch").isBoolean()
+                || body.path("remove_source_branch").booleanValue()) return null;
+        return ERROR_JSON.createObjectNode().put("source_branch", body.path("source_branch").textValue())
+                .put("target_branch", body.path("target_branch").textValue()).put("title", body.path("title").textValue())
+                .put("description", body.path("description").textValue()).put("remove_source_branch", false);
+    }
+
+    /** 只从完整原命令重建 POST 正文；不补字段或替换原 operation marker。 */
+    public static ObjectNode recordedCreateMrRequest(JsonNode target, String operationId) {
+        if (target == null || !target.isObject() || target.size() != 8
+                || !"POST".equals(target.path("method").textValue())
+                || !"/merge_requests".equals(target.path("suffix").textValue())
+                || !validSha(target.path("sha").textValue())
+                || operationId == null || operationId.isBlank()
+                || operationId.contains("\r") || operationId.contains("\n")) return null;
+        ObjectNode fields = target.deepCopy();
+        fields.remove(List.of("method", "suffix", "sha"));
+        ObjectNode body = canonicalCreateMrRequest(fields);
+        if (body == null) return null;
+        String prefix = "ReleaseHub-Operation:";
+        String description = body.path("description").textValue();
+        String marker = prefix + " " + operationId;
+        if (!description.endsWith("\n" + marker)
+                || description.indexOf(prefix) != description.lastIndexOf(prefix)) return null;
+        return body;
+    }
+
+    /** CREATE 无 query；expectedSha 仅用于意图与响应证明，不是 POST 的远端 CAS。 */
+    public static String createMrRequestHash(String remoteKey, JsonNode body, String expectedSha) {
+        ObjectNode canonical = canonicalCreateMrRequest(body);
+        if (canonical == null || remoteKey == null || remoteKey.isBlank() || !validSha(expectedSha)) return null;
+        return GitRemoteIdentityResolver.hash("POST|" + remoteKey + "|/merge_requests||"
+                + GitRemoteIdentityResolver.hash(canonical.toString().getBytes(StandardCharsets.UTF_8)) + "|" + expectedSha);
     }
 
     /** 原 MERGE 请求只包含这三个有类型字段；不从缺失值补造发送意图。 */

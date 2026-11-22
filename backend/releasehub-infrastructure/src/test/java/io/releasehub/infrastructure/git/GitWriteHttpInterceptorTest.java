@@ -420,6 +420,222 @@ class GitWriteHttpInterceptorTest {
                 .getBytes(StandardCharsets.UTF_8), HttpStatus.CREATED);
     }
 
+
+    @ParameterizedTest
+    @CsvSource({"40,false", "40,true", "64,false", "64,true"})
+    void createMrRequestSendsExactlyTheAdmittedTypedCommand(int shaLength, boolean reverseFields) throws Exception {
+        var json = new ObjectMapper();
+        String sha = "Ab".repeat(shaLength / 2);
+        String source = "feature/IT-1";
+        String target = "release/W-1";
+        String title = "  发布 \"一\" \n二  ";
+        String description = "说明 \"quoted\"\n第二行\n";
+        var input = json.createObjectNode();
+        if (reverseFields) input.put("remove_source_branch", false).put("description", description)
+                .put("title", title).put("target_branch", target).put("source_branch", source);
+        else input.put("source_branch", source).put("target_branch", target).put("title", title)
+                .put("description", description).put("remove_source_branch", false);
+        var request = createMrRequest(null, sha);
+        request.getHeaders().set("PRIVATE-TOKEN", "secret-token");
+        var sent = new AtomicInteger();
+        try (var response = interceptor.intercept(request, json.writeValueAsBytes(input), (out, body) -> {
+            sent.incrementAndGet();
+            var command = (GitOperationJournalPort.Command) singleJournalInvocation("begin").getArgument(0);
+            String marked = description + "\nReleaseHub-Operation: " + command.operationId();
+            var expectedBody = json.createObjectNode().put("source_branch", source).put("target_branch", target)
+                    .put("title", title).put("description", marked).put("remove_source_branch", false);
+            var expectedTarget = json.createObjectNode().put("method", "POST").put("suffix", "/merge_requests");
+            expectedTarget.setAll(expectedBody);
+            expectedTarget.put("sha", sha);
+            assertEquals(expectedTarget, json.readTree(command.targetJson()));
+            assertArrayEquals(expectedBody.toString().getBytes(StandardCharsets.UTF_8), body);
+            assertEquals(createMrRequestDigest(("POST|" + command.remoteKey() + "|/merge_requests||"
+                    + createMrRequestDigest(body) + "|" + sha).getBytes(StandardCharsets.UTF_8)), command.requestHash());
+            assertEquals(1, marked.lines().filter(("ReleaseHub-Operation: " + command.operationId())::equals).count());
+            assertEquals("/api/v4/projects/17/merge_requests", out.getURI().getRawPath());
+            assertNull(out.getURI().getRawQuery());
+            assertEquals(body.length, out.getHeaders().getContentLength());
+            assertNull(out.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID));
+            assertNull(out.getHeaders().getFirst(GitRemoteIdentityResolver.EXPECTED_SHA));
+            assertFalse(command.targetJson().contains("secret-token"));
+            assertFalse(command.requestHash().contains("secret-token"));
+            verify(journal).sending(command.operationId(), null);
+            return createMrRequestResponse(sha, source, target);
+        })) {
+            assertEquals(HttpStatus.CREATED, response.getStatusCode());
+        }
+        assertEquals(1, sent.get());
+        verify(journal).finish(anyString(), isNull(), eq(GitWriteResult.Outcome.APPLIED), anyString(), isNull());
+        verify(identities, never()).metadata(any(), anyString(), any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MISSING_SOURCE", "MISSING_TARGET", "MISSING_TITLE", "MISSING_DESCRIPTION",
+            "MISSING_REMOVE", "NUMBER_SOURCE", "NUMBER_TARGET", "NUMBER_TITLE", "NUMBER_DESCRIPTION",
+            "TEXT_REMOVE", "NULL_SOURCE", "NULL_TARGET", "NULL_TITLE", "NULL_DESCRIPTION", "NULL_REMOVE",
+            "BLANK_SOURCE", "BLANK_TARGET", "BLANK_TITLE", "DELETE_SHARED_SOURCE", "EXTRA",
+            "FOREIGN_MARKER", "EMBEDDED_MARKER", "DUPLICATE_MARKER", "ARRAY", "NULL_JSON"})
+    void createMrRequestRejectsInvalidSchemaBeforeAdmission(String variant) throws Exception {
+        var json = new ObjectMapper();
+        var input = createMrRequestInput();
+        switch (variant) {
+            case "MISSING_SOURCE" -> input.remove("source_branch");
+            case "MISSING_TARGET" -> input.remove("target_branch");
+            case "MISSING_TITLE" -> input.remove("title");
+            case "MISSING_DESCRIPTION" -> input.remove("description");
+            case "MISSING_REMOVE" -> input.remove("remove_source_branch");
+            case "NUMBER_SOURCE" -> input.put("source_branch", 17);
+            case "NUMBER_TARGET" -> input.put("target_branch", 17);
+            case "NUMBER_TITLE" -> input.put("title", 17);
+            case "NUMBER_DESCRIPTION" -> input.put("description", 17);
+            case "TEXT_REMOVE" -> input.put("remove_source_branch", "false");
+            case "NULL_SOURCE" -> input.putNull("source_branch");
+            case "NULL_TARGET" -> input.putNull("target_branch");
+            case "NULL_TITLE" -> input.putNull("title");
+            case "NULL_DESCRIPTION" -> input.putNull("description");
+            case "NULL_REMOVE" -> input.putNull("remove_source_branch");
+            case "BLANK_SOURCE" -> input.put("source_branch", " \t");
+            case "BLANK_TARGET" -> input.put("target_branch", "\n ");
+            case "BLANK_TITLE" -> input.put("title", "\t ");
+            case "DELETE_SHARED_SOURCE" -> input.put("remove_source_branch", true);
+            case "EXTRA" -> input.put("private_extra", "must-not-be-retained");
+            case "FOREIGN_MARKER" -> input.put("description", "ReleaseHub-Operation: somebody-else");
+            case "EMBEDDED_MARKER" -> input.put("description", "prefix ReleaseHub-Operation: embedded suffix");
+            case "DUPLICATE_MARKER" -> input.put("description", "ReleaseHub-Operation: one\nReleaseHub-Operation: two");
+            case "ARRAY", "NULL_JSON" -> { }
+            default -> throw new IllegalArgumentException(variant);
+        }
+        byte[] body = json.writeValueAsBytes(variant.equals("ARRAY") ? json.createArrayNode()
+                : variant.equals("NULL_JSON") ? json.nullNode() : input);
+        var sent = new AtomicInteger();
+        var error = assertThrows(BusinessException.class, () -> interceptor.intercept(
+                createMrRequest(null, "a".repeat(40)), body, (out, bytes) -> {
+                    sent.incrementAndGet();
+                    return createMrRequestResponse("a".repeat(40), "feature/IT-1", "release/W-1");
+                }));
+        assertEquals(ErrorCode.GIT_OPERATION_INVALID, error.getErrorCode());
+        assertEquals(0, sent.get());
+        verify(journal, never()).begin(any());
+        verify(journal, never()).sending(anyString(), any());
+        verify(journal, never()).finish(anyString(), any(), any(), anyString(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "source_branch=elsewhere", "arbitrary=value"})
+    void createMrRequestRejectsEvenEmptyQueryBeforeAdmission(String query) throws Exception {
+        var sent = new AtomicInteger();
+        var error = assertThrows(BusinessException.class, () -> interceptor.intercept(
+                createMrRequest(query, "a".repeat(40)),
+                createMrRequestInput().toString().getBytes(StandardCharsets.UTF_8), (out, bytes) -> {
+                    sent.incrementAndGet();
+                    return createMrRequestResponse("a".repeat(40), "feature/IT-1", "release/W-1");
+                }));
+        assertEquals(ErrorCode.GIT_OPERATION_INVALID, error.getErrorCode());
+        assertEquals(0, sent.get());
+        verify(journal, never()).begin(any());
+        verify(journal, never()).sending(anyString(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ID", "REPOSITORY", "REMOTE", "PROVIDER", "BASE", "PROJECT", "ACTION",
+            "TARGET", "RUN", "OPERATOR", "STATE", "REASON"})
+    void createMrRequestRefusesDifferentAdmittedIdentityBeforeSending(String variant) throws Exception {
+        doAnswer(call -> {
+            GitOperationJournalPort.Command command = call.getArgument(0);
+            return new GitOperationJournalPort.Operation(
+                    variant.equals("ID") ? "different-operation" : command.operationId(),
+                    variant.equals("REPOSITORY") ? "other-repository" : command.repoId(),
+                    variant.equals("REMOTE") ? "b".repeat(64) : command.remoteKey(),
+                    variant.equals("PROVIDER") ? "GITHUB" : command.provider(),
+                    variant.equals("BASE") ? "https://another.invalid" : command.baseUrl(),
+                    variant.equals("PROJECT") ? "19" : command.projectId(),
+                    variant.equals("ACTION") ? "MERGE_MR" : command.action(),
+                    variant.equals("TARGET") ? "{}" : command.targetJson(),
+                    variant.equals("RUN") ? "another-run" : command.runId(),
+                    variant.equals("OPERATOR") ? "another-operator" : command.operator(),
+                    variant.equals("STATE") ? "APPLIED" : "INTENT_RECORDED", 0,
+                    java.time.Instant.EPOCH, java.time.Instant.EPOCH,
+                    variant.equals("REASON") ? "UNCONFIRMED" : null, true);
+        }).when(journal).begin(any());
+        var sent = new AtomicInteger();
+        var error = assertThrows(BusinessException.class, () -> interceptor.intercept(
+                createMrRequest(null, "a".repeat(40)),
+                createMrRequestInput().toString().getBytes(StandardCharsets.UTF_8), (out, bytes) -> {
+                    sent.incrementAndGet();
+                    return createMrRequestResponse("a".repeat(40), "feature/IT-1", "release/W-1");
+                }));
+        assertEquals(ErrorCode.GIT_OPERATION_STALE, error.getErrorCode());
+        assertEquals(0, sent.get());
+        verify(journal, never()).sending(anyString(), any());
+        verify(journal, never()).finish(anyString(), any(), any(), anyString(), any());
+    }
+
+    @Test
+    void createMrRequestObservationVersionAndReservedGuardDoNotRemoveSendingAuthority() throws Exception {
+        doAnswer(call -> {
+            GitOperationJournalPort.Command c = call.getArgument(0);
+            return new GitOperationJournalPort.Operation(c.operationId(), c.repoId(), c.remoteKey(), c.provider(),
+                    c.baseUrl(), c.projectId(), c.action(), c.targetJson(), c.runId(), c.operator(),
+                    "INTENT_RECORDED", 7, java.time.Instant.EPOCH, java.time.Instant.EPOCH, null, true);
+        }).when(journal).begin(any());
+        var sent = new AtomicInteger();
+        try (var response = interceptor.intercept(createMrRequest(null, "a".repeat(40)),
+                createMrRequestInput().toString().getBytes(StandardCharsets.UTF_8), (out, bytes) -> {
+                    sent.incrementAndGet();
+                    return createMrRequestResponse("a".repeat(40), "feature/IT-1", "release/W-1");
+                })) {
+            assertEquals(HttpStatus.CREATED, response.getStatusCode());
+        }
+        assertEquals(1, sent.get());
+        verify(journal).sending(anyString(), isNull());
+    }
+
+    @Test
+    void createMrRequestSendingRefusalPreventsHttpAndInventedResponseFacts() {
+        doThrow(BusinessException.of(ErrorCode.GIT_OPERATION_STALE)).when(journal).sending(anyString(), any());
+        var sent = new AtomicInteger();
+        var error = assertThrows(BusinessException.class, () -> interceptor.intercept(
+                createMrRequest(null, "a".repeat(40)),
+                createMrRequestInput().toString().getBytes(StandardCharsets.UTF_8), (out, bytes) -> {
+                    sent.incrementAndGet();
+                    return createMrRequestResponse("a".repeat(40), "feature/IT-1", "release/W-1");
+                }));
+        assertEquals(ErrorCode.GIT_OPERATION_STALE, error.getErrorCode());
+        assertEquals(0, sent.get());
+        verify(journal).begin(any());
+        verify(journal, never()).finish(anyString(), any(), any(), anyString(), any());
+    }
+
+    private MockClientHttpRequest createMrRequest(String query, String sha) {
+        var request = new MockClientHttpRequest(HttpMethod.POST, URI.create(
+                "https://gitlab.invalid/api/v4/projects/acme%2Frepo/merge_requests" + (query == null ? "" : "?" + query)));
+        request.getHeaders().set(GitRemoteIdentityResolver.EXPECTED_PROJECT_ID, "17");
+        request.getHeaders().set(GitRemoteIdentityResolver.EXPECTED_SHA, sha);
+        return request;
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode createMrRequestInput() {
+        return new ObjectMapper().createObjectNode().put("source_branch", "feature/IT-1")
+                .put("target_branch", "release/W-1").put("title", "Merge feature/IT-1 into release/W-1")
+                .put("description", "").put("remove_source_branch", false);
+    }
+
+    private MockClientHttpResponse createMrRequestResponse(String sha, String source, String target) {
+        return new MockClientHttpResponse(new ObjectMapper().createObjectNode()
+                .put("project_id", 17).put("source_project_id", 17).put("target_project_id", 17)
+                .put("iid", 7).put("web_url", "https://gitlab.invalid/acme/repo/-/merge_requests/7")
+                .put("state", "opened").put("source_branch", source).put("target_branch", target).put("sha", sha)
+                .toString().getBytes(StandardCharsets.UTF_8), HttpStatus.CREATED);
+    }
+
+    private static String createMrRequestDigest(byte[] bytes) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static GitOperationJournalPort.Operation journalOperation(GitOperationJournalPort.Command command, String id) {
         return new GitOperationJournalPort.Operation(id, command.repoId(), command.remoteKey(), command.provider(),
                 command.baseUrl(), command.projectId(), command.action(), command.targetJson(), command.runId(),
@@ -541,23 +757,23 @@ class GitWriteHttpInterceptorTest {
 
     @Test void shouldSendNothingWhenIntentCommitFails() {
         doThrow(new IllegalStateException("模拟提交失败")).when(journal).begin(any());var sent=new AtomicInteger();
-        assertThrows(IllegalStateException.class,()->interceptor.intercept(request(),"{}".getBytes(StandardCharsets.UTF_8),(r,b)->{sent.incrementAndGet();return new MockClientHttpResponse(new byte[0],HttpStatus.CREATED);}));
+        assertThrows(IllegalStateException.class,()->interceptor.intercept(request(),createMrRequestInput().toString().getBytes(StandardCharsets.UTF_8),(r,b)->{sent.incrementAndGet();return new MockClientHttpResponse(new byte[0],HttpStatus.CREATED);}));
         assertEquals(0,sent.get());
     }
     @Test void shouldSendNothingWhenSendMarkerCommitFails() {
         doThrow(new IllegalStateException("模拟发送标记失败")).when(journal).sending(anyString(),isNull());var sent=new AtomicInteger();
-        assertThrows(IllegalStateException.class,()->interceptor.intercept(request(),new byte[0],(r,b)->{sent.incrementAndGet();return new MockClientHttpResponse(new byte[0],HttpStatus.CREATED);}));
+        assertThrows(IllegalStateException.class,()->interceptor.intercept(request(),createMrRequestInput().toString().getBytes(StandardCharsets.UTF_8),(r,b)->{sent.incrementAndGet();return new MockClientHttpResponse(new byte[0],HttpStatus.CREATED);}));
         assertEquals(0,sent.get());
     }
     @Test void shouldKeepLostResponseUnknownAndNeverResend() {
         var sent=new AtomicInteger();
-        assertThrows(IOException.class,()->interceptor.intercept(request(),new byte[0],(r,b)->{sent.incrementAndGet();throw new IOException("含敏感信息的远端错误");}));
+        assertThrows(IOException.class,()->interceptor.intercept(request(),createMrRequestInput().toString().getBytes(StandardCharsets.UTF_8),(r,b)->{sent.incrementAndGet();throw new IOException("含敏感信息的远端错误");}));
         assertEquals(1,sent.get());
         verify(journal).finish(anyString(),isNull(),eq(GitWriteResult.Outcome.UNKNOWN),eq("{}"),eq("RESPONSE_UNCONFIRMED"));
     }
-    @Test void shouldCorrelateRequestWithoutPersistingTokenOrBodyContent() throws Exception {
+    @Test void shouldPersistCompleteMrRequestWithoutPersistingTokenOrResponseBodyContent() throws Exception {
         var request=request();request.getHeaders().set("PRIVATE-TOKEN","sensitive-fixture");
-        byte[] input="{\"source_branch\":\"feature\",\"target_branch\":\"main\",\"title\":\"private title\"}".getBytes(StandardCharsets.UTF_8);
+        byte[] input="{\"source_branch\":\"feature\",\"target_branch\":\"main\",\"title\":\"private title\",\"description\":\"\",\"remove_source_branch\":false}".getBytes(StandardCharsets.UTF_8);
         byte[] created = new ObjectMapper().writeValueAsBytes(java.util.Map.of(
                 "iid", 17, "project_id", 17, "source_project_id", 17, "target_project_id", 17,
                 "source_branch", "feature", "target_branch", "main", "sha", "a".repeat(40),
@@ -570,8 +786,12 @@ class GitWriteHttpInterceptorTest {
         })) { assertEquals(201,response.getStatusCode().value()); }
         var captor=org.mockito.ArgumentCaptor.forClass(GitOperationJournalPort.Command.class);verify(journal).begin(captor.capture());
         assertFalse(captor.getValue().toString().contains("sensitive-fixture"));
-        assertFalse(captor.getValue().toString().contains("private title"));
-        assertEquals("a".repeat(40),new ObjectMapper().readTree(captor.getValue().targetJson()).path("sha").asText());
+        var target=new ObjectMapper().readTree(captor.getValue().targetJson());
+        assertEquals("private title",target.path("title").textValue());
+        assertEquals("\nReleaseHub-Operation: "+captor.getValue().operationId(),target.path("description").textValue());
+        assertTrue(target.path("remove_source_branch").isBoolean());
+        assertFalse(target.path("remove_source_branch").booleanValue());
+        assertEquals("a".repeat(40),target.path("sha").textValue());
         var evidence=org.mockito.ArgumentCaptor.forClass(String.class);
         verify(journal).finish(anyString(),isNull(),eq(GitWriteResult.Outcome.APPLIED),evidence.capture(),isNull());
         assertEquals(17,new ObjectMapper().readTree(evidence.getValue()).path("iid").asInt());
@@ -579,7 +799,7 @@ class GitWriteHttpInterceptorTest {
         assertFalse(evidence.getValue().contains("private title"));
     }
     @Test void shouldKeepMissingRemoteIdUnknown() {
-        assertThrows(IOException.class,()->interceptor.intercept(request(),new byte[0],(r,b)->new MockClientHttpResponse("{}".getBytes(StandardCharsets.UTF_8),HttpStatus.CREATED)));
+        assertThrows(IOException.class,()->interceptor.intercept(request(),createMrRequestInput().toString().getBytes(StandardCharsets.UTF_8),(r,b)->new MockClientHttpResponse("{}".getBytes(StandardCharsets.UTF_8),HttpStatus.CREATED)));
         verify(journal).finish(anyString(),isNull(),eq(GitWriteResult.Outcome.UNKNOWN),anyString(),eq("RESPONSE_UNCONFIRMED"));
     }
     @Test void shouldKeepMismatchedBranchEvidenceUnknown() throws Exception {

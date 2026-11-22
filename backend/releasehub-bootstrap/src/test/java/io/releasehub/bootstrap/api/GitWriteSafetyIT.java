@@ -679,6 +679,247 @@ class GitWriteSafetyIT {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {40, 64})
+    void createMrRequestTaskSendsCanonicalCommandThroughOriginalCheckpoint(int shaLength) throws Exception {
+        sha = "aBcD".repeat(shaLength / 4);
+        var run = prepareMrCreationRun();
+        String runId = run.getId().value();
+        var plan = run.getItems().getFirst().getMetadata();
+        String source = plan.get("plan.featureBranch");
+        String target = plan.get("plan.releaseBranch");
+        String title = "Merge " + source + " into " + target;
+        String mergePath = canonicalEndpoint + "/merge_requests/7/merge";
+        String mergedSha = "e".repeat(shaLength);
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, mrCreationResponse(run, "checking").toString());
+        SERVER.reply("GET", canonicalEndpoint + "/merge_requests/7", 200, mrCreationResponse(run, "mergeable").toString());
+        SERVER.reply("PUT", mergePath, 200, mrCreationResponse(run, "mergeable")
+                .put("state", "merged").put("merge_commit_sha", mergedSha).toString());
+
+        assertThat(taskService.executeNextTask(runId)).isTrue();
+        assertConfirmedMrCreation(runId);
+        var creation = journal.listByRun(runId, 0, 20).getFirst();
+        String mrTaskId = taskRuns.findTasks(runId).get(2).taskId();
+        assertThat(jdbc.queryForObject("select task_id from git_operation where id=?", String.class, creation.id()))
+                .isEqualTo(mrTaskId);
+        assertThat(jdbc.queryForObject("select claim_token from git_operation where id=?", String.class, creation.id()))
+                .isNotBlank();
+        assertThat(creation.runId()).isEqualTo(runId);
+
+        assertThat(taskService.executeNextTask(runId)).isTrue();
+        var completed = taskRuns.findById(runId).orElseThrow();
+        assertThat(completed.getExecutionStatus().name()).isEqualTo("DONE");
+        assertThat(taskRuns.findTasks(runId).stream().map(RunPort.TaskView::status))
+                .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED");
+        assertThat(completed.getItems().getFirst().getSteps().get(2).result()).isEqualTo(RunItemResult.CREATED);
+        assertThat(completed.getItems().getFirst().getSteps().get(3).result()).isEqualTo(RunItemResult.MERGED);
+        assertThat(completed.getItems().getFirst().getMetadata())
+                .containsEntry("git.sourceSha", sha).containsEntry("git.mrIid", "7").containsEntry("git.mergeSha", mergedSha);
+        assertThat(journal.listByRun(runId, 0, 20)).hasSize(2)
+                .allMatch(operation -> operation.state().equals("APPLIED") && !operation.blocked());
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        SERVER.verify("PUT", mergePath, 1);
+        assertThat(SERVER.writeCount()).isEqualTo(2);
+        assertThat(SERVER.body("PUT", mergePath).path("sha").textValue()).isEqualTo(sha);
+        assertNoNamespaceWrites();
+        createMrRequestAssertCompleteProof(creation, source, target, title);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {40, 64})
+    void createMrRequestNonTaskMergeSendsCanonicalCommandWithoutTaskMetadata(int shaLength) throws Exception {
+        sha = "aBcD".repeat(shaLength / 4);
+        readyForNewMerge();
+        String title = "Merge feature into main";
+        String mergedSha = "e".repeat(shaLength);
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, mergeRequest("opened"));
+        var merged = (com.fasterxml.jackson.databind.node.ObjectNode) new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(mergeRequest("merged"));
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 200,
+                merged.put("merge_commit_sha", mergedSha).toString());
+
+        // This is the same non-Task composite entry called by executeCleanup -> executeMerge.
+        var result = factory.getAdapter(GitProvider.GITLAB).mergeBranch(
+                repo.getCloneUrl(), "fixture-token", "feature", "main", title);
+
+        assertThat(result.status()).isEqualTo(io.releasehub.domain.run.MergeStatus.SUCCESS);
+        assertThat(result.mrEvidence().iid()).isEqualTo("7");
+        assertThat(result.mrEvidence().sourceSha()).isEqualTo(sha);
+        assertThat(result.mrEvidence().mergeSha()).isEqualTo(mergedSha);
+        var operations = journal.list(repo.getId().value(), 0, 20);
+        assertThat(operations).hasSize(2).allMatch(operation -> operation.state().equals("APPLIED") && !operation.blocked());
+        var creation = operations.stream().filter(operation -> operation.action().equals("CREATE_MR")).findFirst().orElseThrow();
+        createMrRequestAssertNoTaskMetadata(creation);
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 1);
+        assertThat(SERVER.writeCount()).isEqualTo(2);
+        assertThat(SERVER.body("PUT", canonicalEndpoint + "/merge_requests/7/merge").path("sha").textValue()).isEqualTo(sha);
+        assertNoNamespaceWrites();
+        createMrRequestAssertCompleteProof(creation, "feature", "main", title);
+    }
+
+    @Test
+    void createMrRequestTaskKeepsAdvancedSourceUnknownWithoutCreatedCheckpointOrTry() {
+        var run = prepareMrCreationRun();
+        String runId = run.getId().value();
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201,
+                mrCreationResponse(run, "mergeable").put("sha", "b".repeat(40)).toString());
+
+        assertThat(taskService.executeNextTask(runId)).isTrue();
+
+        assertUnconfirmedMrCreation(runId);
+        var operation = journal.listByRun(runId, 0, 20).getFirst();
+        var detail = journal.find(operation.id()).orElseThrow();
+        assertThat(operation.state()).isEqualTo("UNKNOWN");
+        assertThat(operation.blocked()).isTrue();
+        assertThat(detail.events()).extracting(GitOperationJournalPort.Event::type)
+                .containsExactly("INTENT_RECORDED", "SEND_STARTED", "UNKNOWN");
+        assertThat(taskRuns.findById(runId).orElseThrow().getItems().getFirst().getSteps())
+                .filteredOn(step -> step.actionType() == ActionType.ENSURE_MR)
+                .extracting(RunStep::result).containsExactly(RunItemResult.UNKNOWN);
+        int requests = SERVER.requests.size();
+        assertThat(taskService.executeNextTask(runId)).isFalse();
+        assertThat(SERVER.requests).hasSize(requests);
+        SERVER.verify("GET", canonicalEndpoint + "/merge_requests/7", 0);
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 0);
+    }
+
+    @Test
+    void createMrRequestNonTaskKeepsAdvancedSourceUnknownWithoutTryOrReplay() throws Exception {
+        readyForNewMerge();
+        var response = (com.fasterxml.jackson.databind.node.ObjectNode) new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(mergeRequest("opened"));
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, response.put("sha", "b".repeat(40)).toString());
+
+        var result = factory.getAdapter(GitProvider.GITLAB).mergeBranch(
+                repo.getCloneUrl(), "fixture-token", "feature", "main", "Merge feature into main");
+
+        assertThat(result.status()).isEqualTo(io.releasehub.domain.run.MergeStatus.UNKNOWN);
+        var operations = journal.list(repo.getId().value(), 0, 20);
+        assertThat(operations).hasSize(1);
+        var operation = operations.getFirst();
+        createMrRequestAssertNoTaskMetadata(operation);
+        assertThat(operation.state()).isEqualTo("UNKNOWN");
+        assertThat(operation.blocked()).isTrue();
+        var events = journal.find(operation.id()).orElseThrow().events();
+        assertThat(events).extracting(GitOperationJournalPort.Event::type)
+                .containsExactly("INTENT_RECORDED", "SEND_STARTED", "UNKNOWN");
+        SERVER.verify("GET", canonicalEndpoint + "/merge_requests/7", 0);
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 0);
+        assertNextWriteBlocked(1);
+        assertThat(journal.find(operation.id()).orElseThrow().events()).isEqualTo(events);
+        assertNoNamespaceWrites();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"missingDescription", "emptyQuery", "foreignMarker"})
+    void createMrRequestRejectsMalformedHttpCommandBeforeAnySend(String defect) {
+        var body = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()
+                .put("source_branch", "feature").put("target_branch", "main").put("title", "Merge feature into main")
+                .put("description", "").put("remove_source_branch", false);
+        if (defect.equals("missingDescription")) body.remove("description");
+        if (defect.equals("foreignMarker")) body.put("description", "ReleaseHub-Operation: unrelated-operation");
+        String query = defect.equals("emptyQuery") ? "?" : "";
+        var uri = java.net.URI.create(SERVER.baseUrl() + endpoint + "/merge_requests" + query);
+        if (defect.equals("emptyQuery")) assertThat(uri.getRawQuery()).isEmpty();
+        var headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        headers.set("PRIVATE-TOKEN", "fixture-token");
+        headers.set("X-ReleaseHub-Expected-Project-Id", String.valueOf(project));
+        headers.set("X-ReleaseHub-Expected-Commit-Sha", sha);
+        Object target = AopTestUtils.getUltimateTargetObject(factory.getAdapter(GitProvider.GITLAB));
+        var http = (RestTemplate) ReflectionTestUtils.getField(target, "restTemplate");
+        assertThat(http).isNotNull();
+        SERVER.reply("POST", canonicalEndpoint + "/merge_requests", 201, mergeRequest("opened"));
+
+        Throwable rejected = catchThrowable(() -> http.exchange(uri, org.springframework.http.HttpMethod.POST,
+                new org.springframework.http.HttpEntity<>(body.toString(), headers), String.class));
+
+        var operations = journal.list(repo.getId().value(), 0, 20);
+        org.assertj.core.api.SoftAssertions.assertSoftly(soft -> {
+            soft.assertThat(rejected).as("invalid command must be rejected before Journal sending").isInstanceOf(BusinessException.class);
+            soft.assertThat(operations).as("invalid input must not become an admitted intent").isEmpty();
+            soft.assertThat(operations.stream().flatMap(operation -> journal.find(operation.id()).orElseThrow().events().stream())
+                    .filter(event -> event.type().equals("SEND_STARTED")).count()).as("durable SEND count").isZero();
+            soft.assertThat(SERVER.requests.stream().filter(request -> request.method().equals("POST")
+                    && request.path().equals(canonicalEndpoint + "/merge_requests")).count()).as("actual MR POST count").isZero();
+            soft.assertThat(SERVER.writeCount()).as("all actual HTTP writes").isZero();
+        });
+    }
+
+    private void createMrRequestAssertNoTaskMetadata(GitOperationJournalPort.Operation operation) {
+        assertThat(operation.runId()).isNull();
+        assertThat(jdbc.queryForObject("select task_id from git_operation where id=?", String.class, operation.id())).isNull();
+        assertThat(jdbc.queryForObject("select claim_token from git_operation where id=?", String.class, operation.id())).isNull();
+    }
+
+    private void createMrRequestAssertCompleteProof(GitOperationJournalPort.Operation operation,
+            String source, String target, String title) throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        String marker = "ReleaseHub-Operation: " + operation.id();
+        var body = json.createObjectNode().put("source_branch", source).put("target_branch", target).put("title", title)
+                .put("description", "\n" + marker).put("remove_source_branch", false);
+        String canonical = body.toString();
+        var expectedTarget = json.createObjectNode().put("method", "POST").put("suffix", "/merge_requests");
+        expectedTarget.setAll(body);
+        expectedTarget.put("sha", sha);
+        var recorded = jdbc.queryForMap("select remote_key,request_hash,target_json from git_operation where id=?", operation.id());
+        var recordedTarget = json.readTree(recorded.get("target_json").toString());
+        var operationTarget = json.readTree(operation.targetJson());
+        // Independent byte-level oracle: do not use any production canonicalization or hash helper.
+        String remoteKey = createMrRequestSha256("GITLAB\n" + SERVER.baseUrl() + "\n" + project);
+        String expectedHash = createMrRequestSha256("POST|" + remoteKey + "|/merge_requests||"
+                + createMrRequestSha256(canonical) + "|" + sha);
+        var requests = SERVER.requests.stream().filter(request -> request.method().equals("POST")
+                && request.path().equals(canonicalEndpoint + "/merge_requests")).toList();
+        assertThat(requests).hasSize(1);
+        var actual = requests.getFirst();
+        var actualBody = json.readTree(actual.body());
+        var detail = journal.find(operation.id()).orElseThrow();
+        assertThat(detail.events()).extracting(GitOperationJournalPort.Event::type)
+                .containsExactly("INTENT_RECORDED", "SEND_STARTED", "APPLIED");
+        assertThat(detail.events()).extracting(GitOperationJournalPort.Event::sequence).containsExactly(0, 1, 2);
+        assertThat(detail.events()).allSatisfy(event -> assertThat(event.attemptId())
+                .isEqualTo(detail.events().getFirst().attemptId()));
+        var responseProof = json.readTree(detail.events().getLast().evidenceJson());
+        org.assertj.core.api.SoftAssertions.assertSoftly(soft -> {
+            soft.assertThat(operation.id()).isNotBlank().doesNotContain("\r", "\n");
+            soft.assertThat(operation.action()).isEqualTo("CREATE_MR");
+            soft.assertThat(operation.repoId()).isEqualTo(repo.getId().value());
+            soft.assertThat(operation.provider()).isEqualTo("GITLAB");
+            soft.assertThat(operation.baseUrl()).isEqualTo(SERVER.baseUrl());
+            soft.assertThat(operation.projectId()).isEqualTo(String.valueOf(project));
+            soft.assertThat(operation.remoteKey()).isEqualTo(remoteKey);
+            soft.assertThat(recorded.get("remote_key")).isEqualTo(remoteKey);
+            soft.assertThat(recordedTarget).as("complete typed eight-field accepted command").isEqualTo(expectedTarget);
+            soft.assertThat(operationTarget).isEqualTo(expectedTarget);
+            soft.assertThat(recorded.get("request_hash")).as("canonical UTF-8 request fingerprint").isEqualTo(expectedHash);
+            soft.assertThat(actual.body()).as("actual HTTP bytes use the canonical five-field request").isEqualTo(canonical);
+            soft.assertThat(actualBody).isEqualTo(body);
+            soft.assertThat(actual.query()).isNull();
+            soft.assertThat(actual.internalHeaders()).isFalse();
+            String description = actualBody.path("description").asText();
+            soft.assertThat(description).isEqualTo("\n" + marker);
+            soft.assertThat(description.lines().filter(marker::equals).count()).isEqualTo(1);
+            soft.assertThat(description.indexOf("ReleaseHub-Operation:")).isEqualTo(description.lastIndexOf("ReleaseHub-Operation:"));
+            soft.assertThat(responseProof.path("httpStatus").intValue()).isEqualTo(201);
+            soft.assertThat(responseProof.path("project_id").intValue()).isEqualTo(project);
+            soft.assertThat(responseProof.path("source_project_id").intValue()).isEqualTo(project);
+            soft.assertThat(responseProof.path("target_project_id").intValue()).isEqualTo(project);
+            soft.assertThat(responseProof.path("source_branch").textValue()).isEqualTo(source);
+            soft.assertThat(responseProof.path("target_branch").textValue()).isEqualTo(target);
+            soft.assertThat(responseProof.path("sha").textValue()).isEqualTo(sha);
+            soft.assertThat(responseProof.path("iid").intValue()).isEqualTo(7);
+        });
+    }
+
+    private String createMrRequestSha256(String value) throws java.security.NoSuchAlgorithmException {
+        return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(ints = {200, 202})
     void mrCreationRequiresCreatedStatus(int status) {
         var run = prepareMrCreationRun();
