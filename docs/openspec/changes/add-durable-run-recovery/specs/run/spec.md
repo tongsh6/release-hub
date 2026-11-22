@@ -720,7 +720,7 @@ C2-B6 已 DONE：独立契约、RED→GREEN 与本地门禁完成，实现 4e992
 
 ### Requirement: 原 CREATE_BRANCH 未发送意图的安全接续与本地收口
 
-C2-B7 已 DONE；以下契约先经过独立 RED 再实现。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。当前唯一 HEAD 为 C2-B8 正常 CREATE_MR 完整请求的发送证明闭环，独立契约与正反例已收敛，源码与新测试尚未修改、待 RED。系统 SHALL 只在 ENSURE_FEATURE、ENSURE_RELEASE 的原完整 CREATE_BRANCH/INTENT 具有当前 fence、匹配 guard、同 attempt 唯一 seq0、无 SEND/自身 Step 时沿原 Task 接续或本地结束，不因快照、到期或任意 FOUND 授权写入。
+C2-B7 已 DONE，验收证据见任务记录第 20 节，当前任务以执行路线图为准。系统 SHALL 只在 ENSURE_FEATURE、ENSURE_RELEASE 的原完整 CREATE_BRANCH/INTENT 具有当前 fence、匹配 guard、同 attempt 唯一 seq0、无 SEND/自身 Step 时沿原 Task 接续或本地结束，不因快照、到期或任意 FOUND 授权写入。
 
 #### Scenario: 原准备路径交付既有操作快照但不交付绕过权限
 
@@ -806,7 +806,7 @@ C2-B7 已 DONE；以下契约先经过独立 RED 再实现。B7 已完成独立 
 
 ### Requirement: 正常 CREATE_MR 完整请求的发送证明闭环
 
-C2-B8 是当前唯一 HEAD；根侧与独立 boundary 已收敛以下实施前契约，源码和新测试尚未修改、待独立 RED，不代表已通过。系统 SHALL 沿现 producer → adapter/interceptor → Journal begin/sending → 实际 HTTP → B3 响应 → 原结果消费者证明正常 CREATE_MR 发送了已接纳的完整请求；同时覆盖 ENSURE_MR Task 及现 cleanup/GitMergeWorkflow 非 Task producer，不新建实体、schema、DTO、Port 或用户入口，也不开放 CREATE_MR 恢复。
+C2-B8 已 DONE，以下契约经独立 RED、一次 PG 过强断言校准及本地 125/125 与相关 965/965 验证；实现 `537588e` 已推送，固定 SHA CI 44972473174 attempt 1 为 5 PASS / 0 FAIL。B9 原 INTENT 另作独立验收。系统 SHALL 沿现 producer → adapter/interceptor → Journal begin/sending → 实际 HTTP → B3 响应 → 原结果消费者证明正常 CREATE_MR 发送了已接纳的完整请求；同时覆盖 ENSURE_MR Task 及现 cleanup/GitMergeWorkflow 非 Task producer，不新建实体、schema、DTO、Port 或用户入口，也不开放 CREATE_MR 恢复。
 
 #### Scenario: 正常 producer 提供严格五字段请求
 
@@ -876,6 +876,13 @@ C2-B8 是当前唯一 HEAD；根侧与独立 boundary 已收敛以下实施前�
 - **WHEN** 默认 worker、prepareUnsentTaskClaim 或 RunJpa 领取路径检查候选
 - **THEN** 0 token 换权、0 SEND、0 Step、0 POST
 - **AND** validUnsentOperation 恢复白名单、Context resume 快照和 NOT_SENT 不扩大到 CREATE_MR；B9 另行定义 workflow 按原 A 决策及真实本地结果
+
+#### Scenario: 原 owner 主动报告 UNKNOWN 不等于恢复或 NOT_SENT
+
+- **GIVEN** 原 owner 仍有当前 Task fence，完整 CREATE_MR INTENT 只有唯一 seq0、未 SEND
+- **WHEN** 原 owner 沿既有失败消费者主动确认 UNKNOWN
+- **THEN** 原 Task 与本地 Step 为 UNKNOWN，原 operation 仍 INTENT_RECORDED、seq0 与 token 不变，guard 保留 REMOTE_RESULT_UNKNOWN
+- **AND** 无 SEND/POST、不标 NOT_SENT，不授权后继或普通 retry；该路径不同于到期自动扫描/领取
 
 #### Scenario: source 前进反例保留 UNKNOWN 和 guard
 

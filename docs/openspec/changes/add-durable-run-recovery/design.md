@@ -1,6 +1,6 @@
 # 发布编排持久执行与中断恢复设计
 
-状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。C2-B2 已分组推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5；规范化建分支成功证明与 APPLIED 结果投影恢复已交付。C2-B3 后端 d87dfa8、文档 544983b 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE；本地最终 403/48/738、静态与历史轮次证据见记录 16.2–16.6。C2-B4、B5 已完成本地与各自固定 SHA CI 验收并推送，证据见记录 17.5、18.9。C2-B6 原 MERGE 未发送意图的本地收口已完成：相关单次 749/API 48/普通 816、前端 217 与静态通过，实现 4e992e9、文档 29ec005 已推送，固定实现 SHA 的 Full-Link 44940092094 为 5/5（记录 19.9）。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。当前唯一 HEAD 为 C2-B8 正常 CREATE_MR 完整请求的发送证明闭环，独立契约与正反例已收敛，源码与新测试尚未修改、待 RED。
+状态：S1、S2 已于 2026-10-08 完成；2026-11-21 用户授权继续研发和分阶段推送，S3-A/B1、S3-B2、S3-C1、S3-C2-A、S3-C2-B1 已验收并推送。C1 固定 `e5094ba` 的 Full-Link 44899945002、C2-A 固定 `1761572` 的 Full-Link 44905843754 均为 5/5。C2-B1 代码 `3f810c8`、文档 `5441df6` 已推送，固定 `5441df6` 的 Full-Link 44911634004 为 5/5。C2-B2 已分组推送，固定 `cc800362f333418776f4a816e1fa74ee9f08c04f` 的 [Full-Link 44917254215](https://github.com/tongsh6/release-hub/actions/runs/44917254215) 为 5/5；规范化建分支成功证明与 APPLIED 结果投影恢复已交付。C2-B3 后端 d87dfa8、文档 544983b 已推送，固定 `544983beff74604852c050209e4c8caa93678ef2` 的 [Full-Link 44924378741](https://github.com/tongsh6/release-hub/actions/runs/44924378741) 为 5/5，B3 已 DONE；本地最终 403/48/738、静态与历史轮次证据见记录 16.2–16.6。C2-B4、B5 已完成本地与各自固定 SHA CI 验收并推送，证据见记录 17.5、18.9。C2-B6 原 MERGE 未发送意图的本地收口已完成：相关单次 749/API 48/普通 816、前端 217 与静态通过，实现 4e992e9、文档 29ec005 已推送，固定实现 SHA 的 Full-Link 44940092094 为 5/5（记录 19.9）。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。B8 已完成独立 RED、定向 125/125、单次相关 965/965、API 48/48、普通 877（872 PASS / 5 既有 SKIP）与静态验收；实现 `537588e782c2b3bb2d2e82e21804f2d37fb42fc2` 已推送，固定该 SHA 的 [Full-Link 44972473174](https://github.com/tongsh6/release-hub/actions/runs/44972473174) attempt 1 为 5 PASS / 0 FAIL，B8 已 DONE。详见任务记录 21.6–21.11。当前唯一 HEAD 为 B9 原 CREATE_MR INTENT 的安全接续与本地收口，已开始只读边界分析，源码与新测试尚未修改。
 
 
 ## 0. 当前研发蓝图与授权（2026-11-21）
@@ -329,9 +329,9 @@ CREATE_BRANCH/SEND_STARTED 已提交但尚无 seq2 时拒绝提前本地 UNKNOWN
 
 回滚先停派发并保留事实，不撤销远端分支、不重发已 NOT_SENT 或 SEND/UNKNOWN 的操作。本片没有新表、迁移、持久 DTO、独立接口或兼容层。CREATE_MR 原意图摘要尚不含完整 title/description/源分支删除选项 请求且描述含随机 operation marker，不能凭“同为 INTENT”宽松推广本片重放资格；完整请求责任另片定义。
 
-##### C2-B8：正常 CREATE_MR 完整请求的发送证明闭环（当前子片 / HEAD，实施前契约）
+##### C2-B8：正常 CREATE_MR 完整请求的发送证明闭环（DONE）
 
-本片归属 SA-013 现蓝图，目标是证明正常 CREATE_MR 实际发送了已接纳的完整命令。根侧与独立 boundary 已收敛契约；源码及新测试尚未修改、待独立 RED，本节不是运行结果。正常 ENSURE_MR → adapter → interceptor → Journal → HTTP → B3 响应 → 原 Task 检查点与后继必须立即消费完整请求，不能只存字段为将来铺垫。
+本片归属 SA-013 现蓝图，目标是证明正常 CREATE_MR 实际发送了已接纳的完整命令。独立 RED 后已实现并通过本地验收，实现 `537588e` 已推送；固定 SHA CI 44972473174 attempt 1 为 5 PASS / 0 FAIL，本片已 DONE。正常 ENSURE_MR → adapter → interceptor → Journal → HTTP → B3 响应 → 原 Task 检查点与后继实际消费完整请求，证据见任务记录 21.6–21.11。
 
 同一个 GitLabMergeRequestAdapter.create 也被现 executeCleanup → executeCleanupItem → executeMerge → GitLab mergeBranch → GitMergeWorkflow 的非 Task 路径实际消费。typed target/hash/marker 证明同样适用于 taskFence=null；Task metadata/计划/fence/无自身 Step 等只在 Task 路径追加，不误拒绝合法 cleanup。
 
@@ -357,11 +357,11 @@ begin 与当前 owner sending 都核 typed 请求/hash/marker。sending 还须 o
 
 **事务边界。** Journal admission/sending 自身事务失败时，只回滚该未提交事务内的新变化，零非法 SEND/POST；sending 反例须真正经过 seq1/guard 暂写后抛错，不以前置拒绝冒充回滚。已由 REQUIRES_NEW 独立提交的 INTENT/SEND/响应事实不会随外层业务事务回滚消失。Task 沿既有结果确认/APPLIED 投影边界，非 Task 沿既有会话收口保持必要 guard；不能把已知 APPLIED 改说远端 UNKNOWN，也不能因外层回滚自动重放。
 
-**关闭的恢复范围与最强反例。** prepareUnsentTaskClaim、validUnsentOperation 恢复白名单、RunJpa 接管、Context resume 快照、NOT_SENT 均不扩大到 CREATE_MR；完整 INTENT 到期仍须 0 token 换权/0 SEND/0 Step/0 POST。GitLab 17.11 创建 POST 没有 sha-CAS，merge PUT 才有 SHA 前置条件；POST 前读 A、响应已 B 时仍 UNKNOWN/保留 guard，不建 CREATED 检查点、不启动 TRY。历史 B3 三字段 target/任意 hash 的 APPLIED 仍按原 201/三处 project 身份/source-target/SHA/IID/URL 响应证明纯 DB 投影，禁止追加新完整请求/hash 门禁。B9 未来还需 workflow 按原 A 决策，本片不实现。
+**关闭的恢复范围与最强反例。** prepareUnsentTaskClaim、validUnsentOperation 恢复白名单、RunJpa 接管、Context resume 快照、NOT_SENT 均不扩大到 CREATE_MR；完整 INTENT 到期的默认扫描/领取仍须 0 token 换权/0 SEND/0 Step/0 POST。原 owner 主动报告 UNKNOWN 沿现有结果确认路径产生本地 UNKNOWN Step，仍保留原 INTENT、seq0 与 guard，不属于自动恢复或 NOT_SENT。GitLab 17.11 创建 POST 没有 sha-CAS，merge PUT 才有 SHA 前置条件；POST 前读 A、响应已 B 时仍 UNKNOWN/保留 guard，不建 CREATED 检查点、不启动 TRY。历史 B3 三字段 target/任意 hash 的 APPLIED 仍按原 201/三处 project 身份/source-target/SHA/IID/URL 响应证明纯 DB 投影，禁止追加新完整请求/hash 门禁。B9 未来还需 workflow 按原 A 决策，本片不实现。
 
-**数据与既有测试契约的变化。** Task RunAppService 与非 Task cleanup 的 title 均由现 producer 固定生成 `Merge <source> into <target>`；唯一 GitLab MR POST 没有 description 参数，本片显式空字符串再加受控 marker。既有 target_json TEXT 容纳完整受支持命令；GitOperationController 的 repo/run 列表与详情在现 targetJson 字段中直接返回完整请求，不能称只在 DB 内部或 API 数据完全不变。现查询需认证，但没有仓库级/操作者级过滤，不声称仅创建者可见，本片不扩 RBAC。GitOperationsPanel 当前不渲染 targetJson，无新增 UI 展示入口。旧 GitWriteHttpInterceptorTest.shouldCorrelateRequestWithoutPersistingTokenOrBodyContent 的“标题不存”断言需有依据地改为完整请求可审计；token/认证 header/任意额外正文及响应证据隐私约束保留，不泛化保存任意 body 或 secret。不得宣称所有旧断言都不变；新独立 RED 一旦冻结仍须保留原契约。
+**数据与既有测试契约的变化。** Task RunAppService 与非 Task cleanup 的 title 均由现 producer 固定生成 `Merge <source> into <target>`；唯一 GitLab MR POST 没有 description 参数，本片显式空字符串再加受控 marker。既有 target_json TEXT 容纳完整受支持命令；GitOperationController 的 repo/run 列表与详情在现 targetJson 字段中直接返回完整请求，不能称只在 DB 内部或 API 数据完全不变。现查询需认证，但没有仓库级/操作者级过滤，不声称仅创建者可见，本片不扩 RBAC。GitOperationsPanel 当前不渲染 targetJson，无新增 UI 展示入口。旧 GitWriteHttpInterceptorTest.shouldCorrelateRequestWithoutPersistingTokenOrBodyContent 的“标题不存”断言需有依据地改为完整请求可审计；token/认证 header/任意额外正文及响应证据隐私约束保留，不泛化保存任意 body 或 secret。不得宣称所有旧断言都不变。首轮 PG 契约曾错误地禁止原 owner 主动报告 UNKNOWN；经原失败消费者核对后，仅修正此过强断言并补正控，保留到期自动接管的全部负控。校准后独立 RED 的新增块到最终源码逐字保持；原 B3 APPLIED fixture 仅改为先合法写入再恢复历史三字段 target/旧 hash，不改历史响应投影断言。
 
-| 独立正反例 | 待先 RED 验证的出口 |
+| 独立正反例 | 本地已验证的出口 |
 |---|---|
 | 正常 ENSURE_MR 与 taskFence=null cleanup 的真实 HTTP/Journal | target/hash/实际 body/marker 一致，B3/原结果下游继续工作，非 Task 不误拒绝 |
 | 缺/错/多字段、错误 hash、任意 query | 零 SEND/POST，不默补、不保留四字段旧路径 |
@@ -369,11 +369,11 @@ begin 与当前 owner sending 都核 typed 请求/hash/marker。sending 还须 o
 | begin 返回错误 id/target/可见身份；begin 后当前 owner 记录破坏 | 零 SEND/POST，sending 锁内实时复核，guard 合法不能掩盖错误实体 |
 | 真实 PG 锁竞争、Journal admission/sending 自身事务失败、旧 fence/owner 或事件/自身 Step 污染 | 零非法 SEND/POST；仅回滚当前未提交事务的新变化，sending 反例实际经过 seq1/guard 暂写后抛错，不以前置拒绝冒充 |
 | 外层业务事务回滚，INTENT/SEND/响应已独立提交 | 保留原事实；Task 沿既有结果确认/APPLIED 投影，非 Task 沿既有会话收口保持必要 guard；不把已知 APPLIED 改说远端 UNKNOWN，不自动重放 |
-| 完整 CREATE_MR INTENT 到期 | 真实 PG 验证无接管、无 token 换权、无 SEND/Step/POST |
+| 完整 CREATE_MR INTENT 到期 | 默认扫描/领取无接管、无 token 换权、无 SEND/Step/POST；原 owner 主动 UNKNOWN 保留原 INTENT/seq0/guard，不授权 NOT_SENT 或后继 |
 | source A→响应 B；历史 B3 APPLIED/已有进程 trace | UNKNOWN/guard/无 TRY 和原纯 DB 投影同时保持，不追加请求/hash 门禁 |
 | 现 targetJson API 与隐私消费者 | 返回受支持完整命令；认证/secret/无关正文和响应隐私仍受约束，无新 UI 入口 |
 
-先独立 RED 再改生产；完成真实 HTTP/PG、非 Task 消费者、既有 APPLIED 进程回归、相关/API/静态 TopN、源码绑定、审阅、分组提交推送和本片固定 SHA CI 后出队。无新实体、表、schema、DTO、Port、执行器、缓存或用户入口。回滚停派发、保留原事实，不清数据、不重发未知，不扩大完整 UI；B9 原 INTENT 与 SEND/UNKNOWN 仍独立排队。
+独立 RED 的 125 例在旧实现上为 107 FAIL / 18 正控 PASS；校准与历史失败均保留。首轮 GREEN 125/125 后只调整一个旧 PG fixture，最终单次 13 suites 965/965（含全部 125 新例、368 PG 与 15 进程强杀例）、API 48/48、普通 877（872 PASS / 5 既有 SKIP）通过，八份最终 backend 快照 495 文件一致。静态 `.ai/reports/static-scan/20261122-093043/summary.md` 为六模块 SpotBugs 0、typecheck PASS、lint 0 errors / 8 既有 fixture warnings，TopN 逐项留痕。前端 217 为历史结果，本片未重跑；222 文件与既有基线一致。实现 `537588e` 已推送，本片固定 SHA CI 44972473174 attempt 1 为 5 PASS / 0 FAIL，已出队。CI 覆盖后端 API 与隔离 GitLab，不扩大完整 UI 或 Slice4/5 的既有较弱验收边界。无新实体、表、schema、DTO、Port、执行器、缓存或用户入口；回滚停派发并保留原事实。B9 原 INTENT 现为唯一 HEAD，先做只读边界分析；SEND/UNKNOWN 与完整 UI 仍独立排队。
 
 ### 分阶段依赖与交付
 

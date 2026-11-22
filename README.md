@@ -31,7 +31,7 @@ C2-B2 的范围仅为 ENSURE_FEATURE/ENSURE_RELEASE 的 CREATE_BRANCH/APPLIED。
 
 **S3-C2-B7 已完成验收，实现已推送**：feature/release 沿原冻结 SHA 和数值项目接续完整未发送意图，并原子收口真实 NOT_SENT；sourceRef 前进/删除不重新求值，项目重映射在预检前拒绝，SEND 无响应时保留真实发送者处理权。独立 RED 后定向 91/91、单次相关 840/840、API 48/48、普通后端 831（826 PASS / 5 既有 SKIP）、静态与源码绑定均通过。实现 `00def779f82d4b10b13c547bacda08fd91706fc9` 已推送；[固定实现 SHA 的 Full-Link 44945748427](https://github.com/tongsh6/release-hub/actions/runs/44945748427) attempt 2 为 5 PASS/0 FAIL，B7 已 DONE。首轮 Docker 依赖下载 Central 429 与重跑全过程保留于[验收记录第 20 节](tasks/records/2026-11-21-sa-013-orchestration-consistency.md)，验收文档单独收口；该验收限后端 API 与隔离 GitLab，不扩大完整 UI 旅程。
 
-当前按[执行路线图](docs/execution-roadmap.md)接续 B8「正常 CREATE_MR 完整请求的发送证明闭环」：由现 producer、Journal begin/sending、返回 Operation 重建的实际 HTTP body，到 B3 响应与原结果消费者形成闭环，同时覆盖正常 ENSURE_MR 和已有非 Task cleanup 写链。独立契约已收敛，源码与新测试待 RED；B9 原 CREATE_MR INTENT 接续/本地收口、SEND/UNKNOWN 和完整 UI 继续独立验收。
+B8「正常 CREATE_MR 完整请求的发送证明闭环」已验收：正常 ENSURE_MR 与已有非 Task cleanup 均验证已接纳的完整命令确实进入 HTTP。独立新例 125/125、相关回归 965/965、API 48/48、普通后端 872 PASS / 5 既有 SKIP 及静态通过；实现 `537588e` 已推送，固定提交的 [Full-Link CI](https://github.com/tongsh6/release-hub/actions/runs/44972473174) 为 5 PASS / 0 FAIL。当前按[执行路线图](docs/execution-roadmap.md)接续 B9「原 CREATE_MR INTENT 的安全接续与本地收口」，先独立核对原始 SHA、接管资格与本地结果；SEND/UNKNOWN 和完整 UI 继续独立验收。
 
 > **协作入口：[`AGENTS.md`](AGENTS.md)** — 唯一项目画像、工程规则与知识导航；生命周期、工作模式和发布事实分别记录。
 > 📋 **实现与验证事实：[`docs/project-ledger.md`](docs/project-ledger.md)** — 已交付基线、当前任务目标与验收边界。
