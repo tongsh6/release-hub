@@ -1,6 +1,6 @@
 # 2026-11-21 SA-013：分支收敛与唯一编排语义
 
-状态：已交付阶段及其固定 SHA 证据按各节保留。C2-B6 实现 `4e992e9c2406586ec23fa7636292e3d48c163118`、文档 `29ec00586be20730e66cf37da12614e6450d240d` 已分阶段推送，固定实现完整 SHA 的 Full-Link 44940092094 为 5/5，B6 已 DONE，详见19.9；此前本地门禁与历史轮次不变。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。C2-B8 正常 CREATE_MR 完整请求的发送证明闭环已 DONE：独立 RED 与一次明确 PG 契约校准后，125/125 首次 GREEN、单次相关965/965、API48/48、普通877（872 PASS / 5既有SKIP）、静态及最终源码绑定通过；实现 `537588e782c2b3bb2d2e82e21804f2d37fb42fc2` 已推送，固定该 SHA 的 [Full-Link 44972473174](https://github.com/tongsh6/release-hub/actions/runs/44972473174) attempt 1 已 completed/success，五个slice分别PASSED。最终证据与边界见21.11，验收文档单独收口。C2-B9 原 CREATE_MR INTENT 的安全接续与本地收口已 DONE：相关1078/1078、API48/48、普通918（913 PASS / 5既有SKIP）、静态与最终源码审计通过，实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003 attempt 1为5 PASS / 0 FAIL。证据与边界见记录22.7–22.14，验收文档单独收口。当前唯一 HEAD 为 C2-B10「MERGE_MR 精确只读核对证据」；后续SEND/UNKNOWN受证据约束恢复继续QUEUED，再按原顺序推进SA-002。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
+状态：已交付阶段及其固定 SHA 证据按各节保留。C2-B6 实现 `4e992e9c2406586ec23fa7636292e3d48c163118`、文档 `29ec00586be20730e66cf37da12614e6450d240d` 已分阶段推送，固定实现完整 SHA 的 Full-Link 44940092094 为 5/5，B6 已 DONE，详见19.9；此前本地门禁与历史轮次不变。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。C2-B8 正常 CREATE_MR 完整请求的发送证明闭环已 DONE：独立 RED 与一次明确 PG 契约校准后，125/125 首次 GREEN、单次相关965/965、API48/48、普通877（872 PASS / 5既有SKIP）、静态及最终源码绑定通过；实现 `537588e782c2b3bb2d2e82e21804f2d37fb42fc2` 已推送，固定该 SHA 的 [Full-Link 44972473174](https://github.com/tongsh6/release-hub/actions/runs/44972473174) attempt 1 已 completed/success，五个slice分别PASSED。最终证据与边界见21.11，验收文档单独收口。C2-B9 原 CREATE_MR INTENT 的安全接续与本地收口已 DONE：相关1078/1078、API48/48、普通918（913 PASS / 5既有SKIP）、静态与最终源码审计通过，实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003 attempt 1为5 PASS / 0 FAIL。证据与边界见记录22.7–22.14，验收文档单独收口。B10「MERGE_MR 精确只读核对证据」已DONE：相关1123/API48/普通942、前端218与静态及源码审计通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定该SHA的Full-Link44982102777 attempt 1为5 PASS/0 FAIL，证据见记录23.7–23.11。当前唯一 HEAD 为 C2-B11「GitLab MR读取响应状态证明」；后续SEND/UNKNOWN窄恢复继续QUEUED，再按原顺序推进SA-002。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
 
 ## 1. 目标与范围
 
@@ -1343,3 +1343,129 @@ ENSURE_MR本地结果消费者复用了原Task结果事务；真实minimal failu
 本片独立RED、已说明的校准、核心与排序GREEN、最终相关/API/普通/静态、源码绑定和独立审阅，以及分组实现推送与固定SHA远端验收已完成，B9标DONE并出队，验收文档单独收口。相关1078中的113个新增例、五个既有SKIP、八条既有fixture warnings及217前端测试仅为历史结果的边界保持。Full-Link只证明既有后端API与隔离GitLab链路，不扩称完整UI或提升Slice4/5既有较弱验收边界；main/develop尚未因此集成本片。
 
 当前唯一HEAD顺延为C2-B10「MERGE_MR 精确只读核对证据」，目标仅为I/IID/A对象当前merged及typed观察事实。FOUND不代表原PUT成功或原业务计划满足，实际source/target变化照实保留；不改Task/Step/guard/seq2。B10详细契约与新测试留待下一阶段，本节不宣称已实现。后续SEND/UNKNOWN受证据约束恢复继续QUEUED，之后仍为SA-002；C2/S3整体与完整UI没有随B9一并完成。
+
+## 23. C2-B10：MERGE_MR精确只读核对证据（独立事前契约）
+
+### 23.1 定位基线与单一目标
+
+B9验收文档`d51a0b7efd20cdcf005aa165330cf3de6312de05`已提交推送；生产实现仍为`666acdc7a60c0922db2f05713cbfefd23eed8265`，固定SHA Full-Link44978661003首轮5/5。第22节封存；23.1–23.6为独立事前契约，不能当作运行结果，实际RED/GREEN从23.7另记。项目仍按确认的development/system_refactoring及SA-013完整蓝图推进，B10为唯一HEAD。
+
+用户价值是让原MERGE_MR未知或在途写入具备精确、可解释的当前对象观察，为后续受证据约束的判断提供事实。端到端路径沿现Controller.reconcile → AppService在事务外GET → GitRemoteEvidenceAdapter → 原confirmedMergedMr → Journal.observe → 现Observation详情/UI，单一目标为核对原I/IID/A对象当前merged，不确认原PUT因果、不补原业务计划执行结论。
+
+### 23.2 查重、实际消费者与定位依据
+
+在23.1所列事前基线上已只读核实：GitRemoteEvidenceAdapter.java:34–63将MERGE_MR和UPDATE_MR放在同一宽松state/sha判断中，未把MR GET实际status与完整原始对象一起交给B4证明；:139–142的通用summary会把scalar值转文本。B10只收敛MERGE_MR的观察规则，不扩展其他动作。
+
+GitLabMergeRequestAdapter.java:230–251的confirmedMergedMr已具备HTTP200、原始三个正整数项目身份、精确IID、合法且语义等同A的SHA、merged状态、分支/URL及merge_commit_sha完整证明。GitOperationAppService.java:22–33已有key/version幂等核对、事务外evidence.read与Journal.observe接线；GitOperationPersistenceAdapter.java:423–435只写Observation和op.version/updatedAt，:140–149的真实finish按当前状态及seq1 sender核验。原对象可承责，不为此次观察扩Operation/Task关联接口或增加另一份证明模型。
+
+现GitOperationController.java:26–36暴露详情及reconcile，GitOperationsPanel.vue:42–47/96–115展示observation.status/evidenceJson并在核对后重取详情。完整证据有立即消费方，不是为未来新增无消费者存储。文件分别位于既有infrastructure/git、infrastructure/persistence/gitoperation、application/gitoperation、interfaces/api/run与frontend/src/components/run层，不新增实体、表、schema、DTO、Port、缓存、执行器或UI入口。
+
+### 23.3 精确locator、完整证明与typed证据
+
+MERGE_MR原target必须提供文本method=PUT、完整匹配`/merge_requests/[1-9][0-9]*/merge`的文本suffix、文本且满足validSha的A（40/64位hex）。非法locator返回INCOMPLETE、MR GET=0；该计数不排除现namespace身份GET。原namespace若由I指向J，沿既有身份检查先阻止J业务GET，不用当前J替换原项目。历史三字段与当前五字段target使用同一规则，不新增完整请求hash门禁或兼容层，不补齐旧正文。
+
+| 独立输入 | 应有结果 |
+|---|---|
+| 缺失/错误类型/非法method、IID、suffix或SHA | INCOMPLETE；业务MR GET为0，不猜测或宽松截断locator |
+| absent、JSON null、array或其他非object正文 | INCOMPLETE |
+| HTTP200 object含空对象，但三项目/IID/A、typed字段、state/URL或merge_commit_sha证明不完整 | MISMATCH |
+| HTTP201加完整merged正文 | MISMATCH；须使用实际status，不能固定传200 |
+| 实际200且confirmedMergedMr(actualStatus,raw,I,IID,A)完整成立 | FOUND，仅为该对象当前merged |
+| 403/404/读取不可用 | 原FORBIDDEN/NOT_FOUND/UNAVAILABLE；不得引出重放或释放保护 |
+
+观察证据仅取十字段：project_id、source_project_id、target_project_id、iid、source_branch、target_branch、sha、web_url、state、merge_commit_sha。已有scalar/null保留原JSON类型与值；缺失不制造null，嵌套object/array省略，错误scalar类型保留作诊断而不能骗过完整证明。token、认证header、merge_commit_message及任意额外正文不记录。API形状不变，现evidenceJson的可见内容更完整，UI继续原格式化展示。
+
+最强反例：I/IID/A当前已merged，但由另一操作者完成，或实际source/target已改变。FOUND可以成立，实际分支必须如实保留，仍不能推出原PUT成功或原计划target满足；不从merge_commit_message文本推导计划，不通过新接口向Task索要另一套绑定。本片只读事实与后续恢复授权保持分责。
+
+### 23.4 持久副作用与双向竞争边界
+
+reconcile成功提交只新增现Observation并推进op.version/updatedAt；Task、Step、Run、metadata、guard、events、attempt及op原执行state/reason保持。UNKNOWN之后再得到FOUND仍为UNKNOWN/NEEDS_REVIEW并保留guard，不建seq2、不完成原Task、不启动重试或后继。相同actor/key与原expectedVersion仍走现幂等返回，不新增网络写或并行查询入口。
+
+真实HTTP/PG须覆盖两种提交顺序：观察先commit后，原seq1 sender的真实PUT响应仍可按现fence/状态资格finish，不能因观察版本增加丢掉真实响应；真实finish先commit后，持旧version的GET观察必须STALE且零Observation/业务写入，原真实seq2保留。GET仍在账本事务外，观察version仅防止陈旧观察提交，不充当发送权或远端Git锁。
+
+### 23.5 先验正反例与预定验收
+
+预定27个backend展开例（24 adapter + 3真实Spring/HTTP/PG）及1个现UI基线正控；这是测试准备范围，不是执行结果。根侧先冻结d51a0b7生产树，在生产修改前得到独立行为RED；不把编译失败或fixture错误算作产品RED，后续必要校准保留原证据和理由。
+
+| 验收层 | 正例与最强反例 |
+|---|---|
+| adapter新增24例 | 固定展开3（40/64位typed证明和retargeted对象）+响应矩阵15+非法locator6；精确展开见23.7，不把namespace I→J或全部通用错误归入新24 |
+| 既有adapter18例与源码边界 | pipeline/tag、MR分页/关联和403等旧回归独立保留；namespace I→J及其余401/404/UNAVAILABLE沿既有身份/异常分支核源码，不宣称新24或旧18逐项覆盖全部错误 |
+| 真实HTTP/PG 3例计划 | UNKNOWN后FOUND保持全部执行保护；observe先commit仍允许原sender真实finish；finish先commit使旧观察STALE且零写。使用实际HTTP计数、数据库事实与受控并发，不用前置拒绝替代竞争 |
+| UI 1例基线正控计划 | 现GitOperationsPanel消费FOUND证据时仍展示UNKNOWN/阻塞事实，不产生恢复动作；只证明组件消费，不扩称完整UI旅程 |
+
+相关/API/普通后端、静态TopN逐项处理、源码绑定及独立源码审阅均为后续门禁；实现按可评审粒度分组提交推送，并以本片固定完整SHA CI验收才出队。新的测试展开数、RED/GREEN、源码变化与CI结果须另行追加，不能借B9历史测试替代本片行为验证。
+
+### 23.6 数据、回滚与后续范围
+
+复用已有Observation/evidenceJson存储和现查询/UI，不改schema或接口形状，不新建实体或Task关联API。新证据字段受白名单和typed保真约束，不泛化保存任意远端正文。未验收前停止交付，发现缺陷以修复提交处理；已有Observation、原执行和guard事实保留，不清数据或重发未知请求。本片未引入dispatcher或独立开关，不把回滚描述为操作一个不存在的新入口。
+
+后续SEND/UNKNOWN受证据约束恢复仍QUEUED，只有独立设计与验收才能授予动作；FOUND本身没有该权限。真实远端观察完整旅程、完整UI及C2/S3整体继续保留未验边界，SA-002次序不变。
+
+### 23.7 冻结生产的独立RED与UI基线正控
+
+冻结基线为`d51a0b7efd20cdcf005aa165330cf3de6312de05`。两组backend验证只overlay指定测试文件，signatureSeamPaths均为空；导出树与根工作区生产前后稳定，没有签名适配或生产行为修改。所有RED完成后才修改生产，测试契约无校准。
+
+| 证据（`.ai/reports/validation/c2-b10/` 下） | 实际展开与结果 | 时间 |
+|---|---|---|
+| `red-adapter-frozen-jdk21/result.json` | 24=22断言FAIL+2正控PASS，0 ERROR/SKIP | 5.3秒 |
+| `red-http-frozen-jdk21/result.json` | 3=1断言FAIL+2正控PASS，0 ERROR/SKIP | 15.3秒 |
+| 两组独立RED合计 | 27=23 FAIL+4正控PASS，不含UI基线 | 分组运行，不合并成单次 |
+| `ui-baseline-control/result.json` | 既有3例加新1正控，共4/4 PASS，0 failed/pending | 1.2秒 |
+
+两个真实HTTP竞争正控在旧生产上已经PASS；第三条先通过UNKNOWN/NEEDS_REVIEW、Task/Step/metadata/guard/events/attempt保持的断言，再在typed证据聚合断言FAIL。因此RED定位的是观察证明/证据内容缺口，不能描述为旧UNKNOWN会被观察解除，也不能把已有并发保护写成此次才引入。
+
+实际新增adapter24为固定展开3（40/64位、旧三字段/当前五字段、null merge SHA与retargeted对象）、响应矩阵15、非法locator6。响应15对应WRONG_IID、MISSING_PROJECT_ID、FOREIGN_SOURCE_PROJECT、TEXT_TARGET_PROJECT、SOURCE_SHA_MOVED、STILL_OPENED、MISSING_SOURCE_BRANCH、EMPTY_TARGET_BRANCH、RELATIVE_URL、MISSING_MERGE_SHA、NESTED_MERGE_SHA、EMPTY_OBJECT、EMPTY_BODY、STATUS_201、NON_OBJECT；locator6对应MISSING_SHA、INVALID_SHA、WRONG_METHOD、ZERO_IID、QUERY_IN_SUFFIX、NON_TEXT_SUFFIX。既有18例继续回归，不能加进新增24或把全部契约输入都称作新增测试覆盖。
+
+同键幂等也须区分证据层：新三条HTTP没有same-key重复零GET断言。旧GitWriteSafetyIT:1911–1920直接核同key返回同一Observation且请求均为GET；GitOperationJournalIT:116–125核同key幂等、版本冲突及UNKNOWN/guard保持，:56–79核认证和同key原版本API响应；既有GitOperationsPanel.spec.ts:32–45核响应丢失时重用key/version。零额外evidence.read的依据是GitOperationAppService:24–27先返回、:32才read的源码接线，不将这些证据写成新三例的运行覆盖。
+
+### 23.8 独立GREEN、前端回归与未完成门禁
+
+全部独立RED之后，生产仅修改GitRemoteEvidenceAdapter.java，SHA256为`e6ace6fd364349a3e66be86080ef9b500884c8b8c736ec678ad10fb1e5b6ff22`；独立只读源码审查未见阻断。实现复用confirmedMergedMr完整证明、原read/reconcile/observe与现UI消费，不新增实体或接口，不改变原执行/恢复权限。
+
+`green-independent-jdk21/result.json`实际27/27 PASS（adapter24、真实HTTP/PG3），0 FAIL/ERROR/SKIP，14.6秒；495个backend源码文件在该轮前后稳定。没有测试校准或源码seam，未以改断言取得GREEN。`frontend-final/result.json`实际218/218 PASS、0 failed/pending，含coverage，2.7秒；本片新UI正控包含在218内，与基线4/4不相加。前端生产未改，基线与完整回归的222文件快照一致；本片有一次实际完整前端套件运行，不借用B9的217历史计数。
+
+`red-evidence-audit.json`已PASS：27个RED身份与27个GREEN逐项一致，原三个测试文件全部旧行保留，新测试hash冻结不变。首次审计器错误比较Git symlink blob SHA与文件内容SHA，失败记录保留为`red-evidence-audit-attempt-1.json`；只修正取证器，未改生产/测试或重跑Maven。实际`backend/tests/e2e/test_utils.sh`为mode120000，原link文本`../utils/test-utils.sh`及已跟踪目标内容hash在两棵冻结树中均与d51a0b7一致；该次取证修正不是测试失败或源码偏移。
+
+记录本节时，完整1123相关回归尚待最终结果，API/普通后端/静态、实现提交推送与固定SHA CI尚未验收。B10保持HEAD，出口不勾选；后续结果须另行追加，不用27独立GREEN或218前端通过代替完整交付门禁。
+
+### 23.9 最终本地门禁与交付源码绑定
+
+本节追加23.8当时待验事项的实际结果，23.1–23.8原文保留。完整相关回归为单次14 suites，不把独立27例和其中重复覆盖相加。
+
+| 门禁与证据（`.ai/reports/validation/c2-b10/` 下） | 实际结果 |
+|---|---|
+| `regression-final-jdk21/result.json` | 1123/1123 PASS，0 FAIL/ERROR/SKIP，350.5秒；HTTP182、PG420、多JVM21、adapter42，全部27新增已包含在1123内 |
+| `api-final-jdk21/result.json` | 48/48 PASS，0 FAIL/ERROR/SKIP，47.3秒 |
+| `ordinary-final-jdk21/result.json` | 942总例=937 PASS+5既有SKIP，0 FAIL/ERROR，14.2秒 |
+| `frontend-final/result.json` | 218/218 PASS，含coverage，2.7秒；包含新增1个UI基线正控，不与基线4/4重复累计 |
+| `local-evidence-audit.json` | PASS；最终10份backend495文件快照及6份frontend222文件快照分别完全一致，27新增均在1123内PASS |
+
+五个既有SKIP身份与B9一致：GroupAppServiceTest一例、GroupDeleteTest两例、GroupGetByCodeTest两例，精确身份保留在local-evidence-audit.json。前端仅一个既有GitOperationsPanel测试文件变化，没有前端生产改动；218为本片实际新跑的完整套件，不借用B9的217结果。
+
+静态报告为`.ai/reports/static-scan/20261122-114305/summary.md`。六份fresh SpotBugs XML均零问题，typecheck PASS，lint 0 errors/8条既有fixture warnings。根侧重读GroupTreeSelect.spec.ts、GroupDialog.spec.ts两份fixture实际定义，逐项写明保留理由，未关闭规则；raw lint输出与B9逐字节相同，SHA256为`b5496961a4422b7ea5154e6aead19f4c751cd8e76575656cf0b4b92a6fea0faa`。
+
+最终审计将四个实现文件绑定到已验证源码；其中唯一生产文件GitRemoteEvidenceAdapter的SHA256仍为`e6ace6fd364349a3e66be86080ef9b500884c8b8c736ec678ad10fb1e5b6ff22`。8页完整review的代码树绑定与独立源码/测试审阅已在local-evidence-audit.json留证，无阻断；该本地通过不替代固定实现SHA的远端CI终态。
+
+### 23.10 实现分组推送与固定SHA CI待验
+
+实现已单独提交并推送为`8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d`，父提交`d51a0b7efd20cdcf005aa165330cf3de6312de05`，提交信息`fix(git): require precise merge observation evidence`。本组4文件、499行新增/3行删除：1个生产适配器、2个backend测试文件和1个前端组件测试；验收文档单独收口。`implementation-commit.json`确认提交与495个backend、222个frontend最终验证源码相符。
+
+`implementation-push.json`已核feature/orchestration-consistency远端指向该完整SHA；远端仍只有main、develop和此feature三个分支，main/develop均为`d4534ccc34fedb9bbf394ced89b4726f43ec197c`。hooks保持，未将main/develop描述为已集成本片。
+
+[Full-Link44982102777](https://github.com/tongsh6/release-hub/actions/runs/44982102777) attempt 1已实际派发，创建于2026-11-22T03:45:59Z（北京时间11:45:59），`full-link/dispatch.json`及`full-link/run.json`已核headSha为上述完整实现SHA。记录本节时status=in_progress，尚无最终验收结论；B10继续唯一HEAD，不提前写5/5或DONE，不提升尚未确定名称的下一片。后续需追加真实终态与业务摘要，后端API/隔离GitLab、完整UI和真实远端观察完整旅程的证据边界保持。
+
+### 23.11 固定实现SHA CI最终验收与B10出队
+
+[Full-Link44982102777](https://github.com/tongsh6/release-hub/actions/runs/44982102777) attempt 1已completed/success，headSha精确为`8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d`，watchExitCode=0。最终updatedAt为2026-11-22T03:55:55Z（北京时间11:55:55）；job137084628173的14个步骤全部success，包括实际Run vertical slice tests。本节追加终态，23.1–23.10的事前合同、独立验证与当时pending事实保持，不回写为当时已经通过。
+
+| 远端证据（`.ai/reports/validation/c2-b10/full-link/` 下） | 已核事实 |
+|---|---|
+| `result.json` | 固定完整SHA、attempt 1、job及14个步骤均已completed/success |
+| `business-result.json`与原始`job.log` | Slice1..5分别PASSED，passedSlices=5、failedSlices=0；实际完成时间依次为03:54:01、03:54:16、03:54:54、03:55:11、03:55:28Z |
+| `job.log` | SHA256为`b1d046f752c1b2733249c5c35ff10880dbe223a9e5f1953ff1f2b21ec2e17770`，已直接核原始五条PASSED输出 |
+| GitHub artifact14738561654 | e2e-logs，660838 bytes；取证时expired=false |
+
+独立RED→GREEN、完整本地相关/API/普通/前端/静态、源码绑定与审阅、实现分组推送和固定SHA远端验收均已完成，B10标DONE并出队，验收文档单独收口。27新增包含于1123、UI新增正控包含于218，以及五个原SKIP、八条既有fixture warning的边界保持。该CI只是已有backend API与隔离GitLab五切片，不代表新MERGE_MR观察已完成真实远端或完整UI旅程，也不提升Slice4/5既有较弱覆盖。
+
+当前唯一HEAD为C2-B11「GitLab MR读取响应状态证明」。已只读定位GitLabMergeRequestAdapter.getMap/readPages未核actualHTTP，readSource/read/find/contains四个现消费者可能把201/206当作FOUND或完整缺席；下一片只收敛原GET成功status=200，实际返回而未抛异常的非200为INCOMPLETE，保留既有403/404/network语义，无新实体、接口或target快照。记录本节时B11测试仅独立内存准备，未落盘、未运行，详细合同下一阶段补齐；SEND/UNKNOWN窄恢复仍QUEUED，不能随B10一并宣称交付，SA-002顺序保持。

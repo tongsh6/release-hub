@@ -906,7 +906,7 @@ C2-B8 已 DONE，以下契约经独立 RED、一次 PG 过强断言校准及本�
 - **AND** 现操作查询需认证但无仓库级/操作者级过滤，不声称仅创建者可见，不在 B8 扩 RBAC；GitOperationsPanel 不渲染 targetJson，无新增 UI 入口
 - **AND** 原“标题不存”测试断言按完整请求可审计调整，token/认证 header/无关正文及响应证据隐私约束保留，不泛化存任意 body 或 secret；独立 RED 冻结后的契约仍须保留
 
-B9最终验收状态（不替代下列规范）：独立RED、校准与实现后，单次相关1078/1078、API48/48、普通918（913 PASS/5既有SKIP）、静态及最终源码绑定通过；113新例包含于1078。四个排序PG例直接核三个读取入口的完整步骤及末项，每批最多一次Task查询、无关联时零额外查询及completeTask复用约束以源码审查留证，不冒称运行时SQL计数。实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003attempt 1已completed/success，5 PASS / 0 FAIL，B9已DONE。当前唯一HEAD为B10「MERGE_MR 精确只读核对证据」，仅推进精确对象的typed只读观察，不改Task/Step/guard/seq2；详细契约另行定义，SEND/UNKNOWN受证据约束恢复继续排队。证据与边界见任务记录22.7–22.14；历史失败不覆盖，完整UI未扩验。
+B9最终验收状态（不替代下列规范）：独立RED、校准与实现后，单次相关1078/1078、API48/48、普通918（913 PASS/5既有SKIP）、静态及最终源码绑定通过；113新例包含于1078。四个排序PG例直接核三个读取入口的完整步骤及末项，每批最多一次Task查询、无关联时零额外查询及completeTask复用约束以源码审查留证，不冒称运行时SQL计数。实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003attempt 1已completed/success，5 PASS / 0 FAIL，B9已DONE。B10「MERGE_MR 精确只读核对证据」已DONE，typed观察仍不改Task/Step/guard/seq2，最终证据见记录23.11。当前唯一HEAD为B11「GitLab MR读取响应状态证明」，详细契约下一阶段定义；SEND/UNKNOWN受证据约束恢复继续排队。证据与边界见任务记录22.7–22.14；历史失败不覆盖，完整UI未扩验。
 
 ### Requirement: 完整未发送 CREATE_MR 意图的原任务接续
 
@@ -1089,6 +1089,86 @@ B9最终验收状态（不替代下列规范）：独立RED、校准与实现后
 - **WHEN** 收集关联taskId并构造当前调用的局部Map
 - **THEN** 复用现JpaRepository.findAllById至多一次读取整批关联任务，无关联id时零额外query；completeTask直接复用已有任务列表
 - **AND** 不逐Run/Item/Step查询，不引入缓存、第二套存储、DTO字段或新接口
+
+B10最终验收状态（不替代下列规范）：冻结d51a0b7生产的独立27例为23 FAIL/4正控，随后独立GREEN27/27；新增adapter24仅3固定+15响应+6 locator，旧18另回归，namespace/通用错误保留的源码边界不扩称新增覆盖。三条真实HTTP未加same-key零额外GET断言，幂等沿现回归与源码核验。UI基线4/4、完整前端218/218含coverage通过；单次相关1123/1123、API48/48、普通942（937 PASS/5旧SKIP）、静态与最终源码审计均通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定SHA Full-Link44982102777 attempt 1已completed/success，5 PASS/0 FAIL，B10已DONE；证据见记录23.7–23.11。当前唯一HEAD为B11「GitLab MR读取响应状态证明」，只读定位原GET实际状态资格，详细合同下一阶段补齐，测试未落盘/未运行；本CI不扩称新观察的真实远端或完整UI旅程。
+
+### Requirement: MERGE_MR精确只读观察使用完整远端证明
+
+系统 SHALL 仅按原项目I、正整数MR IID和合法期望SHA A只读核对MERGE_MR，并复用confirmedMergedMr对实际GET状态与原始正文的完整B4证明。FOUND只表示该对象当前merged，不证明原PUT成功或原业务计划满足；证据保留十字段的原JSON scalar/null类型，不新增接口或完整请求hash门禁。
+
+#### Scenario: 原三字段与当前五字段请求使用同一精确定位
+
+- **GIVEN** 原MERGE_MR target为历史三字段或当前五字段，已通过现仓库/provider/base和项目身份核对
+- **WHEN** 读取typed method、suffix和sha
+- **THEN** method必须为文本PUT，suffix完整匹配`/merge_requests/[1-9][0-9]*/merge`，A必须为文本且满足既有40/64位hex validSha
+- **AND** 两种target均用同一精确GET与完整B4响应证明，不补全旧正文、不追加完整请求hash门禁或兼容路径
+
+#### Scenario: 非法定位不能产生MR读取
+
+- **GIVEN** method/suffix/IID/SHA缺失、类型错误或格式非法，包括零IID、非正整数、额外路径或query
+- **WHEN** 核对MERGE_MR locator
+- **THEN** 返回INCOMPLETE且MR GET=0，不猜测或修补locator
+- **AND** 该计数不把原namespace身份GET算成业务MR GET；namespace由I指向J时不得向J发送业务GET
+
+#### Scenario: 实际HTTP200与完整原始对象才形成FOUND
+
+- **GIVEN** 精确MR GET返回object，实际HTTP状态为200
+- **WHEN** 调用confirmedMergedMr(actualStatus,raw,I,IID,A)
+- **THEN** 原始project_id/source_project_id/target_project_id必须均为匹配I的正整数，iid为匹配IID的正整数，sha合法且与A语义相等，state为merged
+- **AND** source_branch、target_branch、web_url及现检查点完整性成立，merge_commit_sha字段存在且为null或合法SHA文本，才返回FOUND
+
+#### Scenario: 不完整正文与不满足证明的对象分别分类
+
+- **GIVEN** 实际读取返回absent、JSON null、非object，或返回HTTP200 object但证明不完整
+- **WHEN** 形成观察结果
+- **THEN** absent/null/非object为INCOMPLETE；HTTP200 object包括空对象在不满足完整证明时为MISMATCH
+- **AND** HTTP201即使正文完整仍为MISMATCH，不伪造actualStatus=200；403/404/不可用沿既有FORBIDDEN/NOT_FOUND/UNAVAILABLE分类
+
+#### Scenario: 保留实际分支而不推定原写入因果
+
+- **GIVEN** I/IID/A对象当前已merged，但实际source或target不同于原业务计划，或由其他操作者完成
+- **WHEN** 完整对象证明成立
+- **THEN** FOUND仅描述当前对象事实，实际source_branch/target_branch照实保存，不据此确认原PUT成功或原计划target满足
+- **AND** 不解析merge_commit_message推导计划，不扩Operation/Task关联接口，也不将观察等同原Task结果
+
+#### Scenario: 十字段证据保留原JSON类型
+
+- **GIVEN** 原始MR对象含合法字段、错误scalar类型、null或嵌套内容
+- **WHEN** 生成evidenceJson
+- **THEN** 只摘取project_id/source_project_id/target_project_id/iid/source_branch/target_branch/sha/web_url/state/merge_commit_sha中实际存在的scalar/null值，保留类型及值
+- **AND** 不将数字或布尔值转为文本，不为缺失字段补null；object/array省略，token/header/无关正文不记录，既有API/UI直接消费该证据
+
+### Requirement: 只读观察与真实写入结果独立提交
+
+系统 SHALL 复用现reconcile和Journal.observe记录观察，只新增Observation及operation.version/updatedAt，不改变Task/Step/Run/metadata/guard/events/attempt或原执行状态。观察版本约束观察提交，不剥夺原seq1 sender按既有资格finish的权力；UNKNOWN后FOUND仍不得完成任务、释放guard或重发。
+
+#### Scenario: UNKNOWN后FOUND仍保留未知执行事实
+
+- **GIVEN** 原MERGE_MR真实写结果为UNKNOWN，原Run为NEEDS_REVIEW且guard保留
+- **WHEN** 现reconcile只读获得完整FOUND并提交
+- **THEN** 仅新增Observation和operation.version/updatedAt，UNKNOWN/NEEDS_REVIEW及Task/Step/metadata/guard/events/attempt保持
+- **AND** 原UI展示观察与未知提示，不产生seq2、后继执行或重发
+
+#### Scenario: 观察先提交仍允许原sender真实完成
+
+- **GIVEN** 原PUT已由当前合法seq1 sender发送，响应尚未返回，观察GET已完成
+- **WHEN** observe先提交并增加operation.version，随后原PUT返回真实响应
+- **THEN** 原sender仍按现fence/状态/seq1资格finish，不因观察version变化被拒绝
+- **AND** seq2来自真实响应，观察不替代写入结果，不引入expectedVersion发送门禁
+
+#### Scenario: 真实finish先提交时旧观察零写
+
+- **GIVEN** reconcile已取得旧version并开始GET
+- **WHEN** 原PUT响应先由finish提交，旧GET随后调用observe
+- **THEN** expectedVersion已过期，观察返回STALE且不新增Observation或改写任何执行事实
+- **AND** 原真实finish及seq2保留，不能把该竞争改成重发或清guard
+
+#### Scenario: 复用原入口与幂等观察消费者
+
+- **GIVEN** 现GitOperationController、GitOperationAppService和GitOperationsPanel消费Observation
+- **WHEN** 相同actor/key和原expectedVersion再次请求核对
+- **THEN** 沿现幂等路径返回已有观察，不新增并行接口或自动恢复动作
+- **AND** GET位于账本事务外，提交时核版本；现UI只展示观察和原执行状态，不把FOUND扩展为恢复动作
 
 ## MODIFIED Requirements
 
