@@ -554,6 +554,118 @@ class GitLabMergeRequestAdapterTest {
     }
     // End B9 independent contract.
 
+    // B11 independent contract: a valid body cannot replace the actual GET success status.
+    @ParameterizedTest
+    @CsvSource({
+            "READ_SOURCE,201", "READ_SOURCE,206",
+            "READ_MR,201", "READ_MR,206",
+            "FIND_MATCH,201", "FIND_MATCH,206",
+            "FIND_EMPTY,201", "FIND_EMPTY,206",
+            "CONTAINS_MATCH,201", "CONTAINS_MATCH,206",
+            "CONTAINS_ABSENT,201", "CONTAINS_ABSENT,206"
+    })
+    void mrReadStatusRejectsUnexpectedStatusBeforeAcceptingEvidence(String scenario, int status) {
+        server.expect(requestTo(mrReadStatusUri(scenario, 1))).andExpect(method(HttpMethod.GET))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.valueOf(status))
+                        .contentType(MediaType.APPLICATION_JSON).body(mrReadStatusBody(scenario))
+                        .header("X-Next-Page", ""));
+
+        var result = mrReadStatusRead(scenario);
+
+        assertEquals(GitReadResult.Status.INCOMPLETE, result.status(), scenario + " HTTP " + status);
+        assertNull(result.evidence(), "Unexpected GET status cannot prove an object, an empty list or containment");
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"FIND_MATCH,201", "FIND_MATCH,206", "CONTAINS_MATCH,201", "CONTAINS_MATCH,206"})
+    void mrReadStatusDiscardsEarlierMatchesAndStopsAtUnexpectedLaterPage(String scenario, int status) {
+        server.expect(requestTo(mrReadStatusUri(scenario, 1))).andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(mrReadStatusBody(scenario), MediaType.APPLICATION_JSON)
+                        .header("X-Next-Page", "2"));
+        server.expect(requestTo(mrReadStatusUri(scenario, 2))).andExpect(method(HttpMethod.GET))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.valueOf(status))
+                        .contentType(MediaType.APPLICATION_JSON).body("[]").header("X-Next-Page", "3"));
+        // No third-page request is expected, even though the untrusted response advertises one.
+        var result = mrReadStatusRead(scenario);
+
+        assertEquals(GitReadResult.Status.INCOMPLETE, result.status(), scenario + " HTTP " + status);
+        assertNull(result.evidence(), "The valid first-page match must not escape an incomplete traversal");
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "READ_MR,401,FORBIDDEN", "READ_MR,403,FORBIDDEN",
+            "READ_MR,404,NOT_FOUND", "READ_MR,NETWORK,UNAVAILABLE",
+            "CONTAINS_ABSENT,401,FORBIDDEN", "CONTAINS_ABSENT,403,FORBIDDEN",
+            "CONTAINS_ABSENT,404,NOT_FOUND", "CONTAINS_ABSENT,NETWORK,UNAVAILABLE"
+    })
+    void mrReadStatusPreservesExistingReadFailureClassification(
+            String scenario, String failure, GitReadResult.Status expected) {
+        var request = server.expect(requestTo(mrReadStatusUri(scenario, 1))).andExpect(method(HttpMethod.GET));
+        if ("NETWORK".equals(failure)) {
+            request.andRespond(withException(new SocketTimeoutException("read unavailable")));
+        } else {
+            request.andRespond(withStatus(org.springframework.http.HttpStatus.valueOf(Integer.parseInt(failure)))
+                    .contentType(MediaType.APPLICATION_JSON).body("{}"));
+        }
+
+        var result = mrReadStatusRead(scenario);
+
+        assertEquals(expected, result.status(), scenario + " " + failure);
+        assertNull(result.evidence());
+        server.verify();
+    }
+
+    @Test
+    void mrReadStatusKeepsConfirmedAbsenceFromACompleteOkResponse() {
+        server.expect(requestTo(mrReadStatusUri("CONTAINS_ABSENT", 1))).andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(mrReadStatusBody("CONTAINS_ABSENT"), MediaType.APPLICATION_JSON)
+                        .header("X-Next-Page", ""));
+
+        var result = adapter.contains("release/RW-1", SHA);
+
+        assertEquals(GitReadResult.Status.FOUND, result.status());
+        assertEquals(Boolean.FALSE, result.evidence());
+        server.verify();
+    }
+
+    private String mrReadStatusUri(String scenario, int page) {
+        return switch (scenario) {
+            case "READ_SOURCE" -> PROJECT + "/repository/branches/feature%2FIT-1";
+            case "READ_MR" -> ENDPOINT + "/17";
+            case "FIND_MATCH", "FIND_EMPTY" -> listUri(page);
+            case "CONTAINS_MATCH", "CONTAINS_ABSENT" ->
+                    PROJECT + "/repository/commits/" + SHA + "/refs?type=branch&per_page=100&page=" + page;
+            default -> throw new AssertionError(scenario);
+        };
+    }
+
+    private String mrReadStatusBody(String scenario) {
+        return switch (scenario) {
+            case "READ_SOURCE" -> "{\"name\":\"feature/IT-1\",\"commit\":{\"id\":\"" + SHA + "\"}}";
+            case "READ_MR" -> mr(17, "mergeable", "success");
+            case "FIND_MATCH" -> "[" + mr(17, "mergeable", "success") + "]";
+            case "FIND_EMPTY" -> "[]";
+            case "CONTAINS_MATCH" -> "[{\"type\":\"branch\",\"name\":\"release/RW-1\"}]";
+            case "CONTAINS_ABSENT" -> "[{\"type\":\"branch\",\"name\":\"main\"}]";
+            default -> throw new AssertionError(scenario);
+        };
+    }
+
+    private GitReadResult<?> mrReadStatusRead(String scenario) {
+        return switch (scenario) {
+            case "READ_SOURCE" -> adapter.readSource("feature/IT-1");
+            case "READ_MR" -> adapter.read("17");
+            case "FIND_MATCH", "FIND_EMPTY" ->
+                    adapter.find("feature/IT-1", "release/RW-1", GitMergeRequestPort.State.OPENED);
+            case "CONTAINS_MATCH", "CONTAINS_ABSENT" -> adapter.contains("release/RW-1", SHA);
+            default -> throw new AssertionError(scenario);
+        };
+    }
+    // End B11 independent contract.
+
     private static com.fasterxml.jackson.databind.node.ObjectNode mergedMr() throws Exception {
         return createdMr("mergeable").put("state", "merged").put("merge_commit_sha", "b".repeat(40));
     }

@@ -850,6 +850,197 @@ class GitWriteSafetyIT {
         });
     }
 
+    @Test
+    void mrReadStatusFreshPartialListCannotAuthorizeCreation() {
+        var before = prepareMrCreationRun();
+        String runId = before.getId().value();
+        String source = before.getItems().getFirst().getMetadata().get("plan.featureBranch");
+        String target = before.getItems().getFirst().getMetadata().get("plan.releaseBranch");
+        String mrPath = canonicalEndpoint + "/merge_requests";
+        SERVER.reply("GET", mrPath, 206, "[]");
+        // A wrongful create must succeed, so UNKNOWN cannot come from a missing write fixture.
+        SERVER.reply("POST", mrPath, 201, mrCreationResponse(before, "mergeable").toString());
+        int requestsBefore = SERVER.requests.size();
+
+        assertThat(taskService.executeNextTask(runId)).isTrue();
+
+        var completed = taskRuns.findById(runId).orElseThrow();
+        var item = completed.getItems().getFirst();
+        assertThat(taskRuns.findTasks(runId).stream().map(RunPort.TaskView::status))
+                .containsExactly("COMPLETED", "COMPLETED", "UNKNOWN", "SKIPPED");
+        assertThat(completed.getExecutionStatus().name()).isEqualTo("NEEDS_REVIEW");
+        assertThat(item.getSteps()).hasSize(3);
+        assertThat(item.getSteps().stream().filter(step -> step.actionType() == ActionType.ENSURE_MR))
+                .singleElement().satisfies(step -> {
+                    assertThat(step.result()).isEqualTo(RunItemResult.UNKNOWN);
+                    assertThat(step.message()).isEqualTo("MR_LOOKUP_UNCONFIRMED");
+                });
+        assertThat(item.getMetadata()).containsAllEntriesOf(before.getItems().getFirst().getMetadata())
+                .containsEntry("git.projectId", String.valueOf(project))
+                .containsEntry("git.sourceBranch", source).containsEntry("git.targetBranch", target)
+                .containsEntry("git.sourceSha", sha).containsEntry("git.blockReason", "UNKNOWN")
+                .doesNotContainKeys("git.mrIid", "git.mrUrl", "git.mrDisposition", "git.mergeSha", "git.requestId");
+        assertThat(journal.listByRun(runId, 0, 20)).isEmpty();
+        var requests = List.copyOf(SERVER.requests.subList(requestsBefore, SERVER.requests.size()));
+        assertThat(requests.stream().filter(request -> request.path().equals(mrPath)))
+                .singleElement().satisfies(request -> {
+                    assertThat(request.method()).isEqualTo("GET");
+                    assertThat(request.query()).isEqualTo("scope=all&state=opened&source_branch="
+                            + URLEncoder.encode(source, StandardCharsets.UTF_8) + "&target_branch="
+                            + URLEncoder.encode(target, StandardCharsets.UTF_8) + "&per_page=100&page=1");
+                });
+        SERVER.verify("POST", mrPath, 0);
+        SERVER.verify("PUT", mrPath + "/7/merge", 0);
+        assertThat(SERVER.writeCount()).isZero();
+    }
+
+    @Test
+    void mrReadStatusPreparedContainmentCannotConfirmAlreadyMerged() throws Exception {
+        sha = "aBcD".repeat(10);
+        var before = prepareMrCreationRun();
+        String runId = before.getId().value();
+        String source = before.getItems().getFirst().getMetadata().get("plan.featureBranch");
+        String target = before.getItems().getFirst().getMetadata().get("plan.releaseBranch");
+        String sourcePath = canonicalEndpoint + "/repository/branches/" + URLEncoder.encode(source, StandardCharsets.UTF_8);
+        String refsPath = canonicalEndpoint + "/repository/commits/" + sha + "/refs";
+        String mrPath = canonicalEndpoint + "/merge_requests";
+        SERVER.reply("POST", mrPath, 201, mrCreationResponse(before, "mergeable").toString());
+        var workers = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try (var gate = new CreationIntentGate(ActionType.ENSURE_MR, false)) {
+            try {
+                var oldOwner = workers.submit(() -> taskService.executeNextTask(runId));
+                assertThat(gate.entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var command = gate.command.get();
+                String operationId = gate.operationId.get();
+                var original = mergeIntentIdentity(operationId);
+                var originalEvents = journal.find(operationId).orElseThrow().events();
+                assertThat(originalEvents).extracting(GitOperationJournalPort.Event::type)
+                        .containsExactly("INTENT_RECORDED");
+                var intent = originalEvents.getFirst();
+                var originalMetadata = new LinkedHashMap<>(gate.claims.getFirst().metadata());
+                gate.expire();
+                SERVER.reply("GET", sourcePath, 200, branchIntentResponse(source, "b".repeat(40)));
+                SERVER.reply("GET", refsPath, 201, new com.fasterxml.jackson.databind.ObjectMapper()
+                        .valueToTree(List.of(Map.of("type", "branch", "name", target))).toString());
+                int requestsBeforeResume = SERVER.requests.size();
+
+                assertThat(taskService.executeNextTask(runId)).isTrue();
+
+                var current = gate.claims.getLast();
+                assertThat(current.fence().claimToken()).isNotEqualTo(command.taskFence().claimToken());
+                assertThat(current.metadata()).isEqualTo(originalMetadata);
+                assertThat(current.unsentOperation()).isNotNull();
+                assertThat(current.unsentOperation().id()).isEqualTo(operationId);
+                assertThat(current.unsentOperation().targetJson()).isEqualTo(command.targetJson());
+                assertThat(mergeIntentIdentity(operationId)).isEqualTo(original);
+                Map<String, String> patch = new LinkedHashMap<>();
+                patch.put("git.requestId", null);
+                patch.put("git.blockReason", "UNKNOWN");
+                patch.put("git.projectId", String.valueOf(project));
+                patch.put("git.sourceBranch", source);
+                patch.put("git.targetBranch", target);
+                patch.put("git.mrIid", null);
+                patch.put("git.mrUrl", null);
+                patch.put("git.sourceSha", sha);
+                patch.put("git.mergeSha", null);
+                patch.put("git.mrDisposition", null);
+                mergeNotSentAssertEvent(operationId, current.fence().taskId(), current.fence().claimToken(),
+                        RunItemResult.UNKNOWN, patch, intent);
+                var metadata = new LinkedHashMap<>(originalMetadata);
+                patch.forEach((key, value) -> { if (value == null) metadata.remove(key); else metadata.put(key, value); });
+                assertThat(mergeNotSentMetadata(current.itemId())).isEqualTo(metadata);
+                assertThat(taskRuns.findTasks(runId).stream().map(RunPort.TaskView::status))
+                        .containsExactly("COMPLETED", "COMPLETED", "UNKNOWN", "SKIPPED");
+                var completed = taskRuns.findById(runId).orElseThrow();
+                assertThat(completed.getExecutionStatus().name()).isEqualTo("NEEDS_REVIEW");
+                assertThat(completed.getItems().getFirst().getSteps()).hasSize(3);
+                assertThat(completed.getItems().getFirst().getSteps().stream()
+                        .filter(step -> step.actionType() == ActionType.ENSURE_MR))
+                        .singleElement().satisfies(step -> {
+                            assertThat(step.result()).isEqualTo(RunItemResult.UNKNOWN);
+                            assertThat(step.message()).isEqualTo("TARGET_CONTAINMENT_UNCONFIRMED");
+                        });
+                assertThat(journal.listByRun(runId, 0, 20)).hasSize(1);
+                var requests = List.copyOf(SERVER.requests.subList(requestsBeforeResume, SERVER.requests.size()));
+                assertThat(requests.stream().filter(request -> request.path().equals(refsPath)))
+                        .singleElement().satisfies(request -> {
+                            assertThat(request.method()).isEqualTo("GET");
+                            assertThat(request.query()).isEqualTo("type=branch&per_page=100&page=1");
+                        });
+                assertThat(requests).noneMatch(request -> request.path().equals(sourcePath)
+                        || request.path().equals(mrPath) || request.path().startsWith(mrPath + "/"));
+                assertThat(SERVER.writeCount()).isZero();
+
+                var closedRun = jdbc.queryForMap("select * from run where id=?", runId);
+                var closedItem = jdbc.queryForMap("select * from run_item where id=?", current.itemId());
+                var closedTasks = jdbc.queryForList("select * from run_task where run_id=? order by task_order", runId);
+                var closedSteps = jdbc.queryForList("select * from run_step where run_item_id=? order by task_id", current.itemId());
+                var closedMetadata = mergeNotSentMetadata(current.itemId());
+                var closedOperation = jdbc.queryForMap("select * from git_operation where id=?", operationId);
+                var closedEvents = journal.find(operationId).orElseThrow().events();
+                var releasedGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", command.remoteKey());
+                assertThat(releasedGuard).containsEntry("session_id", null).containsEntry("operation_id", null)
+                        .containsEntry("reason", null);
+                gate.release.countDown();
+                assertThatThrownBy(() -> oldOwner.get(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .isInstanceOf(java.util.concurrent.ExecutionException.class).hasCauseInstanceOf(BusinessException.class);
+                assertThat(jdbc.queryForMap("select * from run where id=?", runId)).isEqualTo(closedRun);
+                assertThat(jdbc.queryForMap("select * from run_item where id=?", current.itemId())).isEqualTo(closedItem);
+                assertThat(jdbc.queryForList("select * from run_task where run_id=? order by task_order", runId)).isEqualTo(closedTasks);
+                assertThat(jdbc.queryForList("select * from run_step where run_item_id=? order by task_id", current.itemId())).isEqualTo(closedSteps);
+                assertThat(mergeNotSentMetadata(current.itemId())).isEqualTo(closedMetadata);
+                assertThat(jdbc.queryForMap("select * from git_operation where id=?", operationId)).isEqualTo(closedOperation);
+                assertThat(journal.find(operationId).orElseThrow().events()).isEqualTo(closedEvents);
+                assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", command.remoteKey()))
+                        .isEqualTo(releasedGuard);
+                assertThat(SERVER.writeCount()).isZero();
+                int requestsBeforeNext = SERVER.requests.size();
+                assertThat(taskService.executeNextTask(runId)).isFalse();
+                assertThat(SERVER.requests).hasSize(requestsBeforeNext);
+            } finally {
+                gate.releaseAll(); workers.shutdown();
+                assertThat(workers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
+
+    @Test
+    void mrReadStatusTryDetailCannotAuthorizeMerge() {
+        var before = prepareMrMergeRun(true);
+        String runId = before.getId().value();
+        String mrPath = canonicalEndpoint + "/merge_requests/7";
+        SERVER.reply("GET", mrPath, 201, mrCreationResponse(before, "mergeable").toString());
+        // If the invalid read authorizes a PUT, its complete response exposes a real false success.
+        SERVER.reply("PUT", mrPath + "/merge", 200, mrMergeResponse(before).toString());
+        int requestsBefore = SERVER.requests.size();
+
+        assertThat(taskService.executeNextTask(runId)).isTrue();
+
+        var completed = taskRuns.findById(runId).orElseThrow();
+        var item = completed.getItems().getFirst();
+        assertThat(taskRuns.findTasks(runId).stream().map(RunPort.TaskView::status))
+                .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "UNKNOWN");
+        assertThat(completed.getExecutionStatus().name()).isEqualTo("NEEDS_REVIEW");
+        assertThat(item.getSteps()).hasSize(4);
+        assertThat(item.getSteps().stream().filter(step -> step.actionType() == ActionType.TRY_MERGE))
+                .singleElement().satisfies(step -> {
+                    assertThat(step.result()).isEqualTo(RunItemResult.UNKNOWN);
+                    assertThat(step.message()).isEqualTo("MR_READ_UNCONFIRMED");
+                });
+        var metadata = new LinkedHashMap<>(before.getItems().getFirst().getMetadata());
+        metadata.remove("git.requestId");
+        metadata.put("git.blockReason", "UNKNOWN");
+        assertThat(item.getMetadata()).isEqualTo(metadata).containsEntry("git.mrDisposition", "MR_REUSED");
+        assertThat(journal.listByRun(runId, 0, 20)).isEmpty();
+        var requests = List.copyOf(SERVER.requests.subList(requestsBefore, SERVER.requests.size()));
+        assertThat(requests.stream().filter(request -> request.path().equals(mrPath)))
+                .singleElement().satisfies(request -> assertThat(request.method()).isEqualTo("GET"));
+        assertThat(requests).allMatch(request -> request.method().equals("GET"));
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 0);
+        SERVER.verify("PUT", mrPath + "/merge", 0);
+        assertThat(SERVER.writeCount()).isZero();
+    }
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(ints = {40, 64})
     void createMrIntentResumesOriginalPostAndRecordsCurrentSender(int shaLength) throws Exception {

@@ -297,6 +297,7 @@ public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
         try {
             var response = http.exchange(URI.create(uri), HttpMethod.GET, new HttpEntity<>(headers()),
                     new ParameterizedTypeReference<Map<String, Object>>() {});
+            if (response.getStatusCode().value() != 200) return incomplete();
             return response.getBody() == null ? incomplete() : GitReadResult.found(response.getBody());
         } catch (HttpClientErrorException e) { return readError(e); }
         catch (RestClientException e) { return GitReadResult.unavailable(); }
@@ -308,6 +309,7 @@ public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
             try {
                 var response = http.exchange(URI.create(uri + "&per_page=100&page=" + page), HttpMethod.GET,
                         new HttpEntity<>(headers()), new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+                if (response.getStatusCode().value() != 200) return incomplete();
                 var body = response.getBody();
                 if (body == null) return incomplete();
                 result.addAll(body);
