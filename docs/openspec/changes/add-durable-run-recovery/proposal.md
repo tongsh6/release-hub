@@ -29,6 +29,6 @@
 
 ## 当前授权与状态
 
-2026-11-21 用户已授权持续研发、必要重构、分组提交和分阶段推送。`main`、`develop` 已收敛到 `d4534cc`，当前开发分支为 `feature/orchestration-consistency`。S3-A/B1 已按代码、存储和界面证据验收并分阶段推送；当前 B2 收尾进入队首，C 持久 worker/恢复仍在队列，不能据授权宣称能力已完成。
+2026-11-21 用户已授权持续研发、必要重构、分组提交和分阶段推送。`main`、`develop` 已收敛到 `d4534cc`，当前开发分支为 `feature/orchestration-consistency`。S3-A/B1 已按代码、存储和界面证据验收并分阶段推送；S3-C2-B14及之前阶段已按各自证据交付；SEND/UNKNOWN契约拆分已完成，当前B15同步200窄恢复待RED。最新任务仅从[执行路线图](../../../execution-roadmap.md)选择，详细边界见[集中契约](unknown-merge-recovery.md)；授权或契约完成均不表示B15已实现。
 
 历史：S1/S2 的当时范围及验收见 [S1 实施口径](s1-implementation.md)、[S2 评审方案](s2-review.md) 和 [S2 实施口径](s2-implementation.md)。当时 S2 默认关闭；本轮真实 HTTP 出口保护改为默认开启，显式关闭时拒绝写入，测试内存模式另行隔离。本轮尚未执行真实 GitLab 用户旅程或进程硬中断恢复。

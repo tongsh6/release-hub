@@ -32,8 +32,9 @@
 | 16 | DONE | SA-013 | S3-C2-B12 无自身写意图任务的失败与重试闭环 | 7042f19已推；相关1174/API48/普通967及静态与源码绑定通过；固定SHA CI44989857158首轮5/5 | 当前Task无operation及Step的首次UNKNOWN归FAILED；真实锁竞争/回滚、新Run重试及既有未知保护已验，记录第25节 |
 | 17 | DONE | SA-013 | S3-C2-B13 项目身份响应证明统一 | 4dbe2c6/ddcec2e已分组推送；独立70、相关1239、API48、普通1019及真实静态同树通过；固定ddcec2e的CI45102738088首轮5 PASS/0 FAIL | 三入口身份纯证明及原政策/long边界已验；首次静态假PASS保留并修复门禁，最终4退出码0，记录第26节 |
 | 18 | DONE | SA-013 | S3-C2-B14 原 MERGE_MR 已持久拒绝响应的结果投影 | 36d6c7b已推；冻结140、相关1376、API48、普通1019及静态同树通过；固定SHA CI45115321412首轮5 PASS/0 FAIL | 到期默认worker零HTTP补原结果，现Run查询、后继策略与有资格的人工重试已验；首轮失败与边界见记录27 |
-| 19 | HEAD | SA-013 | S3-C2-B 后续：SEND/UNKNOWN 受证据约束恢复的契约拆分 | B14已DONE；按动作、原响应与Task既有历史拆分下一最小验收契约，尚未实现恢复 | 明确完整同步响应、I/O未确认、终态UNKNOWN各自证明责任；FOUND与租约不授予重发及释放保护权 |
-| 20 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队列保留 | 历史数据处置仍先核实计划，不自动迁移或清库 |
+| 19 | DONE | SA-013 | S3-C2-B SEND/UNKNOWN恢复契约拆分 | 13f637a基线与运行中GitLab17.11.3源码只读核查、两路独立反例审查；集中契约及记录28 | 原同步200与I/O未确认分责；B15包含已有UNKNOWN历史及真实查询/重试消费者，未实现恢复 |
+| 20 | HEAD | SA-013 | S3-C2-B15 MERGE_MR同步200证据不足的UNKNOWN审计式恢复 | unknown-merge-recovery.md及Run delta已定；待固定版本行为验证与独立RED | 原同步200+原计划/包含强观察；保留UNKNOWN历史、原子解决事实、现页面/导出/重试闭环，零重复Git写入 |
+| 21 | QUEUED | SA-002 | BranchCreationMode 执行计划评审门禁 | 原队列保留 | 历史数据处置仍先核实计划，不自动迁移或清库 |
 
 ## 3. 当前队首验收出口
 
@@ -59,7 +60,7 @@ B12「无自身写意图任务的失败与重试闭环」已验收：在原Run�
 
 B13「项目身份响应证明统一」已DONE：三入口共用actual200/object/正整数JSON id无损String证明，保留各入口定位、凭据、异常政策及long消费边界。冻结独立70例为21 FAIL/49 PASS→70/70 GREEN；单次相关1239/1239含该70例，API48/48、普通1019（1014 PASS/5既有SKIP）及真实静态门禁通过。业务实现`4dbe2c6fd17b0f02a7306dcb7549c2fa83b2d7b5`、静态门禁修复`ddcec2ea6520ae7b347e13f9a2a28d1fae68bb67`已分组推送；固定后者完整SHA的[Full-Link 45102738088](https://github.com/tongsh6/release-hub/actions/runs/45102738088) attempt 1已completed/success，5 PASS/0 FAIL。完整证据、首次静态假PASS纠正及8条既有warning处置见记录第26节。
 
-B14「原 MERGE_MR 已持久拒绝响应的结果投影」已DONE：七个生产文件接通原证明、默认扫描与原结果事务，恢复零HTTP；冻结140例（137新+3旧）为37 FAIL/103 PASS→140/140，单次相关1376、API48、普通1019（1014 PASS/5既有SKIP）及静态同树通过。实现`36d6c7b0a692ada9ae77b484967e58df87909aac`已推送，固定该SHA的[Full-Link 45115321412](https://github.com/tongsh6/release-hub/actions/runs/45115321412) attempt 1为5 PASS/0 FAIL。新增独立断言保持，既有候选集合预期适配与完整证据见记录27.6–27.12。当前唯一HEAD为后续SEND/UNKNOWN受证据约束恢复的契约拆分；终态历史更正、metadata与其他业务GET、完整UI继续独立验收。
+B14「原 MERGE_MR 已持久拒绝响应的结果投影」已DONE：七个生产文件接通原证明、默认扫描与原结果事务，恢复零HTTP；冻结140例（137新+3旧）为37 FAIL/103 PASS→140/140，单次相关1376、API48、普通1019（1014 PASS/5既有SKIP）及静态同树通过。实现`36d6c7b0a692ada9ae77b484967e58df87909aac`已推送，固定该SHA的[Full-Link 45115321412](https://github.com/tongsh6/release-hub/actions/runs/45115321412) attempt 1为5 PASS/0 FAIL。新增独立断言保持，既有候选集合预期适配与完整证据见记录27.6–27.12。SEND/UNKNOWN契约拆分已完成；当前唯一HEAD为B15「MERGE_MR同步200证据不足的UNKNOWN审计式恢复」，事前契约见OpenSpec的unknown-merge-recovery.md和记录28。本轮仅完成契约与只读源码核查，B15实现及行为测试尚未开始；真正I/O未确认、其他来源/动作和完整跨场景UI继续独立验收。
 
 C2-B4 已完成独立 RED、最终 11 suites/533 定向、API 48、普通 789（784 PASS/5 既有 SKIP）及静态 20261122-010845；七份 495 文件 backend 快照与提交树一致，TopN 八项既有 warning 已逐项留痕。末尾 MERGE/APPLIED 后无 PENDING 的独立 JVM exit=137，默认 worker 重启投影 HTTP=0、原 merge PUT 总数 1、原 token/六条事件保持；首轮 533/2 FAIL 及仅测试断言修正历史见记录 17.2。后端 `23950f98f2c7000bc054e74e9a67feb5f892e2dc` 与文档 `be1ccbe61a5155ba5ce8582f884d41dbb385a932` 已分阶段推送；固定后者的 [Full-Link 44929301318](https://github.com/tongsh6/release-hub/actions/runs/44929301318) 为 5/5，B4 标记 DONE，覆盖仍限于后端 API 与隔离 GitLab，不扩大完整 UI 或 Slice4/5 边界。
 

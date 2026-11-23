@@ -1,6 +1,6 @@
 # 2026-11-21 SA-013：分支收敛与唯一编排语义
 
-状态：已交付阶段及其固定 SHA 证据按各节保留。C2-B6 实现 `4e992e9c2406586ec23fa7636292e3d48c163118`、文档 `29ec00586be20730e66cf37da12614e6450d240d` 已分阶段推送，固定实现完整 SHA 的 Full-Link 44940092094 为 5/5，B6 已 DONE，详见19.9；此前本地门禁与历史轮次不变。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。C2-B8 正常 CREATE_MR 完整请求的发送证明闭环已 DONE：独立 RED 与一次明确 PG 契约校准后，125/125 首次 GREEN、单次相关965/965、API48/48、普通877（872 PASS / 5既有SKIP）、静态及最终源码绑定通过；实现 `537588e782c2b3bb2d2e82e21804f2d37fb42fc2` 已推送，固定该 SHA 的 [Full-Link 44972473174](https://github.com/tongsh6/release-hub/actions/runs/44972473174) attempt 1 已 completed/success，五个slice分别PASSED。最终证据与边界见21.11，验收文档单独收口。C2-B9 原 CREATE_MR INTENT 的安全接续与本地收口已 DONE：相关1078/1078、API48/48、普通918（913 PASS / 5既有SKIP）、静态与最终源码审计通过，实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003 attempt 1为5 PASS / 0 FAIL。证据与边界见记录22.7–22.14，验收文档单独收口。B10「MERGE_MR 精确只读核对证据」已DONE：相关1123/API48/普通942、前端218与静态及源码审计通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定该SHA的Full-Link44982102777 attempt 1为5 PASS/0 FAIL，证据见记录23.7–23.11。B11「GitLab MR读取响应状态证明」已DONE：实现 `35ca21366ec9124fe9c4d6d2ef162a09c13709fb` 已推送，固定该SHA的Full-Link44984865795 attempt 1为5 PASS/0 FAIL，完整本地与远端证据见记录24.5–24.9。B12「无自身写意图任务的失败与重试闭环」已DONE：实现 `7042f19278ff8d8bfa102a8f27d0c1f1b949539d` 已推送，固定该SHA的Full-Link44989857158 attempt 1为5 PASS/0 FAIL，最终证据见记录25.10。当前唯一 HEAD 为 C2-B13「项目身份响应证明统一」；后续SEND/UNKNOWN窄恢复继续QUEUED，再按原顺序推进SA-002。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
+状态：已交付阶段及其固定 SHA 证据按各节保留。C2-B6 实现 `4e992e9c2406586ec23fa7636292e3d48c163118`、文档 `29ec00586be20730e66cf37da12614e6450d240d` 已分阶段推送，固定实现完整 SHA 的 Full-Link 44940092094 为 5/5，B6 已 DONE，详见19.9；此前本地门禁与历史轮次不变。B7 已完成独立 RED、定向 91/91、单次相关 840/840、API 48/48、普通 831（826 PASS / 5 既有 SKIP）、静态及源码绑定，实现 00def779 已推送；固定实现 SHA 的 Full-Link 44945748427 attempt 2 为 5/5，B7 已 DONE。首轮 Central 429 与最终结果见记录 20.8–20.9，验收文档单独收口。C2-B8 正常 CREATE_MR 完整请求的发送证明闭环已 DONE：独立 RED 与一次明确 PG 契约校准后，125/125 首次 GREEN、单次相关965/965、API48/48、普通877（872 PASS / 5既有SKIP）、静态及最终源码绑定通过；实现 `537588e782c2b3bb2d2e82e21804f2d37fb42fc2` 已推送，固定该 SHA 的 [Full-Link 44972473174](https://github.com/tongsh6/release-hub/actions/runs/44972473174) attempt 1 已 completed/success，五个slice分别PASSED。最终证据与边界见21.11，验收文档单独收口。C2-B9 原 CREATE_MR INTENT 的安全接续与本地收口已 DONE：相关1078/1078、API48/48、普通918（913 PASS / 5既有SKIP）、静态与最终源码审计通过，实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003 attempt 1为5 PASS / 0 FAIL。证据与边界见记录22.7–22.14，验收文档单独收口。B10「MERGE_MR 精确只读核对证据」已DONE：相关1123/API48/普通942、前端218与静态及源码审计通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定该SHA的Full-Link44982102777 attempt 1为5 PASS/0 FAIL，证据见记录23.7–23.11。B11「GitLab MR读取响应状态证明」已DONE：实现 `35ca21366ec9124fe9c4d6d2ef162a09c13709fb` 已推送，固定该SHA的Full-Link44984865795 attempt 1为5 PASS/0 FAIL，完整本地与远端证据见记录24.5–24.9。B12「无自身写意图任务的失败与重试闭环」已DONE：实现 `7042f19278ff8d8bfa102a8f27d0c1f1b949539d` 已推送，固定该SHA的Full-Link44989857158 attempt 1为5 PASS/0 FAIL，最终证据见记录25.10。B13、B14已DONE，证据见26–27节；SEND/UNKNOWN契约拆分已完成，当前唯一HEAD为B15同步200证据不足的UNKNOWN审计式恢复，待RED，详见28节；SA-002原队列保持。任务选择以[唯一执行队列](../../docs/execution-roadmap.md)为准，C2 整体未完成。
 
 ## 1. 目标与范围
 
@@ -1985,4 +1985,54 @@ CI原日志SHA256为 `0214ad7785318f866ac508f4dee795d66df700d91cb13cd68973a5d0d7
 
 B14按本片合同标DONE：确定原REJECTED证据补原结果、默认末尾扫描、原事务/竞争/回滚、Run查询、后继策略与有资格的新Run retry已验。NO_COMMITS继续UNKNOWN Task/Item/Step、NEEDS_REVIEW Run与受理门禁；确定拒绝guard确认不授予业务重试权。真正SEND/UNKNOWN、创建分支/创建MR拒绝恢复、终态历史更正、metadata/其他业务GET及完整UI继续独立验收。上述Full-Link限后端API与隔离GitLab五切片，不扩大为完整UI、全部真实合并冲突旅程或整个C2交付。
 
-当前唯一HEAD移至后续SEND/UNKNOWN受证据约束恢复的契约拆分；下一步按动作、原同步响应、I/O未确认及Task历史分别冻结最小验收边界，本次没有实现该恢复。README、产品计划、路线图、台账、场景矩阵、需求与OpenSpec同步同一事实。交叉终审及全量旧队首扫描共修正OpenSpec中6处陈旧的当前状态尾句，原验收事实保留，后续队首统一引用路线图；任务总述的最后一处由最终扫描拦下并修正，见delivery/docs-stale-head-audit.json。修订后的OpenSpec 1.16.0严格校验已再次PASS，10份OpenSpec输入前后稳定；唯一HEAD与diff检查均PASS，backend495/frontend222仍与已验实现相同。文档追加时发现的EOF空行已原位移除。首轮文档验证保留，最终结果以 `openspec-strict-final-v3/` 与 `delivery/docs-gates.json` 为准。
+B14交付时，唯一HEAD移至后续SEND/UNKNOWN受证据约束恢复的契约拆分；下一步按动作、原同步响应、I/O未确认及Task历史分别冻结最小验收边界，本次没有实现该恢复。README、产品计划、路线图、台账、场景矩阵、需求与OpenSpec同步同一事实。交叉终审及全量旧队首扫描共修正OpenSpec中6处陈旧的当前状态尾句，原验收事实保留，后续队首统一引用路线图；任务总述的最后一处由最终扫描拦下并修正，见delivery/docs-stale-head-audit.json。修订后的OpenSpec 1.16.0严格校验已再次PASS，10份OpenSpec输入前后稳定；唯一HEAD与diff检查均PASS，backend495/frontend222仍与已验实现相同。文档追加时发现的EOF空行已原位移除。首轮文档验证保留，最终结果以 `openspec-strict-final-v3/` 与 `delivery/docs-gates.json` 为准。
+
+## 28. SEND/UNKNOWN契约拆分与B15队首（2026-11-23）
+
+### 28.1 本轮目标与边界
+
+用户要求继续。按路线图唯一HEAD，完成“按动作、原响应与Task历史拆分下一最小恢复契约”，不是重新实现已DONE的B14。接手固定SHA为 `13f637a575bef058b0b743cfd611dec85543d7b8`，工作区干净；持续研发、必要重构、分组提交与阶段推送授权保持。生命周期/工作模式仍由Profile定义，本轮不改项目画像。
+
+本轮仅修改规格、任务与事实索引，没有修改生产代码或测试，没有发送GitLab写请求、改容器或服务。B14既有140/1376/API48/普通1019和CI只作历史证据，不算本轮测试。
+
+### 28.2 反例推动的范围选择
+
+两路独立只读审查首先否决“任意seq2 UNKNOWN加MR merged即可完成”：客户端timeout不说明服务端已停，merged状态机和租约也不能消除已通过检查后暂停的旧请求。B10 FOUND还缺原计划source/target及target包含A，不能直接用来释放保护。
+
+再核源码发现一个可区分的子集：Interceptor完整读完原响应才写typed httpStatus；I/O未确认写{}，同步200正文证明不足写{"httpStatus":200}。两者reason均可为RESPONSE_UNCONFIRMED，不能以reason分流。GitLab17.11.3无auto请求的同步调用链及remove=false语义提供该窄子集的源码依据；真实行为验证仍是B15第一门禁。
+
+下一唯一HEAD确定为 **B15：MERGE_MR同步200证据不足的UNKNOWN审计式恢复**。主要对象为已UNKNOWN Task/Step，兼顾到期RUNNING无Step窗口；原请求已返回与业务已满足分别证明。原I/IID/A、计划分支、target包含关系和最新强观察齐备后，追加解决事实，保留原响应/Step，投影ALREADY_MERGED，不伪装原PUT APPLIED。
+
+没有机械补齐CREATE_BRANCH/CREATE_MR拒绝投影：CREATE_BRANCH在原拒绝后还会读分支并可能得ALREADY_EXISTS；CREATE_MR拒绝缺口可单独复用正常映射，仍保留后续条目。真正I/O未知、无seq2 SEND、其他NEEDS_REVIEW来源和其他动作未扩权。
+
+### 28.3 实际消费者与事前契约
+
+集中契约为 `docs/openspec/changes/add-durable-run-recovery/unknown-merge-recovery.md`，明确11组验收、完整DAG、失败/幂等/重试、回滚与后续追踪；Run delta新增4项要求及15个场景，全部标明B15目标待实现。
+
+必须贯通的真实消费者已定位：Run.aggregateStatus目前任一历史UNKNOWN即NEEDS_REVIEW；toDomainItem会丢Step的task_id；admitRetry、inheritedPrefix及copyRetryCheckpoint共同限制源Run和成功前缀；Run视图、JSON/CSV/报告、MRFirstTimeline/RunDetail/RunDrawer/OrchestrationPanel均消费原结果。新解决事实须精准关联原Task/Step并提供唯一有效结果，不能只改Item或在前端忽略UNKNOWN。
+
+窄resume只确认所选原Item，reconcile继续只记录观察，原SKIPPED不回PENDING。Run确已结束后才可经现retry继续合格后继；已解决成功Item不可重试。冻结/Detach不重解释原事实，后续新写仍守原受理门禁；updateLastMergeAt现有ifPresent也不会重建被解除的绑定。
+
+两路终审未发现原则性阻断，并落实四项精化：RUNNING无Step的完整到期/领取资格；guard.reason精确REMOTE_RESULT_UNKNOWN；任何后续观察/operation变更均使旧观察失效且不假定版本只加1；恢复actor取现认证主体并与原历史operator分责，同步确认HTTP200而非202。原始评论与修订纳入本轮记录，不以审阅代替实现验证。
+
+### 28.4 只读证据与实际版本
+
+证据目录：`.ai/reports/validation/c2-b15-contract/`。source-audit/manifest.json记录原提交、采集时刻及7份GitLab公开文件（含VERSION）；project-source-before.json记录backend495/frontend222共717个已跟踪文件。没有读取凭据或GitLab业务数据。
+
+| GitLab17.11.3公开文件 | SHA256 |
+|---|---|
+| lib/api/merge_requests.rb | 79ddcc9adb7dae16a26ffb871d7e3d57f967f50d986c7b6a817e905dd4982d05 |
+| app/services/merge_requests/merge_service.rb | f6f332a542afae1f123e77f536dec174c56ec43f91d5e645e7942d735e055de1 |
+| app/services/merge_requests/post_merge_service.rb | 50f176ab7b688a8f9ce6cbf81838f609fb66c7502260428cac7a7c2acac4b20c |
+
+API实际调用次序、请求auto分支及显式不删源见集中契约第3、11节。源码支持“本请求同步target写已返回”，不支持“所有hooks/CI/其他主体永不再写”。未把固定版本源码审查称作真实HTTP、进程或UI验收。
+
+### 28.5 本轮验证与交付
+
+文档门禁已通过：OpenSpec1.16.0严格校验、唯一B15 HEAD、相对链接、13文件精确范围、空白、4项要求/15个场景及输入稳定性均PASS；backend495/frontend222共717个已跟踪文件与接手清单逐文件相同。首个完整结果在docs-gates-v2/result.json，提交前最终树再以docs-gates-final/result.json核对。没有生产或测试改动，本轮不重跑行为套件、静态TopN或Full-Link，不沿用B14测试冒充B15验证；B15实施时仍需完整门禁。
+
+OpenSpec工具仅装于忽略的证据目录，不改应用依赖。首次npm脚本入口因env找不到node退出127、未完成安装，install.log保留；改为已核实Node24.19.0绝对路径直接运行npm-cli后安装成功，版本1.16.0、active changes与specs列表已核查，install-v2.log/discovery.json保留。该工具启动纠正不构成业务测试失败或恢复证据。
+
+首版文档采集在检查开始前误用Git默认带引号的中文路径，未运行任何门禁；修正为git -z按NUL分隔读取真实路径后取得完整PASS，首版原因保留于docs-gates-v1/collector-error.json。17个场景的草稿计数已按实际4组共15个修正。独立最终diff审阅确认13文件状态一致，无B15已实现声明。
+
+本轮契约按持续授权独立提交推送，确切提交与远端一致性见本证据目录delivery.json；B15仍为待RED，不标实现DONE。main/develop共同基线保持，后续顺序仍由唯一执行路线图维护。

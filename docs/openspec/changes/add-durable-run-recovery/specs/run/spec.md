@@ -1415,6 +1415,117 @@ B13「项目身份响应证明统一」已DONE：三入口共用actual200/object
 
 B14以上要求已由七个生产文件接入原执行路径并验收DONE；冻结独立140例为37 FAIL/103 PASS→140/140，最终相关1376/API48/普通1019及静态同树通过。实现`36d6c7b0a692ada9ae77b484967e58df87909aac`已推送，固定该SHA的[Full-Link 45115321412](https://github.com/tongsh6/release-hub/actions/runs/45115321412) attempt 1为5 PASS/0 FAIL；新增独立断言保持、旧候选预期适配及真实HTTP/PG/进程证据见记录27.6–27.12。未据此宣称完整SEND/UNKNOWN、终态历史更正或UI恢复。
 
+### Requirement: 同步200证据不足的MERGE未知结果恢复（B15目标，待实现）
+
+系统 SHALL 仅对当前WINDOW协议的原MERGE_MR同步请求完整返回200、但业务证明不足而保存UNKNOWN的子集，按照[独立恢复契约](../../unknown-merge-recovery.md)核对并修正有效结果。本要求尚未实现，不改变B14已交付边界。
+
+#### Scenario: 原同步响应与I/O未确认分别判断
+
+- **GIVEN** 原operation/attempt、sender、seq0/1/2、原计划I/IID/A、完整无query命令和hash均一致
+- **WHEN** 原seq2 UNKNOWN的证据恰为JSON object且仅含整数httpStatus=200
+- **THEN** 才允许进入本片的强只读核对与结果恢复资格判断，不能直接认定业务完成
+- **AND** reason=RESPONSE_UNCONFIRMED、租约到期或后来FOUND均不能替代该原响应证明
+
+#### Scenario: 未确认I/O继续保留保护
+
+- **GIVEN** 原证据为{}、非200、408、5xx、错类型、不完整、仅SEND无seq2，或operation为其他NEEDS_REVIEW来源
+- **WHEN** 后续查询显示MR merged，甚至target包含A
+- **THEN** 本片不授予完成、重发或guard释放资格，不改变原历史与迟到finish边界
+
+#### Scenario: 原请求不得含隐式异步或删源行为
+
+- **WHEN** 原命令含auto_merge、merge_when_pipeline_succeeds、query、remove=true、不完整封套或hash不符
+- **THEN** 不将该请求归入已证明同步结束的子集
+- **AND** 不通过当前配置重造原命令；支持版本的真实行为门禁未通过前，不开放该恢复
+
+### Requirement: 恢复观察与正常已合并判据一致（B15目标，待实现）
+
+系统 SHALL 分别证明原同步请求已返回与原业务计划已满足。现B10的I/IID/A FOUND观察不含完整业务证明，不得原样消费。强观察网络读取 SHALL 在结果事务外完成，提交时重新核准原计划、版本和归属。
+
+#### Scenario: 强观察完整绑定原计划
+
+- **WHEN** 取得原numeric project/IID的实际200 merged响应，原source/target与冻结A匹配，且完整只读查询证明原target包含A
+- **THEN** 按正常ALREADY_MERGED规则形成带原Task/Item/计划、每项读取结果、时间和来源版本的强观察
+- **AND** 原PUT归因保持未知；正常流与恢复不得使用两套成功判据
+
+#### Scenario: MR对象匹配但计划不满足
+
+- **WHEN** 仅有B10 FOUND，或分支不匹配、target不包含A、权限/分页/网络不完整
+- **THEN** 不补记成功，不释放保护；保持精确的不匹配或未知原因
+- **AND** 不因当前分支已移动而替换冻结A，不引入squash内容等价猜测
+
+#### Scenario: 合并SHA的未知保持真实
+
+- **WHEN** merge_commit_sha显式null，或非null的merge提交不在target中
+- **THEN** 按正常alreadyMerged判据保留或清为null；包含查询不确定时保持未决
+- **AND** 不用A、squash提交或当前target tip填充；缺失和错类型不假装显式null
+
+#### Scenario: 观察的版本竞争
+
+- **GIVEN** 核对在原seq2之后完成并持久化
+- **WHEN** 所选观察的实际提交后版本关联与请求expectedOperationVersion或当前operation版本不一致，存在任何更新观察，或计划/guard归属在提交前变化
+- **THEN** 拒绝该次消费并要求重新核对，不推算固定版本增量、不挑选历史有利字段、不释放保护、不产生新Git写入；幂等重放先返回已有解决回执
+
+### Requirement: UNKNOWN历史的精确审计式解决（B15目标，待实现）
+
+系统 SHALL 保留原UNKNOWN operation响应事件及原Step，并追加与精确Task、原唯一Step和强观察相连的解决事实。领域汇总、Task/Item投影、查询/导出和前端 SHALL 消费同一有效结果；不得统一忽略历史UNKNOWN或把原响应改写为APPLIED。
+
+#### Scenario: 已提交UNKNOWN的真实恢复路径
+
+- **GIVEN** 原TRY_MERGE为UNKNOWN且存在唯一自身UNKNOWN Step，完整同步200及强观察证明成立
+- **WHEN** 受控恢复事务提交
+- **THEN** 原Step及seq0/1/2保持，追加解决事实；当前Task为COMPLETED、Item有效结果为ALREADY_MERGED
+- **AND** 原Run/Task身份、计划、领取事实与执行顺序不重建；页面和导出同时说明原UNKNOWN与后续解决来源
+
+#### Scenario: 无本地结果的中断窗口
+
+- **GIVEN** 原TRY仍RUNNING、领取事实完整且到期，无自身Step，并满足同一同步200和强观察证明
+- **WHEN** 受控恢复提交
+- **THEN** 提交原Task的首个真实结果和解决来源，不补造历史UNKNOWN Step，不重发PUT
+- **AND** 原sender与恢复者竞争不能产生第二个结果
+
+#### Scenario: 只解决精确关联的未知
+
+- **GIVEN** 同Run另有未解决UNKNOWN或某个解决引用跨Task、摘要不符
+- **WHEN** 汇总Run或请求retry
+- **THEN** 该未知仍然阻断，Run继续NEEDS_REVIEW且finishedAt为空；不由一个已解决Item放行全Run
+
+#### Scenario: 原子结果与保护
+
+- **WHEN** 解决事件、Task条件更新、metadata、绑定、Run汇总或guard确认任一环节失败
+- **THEN** 本次结果与保护修改全部回滚，原响应、观察和历史保持
+- **AND** 双恢复者至多提交一次有效解决事实；结果事务零HTTP，不新operation/attempt或发送资格
+
+### Requirement: 单项恢复与后继重试职责分离（B15目标，待实现）
+
+系统 SHALL 沿既有Run应用服务提供窄POST /api/v1/runs/{runId}/resume，使用必填Idempotency-Key和现有全局认证的服务端主体，选择一个原Item、operation、强observation及expectedOperationVersion，同步确认后HTTP200返回原Run ID；当前actor单独审计，不要求等于历史Run.operator。reconcile SHALL 保持只记录观察；普通retry继续处理有资格的失败/跳过项，不接收未解决UNKNOWN。
+
+#### Scenario: 恢复请求幂等
+
+- **WHEN** 同主体同key同请求重复提交
+- **THEN** 先返回首次解决回执，不追加决策或Step、不再次写Git
+- **AND** 同key异内容、伪造归属、客户端force/operator或冲突证据不得取得恢复权
+
+#### Scenario: 已跳过后继保持原事实
+
+- **GIVEN** 原UNKNOWN已导致同仓后继SKIPPED
+- **WHEN** 所选UNKNOWN被解决
+- **THEN** SKIPPED不回PENDING；源Run确已结束且无其他未知后，用户才能通过原retry选择合格后继
+- **AND** 已解决成功Item不可再选；成功前缀不重放，不广泛放宽inheritedPrefix的UNKNOWN限制
+
+#### Scenario: 剩余队列与跨仓汇总
+
+- **WHEN** 无Step中断路径完成后还有原PENDING，或同Run其他仓仍活动/失败/未知
+- **THEN** 原worker继续按同仓顺序和跨仓规则推进，Run按实际有效结果汇总
+- **AND** 不因一次恢复宣称全窗DONE，不改变FAIL_FAST/显式CONTINUE下未解决UNKNOWN的阻断规则
+
+#### Scenario: 冻结与Detach不篡改原执行事实
+
+- **GIVEN** 原计划和所有证据仍可核准，但当前窗口已冻结或原迭代已Detach
+- **WHEN** 只读核对并确认原执行结果
+- **THEN** 不用当前范围重新解释原计划；可进行无Git写的事实收口
+- **AND** 后续新retry仍遵守当前受理门禁，不由事实修复获得额外写权限
+
 ## MODIFIED Requirements
 
 ### Requirement: 运行任务管理

@@ -363,12 +363,31 @@ S2 实际行为、验证与限制见 [实施口径](s2-implementation.md)。2026
 - [x] 冻结140、最终相关1376/API48/普通1019（1014 PASS/5旧SKIP）、静态TopN、源码绑定与独立审阅通过；实现`36d6c7b0a692ada9ae77b484967e58df87909aac`已推送，固定该SHA的Full-Link45115321412 attempt 1为5 PASS/0 FAIL，B14标DONE。新增137例断言冻结，旧候选预期适配及首轮失败保留于27.10。
 - 回滚与边界：不清历史、不释放未证明的guard、不重发未知请求；创建分支/创建MR的REJECTED、终态UNKNOWN更正、真正SEND/UNKNOWN恢复及完整UI仍独立排队。
 
-#### C2-B 后续：SEND/UNKNOWN 核对与恢复（HEAD / 契约拆分）
+#### C2-B 后续契约拆分（DONE / 2026-11-23）
 
-- 当前责任：按动作、原同步响应、I/O未确认与Task历史拆分下一最小验收契约；本次仅推进队列，未实现未知写恢复或终态历史更正。
+- [x] 从固定基线13f637a区分动作、原完整同步响应、I/O未确认与Task既有历史；选择下述B15，未实现恢复。
+- [x] 只读核查运行中的GitLab17.11.3公开源码及项目原响应producer，否决“任意seq2 UNKNOWN+FOUND即可释放保护”；代码/版本hash和两路独立反例审查见记录28。
+- [x] 完整目标、原Step审计式解决、真实消费者、强观察、失败/幂等/重试、11组验收及回滚已落[集中契约](unknown-merge-recovery.md)与Run delta；源码审查不替代行为验证。
 
-- [ ] UNKNOWN/NEEDS_REVIEW 的精确只读核对、受证据约束的 resume；无 force 绕过或任意 FOUND 自动释放 guard。
-- [ ] SEND_STARTED 前后硬中断、外部成功但业务提交失败、租约过期、旧 worker 延迟发送/返回与观察版本竞争；不能把数据库 fencing 当作 Git fencing。
+#### C2-B15：MERGE_MR同步200证据不足的UNKNOWN审计式恢复（HEAD / 待RED）
+
+- 蓝图归属与用户价值：S3-C2的受证据约束恢复；原UNKNOWN任务在确认原计划已满足后可审计式收口，保留原记录且不重复写Git。
+- 依赖：B10只读观察、B14原结果事务及已完成契约拆分；开工时冻结含本契约的完整SHA。
+- 必要层：Domain/Application/Infrastructure/API/Frontend/Export/Tests/Docs；复用原Run、Task、事件账本和现页面，不建立第二执行器。
+- 单一目标与范围：原seq2严格typed HTTP200、完整非auto/remove=false命令与发送证明，再加原计划I/IID/A/分支和target包含A的强观察；主要验收已UNKNOWN Step，兼顾合格到期RUNNING无Step。
+- [ ] 在授权隔离GitLab支持版本验证同步响应、无auto及不删源；本轮仅有源码证明。
+- [ ] 独立冻结11组行为正反例并取得RED，不以现实现或旧GREEN作oracle。
+- [ ] 接通强观察和精确解决事实；网络在事务外，提交时锁内重核最新版本与guard归属。
+- [ ] 原Step及seq2保持；领域有效结果、Task/Item/Run汇总、一次解决事件与guard确认同事务，竞争和回滚通过。
+- [ ] 窄resume、幂等回执、服务端身份、现查询/导出/页面同一口径；旧SKIPPED不回PENDING，普通retry门禁保持。
+- [ ] 真实HTTP/PostgreSQL/独立JVM、UI操作旅程、现retry出口、相关回归、静态TopN及源码绑定、独立审阅和固定实现SHA交付完成。
+- 回滚与后续：无法证明时继续未决；停止新恢复受理并保留可解释解决事实的读取，不清历史或guard。完整边界与退回策略见集中契约第10节。
+
+#### C2-B 剩余：其他SEND/UNKNOWN来源和动作（QUEUED）
+
+- [ ] UNKNOWN/NEEDS_REVIEW 的其他来源、真正I/O未确认与无seq2 SEND分别定义核对/恢复证明；无force绕过或任意FOUND自动释放guard。
+- [ ] CREATE_MR/CREATE_BRANCH的原确定拒绝缺口按各自正常业务后续评审，不机械照搬B14。
+- [ ] SEND_STARTED前后硬中断、外部成功但业务提交失败、租约过期、旧worker延迟发送/返回与观察版本竞争继续分动作验收；不能把数据库fencing当作Git fencing。
 
 ## S4：版本更新与收尾恢复
 

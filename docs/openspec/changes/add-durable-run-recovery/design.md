@@ -566,6 +566,12 @@ seq2 evidence须为恰含httpStatus/rejectionReason的object，httpStatus为可�
 
 **反例、影响与验收。** 租约到期不能证明外部拒绝；reason=null不能证明guard无主；只凭4xx或不一致reason可能把不可信历史解释成已确定结果；把NO_COMMITS当成功会绕过业务未知保护。以上均需反例先行。复用原结果事务可消除确定响应留下的假运行中，又避免重发和重复副作用；不引入网络锁、第二状态机或历史修正工具。独立验收按记录27.4的11组责任覆盖真实HTTP、默认扫描、现Run查询与retry受理、并发、回滚、真实独立JVM强杀与APPLIED回归，避免字段笛卡尔组合。开工时冻结完整基线SHA，先真实行为RED再同批GREEN；七个生产文件已完成既有职责接线；冻结140例为37 FAIL/103 PASS→140/140，新增137例断言保持，另有一个既有候选用例按REJECTED发现范围适配。最终相关1376/API48/普通1019及静态同树通过；实现`36d6c7b0a692ada9ae77b484967e58df87909aac`已推送，固定该SHA的[Full-Link 45115321412](https://github.com/tongsh6/release-hub/actions/runs/45115321412) attempt 1为5 PASS/0 FAIL，B14已DONE，首轮失败与完整证据见记录27.6–27.12。创建分支/创建MR的REJECTED投影、真正SEND/UNKNOWN恢复、终态历史更正及完整UI继续独立验收。
 
+##### C2-B15：同步200证据不足的UNKNOWN审计式恢复（契约已形成，待实施）
+
+下一片以[集中契约](unknown-merge-recovery.md)为权威细化：原完整同步200证明本次请求已返回，原计划I/IID/A及target包含A的强观察证明业务满足；二者不可互代。主要覆盖已落UNKNOWN Task/Step，并兼顾合格RUNNING无Step中断窗口；保留原历史，通过明确解决事实投影ALREADY_MERGED，贯通领域汇总、查询/导出、现页面和原retry。既有SKIPPED不回PENDING。
+
+本轮只读审查项目源码及运行中的GitLab17.11.3公开源码，形成事前契约，未修改生产/测试、未进行GitLab写入或行为验收。源码已证实原typed httpStatus=200与I/O未确认{}不能仅靠reason区分，B10 FOUND缺少原计划与包含关系，Run聚合仍检查历史UNKNOWN。完整证据、反例、11组验收、事务/API/UI边界与实施DAG见集中契约及记录28。真正I/O未确认、无seq2 SEND、其他NEEDS_REVIEW来源与其他动作保持后续范围；不把HTTP200、租约或FOUND当作通用恢复许可。
+
 ### 分阶段依赖与交付
 
 - S3-A：配置/执行边界、文件原 revision、防止跨仓阻塞传播、权威范围、统一状态和界面；带独立 RED/GREEN 与静态扫描。

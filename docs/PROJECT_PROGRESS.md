@@ -6,7 +6,13 @@
 > 验收推进：2026-05-09（真实 GitLab 全链路验收 20/20 → 25 PASS，v0.1.10 修复项全部验证）
 > 功能推进：2026-05-09（迭代-仓库-分支三层关联 + BranchCreationMode 实现 + 验收脚本 v3）
 
-## 总体概览
+## 2026-11-23：SEND/UNKNOWN恢复契约拆分
+
+B14已交付之后，完成当前队首的契约拆分。原同步HTTP200但正文证明不足，与I/O未确认、无seq2 SEND分别处理；下一唯一HEAD为B15“MERGE_MR同步200证据不足的UNKNOWN审计式恢复”。主要覆盖已UNKNOWN历史，保留原Step，追加精确解决事实，贯通Run汇总、页面/导出和原retry；不重复发送Git请求。
+
+本轮仅规格和只读源码审查，运行中GitLab17.11.3的公开源码已核查并保存hash；B15代码、行为测试和真实UI旅程尚未开始。权威契约见[unknown-merge-recovery.md](openspec/changes/add-durable-run-recovery/unknown-merge-recovery.md)，事实与交付见[记录28](../tasks/records/2026-11-21-sa-013-orchestration-consistency.md)，任务顺序见[路线图](execution-roadmap.md)。
+
+## 历史总体概览（2026-05）
 
 ### 需求完成情况（基于 `requirements/`）
 
