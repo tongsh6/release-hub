@@ -18,6 +18,12 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 REPORT_DIR="$REPO_ROOT/.ai/reports/static-scan/$TIMESTAMP"
 RAW_DIR="$REPORT_DIR/raw"
 
+# Exit codes are the evidence for PASS/FAIL; absent manifests remain explicit SKIP.
+GIT_DIFF_EXIT=0
+SPOTBUGS_EXIT=SKIP
+ESLINT_EXIT=SKIP
+TYPECHECK_EXIT=SKIP
+
 mkdir -p "$RAW_DIR"
 
 echo "==> ReleaseHub Static Scan Top${TOP_N}"
@@ -29,7 +35,8 @@ echo "--- 1/4 git diff --check ---"
 if git -C "$REPO_ROOT" diff --check > "$RAW_DIR/git-diff-check.txt" 2>&1; then
     echo "    PASS"
 else
-    echo "    FAIL (see raw/git-diff-check.txt)"
+    GIT_DIFF_EXIT=$?
+    echo "    FAIL (exit $GIT_DIFF_EXIT; see raw/git-diff-check.txt)"
 fi
 
 # ---- 2. Backend: SpotBugs ----
@@ -41,9 +48,11 @@ if [ -f "$BACKEND_DIR/pom.xml" ]; then
         install \
         com.github.spotbugs:spotbugs-maven-plugin:4.9.8.3:check \
         > "$RAW_DIR/backend-spotbugs.txt" 2>&1; then
+        SPOTBUGS_EXIT=0
         echo "    PASS (0 bugs)"
     else
-        echo "    DONE (bugs found, see raw/backend-spotbugs.txt)"
+        SPOTBUGS_EXIT=$?
+        echo "    FAIL (exit $SPOTBUGS_EXIT; see raw/backend-spotbugs.txt)"
     fi
     cd "$REPO_ROOT"
 else
@@ -57,9 +66,11 @@ FRONTEND_DIR="$REPO_ROOT/frontend"
 if [ -f "$FRONTEND_DIR/package.json" ]; then
     cd "$FRONTEND_DIR"
     if pnpm -s lint > "$RAW_DIR/frontend-lint.txt" 2>&1; then
+        ESLINT_EXIT=0
         echo "    PASS"
     else
-        echo "    DONE (issues found, see raw/frontend-lint.txt)"
+        ESLINT_EXIT=$?
+        echo "    FAIL (exit $ESLINT_EXIT; see raw/frontend-lint.txt)"
     fi
     cd "$REPO_ROOT"
 else
@@ -72,9 +83,11 @@ echo "--- 4/4 frontend typecheck ---"
 if [ -f "$FRONTEND_DIR/package.json" ]; then
     cd "$FRONTEND_DIR"
     if pnpm -s typecheck > "$RAW_DIR/frontend-typecheck.txt" 2>&1; then
+        TYPECHECK_EXIT=0
         echo "    PASS"
     else
-        echo "    DONE (issues found, see raw/frontend-typecheck.txt)"
+        TYPECHECK_EXIT=$?
+        echo "    FAIL (exit $TYPECHECK_EXIT; see raw/frontend-typecheck.txt)"
     fi
     cd "$REPO_ROOT"
 else
@@ -83,6 +96,15 @@ else
 fi
 
 echo ""
+
+GATE_EXIT=0
+for check_exit in "$GIT_DIFF_EXIT" "$SPOTBUGS_EXIT" "$ESLINT_EXIT" "$TYPECHECK_EXIT"; do
+    if [ "$check_exit" != SKIP ] && [ "$check_exit" -ne 0 ]; then
+        GATE_EXIT=1
+    fi
+done
+printf 'check\texit_code\ngit-diff-check\t%s\nbackend-spotbugs\t%s\nfrontend-lint\t%s\nfrontend-typecheck\t%s\n' \
+    "$GIT_DIFF_EXIT" "$SPOTBUGS_EXIT" "$ESLINT_EXIT" "$TYPECHECK_EXIT" > "$RAW_DIR/check-exit-codes.tsv"
 
 # ---- Build summary.md ----
 SUMMARY="$REPORT_DIR/summary.md"
@@ -102,20 +124,6 @@ extract_bugs() {
 count_real_bugs() {
     local f="$1"
     extract_bugs "$f" | wc -l | tr -d ' '
-}
-
-has_maven_scan_failure() {
-    local f="$1"
-    [ -f "$f" ] && grep -qE 'BUILD FAILURE|Failed to execute goal|Could not resolve dependencies|No plugin found for prefix|Plugin .* not found' "$f" 2>/dev/null
-}
-
-count_eslint_errors() {
-    local f="$1"
-    if [ -f "$f" ]; then
-        { grep -E '^[[:space:]]+[0-9]+:[0-9]+[[:space:]]+error[[:space:]]+' "$f" 2>/dev/null || true; } | wc -l | tr -d ' '
-    else
-        echo 0
-    fi
 }
 
 count_eslint_warnings() {
@@ -143,37 +151,37 @@ HEADER
     echo "| 扫描工具 | 结果 |"
     echo "|---------|------|"
 
-    # git diff --check: empty output = PASS, non-empty = issues found
-    if [ -s "$RAW_DIR/git-diff-check.txt" ]; then
-        echo "| git diff --check | ❌ FAIL |"
-    else
+    if [ "$GIT_DIFF_EXIT" -eq 0 ]; then
         echo "| git diff --check | ✅ PASS |"
-    fi
-
-    # SpotBugs
-    SPOTBUGS_COUNT=$(count_real_bugs "$RAW_DIR/backend-spotbugs.txt")
-    if has_maven_scan_failure "$RAW_DIR/backend-spotbugs.txt"; then
-        echo "| backend SpotBugs | ❌ FAIL (scan failed) |"
-    elif [ "$SPOTBUGS_COUNT" -eq 0 ]; then
-        echo "| backend SpotBugs | ✅ PASS (0 bugs) |"
     else
-        echo "| backend SpotBugs | ⚠️ $SPOTBUGS_COUNT bugs |"
+        echo "| git diff --check | ❌ FAIL (exit $GIT_DIFF_EXIT) |"
     fi
 
-    # ESLint: distinguish errors from warnings; warnings still deserve report visibility.
-    ESLINT_ERROR_COUNT=$(count_eslint_errors "$RAW_DIR/frontend-lint.txt")
+    # Log parsing adds detail; it never substitutes for the command result.
+    SPOTBUGS_COUNT=$(count_real_bugs "$RAW_DIR/backend-spotbugs.txt")
+    if [ "$SPOTBUGS_EXIT" = SKIP ]; then
+        echo "| backend SpotBugs | — SKIP (no backend/pom.xml) |"
+    elif [ "$SPOTBUGS_EXIT" -ne 0 ]; then
+        echo "| backend SpotBugs | ❌ FAIL (exit $SPOTBUGS_EXIT; $SPOTBUGS_COUNT matched bug lines) |"
+    else
+        echo "| backend SpotBugs | ✅ PASS ($SPOTBUGS_COUNT matched bug lines) |"
+    fi
+
     ESLINT_WARNING_COUNT=$(count_eslint_warnings "$RAW_DIR/frontend-lint.txt")
-    if [ "$ESLINT_ERROR_COUNT" -gt 0 ]; then
-        echo "| frontend ESLint | ❌ $ESLINT_ERROR_COUNT errors |"
+    if [ "$ESLINT_EXIT" = SKIP ]; then
+        echo "| frontend ESLint | — SKIP (no frontend/package.json) |"
+    elif [ "$ESLINT_EXIT" -ne 0 ]; then
+        echo "| frontend ESLint | ❌ FAIL (exit $ESLINT_EXIT) |"
     elif [ "$ESLINT_WARNING_COUNT" -gt 0 ]; then
-        echo "| frontend ESLint | ⚠️ $ESLINT_WARNING_COUNT warnings |"
+        echo "| frontend ESLint | ⚠️ PASS ($ESLINT_WARNING_COUNT warnings) |"
     else
         echo "| frontend ESLint | ✅ PASS |"
     fi
 
-    # Typecheck
-    if grep -qi 'error' "$RAW_DIR/frontend-typecheck.txt" 2>/dev/null; then
-        echo "| frontend typecheck | ❌ FAIL |"
+    if [ "$TYPECHECK_EXIT" = SKIP ]; then
+        echo "| frontend typecheck | — SKIP (no frontend/package.json) |"
+    elif [ "$TYPECHECK_EXIT" -ne 0 ]; then
+        echo "| frontend typecheck | ❌ FAIL (exit $TYPECHECK_EXIT) |"
     else
         echo "| frontend typecheck | ✅ PASS |"
     fi
@@ -187,12 +195,16 @@ HEADER
     # Extract TopN real issues (prioritize SpotBugs -> typecheck -> ESLint)
     issue_count=0
 
-    # Phase 0: scan execution failures
-    if has_maven_scan_failure "$RAW_DIR/backend-spotbugs.txt"; then
-        issue_count=$((issue_count + 1))
-        first_error=$(grep -E 'Failed to execute goal|Could not resolve dependencies|No plugin found for prefix|BUILD FAILURE' "$RAW_DIR/backend-spotbugs.txt" 2>/dev/null | head -1)
-        echo "| $issue_count | backend-spotbugs | $(echo "$first_error" | sed 's/|/\\|/g' | cut -c1-100) | 高 | 修复扫描命令或 Maven 环境 | 待处理 | raw/backend-spotbugs.txt |"
-    fi
+    # Phase 0: every failed check stays visible even with an empty/unrecognized log.
+    for check_result in "git-diff-check:$GIT_DIFF_EXIT" "backend-spotbugs:$SPOTBUGS_EXIT" \
+            "frontend-typecheck:$TYPECHECK_EXIT" "frontend-lint:$ESLINT_EXIT"; do
+        check_source="${check_result%%:*}"
+        check_exit="${check_result#*:}"
+        if [ "$check_exit" != SKIP ] && [ "$check_exit" -ne 0 ] && [ "$issue_count" -lt "$TOP_N" ]; then
+            issue_count=$((issue_count + 1))
+            echo "| $issue_count | $check_source | 检查命令未通过（exit ${check_exit}） | 高 | 按原始日志修复检查或运行环境 | 待处理 | raw/$check_source.txt |"
+        fi
+    done
 
     # Phase 1: real SpotBugs bugs
     if [ "$issue_count" -lt "$TOP_N" ]; then
@@ -205,7 +217,7 @@ HEADER
     fi
 
     # Phase 2: typecheck errors (if TopN not yet reached)
-    if [ "$issue_count" -lt "$TOP_N" ] && [ -f "$RAW_DIR/frontend-typecheck.txt" ]; then
+    if [ "$issue_count" -lt "$TOP_N" ] && [ "$TYPECHECK_EXIT" != SKIP ] && [ "$TYPECHECK_EXIT" -ne 0 ]; then
         while IFS= read -r line; do
             [ -z "$line" ] && continue
             issue_count=$((issue_count + 1))
@@ -215,7 +227,7 @@ HEADER
     fi
 
     # Phase 3: ESLint errors (if TopN not yet reached)
-    if [ "$issue_count" -lt "$TOP_N" ] && [ -f "$RAW_DIR/frontend-lint.txt" ]; then
+    if [ "$issue_count" -lt "$TOP_N" ] && [ "$ESLINT_EXIT" != SKIP ] && [ "$ESLINT_EXIT" -ne 0 ]; then
         while IFS= read -r line; do
             [ -z "$line" ] && continue
             issue_count=$((issue_count + 1))
@@ -244,26 +256,30 @@ HEADER
     echo ""
     echo "| 指标 | 状态 |"
     echo "|------|:----:|"
-    if [ -s "$RAW_DIR/git-diff-check.txt" ]; then
-        echo "| git diff --check | ❌ |"
-    else
+    if [ "$GIT_DIFF_EXIT" -eq 0 ]; then
         echo "| git diff --check | ✅ |"
-    fi
-    if has_maven_scan_failure "$RAW_DIR/backend-spotbugs.txt"; then
-        echo "| backend SpotBugs (新引入) | ❌ |"
-    elif [ "$(count_real_bugs "$RAW_DIR/backend-spotbugs.txt")" -eq 0 ]; then
-        echo "| backend SpotBugs (新引入) | ✅ |"
     else
-        echo "| backend SpotBugs (新引入) | ⚠️ |"
+        echo "| git diff --check | ❌ |"
     fi
-    if [ "$(count_eslint_errors "$RAW_DIR/frontend-lint.txt")" -gt 0 ]; then
+    if [ "$SPOTBUGS_EXIT" = SKIP ]; then
+        echo "| backend SpotBugs (新引入) | — SKIP |"
+    elif [ "$SPOTBUGS_EXIT" -ne 0 ]; then
+        echo "| backend SpotBugs (新引入) | ❌ |"
+    else
+        echo "| backend SpotBugs (新引入) | ✅ |"
+    fi
+    if [ "$ESLINT_EXIT" = SKIP ]; then
+        echo "| frontend ESLint | — SKIP |"
+    elif [ "$ESLINT_EXIT" -ne 0 ]; then
         echo "| frontend ESLint | ❌ |"
-    elif [ "$(count_eslint_warnings "$RAW_DIR/frontend-lint.txt")" -gt 0 ]; then
+    elif [ "$ESLINT_WARNING_COUNT" -gt 0 ]; then
         echo "| frontend ESLint | ⚠️ |"
     else
         echo "| frontend ESLint | ✅ |"
     fi
-    if grep -qi 'error' "$RAW_DIR/frontend-typecheck.txt" 2>/dev/null; then
+    if [ "$TYPECHECK_EXIT" = SKIP ]; then
+        echo "| frontend typecheck | — SKIP |"
+    elif [ "$TYPECHECK_EXIT" -ne 0 ]; then
         echo "| frontend typecheck | ❌ |"
     else
         echo "| frontend typecheck | ✅ |"
@@ -277,4 +293,5 @@ echo "==> 报告已生成: $SUMMARY"
 echo "==> 原始日志: $RAW_DIR/"
 echo ""
 echo "TopN 问题摘要:"
-extract_bugs "$RAW_DIR/backend-spotbugs.txt" | head -"$TOP_N"
+head -"$TOP_N" < <(extract_bugs "$RAW_DIR/backend-spotbugs.txt")
+exit "$GATE_EXIT"
