@@ -18,6 +18,7 @@ import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.Optional;
 
 /** 以远端稳定 ID 合并别名；既有 clone URL 的字符串规范化不作为并发锁身份。 */
 @Component
@@ -52,10 +53,9 @@ public class GitRemoteIdentityResolver {
         if(matches.size()!=1)throw unavailable();
         CodeRepository repo=matches.get(0);
         try {
-            JsonNode body=readHttp.exchange(URI.create(endpoint.projectEndpoint()),HttpMethod.GET,
-                    new HttpEntity<>(externalHeaders(headers)),JsonNode.class).getBody();
-            if(body==null || !body.path("id").isIntegralNumber() || !validProjectId(body.path("id").asText()))throw unavailable();
-            String id=body.path("id").asText();
+            var response=readHttp.exchange(URI.create(endpoint.projectEndpoint()),HttpMethod.GET,
+                    new HttpEntity<>(externalHeaders(headers)),JsonNode.class);
+            String id=confirmedProjectId(response.getStatusCode().value(),response.getBody()).orElseThrow(this::unavailable);
             if(expectedProjectId!=null&&!expectedProjectId.equals(id))throw unavailable();
             return confirm(new Identity(repo.getId().value(),io.releasehub.application.gitoperation.GitOperationJournalPort.mappingHash(repo.getGitProvider().name(),repo.getCloneUrl()),io.releasehub.application.gitoperation.GitOperationJournalPort.remoteKey(endpoint.provider(),endpoint.baseUrl(),id),
                     endpoint.provider(),endpoint.baseUrl(),id,endpoint), expectedProjectId);
@@ -99,6 +99,14 @@ public class GitRemoteIdentityResolver {
             JsonNode node=readHttp.exchange(URI.create(endpoint),HttpMethod.GET,new HttpEntity<>(externalHeaders(headers)),JsonNode.class).getBody();
             if(node==null)throw unavailable();return node;
         }catch(RuntimeException e){throw unavailable();}
+    }
+    /** 只确认响应中的稳定身份；定位、异常分类与消费类型的范围仍由各入口负责。 */
+    public static Optional<String> confirmedProjectId(int status,JsonNode body) {
+        if(status!=200||body==null||!body.isObject())return Optional.empty();
+        JsonNode id=body.path("id");
+        if(!id.isIntegralNumber())return Optional.empty();
+        String value=id.asText();
+        return validProjectId(value)?Optional.of(value):Optional.empty();
     }
     static boolean validProjectId(String value) { return value!=null&&value.matches("[1-9][0-9]*"); }
     static HttpHeaders externalHeaders(HttpHeaders headers) {

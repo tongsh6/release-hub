@@ -1,10 +1,12 @@
 package io.releasehub.infrastructure.gitlab;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.releasehub.application.gitlab.GitLabPort;
 import io.releasehub.application.settings.SettingsPort;
 import io.releasehub.common.exception.BusinessException;
-import io.releasehub.common.exception.NotFoundException;
+import io.releasehub.common.exception.ErrorCode;
 import io.releasehub.common.exception.ValidationException;
+import io.releasehub.infrastructure.git.GitRemoteIdentityResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
@@ -95,22 +97,20 @@ public class GitLabAdapter implements GitLabPort {
         headers.set("PRIVATE-TOKEN", token);
         HttpEntity<Void> entity = new HttpEntity<>(headers);
 
-        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+        ResponseEntity<JsonNode> response = restTemplate.exchange(
                 URI.create(url),
                 HttpMethod.GET,
                 entity,
-                new ParameterizedTypeReference<>() {
-                }
+                JsonNode.class
         );
-        Map<String, Object> body = response.getBody();
-        if (body == null || body.get("id") == null) {
-            throw NotFoundException.gitlabProject(repoCloneUrl);
+        String projectId = GitRemoteIdentityResolver.confirmedProjectId(
+                response.getStatusCode().value(), response.getBody())
+                .orElseThrow(() -> BusinessException.of(ErrorCode.GIT_IDENTITY_UNAVAILABLE));
+        try {
+            return Long.parseLong(projectId);
+        } catch (NumberFormatException e) {
+            throw BusinessException.of(ErrorCode.GIT_IDENTITY_UNAVAILABLE);
         }
-        Object id = body.get("id");
-        if (id instanceof Number n) {
-            return n.longValue();
-        }
-        return Long.parseLong(String.valueOf(id));
     }
 
     @Override

@@ -1,5 +1,6 @@
 package io.releasehub.infrastructure.gitlab;
 
+import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.junit5.WireMockRuntimeInfo;
 import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import io.releasehub.application.settings.SettingsPort;
@@ -36,6 +37,93 @@ class GitLabAdapterTest {
         when(settingsPort.getGitLab()).thenReturn(Optional.of(
                 new SettingsPort.SettingsGitLab("http://localhost:" + wm.getHttpPort(), token)));
     }
+
+    // B13 independent contract: this legacy long consumer accepts only confirmed, representable project identities.
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.MethodSource("unconfirmedProjectIdentityResponses")
+    void projectIdentityRejectsUnconfirmedProjectResponse(String shape, int status, String body,
+            WireMockRuntimeInfo wm) {
+        configureBaseUrl(wm, "valid-token");
+        stubFor(get(urlPathEqualTo("/api/v4/projects/acme%2Frepo"))
+                .withHeader("PRIVATE-TOKEN", WireMock.equalTo("valid-token"))
+                .willReturn(aResponse().withStatus(status).withHeader("Content-Type", "application/json").withBody(body)));
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> adapter.resolveProjectId(wm.getHttpBaseUrl() + "/acme/repo.git"), shape);
+
+        assertEquals("GIT_OP_004", error.getCode(), shape);
+        WireMock.verify(1, WireMock.getRequestedFor(urlPathEqualTo("/api/v4/projects/acme%2Frepo"))
+                .withHeader("PRIVATE-TOKEN", WireMock.equalTo("valid-token")));
+    }
+
+    private static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> unconfirmedProjectIdentityResponses() {
+        return java.util.stream.Stream.of(
+                org.junit.jupiter.params.provider.Arguments.of("STATUS_201", 201, "{\"id\":17}"),
+                org.junit.jupiter.params.provider.Arguments.of("STATUS_206", 206, "{\"id\":17}"),
+                org.junit.jupiter.params.provider.Arguments.of("STRING_ID", 200, "{\"id\":\"17\"}"),
+                org.junit.jupiter.params.provider.Arguments.of("INTEGRAL_LOOKING_DECIMAL", 200, "{\"id\":17.0}"),
+                org.junit.jupiter.params.provider.Arguments.of("FRACTIONAL_ID", 200, "{\"id\":17.5}"),
+                org.junit.jupiter.params.provider.Arguments.of("ZERO_ID", 200, "{\"id\":0}"),
+                org.junit.jupiter.params.provider.Arguments.of("NEGATIVE_ID", 200, "{\"id\":-1}"),
+                org.junit.jupiter.params.provider.Arguments.of("MISSING_ID", 200, "{}"),
+                org.junit.jupiter.params.provider.Arguments.of("NULL_ID", 200, "{\"id\":null}"),
+                org.junit.jupiter.params.provider.Arguments.of("NON_OBJECT", 200, "[{\"id\":17}]"),
+                org.junit.jupiter.params.provider.Arguments.of("EMPTY_BODY", 200, ""),
+                org.junit.jupiter.params.provider.Arguments.of("LONG_OVERFLOW", 200, "{\"id\":9223372036854775808}"));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(longs = {1L, Long.MAX_VALUE})
+    void projectIdentityAcceptsPositiveLongBoundary(long expected, WireMockRuntimeInfo wm) {
+        configureBaseUrl(wm, "valid-token");
+        stubFor(get(urlPathEqualTo("/api/v4/projects/acme%2Frepo"))
+                .withHeader("PRIVATE-TOKEN", WireMock.equalTo("valid-token"))
+                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\":" + expected + ",\"path_with_namespace\":\"acme/repo\"}")));
+
+        assertEquals(expected, adapter.resolveProjectId(wm.getHttpBaseUrl() + "/acme/repo.git"));
+
+        WireMock.verify(1, WireMock.getRequestedFor(urlPathEqualTo("/api/v4/projects/acme%2Frepo"))
+                .withHeader("PRIVATE-TOKEN", WireMock.equalTo("valid-token")));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {401, 403, 404})
+    void projectIdentityPreservesHttpErrorPolicy(int status, WireMockRuntimeInfo wm) {
+        configureBaseUrl(wm, "valid-token");
+        stubFor(get(urlPathEqualTo("/api/v4/projects/acme%2Frepo"))
+                .withHeader("PRIVATE-TOKEN", WireMock.equalTo("valid-token"))
+                .willReturn(aResponse().withStatus(status)));
+
+        var error = assertThrows(org.springframework.web.client.HttpClientErrorException.class,
+                () -> adapter.resolveProjectId(wm.getHttpBaseUrl() + "/acme/repo.git"));
+
+        assertEquals(status, error.getStatusCode().value());
+        WireMock.verify(1, WireMock.getRequestedFor(urlPathEqualTo("/api/v4/projects/acme%2Frepo"))
+                .withHeader("PRIVATE-TOKEN", WireMock.equalTo("valid-token")));
+    }
+
+    @Test
+    void projectIdentityPreservesTransportFailurePolicy() {
+        when(settingsPort.getGitLab()).thenReturn(Optional.of(
+                new SettingsPort.SettingsGitLab("http://127.0.0.1:1", "valid-token")));
+
+        assertThrows(org.springframework.web.client.ResourceAccessException.class,
+                () -> adapter.resolveProjectId("http://127.0.0.1:1/acme/repo.git"));
+    }
+
+    @Test
+    void projectIdentityPreservesMissingSettingsPolicy() {
+        when(settingsPort.getGitLab()).thenReturn(Optional.empty());
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> adapter.resolveProjectId("https://gitlab.invalid/acme/repo.git"));
+
+        assertEquals("GITLAB_001", error.getCode());
+        WireMock.verify(0, WireMock.anyRequestedFor(WireMock.anyUrl()));
+    }
+
+    // End B13 independent identity contract.
 
     @Test
     void shouldPreserveEncodedProjectAndBranchPaths(WireMockRuntimeInfo wm) {

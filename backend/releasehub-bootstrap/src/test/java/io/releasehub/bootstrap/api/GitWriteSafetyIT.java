@@ -850,6 +850,120 @@ class GitWriteSafetyIT {
         });
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {201, 206})
+    void projectIdentityStatusFailureStopsCurrentTaskBeforeNumericReads(int status) {
+        var before = prepareMrCreationRun();
+        String runId = before.getId().value();
+        var originalItem = before.getItems().getFirst();
+        var prefixTasks = taskRuns.findTasks(runId).subList(0, 2);
+        String taskId = taskRuns.findTasks(runId).stream()
+                .filter(task -> task.actionType() == ActionType.ENSURE_MR).findFirst().orElseThrow().taskId();
+        String mrPath = canonicalEndpoint + "/merge_requests";
+        String opened = mrCreationResponse(before, "mergeable").toString();
+        SERVER.reply("POST", mrPath, 201, opened);
+        SERVER.reply("GET", mrPath + "/7", 200, opened);
+        SERVER.reply("GET", endpoint, status, "{\"id\":" + project + "}");
+        int requestStart = SERVER.requests.size();
+
+        assertThat(taskService.executeNextTask(runId)).isTrue();
+
+        var failed = taskRuns.findById(runId).orElseThrow();
+        var item = failed.getItems().getFirst();
+        var tasks = taskRuns.findTasks(runId);
+        assertThat(tasks.stream().map(RunPort.TaskView::status))
+                .containsExactly("COMPLETED", "COMPLETED", "FAILED", "SKIPPED");
+        assertThat(tasks.subList(0, 2)).isEqualTo(prefixTasks);
+        assertThat(failed.getExecutionStatus().name()).isEqualTo("FAILED");
+        assertThat(failed.getFinishedAt()).isNotNull();
+        assertThat(item.getSteps()).hasSize(3);
+        assertThat(item.getSteps().subList(0, 2)).isEqualTo(originalItem.getSteps());
+        assertThat(item.getSteps().stream().filter(step -> step.actionType() == ActionType.ENSURE_MR))
+                .singleElement().satisfies(step -> assertThat(step.result()).isEqualTo(RunItemResult.FAILED));
+        assertThat(item.getMetadata()).containsAllEntriesOf(originalItem.getMetadata())
+                .containsEntry("git.projectId", String.valueOf(project))
+                .doesNotContainKeys("git.mrIid", "git.mrUrl", "git.mrDisposition");
+        assertThat(jdbc.queryForObject("select count(*) from git_operation where task_id=?", Integer.class, taskId)).isZero();
+        assertThat(journal.listByRun(runId, 0, 20)).isEmpty();
+        var requests = List.copyOf(SERVER.requests.subList(requestStart, SERVER.requests.size()));
+        assertThat(requests).extracting(GitLabHttpFixture.Request::method).containsExactly("GET");
+        assertThat(requests).extracting(GitLabHttpFixture.Request::path).containsExactly(endpoint);
+        SERVER.verify("POST", canonicalEndpoint + "/repository/branches", 0);
+        SERVER.verify("POST", mrPath, 0);
+        SERVER.verify("PUT", mrPath + "/7/merge", 0);
+        assertThat(SERVER.writeCount()).isZero();
+        assertNoNamespaceWrites();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "206,numeric,INCOMPLETE", "200,string,MISMATCH",
+            "403,numeric,FORBIDDEN", "404,numeric,NOT_FOUND"
+    })
+    void projectIdentityObservationKeepsUnknownExecutionFacts(int status, String idType, String expectedStatus) throws Exception {
+        var run = prepareMrMergeRun(false);
+        String runId = run.getId().value();
+        String itemId = run.getItems().getFirst().getId().value();
+        String mrPath = canonicalEndpoint + "/merge_requests/7";
+        var response = mrMergeResponse(run);
+        response.remove("merge_commit_sha");
+        SERVER.reply("PUT", mrPath + "/merge", 200, response.toString());
+        assertThat(taskService.executeNextTask(runId)).isTrue();
+        assertUnconfirmedMrMerge(run, false);
+        var operation = journal.listByRun(runId, 0, 20).stream()
+                .filter(value -> value.action().equals("MERGE_MR")).findFirst().orElseThrow();
+        var before = journal.find(operation.id()).orElseThrow();
+        var originalIdentity = mergeIntentIdentity(operation.id());
+        var originalRun = jdbc.queryForMap("select * from run where id=?", runId);
+        var originalItem = jdbc.queryForMap("select * from run_item where id=?", itemId);
+        var originalTasks = jdbc.queryForList("select * from run_task where run_id=? order by task_order", runId);
+        var originalSteps = jdbc.queryForList("select * from run_step where run_item_id=? order by task_id", itemId);
+        var originalMetadata = mergeNotSentMetadata(itemId);
+        var originalGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", operation.remoteKey());
+        var otherOperations = journal.listByRun(runId, 0, 20).stream()
+                .filter(value -> !value.id().equals(operation.id())).toList();
+        assertThat(before.events()).extracting(GitOperationJournalPort.Event::type)
+                .containsExactly("INTENT_RECORDED", "SEND_STARTED", "UNKNOWN");
+        assertThat(before.observations()).isEmpty();
+
+        var identityBody = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("id", project);
+        if (idType.equals("string")) identityBody.put("id", String.valueOf(project));
+        SERVER.reply("GET", endpoint, status, identityBody.toString());
+        SERVER.reply("GET", mrPath, 200, mrMergeResponse(run).toString());
+        int readStart = SERVER.requests.size();
+        String key = UUID.randomUUID().toString();
+
+        var observed = service.reconcile(operation.id(), "identity-observer", key, operation.version());
+
+        assertThat(observed.status()).isEqualTo(expectedStatus);
+        assertThat(observed.expectedVersion()).isEqualTo(operation.version());
+        assertThat(observed.evidenceJson()).isEqualTo("{}");
+        var after = journal.find(operation.id()).orElseThrow();
+        assertThat(after.operation().version()).isGreaterThan(operation.version());
+        assertThat(after.operation().updatedAt()).isAfterOrEqualTo(before.operation().updatedAt());
+        assertThat(after.operation()).usingRecursiveComparison().ignoringFields("version", "updatedAt")
+                .isEqualTo(before.operation());
+        assertThat(after.events()).isEqualTo(before.events());
+        assertThat(after.observations()).containsExactly(observed);
+        assertThat(mergeIntentIdentity(operation.id())).isEqualTo(originalIdentity);
+        assertThat(journal.listByRun(runId, 0, 20).stream().filter(value -> !value.id().equals(operation.id())))
+                .containsExactlyElementsOf(otherOperations);
+        assertThat(jdbc.queryForMap("select * from run where id=?", runId)).isEqualTo(originalRun);
+        assertThat(jdbc.queryForMap("select * from run_item where id=?", itemId)).isEqualTo(originalItem);
+        assertThat(jdbc.queryForList("select * from run_task where run_id=? order by task_order", runId)).isEqualTo(originalTasks);
+        assertThat(jdbc.queryForList("select * from run_step where run_item_id=? order by task_id", itemId)).isEqualTo(originalSteps);
+        assertThat(mergeNotSentMetadata(itemId)).isEqualTo(originalMetadata);
+        assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", operation.remoteKey())).isEqualTo(originalGuard);
+        var requests = List.copyOf(SERVER.requests.subList(readStart, SERVER.requests.size()));
+        assertThat(requests).extracting(GitLabHttpFixture.Request::method).containsExactly("GET");
+        assertThat(requests).extracting(GitLabHttpFixture.Request::path).containsExactly(endpoint);
+        SERVER.verify("POST", canonicalEndpoint + "/repository/branches", 0);
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        SERVER.verify("PUT", mrPath + "/merge", 1);
+        assertThat(SERVER.writeCount()).isEqualTo(2);
+        assertNoNamespaceWrites();
+    }
+
     @Test
     void noOperationFailureRetriesEnsureUsingTheUnchangedPlan() throws Exception {
         var before = prepareMrCreationRun();

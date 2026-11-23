@@ -46,8 +46,10 @@ public class GitRemoteEvidenceAdapter implements GitOperationEvidencePort {
             if(token==null||token.isBlank())token=settings.getGitLab().map(SettingsPort.SettingsGitLab::token).orElse("");
             headers.set("PRIVATE-TOKEN",token);
             String path=uri.getPath().replaceFirst("^/","").replaceFirst("\\.git$","");
-            JsonNode identity=get(base+"/api/v4/projects/"+encode(path),headers).getBody();
-            if(identity==null||!identity.path("id").asText().equals(op.projectId()))return result(GitReadResult.Status.MISMATCH,json.createObjectNode());
+            var identity=get(base+"/api/v4/projects/"+encode(path),headers);
+            if(identity.getStatusCode().value()!=200)return result(GitReadResult.Status.INCOMPLETE,json.createObjectNode());
+            if(GitRemoteIdentityResolver.confirmedProjectId(identity.getStatusCode().value(),identity.getBody())
+                    .filter(id->id.equals(op.projectId())).isEmpty())return result(GitReadResult.Status.MISMATCH,json.createObjectNode());
             String project=base+"/api/v4/projects/"+encode(op.projectId());
             JsonNode target=json.readTree(op.targetJson());
             if(op.action().equals("MERGE_MR"))return readMergedMr(op,project,headers,target);

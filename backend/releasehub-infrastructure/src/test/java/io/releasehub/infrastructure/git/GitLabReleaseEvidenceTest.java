@@ -45,6 +45,8 @@ class GitLabReleaseEvidenceTest {
     private GitWriteHttpInterceptor interceptor;
     private String cloneUrl;
     private String baseUrl;
+    private CodeRepositoryPort repos;
+    private SettingsPort settings;
 
     @BeforeEach void setup(WireMockRuntimeInfo wm) {
         baseUrl = wm.getHttpBaseUrl();
@@ -53,9 +55,9 @@ class GitLabReleaseEvidenceTest {
         when(repo.getId()).thenReturn(RepoId.of("repo"));
         when(repo.getCloneUrl()).thenReturn(cloneUrl);
         when(repo.getGitProvider()).thenReturn(GitProvider.GITLAB);
-        var repos = mock(CodeRepositoryPort.class);
+        repos = mock(CodeRepositoryPort.class);
         when(repos.findByCloneUrls(any(), eq(GitProvider.GITLAB))).thenReturn(List.of(repo));
-        var settings = mock(SettingsPort.class);
+        settings = mock(SettingsPort.class);
         when(settings.getGitLab()).thenReturn(Optional.of(new SettingsPort.SettingsGitLab(baseUrl, "fixture-token")));
         var builder = new RestTemplateBuilder();
         var identities = new GitRemoteIdentityResolver(repos, settings, builder);
@@ -266,6 +268,90 @@ class GitLabReleaseEvidenceTest {
         }
         return cases.stream();
     }
+    // B13 independent contract: namespace identity needs actual HTTP 200 and a positive integral JSON id.
+    @ParameterizedTest @ValueSource(ints = {201, 206})
+    void projectIdentityRejectsNon200NamespaceResponse(int status) {
+        assertProjectIdentityRejected(status, "{\"id\":7}");
+    }
+
+    @ParameterizedTest @ValueSource(strings = {
+            "{\"id\":\"7\"}", "{\"id\":7.0}", "{\"id\":7.5}", "{\"id\":0}", "{\"id\":-1}",
+            "{}", "{\"id\":null}", "[{\"id\":7}]", ""})
+    void projectIdentityRejectsUntypedOrNonPositiveId(String body) {
+        assertProjectIdentityRejected(200, body);
+    }
+
+    @Test
+    void projectIdentityKeepsLargeIntegralProject() {
+        String project = "9223372036854775808";
+        String numericTag = "/api/v4/projects/" + project + "/repository/tags/" + TAG;
+        stubFor(get(urlPathEqualTo(PROJECT)).willReturn(okJson(
+                "{\"id\":" + project + ",\"path_with_namespace\":\"acme/releasehub\"}")));
+        stubFor(get(urlPathEqualTo(numericTag)).willReturn(okJson(tagBody(TAG, SHA))));
+
+        var result = adapter.readTag(cloneUrl, "fixture-token", project, TAG);
+
+        assertEquals(GitReadResult.Status.FOUND, result.status());
+        assertEquals(new GitBranchPort.TagEvidence(project, TAG, SHA), result.evidence());
+        verify(1, getRequestedFor(urlPathEqualTo(PROJECT)).withHeader("PRIVATE-TOKEN", equalTo("fixture-token")));
+        verify(1, getRequestedFor(urlPathEqualTo(numericTag)).withHeader("PRIVATE-TOKEN", equalTo("fixture-token")));
+        verifyNoInteractions(journal);
+    }
+
+    @Test
+    void projectIdentityKeepsNamespaceNetworkFailureUnavailable() {
+        stubFor(get(urlPathEqualTo(PROJECT)).willReturn(aResponse()
+                .withFault(com.github.tomakehurst.wiremock.http.Fault.CONNECTION_RESET_BY_PEER)));
+
+        var result = adapter.readTag(cloneUrl, "fixture-token", "7", TAG);
+
+        assertEquals(GitReadResult.Status.UNAVAILABLE, result.status());
+        assertNull(result.evidence());
+        assertFalse(findAll(getRequestedFor(urlPathEqualTo(PROJECT))
+                .withHeader("PRIVATE-TOKEN", equalTo("fixture-token"))).isEmpty());
+        verify(0, getRequestedFor(urlPathEqualTo(NUMERIC + "/repository/tags/" + TAG)));
+        verifyNoInteractions(journal);
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"CONFIGURED_BASE", "NO_REPOSITORY", "AMBIGUOUS_REPOSITORY"})
+    void projectIdentityKeepsLocalAdmissionBeforeNamespaceRead(String shape) {
+        switch (shape) {
+            case "CONFIGURED_BASE" -> when(settings.getGitLab()).thenReturn(Optional.of(
+                    new SettingsPort.SettingsGitLab(baseUrl + "/different", "fixture-token")));
+            case "NO_REPOSITORY" -> when(repos.findByCloneUrls(any(), eq(GitProvider.GITLAB))).thenReturn(List.of());
+            case "AMBIGUOUS_REPOSITORY" -> when(repos.findByCloneUrls(any(), eq(GitProvider.GITLAB)))
+                    .thenReturn(List.of(mock(CodeRepository.class), mock(CodeRepository.class)));
+            default -> throw new AssertionError(shape);
+        }
+        tagRead(TAG, SHA);
+
+        var result = adapter.readTag(cloneUrl, "fixture-token", "7", TAG);
+
+        assertEquals(GitReadResult.Status.UNAVAILABLE, result.status(), shape);
+        assertNull(result.evidence(), shape);
+        verify(0, getRequestedFor(urlPathEqualTo(PROJECT)));
+        verify(0, getRequestedFor(urlPathEqualTo(NUMERIC + "/repository/tags/" + TAG)));
+        verifyNoInteractions(journal);
+    }
+
+    private void assertProjectIdentityRejected(int status, String body) {
+        stubFor(get(urlPathEqualTo(PROJECT)).willReturn(aResponse().withStatus(status)
+                .withHeader("Content-Type", "application/json").withBody(body)));
+        // A valid downstream response lets the baseline expose its actual result; the contract still requires zero reads.
+        tagRead(TAG, SHA);
+
+        var result = adapter.readTag(cloneUrl, "fixture-token", "7", TAG);
+
+        assertAll(
+                () -> assertEquals(GitReadResult.Status.UNAVAILABLE, result.status()),
+                () -> assertNull(result.evidence()),
+                () -> verify(0, getRequestedFor(urlPathEqualTo(NUMERIC + "/repository/tags/" + TAG))));
+        verify(1, getRequestedFor(urlPathEqualTo(PROJECT)).withHeader("PRIVATE-TOKEN", equalTo("fixture-token")));
+        verifyNoInteractions(journal);
+    }
+
+    // End B13 independent identity contract.
+
     @SuppressWarnings("unchecked")
     private static <T> ObjectProvider<T> provider(T bean) {
         ObjectProvider<T> result = mock(ObjectProvider.class);when(result.getObject()).thenReturn(bean);return result;

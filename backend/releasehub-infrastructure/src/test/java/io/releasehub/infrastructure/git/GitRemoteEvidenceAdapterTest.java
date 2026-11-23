@@ -275,6 +275,99 @@ class GitRemoteEvidenceAdapterTest {
                 .andRespond(withStatus(HttpStatus.valueOf(status)).contentType(MediaType.APPLICATION_JSON).body(body));
     }
 
+    // B13 independent contract: observations cannot enter an action read through an unconfirmed project identity.
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {201, 206})
+    void projectIdentityRejectsNon200NamespaceResponse(int status) {
+        assertProjectIdentityResponse(withStatus(HttpStatus.valueOf(status)).contentType(MediaType.APPLICATION_JSON)
+                .body("{\"id\":17}"), GitReadResult.Status.INCOMPLETE);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "{\"id\":\"17\"}", "{\"id\":17.0}", "{\"id\":17.5}", "{\"id\":0}", "{\"id\":-1}",
+            "{}", "{\"id\":null}", "[{\"id\":17}]", ""})
+    void projectIdentityRejectsUntypedOrNonPositiveId(String body) {
+        assertProjectIdentityResponse(withSuccess(body, MediaType.APPLICATION_JSON), GitReadResult.Status.MISMATCH);
+    }
+
+    @Test
+    void projectIdentityKeepsLargeIntegralProject() throws Exception {
+        String project = "9223372036854775808";
+        String target = "{\"tag_name\":\"v1\",\"ref\":\"" + RELEASE_SHA + "\"}";
+        var operation = new GitOperationJournalPort.Operation("operation-identity", "repo", "remote", "GITLAB",
+                "https://gitlab.invalid", project, "CREATE_TAG", target, null, "tester", "UNKNOWN", 2,
+                Instant.EPOCH, Instant.EPOCH, "RESPONSE_UNCONFIRMED", true);
+        var detail = new GitOperationJournalPort.Detail(operation, List.of(), List.of(), false);
+        server.reset();
+        server.expect(requestTo("https://gitlab.invalid/api/v4/projects/acme%2Frepo"))
+                .andExpect(method(HttpMethod.GET)).andExpect(header("PRIVATE-TOKEN", "fixture"))
+                .andRespond(withSuccess("{\"id\":" + project + ",\"path_with_namespace\":\"acme/repo\"}",
+                        MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://gitlab.invalid/api/v4/projects/" + project + "/repository/tags/v1"))
+                .andExpect(method(HttpMethod.GET)).andExpect(header("PRIVATE-TOKEN", "fixture"))
+                .andRespond(withSuccess("{\"name\":\"v1\",\"commit\":{\"id\":\"" + RELEASE_SHA + "\"}}",
+                        MediaType.APPLICATION_JSON));
+
+        var result = adapter.read(detail);
+
+        assertEquals(GitReadResult.Status.FOUND, result.status());
+        var evidence = new ObjectMapper().readTree(result.evidence());
+        assertEquals("v1", evidence.path("name").textValue());
+        assertEquals(RELEASE_SHA, evidence.path("commitSha").textValue());
+        assertEquals(project, detail.operation().projectId());
+        assertEquals("UNKNOWN", detail.operation().state());
+        server.verify();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {401, 403, 404})
+    void projectIdentityPreservesNamespaceHttpErrorPolicy(int status) {
+        assertProjectIdentityResponse(withStatus(HttpStatus.valueOf(status)),
+                status == 404 ? GitReadResult.Status.NOT_FOUND : GitReadResult.Status.FORBIDDEN);
+    }
+
+    @Test
+    void projectIdentityPreservesNamespaceTransportPolicy() {
+        assertProjectIdentityResponse(withException(new java.net.SocketTimeoutException("identity response lost")),
+                GitReadResult.Status.UNAVAILABLE);
+    }
+
+    @Test
+    void projectIdentityRejectsReboundNamespace() {
+        assertProjectIdentityResponse(withSuccess("{\"id\":18}", MediaType.APPLICATION_JSON),
+                GitReadResult.Status.MISMATCH);
+    }
+
+    private void assertProjectIdentityResponse(org.springframework.test.web.client.ResponseCreator namespaceResponse,
+            GitReadResult.Status expected) {
+        server.reset();
+        server.expect(requestTo("https://gitlab.invalid/api/v4/projects/acme%2Frepo"))
+                .andExpect(method(HttpMethod.GET)).andExpect(header("PRIVATE-TOKEN", "fixture"))
+                .andRespond(namespaceResponse);
+        var actionReads = new java.util.concurrent.atomic.AtomicInteger();
+        // Allow the baseline's erroneous read to return a complete body, then assert both result and zero dispatches.
+        server.expect(org.springframework.test.web.client.ExpectedCount.between(0, 1),
+                        requestTo("https://gitlab.invalid/api/v4/projects/17/repository/tags/v1"))
+                .andExpect(method(HttpMethod.GET)).andExpect(header("PRIVATE-TOKEN", "fixture"))
+                .andRespond(request -> {
+                    actionReads.incrementAndGet();
+                    return withSuccess("{\"name\":\"v1\",\"commit\":{\"id\":\"" + RELEASE_SHA + "\"}}",
+                            MediaType.APPLICATION_JSON).createResponse(request);
+                });
+        var detail = releaseDetail("CREATE_TAG", "{\"tag_name\":\"v1\",\"ref\":\"" + RELEASE_SHA + "\"}", null);
+
+        var result = adapter.read(detail);
+
+        assertAll(
+                () -> assertEquals(expected, result.status()),
+                () -> assertEquals("{}", result.evidence()),
+                () -> assertEquals(0, actionReads.get()));
+        server.verify();
+    }
+
+    // End B13 independent identity contract.
+
     private GitOperationJournalPort.Detail detail() {
         var op=new GitOperationJournalPort.Operation("operation-1","repo","remote","GITLAB","https://gitlab.invalid","17","CREATE_MR",
                 "{\"source_branch\":\"feature\",\"target_branch\":\"main\"}",null,"tester","UNKNOWN",2,Instant.EPOCH,Instant.EPOCH,"RESPONSE_LOST",true);
