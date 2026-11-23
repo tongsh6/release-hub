@@ -43,7 +43,7 @@ B8「正常 CREATE_MR 完整请求的发送证明闭环」已验收：正常 ENS
 
 B13「项目身份响应证明统一」已DONE：三入口共用actual200/object/正整数JSON id无损String证明，保留各入口定位、凭据、异常政策及long消费边界。冻结独立70例为21 FAIL/49 PASS→70/70 GREEN；单次相关1239/1239含该70例，API48/48、普通1019（1014 PASS/5既有SKIP）及真实静态门禁通过。业务实现`4dbe2c6fd17b0f02a7306dcb7549c2fa83b2d7b5`、静态门禁修复`ddcec2ea6520ae7b347e13f9a2a28d1fae68bb67`已分组推送；固定后者完整SHA的[Full-Link 45102738088](https://github.com/tongsh6/release-hub/actions/runs/45102738088) attempt 1已completed/success，5 PASS/0 FAIL。完整证据、首次静态假PASS纠正及8条既有warning处置见记录第26节。
 
-当前唯一 HEAD 为 B14「原 MERGE_MR 已持久拒绝响应的结果投影」：只补完整原REJECTED响应后的合格RUNNING Task，恢复零HTTP；事前契约及11组独立验收已定义，尚无B14测试或实现。真正SEND/UNKNOWN、终态历史更正、metadata与其他业务GET、完整UI继续独立验收。任务以[执行路线图](docs/execution-roadmap.md)为准。
+B14「原 MERGE_MR 已持久拒绝响应的结果投影」已DONE：七个生产文件接通原证明、默认扫描与原结果事务，恢复零HTTP；冻结140例（137新+3旧）为37 FAIL/103 PASS→140/140，单次相关1376、API48、普通1019（1014 PASS/5既有SKIP）及静态同树通过。实现`36d6c7b0a692ada9ae77b484967e58df87909aac`已推送，固定该SHA的[Full-Link 45115321412](https://github.com/tongsh6/release-hub/actions/runs/45115321412) attempt 1为5 PASS/0 FAIL。新增独立断言保持，既有候选集合预期适配与完整证据见记录27.6–27.12。当前唯一HEAD为后续SEND/UNKNOWN受证据约束恢复的契约拆分；终态历史更正、metadata与其他业务GET、完整UI继续独立验收。任务以[执行路线图](docs/execution-roadmap.md)为准。
 
 > **协作入口：[`AGENTS.md`](AGENTS.md)** — 唯一项目画像、工程规则与知识导航；生命周期、工作模式和发布事实分别记录。
 > 📋 **实现与验证事实：[`docs/project-ledger.md`](docs/project-ledger.md)** — 已交付基线、当前任务目标与验收边界。

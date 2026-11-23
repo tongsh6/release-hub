@@ -14,7 +14,7 @@
 
 B13「项目身份响应证明统一」已DONE：三入口共用actual200/object/正整数JSON id无损String证明，保留各入口定位、凭据、异常政策及long消费边界。冻结独立70例为21 FAIL/49 PASS→70/70 GREEN；单次相关1239/1239含该70例，API48/48、普通1019（1014 PASS/5既有SKIP）及真实静态门禁通过。业务实现`4dbe2c6fd17b0f02a7306dcb7549c2fa83b2d7b5`、静态门禁修复`ddcec2ea6520ae7b347e13f9a2a28d1fae68bb67`已分组推送；固定后者完整SHA的[Full-Link 45102738088](https://github.com/tongsh6/release-hub/actions/runs/45102738088) attempt 1已completed/success，5 PASS/0 FAIL。完整证据、首次静态假PASS纠正及8条既有warning处置见记录第26节。
 
-当前唯一 HEAD 为 B14「原 MERGE_MR 已持久拒绝响应的结果投影」：只补完整原REJECTED响应后的合格RUNNING Task，恢复零HTTP；事前契约及11组独立验收已定义，尚无B14测试或实现。真正SEND/UNKNOWN、终态历史更正、metadata与其他业务GET、完整UI继续独立验收。任务以[执行路线图](execution-roadmap.md)为准，C2 整体尚未完成。
+B14「原 MERGE_MR 已持久拒绝响应的结果投影」已DONE：七个生产文件接通原证明、默认扫描与原结果事务，恢复零HTTP；冻结140例（137新+3旧）为37 FAIL/103 PASS→140/140，单次相关1376、API48、普通1019（1014 PASS/5既有SKIP）及静态同树通过。实现`36d6c7b0a692ada9ae77b484967e58df87909aac`已推送，固定该SHA的[Full-Link 45115321412](https://github.com/tongsh6/release-hub/actions/runs/45115321412) attempt 1为5 PASS/0 FAIL。新增独立断言保持，既有候选集合预期适配与完整证据见记录27.6–27.12。当前唯一HEAD为后续SEND/UNKNOWN受证据约束恢复的契约拆分；终态历史更正、metadata与其他业务GET、完整UI继续独立验收。任务以[执行路线图](execution-roadmap.md)为准，C2 整体尚未完成。
 
 C2-A 已交付基线由有界后台 worker 消费唯一持久四动作，Orchestrate/retry 返回 HTTP 202/Run ID；相同 key 只返回原回执。C2-A 当时只扫描当前 WINDOW 协议的 PENDING，不接管 RUNNING/UNKNOWN。同 Run 双仓真实 HTTP 验证已通过：R1 响应在途时 R2 可进展；默认定时器与独立 JVM 重启只继续原 PENDING TRY_MERGE，MR POST=1、MERGE PUT=1。普通后端 677 项（672 PASS/5 既有 SKIP），API/数据库 67/67、HTTP 29/29、进程 1/1，后补 worker 停机断言后 7/7；重叠 suite 不累计。前端 39 文件 214/214、全部门禁与静态复扫通过；最后 E2E 消费者契约补验 16/16 已包含在 `e0c6356`。C2-A 固定 SHA Full-Link 5/5 已收口。B1 已交付的限定接管范围、本地与固定 SHA CI 证据见下文；后续写意图恢复和真实 UI 黄金旅程仍待独立验收。
 
@@ -269,7 +269,7 @@ B12「无自身写意图任务的失败与重试闭环」已验收：在原Run�
 
 B13「项目身份响应证明统一」已DONE：三入口共用actual200/object/正整数JSON id无损String证明，保留各入口定位、凭据、异常政策及long消费边界。冻结独立70例为21 FAIL/49 PASS→70/70 GREEN；单次相关1239/1239含该70例，API48/48、普通1019（1014 PASS/5既有SKIP）及真实静态门禁通过。业务实现`4dbe2c6fd17b0f02a7306dcb7549c2fa83b2d7b5`、静态门禁修复`ddcec2ea6520ae7b347e13f9a2a28d1fae68bb67`已分组推送；固定后者完整SHA的[Full-Link 45102738088](https://github.com/tongsh6/release-hub/actions/runs/45102738088) attempt 1已completed/success，5 PASS/0 FAIL。完整证据、首次静态假PASS纠正及8条既有warning处置见记录第26节。
 
-当前唯一 HEAD 为 B14「原 MERGE_MR 已持久拒绝响应的结果投影」：只补完整原REJECTED响应后的合格RUNNING Task，恢复零HTTP；事前契约及11组独立验收已定义，尚无B14测试或实现。真正SEND/UNKNOWN、终态历史更正、metadata与其他业务GET、完整UI继续独立验收。
+B14「原 MERGE_MR 已持久拒绝响应的结果投影」已DONE：七个生产文件接通原证明、默认扫描与原结果事务，恢复零HTTP；冻结140例（137新+3旧）为37 FAIL/103 PASS→140/140，单次相关1376、API48、普通1019（1014 PASS/5既有SKIP）及静态同树通过。实现`36d6c7b0a692ada9ae77b484967e58df87909aac`已推送，固定该SHA的[Full-Link 45115321412](https://github.com/tongsh6/release-hub/actions/runs/45115321412) attempt 1为5 PASS/0 FAIL。新增独立断言保持，既有候选集合预期适配与完整证据见记录27.6–27.12。当前唯一HEAD为后续SEND/UNKNOWN受证据约束恢复的契约拆分；终态历史更正、metadata与其他业务GET、完整UI继续独立验收。
 
 ### 2026-11-22 C2-B11 GitLab MR 读取响应状态证明：最终验证与交付
 
@@ -429,7 +429,7 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 | S3-C2-B11 GitLab MR 读取响应状态证明 | 已DONE；1151/API48/普通967、静态及同树绑定通过；35ca213已推，固定SHA CI44984865795首轮5/5 | 记录第24节保留RED、两处SQL夹具校准及最终证据 | 仅实际200进入原证明；不扩大未知写恢复授权 |
 | S3-C2-B12 无自身写意图任务的失败与重试闭环 | 已DONE；7042f19已推；相关1174/API48/普通967及静态与源码绑定通过；固定SHA CI44989857158首轮5/5 | 当前Task无operation及Step的首次UNKNOWN归FAILED；真实锁竞争/回滚、新Run重试及既有未知保护已验，记录第25节 | 原新Run门禁与历史UNKNOWN保持 |
 | S3-C2-B13 项目身份响应证明统一 | 已DONE；4dbe2c6/ddcec2e已分组推送；独立70、相关1239、API48、普通1019及真实静态同树通过；固定ddcec2e的CI45102738088首轮5 PASS/0 FAIL | 记录26保留RED/GREEN、首次假PASS与最终静态证据 | 三入口身份纯证明及原政策/long边界已验；首次静态假PASS保留并修复门禁，最终4退出码0，记录第26节 |
-| S3-C2-B14 原 MERGE_MR 已持久拒绝响应的结果投影 | 当前唯一HEAD；仅事前契约，尚无测试或实现 | design/spec/tasks及记录27定义资格、结果与11组独立验收 | 原响应确定而Task未提交时零HTTP补原结果，不扩真正未知写恢复 |
+| S3-C2-B14 原 MERGE_MR 已持久拒绝响应的结果投影 | 已DONE；36d6c7b已推，冻结140/相关1376/API48/普通1019与静态同树通过，固定SHA CI45115321412首轮5/5 | design/spec/tasks及记录27保留资格、原始失败、11组独立验收与源码绑定 | 原响应确定而Task未提交时零HTTP补原结果，不扩真正未知写恢复 |
 | 前端用户旅程自动化验证 | 2026-05-24 的 E2E 49/0/0 为历史；C2-A 组件 214 PASS 为沿用基线，B1 无 UI/API 变更；后端 API/GitLab fixture 均不等于页面旅程 | 按 S5 受控范围执行真实 GitLab/UI 全旅程；C2-A Playwright 仅迁移消费者和发现 23 项 | 页面创建/变更业务数据，API/数据库/GitLab 只作后置复核；stub 不替代真实写入证据 |
 
 ---
@@ -458,8 +458,8 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 | 已完成 | SA-013 S3-C2-B11 GitLab MR 读取响应状态证明 | 35ca213已推，固定SHA CI44984865795首轮5/5；本地1151/API48/普通967及静态通过 | 33独立选择例、分页中断与真实HTTP零写边界已验 |
 | 已完成 | SA-013 S3-C2-B12 无自身写意图失败与重试 | 7042f19已推；相关1174/API48/普通967及静态与源码绑定通过；固定SHA CI44989857158首轮5/5 | 当前Task无operation及Step的首次UNKNOWN归FAILED；真实锁竞争/回滚、新Run重试及既有未知保护已验，记录第25节 |
 | 已完成 | SA-013 S3-C2-B13 项目身份响应证明统一 | 4dbe2c6/ddcec2e已分组推送；独立70、相关1239、API48、普通1019及真实静态同树通过；固定ddcec2e的CI45102738088首轮5 PASS/0 FAIL | 三入口身份纯证明及原政策/long边界已验；首次静态假PASS保留并修复门禁，最终4退出码0，记录第26节 |
-| HEAD | SA-013 S3-C2-B14 原 MERGE_MR 已持久拒绝响应的结果投影 | 原响应/结果事务断点与现消费者已核；事前契约及11组验收已定义，尚无测试或实现 | 合格原REJECTED结果零HTTP补原Task；NO_COMMITS保持原UNKNOWN/guard/retry语义，真正未知写继续保护 |
-| 后续 | SA-013 SEND/UNKNOWN受证据约束恢复 | B14之后按动作与原响应事实分片 | 不由FOUND或租约授予重发或历史改写 |
+| 已完成 | SA-013 S3-C2-B14 原 MERGE_MR 已持久拒绝响应的结果投影 | 36d6c7b已推；冻结140、相关1376、API48、普通1019及静态同树通过；固定SHA CI45115321412首轮5 PASS/0 FAIL | 原REJECTED零HTTP补原结果；NO_COMMITS仍UNKNOWN/NEEDS_REVIEW且受理拒绝，guard确认不授予重试权；记录27 |
+| HEAD | SA-013 SEND/UNKNOWN受证据约束恢复的契约拆分 | B14已DONE；按动作、原响应与Task历史定义下一最小契约，尚未实现恢复 | 不由FOUND或租约授予重发、释放保护或历史改写 |
 | 后续 | SA-002 BranchCreationMode 执行计划评审门禁 | 原队列保留，最小 dry-run 已完成 | 评审是否进入执行计划切片；未批准前不实现执行 API、数据库写入、迁移表或 GitLab 操作 |
 
 ---
@@ -478,7 +478,7 @@ E2E Java fixture 已按新契约迁移并通过测试编译，接受脚本只做
 | C2-B2 已交付静态扫描 | `.ai/reports/static-scan/20261121-224714/summary.md` | 六份新鲜SpotBugs XML均0、typecheck PASS、lint 0 errors/8既有fixture warnings逐项保留；与定向/API/普通回归同一backend树，无前端变更或规则关闭 |
 | C2-B1 已交付静态基线 | `.ai/reports/static-scan/20261121-214959/summary.md` | 6 份新鲜 SpotBugs XML 均 0、typecheck PASS、lint 0 errors/8 既有 fixture warnings 逐项保留；首扫 `20261121-213959` raw 实际 4 项，遗漏 CT 与环境误分类已追加纠正，SQL 已修、构造器 EI/CT 精确说明；仅保留B1历史，C2-B2另由本片224714独立验证 |
 | C2-A 历史静态扫描 | `.ai/reports/static-scan/20261121-203554/summary.md` | RunTaskWorker 构造器级精确说明；SpotBugs 0、typecheck PASS、lint 0 errors/8 既有 warnings，EOF 与 TopN 已收口 |
-| 场景矩阵 | `docs/reports/scenario-acceptance-matrix.md` | C1/C2-A/C2-B1/C2-B2 各自本地及固定 SHA 交付证据；C2-B3 最终本地及固定544983b的Full-Link44924378741为5/5，已交付；B4最终本地533/API48/普通789与静态通过，23950f9/be1ccbe已推送，固定be1ccbe的Full-Link44929301318为5/5；B5实现及本地分批692/API48/普通816与静态通过，0642828/62d075c已推送、固定后端SHA Full-Link44935216788为5/5；B6本地结果收口已完成相关749/API48/普通816/前端217与静态，4e992e9/29ec005已推送、固定实现SHA Full-Link44940092094为5/5；B7独立RED→定向91/单次相关840/API48/普通831、静态及源码绑定通过，00def779已推送；固定实现SHA Full-Link44945748427首轮Central429、attempt 2为5/5，B7已DONE；B8正常CREATE_MR请求闭环已DONE，校准后125/单次965/API48/普通877/静态/绑定通过，实现537588e已推送，固定SHA Full-Link44972473174 attempt1为5/5；B9已DONE，最终1078/API48/普通918、静态及绑定通过，666acdc已推，固定SHA Full-Link44978661003 attempt 1为5/5；B10已DONE，8dcca5b固定SHA CI44982102777首轮5/5，1123/API48/普通942、前端218及静态与源码绑定通过；B11已DONE，35ca213固定SHA CI44984865795首轮5/5；B12已DONE，7042f19已推；相关1174/API48/普通967及静态与源码绑定通过；固定SHA CI44989857158首轮5/5；B13已DONE，证据见26；B14原MERGE_MR拒绝结果投影为唯一HEAD、尚未实现，真正SEND/UNKNOWN恢复与完整UI仍未交付 |
+| 场景矩阵 | `docs/reports/scenario-acceptance-matrix.md` | C1/C2-A/C2-B1/C2-B2 各自本地及固定 SHA 交付证据；C2-B3 最终本地及固定544983b的Full-Link44924378741为5/5，已交付；B4最终本地533/API48/普通789与静态通过，23950f9/be1ccbe已推送，固定be1ccbe的Full-Link44929301318为5/5；B5实现及本地分批692/API48/普通816与静态通过，0642828/62d075c已推送、固定后端SHA Full-Link44935216788为5/5；B6本地结果收口已完成相关749/API48/普通816/前端217与静态，4e992e9/29ec005已推送、固定实现SHA Full-Link44940092094为5/5；B7独立RED→定向91/单次相关840/API48/普通831、静态及源码绑定通过，00def779已推送；固定实现SHA Full-Link44945748427首轮Central429、attempt 2为5/5，B7已DONE；B8正常CREATE_MR请求闭环已DONE，校准后125/单次965/API48/普通877/静态/绑定通过，实现537588e已推送，固定SHA Full-Link44972473174 attempt1为5/5；B9已DONE，最终1078/API48/普通918、静态及绑定通过，666acdc已推，固定SHA Full-Link44978661003 attempt 1为5/5；B10已DONE，8dcca5b固定SHA CI44982102777首轮5/5，1123/API48/普通942、前端218及静态与源码绑定通过；B11已DONE，35ca213固定SHA CI44984865795首轮5/5；B12已DONE，7042f19已推；相关1174/API48/普通967及静态与源码绑定通过；固定SHA CI44989857158首轮5/5；B13已DONE，证据见26；B14原MERGE_MR拒绝结果投影已DONE（36d6c7b、固定SHA CI45115321412首轮5/5、记录27）；后续HEAD为SEND/UNKNOWN恢复契约拆分，真正SEND/UNKNOWN恢复与完整UI仍未交付 |
 | 发布候选收口报告 | `docs/reports/release-candidate-2026-05-23.md` | 2026-05-24 当时分支已通过受控候选验证，交付证据包已汇总全量验收、前端 E2E、关键组件、SA-002 处置 case 页面验收和静态扫描；仍为 dogfood/staging 候选 |
 | 发布候选评审页 | `frontend/src/views/release-governance/ReleaseCandidateReview.vue` + `GET /api/v1/release-governance/candidate-review` + `POST /api/v1/release-governance/candidate-review/signoffs` | 聚合候选结论、验收证据、风险边界、检查清单和人工签核；签核不触发发布、清理、GitLab 或数据状态变更 |
 | 数据质量复核队列 | `frontend/src/views/data-quality/DataQualityReviewQueue.vue` + `POST /api/v1/data-quality/cleanup-review` | 导入 dry-run JSONL 后可按资源、风险、状态和资产范围筛选；页面展示数据源口径、命名空间、复核批次、资产范围、保留策略、处置等级、允许动作、回滚边界和审计记录；所有结果仍不允许直接执行 |
