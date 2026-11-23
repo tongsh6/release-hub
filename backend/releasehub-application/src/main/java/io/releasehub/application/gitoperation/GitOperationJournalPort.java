@@ -1,6 +1,7 @@
 package io.releasehub.application.gitoperation;
 
 import io.releasehub.application.port.out.GitBranchPort.MrEvidence;
+import io.releasehub.application.port.out.GitBranchPort.MergeResult;
 
 import io.releasehub.application.run.RunPort;
 import io.releasehub.domain.run.RunItemResult;
@@ -36,8 +37,8 @@ public interface GitOperationJournalPort {
     Optional<String> confirmedAppliedBranchProject(RunPort.TaskClaim claim);
     /** 必须加入原任务结果事务，核对完整 CREATE_MR 原响应，返回历史 CREATED 检查点；零远端调用。 */
     Optional<MrEvidence> confirmedAppliedCreatedMr(RunPort.TaskClaim claim);
-    /** 必须加入原任务结果事务，核对完整 MERGE_MR 原响应与原检查点，返回历史合并结果；零远端调用。 */
-    Optional<MrEvidence> confirmedAppliedMergedMr(RunPort.TaskClaim claim);
+    /** 结果事务内核准 MERGE_MR 原 APPLIED/REJECTED 同步响应与检查点；零远端调用，Observation 不提供资格。 */
+    Optional<MergeResult> confirmedMergeResult(RunPort.TaskClaim claim);
     /** 加入当前领取者的结果事务并返回核准结果；首次 UNKNOWN 在无自身操作及 Step 时归 FAILED，不创建保护。 */
     RunItemResult acknowledgeTask(RunPort.TaskFence fence, RunItemResult result, Map<String, String> resultMetadata);
     List<Operation> list(String repoId, int page, int size);

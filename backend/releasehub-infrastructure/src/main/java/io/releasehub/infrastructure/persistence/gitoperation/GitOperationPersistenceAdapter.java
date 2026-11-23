@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.releasehub.infrastructure.git.GitLabGitBranchAdapter;
 import io.releasehub.infrastructure.git.GitLabMergeRequestAdapter;
 import io.releasehub.application.port.out.GitBranchPort.MrEvidence;
+import io.releasehub.application.port.out.GitBranchPort.MergeResult;
 import io.releasehub.application.port.out.GitBranchPort.MergeBlockReason;
 import io.releasehub.application.port.out.GitBranchPort.MrDisposition;
 import io.releasehub.domain.run.ActionType;
@@ -206,7 +207,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
     public Optional<String> confirmedAppliedBranchProject(RunPort.TaskClaim claim) {
         if (claim == null || claim.actionType() != ActionType.ENSURE_FEATURE
                 && claim.actionType() != ActionType.ENSURE_RELEASE) return Optional.empty();
-        var operation = confirmedAppliedTaskOperation(claim, "CREATE_BRANCH");
+        var operation = confirmedTaskOperation(claim, "CREATE_BRANCH");
         if (operation.isEmpty()) return Optional.empty();
         var op = operation.get();
         var metadata = em.find(RunItemJpaEntity.class, claim.itemId()).getMetadata();
@@ -227,7 +228,7 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
     @Transactional(propagation = Propagation.MANDATORY)
     public Optional<MrEvidence> confirmedAppliedCreatedMr(RunPort.TaskClaim claim) {
         if (claim == null || claim.actionType() != ActionType.ENSURE_MR) return Optional.empty();
-        var operation = confirmedAppliedTaskOperation(claim, "CREATE_MR");
+        var operation = confirmedTaskOperation(claim, "CREATE_MR");
         if (operation.isEmpty()) return Optional.empty();
         var op = operation.get();
         var metadata = em.find(RunItemJpaEntity.class, claim.itemId()).getMetadata();
@@ -247,9 +248,9 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public Optional<MrEvidence> confirmedAppliedMergedMr(RunPort.TaskClaim claim) {
+    public Optional<MergeResult> confirmedMergeResult(RunPort.TaskClaim claim) {
         if (claim == null || claim.actionType() != ActionType.TRY_MERGE) return Optional.empty();
-        var operation = confirmedAppliedTaskOperation(claim, "MERGE_MR");
+        var operation = confirmedTaskOperation(claim, "MERGE_MR");
         if (operation.isEmpty()) return Optional.empty();
         var op = operation.get();
         var metadata = em.find(RunItemJpaEntity.class, claim.itemId()).getMetadata();
@@ -258,6 +259,18 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
             checkpoint = RunPort.mrCheckpoint(metadata);
         } catch (IllegalArgumentException error) {
             return Optional.empty();
+        }
+        if ("REJECTED".equals(op.getState())) {
+            if (!completeMergeRequest(op, metadata)) return Optional.empty();
+            var responses = em.createQuery("select e from GitOperationEventEntity e "
+                            + "where e.operationId=:operation and e.attemptId=:attempt and e.sequence=2 and e.type='REJECTED'",
+                            GitOperationEventEntity.class)
+                    .setParameter("operation", op.getId()).setParameter("attempt", op.getAttemptId()).getResultList();
+            if (responses.size() != 1) return Optional.empty();
+            var response = responses.getFirst();
+            return GitLabMergeRequestAdapter.confirmedMergeRejection(objectJson(response.getEvidenceJson()))
+                    .filter(reason -> reason.equals(op.getReason()) && reason.equals(response.getReason()))
+                    .map(reason -> GitMergeWorkflow.failedWrite(GitWriteResult.rejected(reason), checkpoint));
         }
         if (!GitMergeWorkflow.isValidCheckpoint(checkpoint)
                 || !java.util.Set.of(MrDisposition.CREATED, MrDisposition.MR_REUSED).contains(checkpoint.disposition())
@@ -275,12 +288,12 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
                         op.getProjectId(), checkpoint.iid(), checkpoint.sourceSha())
                 .filter(mr -> checkpoint.sourceBranch().equals(mr.sourceBranch())
                         && checkpoint.targetBranch().equals(mr.targetBranch()))
-                .map(mr -> new MrEvidence(checkpoint.projectId(), checkpoint.sourceBranch(), checkpoint.targetBranch(),
-                        checkpoint.iid(), checkpoint.url(), checkpoint.sourceSha(), mr.mergeSha(),
-                        checkpoint.disposition(), null));
+                .map(mr -> MergeResult.success().withEvidence(new MrEvidence(checkpoint.projectId(),
+                        checkpoint.sourceBranch(), checkpoint.targetBranch(), checkpoint.iid(), checkpoint.url(),
+                        checkpoint.sourceSha(), mr.mergeSha(), checkpoint.disposition(), null)));
     }
 
-    private Optional<GitOperationEntity> confirmedAppliedTaskOperation(RunPort.TaskClaim claim, String action) {
+    private Optional<GitOperationEntity> confirmedTaskOperation(RunPort.TaskClaim claim, String action) {
         var task = lockTask(claim.fence(), true);
         var run = em.find(RunJpaEntity.class, task.getRunId());
         var item = em.find(RunItemJpaEntity.class, task.getTargetId());
@@ -300,7 +313,9 @@ public class GitOperationPersistenceAdapter implements GitOperationJournalPort {
         var op = operations.getFirst();
         lock(op.getRemoteKey());
         em.refresh(op, LockModeType.PESSIMISTIC_WRITE);
-        if (!"APPLIED".equals(op.getState()) || !action.equals(op.getAction())
+        boolean confirmedState = "APPLIED".equals(op.getState())
+                || "MERGE_MR".equals(action) && "REJECTED".equals(op.getState());
+        if (!confirmedState || !action.equals(op.getAction())
                 || !"GITLAB".equals(op.getProvider()) || !claim.runId().equals(op.getRunId())
                 || !claim.repo().value().equals(op.getRepoId()) || !claim.operator().equals(op.getOperator())
                 || !historicalOwner(op)

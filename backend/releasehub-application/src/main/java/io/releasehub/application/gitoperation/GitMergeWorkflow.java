@@ -268,7 +268,8 @@ public final class GitMergeWorkflow {
         return mr;
     }
 
-    private MergeResult failedWrite(GitWriteResult<MergeRequest> result, MrEvidence context) {
+    /** 原同步拒绝的正常执行与持久结果投影共用；调用方先核准各自证据。 */
+    public static MergeResult failedWrite(GitWriteResult<MergeRequest> result, MrEvidence context) {
         var observed = result.evidence();
         if (observed != null && observed.id() != null
                 && (observed.projectId() == null || Objects.equals(context.projectId(), observed.projectId()))) {

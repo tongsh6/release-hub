@@ -123,11 +123,11 @@ class RunOrchestrationTest {
 
     @Test
     void anAppliedProjectionIsTheOnlyTaskCompletedByAnInvocation() {
-        when(runs.projectNextAppliedTask(run.getId().value())).thenReturn(true);
+        when(runs.projectNextConfirmedTask(run.getId().value())).thenReturn(true);
 
         assertThat(service.executeNextTask(run.getId().value())).isTrue();
 
-        verify(runs).projectNextAppliedTask(run.getId().value());
+        verify(runs).projectNextConfirmedTask(run.getId().value());
         verify(runs, never()).claimNextTask(any());
         verify(runs, never()).completeTask(any(), any(), any());
         verifyNoInteractions(repositories, adapters, git);
@@ -137,7 +137,7 @@ class RunOrchestrationTest {
     @Test
     void projectionFailureCannotFallThroughToAClaimOrGitExecution() {
         var failure = new IllegalStateException("projection transaction failed");
-        when(runs.projectNextAppliedTask(run.getId().value())).thenThrow(failure);
+        when(runs.projectNextConfirmedTask(run.getId().value())).thenThrow(failure);
 
         assertThatThrownBy(() -> service.executeNextTask(run.getId().value())).isSameAs(failure);
 

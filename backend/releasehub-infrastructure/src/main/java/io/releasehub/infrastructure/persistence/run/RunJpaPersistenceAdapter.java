@@ -1,7 +1,6 @@
 package io.releasehub.infrastructure.persistence.run;
 
 import io.releasehub.application.run.RunPort;
-import io.releasehub.application.port.out.GitBranchPort;
 import io.releasehub.application.gitoperation.GitOperationJournalPort;
 import io.releasehub.application.window.WindowIterationPort;
 import io.releasehub.common.exception.BusinessException;
@@ -229,7 +228,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
                           t.task_type='TRY_MERGE'
                           AND NOT EXISTS (SELECT 1 FROM {h-schema}run_step s WHERE s.task_id=t.id)
                           AND EXISTS (SELECT 1 FROM {h-schema}git_operation o WHERE o.task_id=t.id
-                            AND o.action='MERGE_MR' AND o.state IN ('APPLIED', 'INTENT_RECORDED'))
+                            AND o.action='MERGE_MR' AND o.state IN ('APPLIED', 'REJECTED', 'INTENT_RECORDED'))
                         ))
                         )))
                 ORDER BY r.id
@@ -244,7 +243,7 @@ public class RunJpaPersistenceAdapter implements RunPort {
 
     @Override
     @Transactional
-    public boolean projectNextAppliedTask(String runId) {
+    public boolean projectNextConfirmedTask(String runId) {
         freshPersistenceContext();
         RunJpaEntity run = lockedRun(runId);
         requireTaskRun(run);
@@ -257,7 +256,8 @@ public class RunJpaPersistenceAdapter implements RunPort {
             RunItemJpaEntity item = items.get(candidate.getTargetId());
             if (item.getExecutedOrder() <= 0 || !eligible(candidate, item, ordered, items)) continue;
             RunTaskJpaEntity task = tasks.findForUpdate(candidate.getId()).orElseThrow(this::stale);
-            if (!expiredRunningClaim(task, databaseNow())) continue;
+            if (!expiredRunningClaim(task, databaseNow()) || task.getClaimToken().isBlank()
+                    || task.getFinishedAt() != null) continue;
             Number steps = (Number) entityManager.createNativeQuery(
                     "SELECT count(*) FROM {h-schema}run_step WHERE task_id=?1")
                     .setParameter(1, task.getId()).getSingleResult();
@@ -274,11 +274,12 @@ public class RunJpaPersistenceAdapter implements RunPort {
                 updates = RunPort.mrEvidenceUpdates(evidence.get(), null);
                 message = "根据已确认的 MR 创建结果恢复检查点";
             } else if (claim.actionType() == ActionType.TRY_MERGE) {
-                var evidence = journal.confirmedAppliedMergedMr(claim);
-                if (evidence.isEmpty()) continue;
-                updates = RunPort.mrResultUpdates(GitBranchPort.MergeResult.success().withEvidence(evidence.get()));
-                result = RunItemResult.MERGED;
-                message = "根据已确认的 MR 合并结果恢复记录";
+                var confirmed = journal.confirmedMergeResult(claim);
+                if (confirmed.isEmpty()) continue;
+                var merge = confirmed.get();
+                updates = RunPort.mrResultUpdates(merge);
+                result = RunPort.mergeOutcome(merge);
+                message = merge.detail() == null ? "根据已确认的 MR 合并结果恢复记录" : merge.detail();
             } else {
                 var project = journal.confirmedAppliedBranchProject(claim);
                 if (project.isEmpty()) continue;

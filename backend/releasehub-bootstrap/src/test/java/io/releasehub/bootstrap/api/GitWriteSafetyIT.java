@@ -2308,6 +2308,252 @@ class GitWriteSafetyIT {
         assertNoNamespaceWrites();
     }
 
+    // B14 expectations are product facts frozen before the recovery implementation, not derived from failedWrite.
+    private enum B14RejectedMerge {
+        PERMISSION(401, "Unauthorized", "PERMISSION_DENIED", "PERMISSION_DENIED",
+                RunItemResult.MERGE_BLOCKED, "FAILED", "FAILED"),
+        PROTECTED(403, "You cannot merge into this protected branch", "PROTECTED_BRANCH", "PROTECTED_BRANCH",
+                RunItemResult.MERGE_BLOCKED, "FAILED", "FAILED"),
+        APPROVAL(405, "Required approvals are missing", "APPROVAL_REQUIRED", "APPROVAL_REQUIRED",
+                RunItemResult.MERGE_BLOCKED, "FAILED", "FAILED"),
+        PIPELINE_PENDING(405, "Pipeline is still running", "PIPELINE_PENDING", "PIPELINE_PENDING",
+                RunItemResult.MERGE_BLOCKED, "FAILED", "FAILED"),
+        PIPELINE_FAILED(405, "Pipeline failed", "PIPELINE_FAILED", "PIPELINE_FAILED",
+                RunItemResult.MERGE_BLOCKED, "FAILED", "FAILED"),
+        CONFLICT(405, "Merge conflict", "CONFLICT", "CONFLICT",
+                RunItemResult.MERGE_BLOCKED, "FAILED", "FAILED"),
+        SHA_MISMATCH(409, "SHA does not match HEAD of source branch", "HTTP_409", "UNKNOWN",
+                RunItemResult.MERGE_BLOCKED, "FAILED", "FAILED"),
+        NO_COMMITS(422, "No commits between source and target", "NO_COMMITS", "UNKNOWN",
+                RunItemResult.UNKNOWN, "UNKNOWN", "NEEDS_REVIEW");
+
+        final int status;
+        final String message;
+        final String reason;
+        final String blockReason;
+        final RunItemResult result;
+        final String taskStatus;
+        final String runStatus;
+
+        B14RejectedMerge(int status, String message, String reason, String blockReason,
+                         RunItemResult result, String taskStatus, String runStatus) {
+            this.status = status;
+            this.message = message;
+            this.reason = reason;
+            this.blockReason = blockReason;
+            this.result = result;
+            this.taskStatus = taskStatus;
+            this.runStatus = runStatus;
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest(name = "normalRejectedMerge={0}")
+    @org.junit.jupiter.params.provider.EnumSource(B14RejectedMerge.class)
+    void b14NormalMergeRejectionsFollowIndependentBusinessOutcomes(B14RejectedMerge expected) throws Exception {
+        var before = prepareMrMergeRun(false);
+        b14ReplyRejectedMerge(expected);
+
+        assertThat(taskService.executeNextTask(before.getId().value())).isTrue();
+
+        b14AssertBusinessResult(before, expected);
+        var operation = b14AssertOriginalRejection(before.getId().value(), expected);
+        var events = journal.find(operation.id()).orElseThrow().events();
+        int beforeRepeatedDrive = SERVER.requests.size();
+        assertThat(taskService.executeNextTask(before.getId().value())).isFalse();
+        assertThat(SERVER.requests).hasSize(beforeRepeatedDrive);
+        assertThat(journal.find(operation.id()).orElseThrow().events()).isEqualTo(events);
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 1);
+        assertThat(SERVER.body("PUT", canonicalEndpoint + "/merge_requests/7/merge").path("sha").textValue()).isEqualTo(sha);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest(name = "persistedRejectedMerge={0}")
+    @org.junit.jupiter.params.provider.EnumSource(B14RejectedMerge.class)
+    void b14PersistedMergeRejectionsRestoreOriginalResultsWithoutHttp(B14RejectedMerge expected) throws Exception {
+        var before = prepareMrMergeRun(false);
+        var claim = b14SendRejectedMergeWithoutTaskResult(before, expected);
+        String runId = claim.runId();
+        var operation = b14AssertOriginalRejection(runId, expected);
+        var originalOperation = jdbc.queryForMap("select * from git_operation where id=?", operation.id());
+        var originalEvents = journal.find(operation.id()).orElseThrow().events();
+        var originalGuard = jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", operation.remoteKey());
+        assertThat(originalGuard).containsEntry("operation_id", operation.id()).containsEntry("reason", null);
+        assertThat(taskRuns.findTasks(runId).stream().map(RunPort.TaskView::status))
+                .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", "RUNNING");
+        assertThat(jdbc.queryForObject("select count(*) from run_step where task_id=?", Integer.class,
+                claim.fence().taskId())).isZero();
+        expireTaskClaim(claim);
+        var originalTask = jdbc.queryForMap("select * from run_task where id=?", claim.fence().taskId());
+        var originalOrder = jdbc.queryForMap("select planned_order,executed_order from run_item where id=?", claim.itemId());
+        var originalSteps = jdbc.queryForList("select * from run_step where run_item_id=? order by action_type", claim.itemId());
+        // Historical response must suffice even after the remote MR disappears.
+        SERVER.reply("GET", canonicalEndpoint + "/merge_requests/7", 404, "{}");
+        int beforeProjection = SERVER.requests.size();
+
+        assertThat(taskService.executeNextTask(runId)).as("expired original REJECTED response must finish its task").isTrue();
+
+        assertThat(SERVER.requests).as("projection must not issue any HTTP request").hasSize(beforeProjection);
+        b14AssertBusinessResult(before, expected);
+        var projectedTask = jdbc.queryForMap("select * from run_task where id=?", claim.fence().taskId());
+        for (String field : List.of("id", "run_id", "target_id", "repo_id", "task_type", "task_order",
+                "claim_token", "started_at", "claim_expires_at")) {
+            assertThat(projectedTask.get(field)).as("original task " + field).isEqualTo(originalTask.get(field));
+        }
+        assertThat(projectedTask.get("finished_at")).isNotNull();
+        assertThat(jdbc.queryForMap("select planned_order,executed_order from run_item where id=?", claim.itemId()))
+                .isEqualTo(originalOrder);
+        assertThat(jdbc.queryForList("select * from run_step where run_item_id=? and task_id<>? order by action_type",
+                claim.itemId(), claim.fence().taskId())).isEqualTo(originalSteps);
+        assertThat(jdbc.queryForMap("select * from git_operation where id=?", operation.id())).isEqualTo(originalOperation);
+        assertThat(journal.find(operation.id()).orElseThrow().events()).isEqualTo(originalEvents);
+        assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", operation.remoteKey()))
+                .containsEntry("generation", originalGuard.get("generation"))
+                .containsEntry("session_id", null).containsEntry("operation_id", null).containsEntry("reason", null);
+        assertThat(taskService.executeNextTask(runId)).isFalse();
+        assertThat(SERVER.requests).hasSize(beforeProjection);
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", 1);
+        assertThat(SERVER.writeCount()).isEqualTo(2);
+        System.out.printf("HTTP_REJECTED_MERGE_PROJECTION case=%s run=%s task=%s operation=%s attempt=%s "
+                        + "result=%s projectionHttp=0 mergePut=1 preservedToken=true preservedEvents=3%n",
+                expected, runId, claim.fence().taskId(), operation.id(), originalEvents.getFirst().attemptId(), expected.result);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest(name = "rejectedMergeRetrySourceChanged={0}")
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void b14RejectedMergeRetryKeepsOriginalCheckpointAndRejectsChangedSource(boolean sourceChanged) throws Exception {
+        var before = prepareMrMergeRun(false);
+        var claim = b14SendRejectedMergeWithoutTaskResult(before, B14RejectedMerge.SHA_MISMATCH);
+        var original = b14AssertOriginalRejection(claim.runId(), B14RejectedMerge.SHA_MISMATCH);
+        var originalOperation = jdbc.queryForMap("select * from git_operation where id=?", original.id());
+        var originalEvents = journal.find(original.id()).orElseThrow().events();
+        expireTaskClaim(claim);
+        int beforeProjection = SERVER.requests.size();
+        assertThat(taskService.executeNextTask(claim.runId())).isTrue();
+        assertThat(SERVER.requests).hasSize(beforeProjection);
+        b14AssertBusinessResult(before, B14RejectedMerge.SHA_MISMATCH);
+
+        String changedSha = "f".repeat(40);
+        // The original IID detail supplies the SHA precondition for this retry.
+        SERVER.reply("GET", canonicalEndpoint + "/merge_requests/7", 200,
+                mrCreationResponse(before, "mergeable").put("sha", sourceChanged ? changedSha : sha).toString());
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", 200, mrMergeResponse(before).toString());
+        var failed = taskRuns.findById(claim.runId()).orElseThrow();
+        var admission = taskPlans.admitRetry(failed, List.of(claim.itemId()), failed.getOperator(), UUID.randomUUID().toString());
+        var accepted = taskRuns.findById(admission.runId()).orElseThrow();
+        var inherited = accepted.getItems().getFirst().getMetadata();
+        for (String key : List.of("git.projectId", "git.mrIid", "git.mrUrl", "git.sourceSha",
+                "git.sourceBranch", "git.targetBranch", "git.mrDisposition")) {
+            assertThat(inherited).containsEntry(key, claim.metadata().get(key));
+        }
+
+        assertThat(taskService.executeNextTask(admission.runId())).isTrue();
+
+        var retried = taskRuns.findById(admission.runId()).orElseThrow();
+        assertThat(retried.getExecutionStatus().name()).isEqualTo(sourceChanged ? "FAILED" : "DONE");
+        assertThat(retried.getItems().getFirst().getFinalResult())
+                .isEqualTo(sourceChanged ? RunItemResult.FAILED : RunItemResult.MERGED);
+        assertThat(retried.getItems().getFirst().getMetadata())
+                .containsEntry("git.projectId", String.valueOf(project)).containsEntry("git.mrIid", "7")
+                .containsEntry("git.sourceSha", sha);
+        assertThat(journal.listByRun(admission.runId(), 0, 20)).hasSize(sourceChanged ? 0 : 1);
+        assertThat(jdbc.queryForMap("select * from git_operation where id=?", original.id())).isEqualTo(originalOperation);
+        assertThat(journal.find(original.id()).orElseThrow().events()).isEqualTo(originalEvents);
+        SERVER.verify("POST", canonicalEndpoint + "/merge_requests", 1);
+        SERVER.verify("PUT", canonicalEndpoint + "/merge_requests/7/merge", sourceChanged ? 1 : 2);
+        assertThat(SERVER.requests.stream().filter(request -> request.method().equals("PUT")
+                && request.path().equals(canonicalEndpoint + "/merge_requests/7/merge")))
+                .allSatisfy(request -> assertThat(request.body()).contains(sha).doesNotContain(changedSha));
+        assertThat(taskService.executeNextTask(admission.runId())).isFalse();
+    }
+
+    private void b14ReplyRejectedMerge(B14RejectedMerge expected) {
+        SERVER.reply("PUT", canonicalEndpoint + "/merge_requests/7/merge", expected.status,
+                new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()
+                        .put("message", expected.message).toString());
+    }
+
+    private RunPort.TaskClaim b14SendRejectedMergeWithoutTaskResult(io.releasehub.domain.run.Run before,
+                                                                   B14RejectedMerge expected) {
+        b14ReplyRejectedMerge(expected);
+        var claim = taskRuns.claimNextTask(before.getId().value()).orElseThrow();
+        assertThat(claim.actionType()).isEqualTo(ActionType.TRY_MERGE);
+        String source = claim.metadata().get("plan.featureBranch");
+        String target = claim.metadata().get("plan.releaseBranch");
+        try (var scope = GitOperationContext.withTask(claim)) {
+            // Invoke the real HTTP workflow; deliberately stop before the separate task result transaction.
+            factory.getAdapter(GitProvider.GITLAB).tryMergeRequest(repo.getCloneUrl(), "fixture-token",
+                    checkpoint(claim), "Merge " + source + " into " + target);
+        }
+        assertTaskStatus(claim, "RUNNING");
+        return claim;
+    }
+
+    private GitOperationJournalPort.Operation b14AssertOriginalRejection(String runId, B14RejectedMerge expected) throws Exception {
+        var operations = journal.listByRun(runId, 0, 20);
+        assertThat(operations).hasSize(2);
+        var operation = operations.stream().filter(value -> value.action().equals("MERGE_MR")).findFirst().orElseThrow();
+        assertThat(operation.state()).isEqualTo("REJECTED");
+        assertThat(operation.reason()).isEqualTo(expected.reason);
+        var events = journal.find(operation.id()).orElseThrow().events();
+        assertThat(events).extracting(GitOperationJournalPort.Event::type)
+                .containsExactly("INTENT_RECORDED", "SEND_STARTED", "REJECTED");
+        assertThat(events).extracting(GitOperationJournalPort.Event::sequence).containsExactly(0, 1, 2);
+        assertThat(events).extracting(GitOperationJournalPort.Event::attemptId).containsOnly(events.getFirst().attemptId());
+        assertThat(events.getLast().reason()).isEqualTo(expected.reason);
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        assertThat(json.readTree(events.getLast().evidenceJson()))
+                .isEqualTo(json.createObjectNode().put("httpStatus", expected.status).put("rejectionReason", expected.reason));
+        return operation;
+    }
+
+    private void b14AssertBusinessResult(io.releasehub.domain.run.Run before, B14RejectedMerge expected) {
+        String runId = before.getId().value();
+        var run = taskRuns.findById(runId).orElseThrow();
+        var item = run.getItems().getFirst();
+        assertThat(taskRuns.findTasks(runId).stream().map(RunPort.TaskView::status))
+                .containsExactly("COMPLETED", "COMPLETED", "COMPLETED", expected.taskStatus);
+        assertThat(run.getExecutionStatus().name()).isEqualTo(expected.runStatus);
+        if (expected.result == RunItemResult.UNKNOWN) assertThat(run.getFinishedAt()).isNull();
+        else assertThat(run.getFinishedAt()).isNotNull();
+        assertThat(item.getFinalResult()).isEqualTo(expected.result);
+        assertThat(item.getSteps()).hasSize(4);
+        assertThat(item.getSteps().getLast().actionType()).isEqualTo(ActionType.TRY_MERGE);
+        assertThat(item.getSteps().getLast().result()).isEqualTo(expected.result);
+        assertThat(item.getSteps().getLast().message()).isNotBlank();
+        var metadata = new LinkedHashMap<>(before.getItems().getFirst().getMetadata());
+        metadata.put("git.blockReason", expected.blockReason);
+        metadata.remove("git.requestId");
+        assertThat(item.getMetadata()).isEqualTo(metadata);
+        assertThat(jdbc.queryForObject("select last_merge_at from window_iteration where window_id=? and iteration_key=?",
+                java.sql.Timestamp.class, metadata.get("plan.windowId"), item.getIterationKey().value())).isNull();
+        var operation = journal.listByRun(runId, 0, 20).stream()
+                .filter(value -> value.action().equals("MERGE_MR")).findFirst().orElseThrow();
+        assertThat(jdbc.queryForMap("select * from repo_execution_guard where remote_key=?", operation.remoteKey()))
+                .containsEntry("session_id", null).containsEntry("operation_id", null).containsEntry("reason", null);
+        if (expected.result == RunItemResult.UNKNOWN) b14AssertUnknownMergeAdmissionGates(run);
+        assertNoNamespaceWrites();
+    }
+
+    private void b14AssertUnknownMergeAdmissionGates(io.releasehub.domain.run.Run unresolved) {
+        var item = unresolved.getItems().getFirst();
+        int beforeRuns = jdbc.queryForObject("select count(*) from run", Integer.class);
+        int beforeOperations = jdbc.queryForObject("select count(*) from git_operation", Integer.class);
+        int beforeRequests = SERVER.requests.size();
+        assertThatThrownBy(() -> taskPlans.admitRetry(unresolved, List.of(item.getId().value()),
+                unresolved.getOperator(), UUID.randomUUID().toString()))
+                .isInstanceOfSatisfying(BusinessException.class, error -> assertThat(error.getErrorCode())
+                        .isEqualTo(io.releasehub.common.exception.ErrorCode.RUN_PLAN_NOT_EXECUTABLE));
+        assertThatThrownBy(() -> taskPlans.admit(item.getMetadata().get("plan.windowId"),
+                List.of(item.getRepo().value()), List.of(item.getIterationKey().value()), true,
+                unresolved.getOperator(), UUID.randomUUID().toString()))
+                .isInstanceOfSatisfying(BusinessException.class, error -> assertThat(error.getErrorCode())
+                        .isEqualTo(io.releasehub.common.exception.ErrorCode.RUN_PLAN_NOT_EXECUTABLE));
+        assertThat(jdbc.queryForObject("select count(*) from run", Integer.class)).isEqualTo(beforeRuns);
+        assertThat(jdbc.queryForObject("select count(*) from git_operation", Integer.class)).isEqualTo(beforeOperations);
+        assertThat(SERVER.requests).hasSize(beforeRequests);
+    }
+
     private io.releasehub.domain.run.Run prepareMrMergeRun(boolean reused) {
         var run = prepareMrCreationRun();
         String opened = mrCreationResponse(run, "mergeable").toString();
@@ -3266,13 +3512,13 @@ class GitWriteSafetyIT {
         int requestsBefore = SERVER.requests.size();
         for (String operationToken : List.of(claim.fence().claimToken(), UUID.randomUUID().toString())) {
             for (String state : List.of("INTENT_RECORDED", "SEND_STARTED", "APPLIED", "REJECTED", "UNKNOWN", "NEEDS_REVIEW")) {
-                // INTENT/APPLIED 可被发现；缺少完整请求及 sender/响应证明的账本仍不授予执行或投影权。
+                // INTENT/APPLIED/REJECTED 可被发现；缺少完整请求及 sender/响应证明的账本仍不授予执行或投影权。
                 jdbc.update("update git_operation set state=?,claim_token=? where id=?", state, operationToken, operationId);
                 var operation = jdbc.queryForMap("select * from git_operation where id=?", operationId);
                 var candidates = taskRuns.findTaskCandidateRunIds(null, 1000);
-                if (Set.of("INTENT_RECORDED", "APPLIED").contains(state)) assertThat(candidates).contains(claim.runId());
+                if (Set.of("INTENT_RECORDED", "APPLIED", "REJECTED").contains(state)) assertThat(candidates).contains(claim.runId());
                 else assertThat(candidates).doesNotContain(claim.runId());
-                assertThat(taskRuns.projectNextAppliedTask(claim.runId())).isFalse();
+                assertThat(taskRuns.projectNextConfirmedTask(claim.runId())).isFalse();
                 assertThat(taskRuns.claimNextTask(claim.runId())).isEmpty();
                 assertThat(jdbc.queryForObject("select claim_token from run_task where id=?", String.class,
                         claim.fence().taskId())).isEqualTo(claim.fence().claimToken());

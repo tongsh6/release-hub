@@ -7,6 +7,7 @@ import io.releasehub.common.paging.PageResult;
 import io.releasehub.domain.repo.RepoId;
 import io.releasehub.domain.run.ActionType;
 import io.releasehub.domain.run.Run;
+import io.releasehub.domain.run.RunItemResult;
 import io.releasehub.domain.run.RunStep;
 
 import java.time.Instant;
@@ -24,10 +25,10 @@ public interface RunPort {
 
     /** 加入受理事务，按冻结 Item 范围建立固定四动作；预览不调用。 */
     void createTasks(Run run);
-    /** 有界发现当前协议的 PENDING、无证据到期领取及末尾 MERGE 的 INTENT/APPLIED 候选；锁内另核完整资格。 */
+    /** 有界发现当前协议的 PENDING、无证据到期领取及末尾 MERGE 的 INTENT/APPLIED/REJECTED 候选；锁内另核完整资格。 */
     List<String> findTaskCandidateRunIds(String afterId, int limit);
-    /** 在结果事务内仅补一个已确认的分支创建、MR 创建或合并结果；不访问 Git、不换 token 或期限。 */
-    boolean projectNextAppliedTask(String runId);
+    /** 仅凭原同步 APPLIED/REJECTED 证明补一个任务结果；不消费 Observation、不访问 Git、不换 token 或期限。 */
+    boolean projectNextConfirmedTask(String runId);
     /** 锁内领取一个任务；无事实或具备完整未发送分支/MERGE 证明的到期领取可换 token，SEND 及未知结果不重派。 */
     Optional<TaskClaim> claimNextTask(String runId);
     /** 短事务内定向保存事实、投影、绑定和 guard 确认；不保存传入的整个 Run。 */
@@ -58,6 +59,17 @@ public interface RunPort {
                 metadata.get("git.targetBranch"), metadata.get("git.mrIid"), metadata.get("git.mrUrl"),
                 metadata.get("git.sourceSha"), metadata.get("git.mergeSha"),
                 GitBranchPort.MrDisposition.valueOf(metadata.getOrDefault("git.mrDisposition", "")), null);
+    }
+
+    /** 正常合并与原同步响应投影共用的业务结果映射。 */
+    static RunItemResult mergeOutcome(GitBranchPort.MergeResult result) {
+        return switch (result.status()) {
+            case SUCCESS -> result.mrEvidence().disposition() == GitBranchPort.MrDisposition.ALREADY_MERGED
+                    ? RunItemResult.ALREADY_MERGED : RunItemResult.MERGED;
+            case CONFLICT, BLOCKED -> RunItemResult.MERGE_BLOCKED;
+            case UNKNOWN -> RunItemResult.UNKNOWN;
+            case FAILED -> RunItemResult.FAILED;
+        };
     }
 
     /** 正常 TRY 与历史合并结果投影共用，只更新结果；null 值删除旧字段，不改检查点身份。 */

@@ -275,6 +275,30 @@ public final class GitLabMergeRequestAdapter implements GitMergeRequestPort {
         return "HTTP_" + status;
     }
 
+    /** 严格核准原 Journal 拒绝摘要；不从状态补原因，也不使用正常响应的容错回退。 */
+    public static java.util.Optional<String> confirmedMergeRejection(JsonNode evidence) {
+        if (evidence == null || !evidence.isObject() || evidence.size() != 2
+                || !evidence.path("httpStatus").isIntegralNumber()
+                || !evidence.path("httpStatus").canConvertToInt()
+                || !evidence.path("rejectionReason").isTextual()) return java.util.Optional.empty();
+        int status = evidence.path("httpStatus").intValue();
+        if (status < 400 || status > 499 || status == 408) return java.util.Optional.empty();
+        String reason = evidence.path("rejectionReason").textValue();
+        boolean reachable;
+        if ("PROTECTED_BRANCH".equals(reason)) {
+            reachable = true;
+        } else if (status == 401 || status == 403) {
+            reachable = "PERMISSION_DENIED".equals(reason);
+        } else {
+            reachable = switch (reason) {
+                case "NO_COMMITS", "APPROVAL_REQUIRED", "PIPELINE_FAILED", "PIPELINE_PENDING" -> true;
+                case "CONFLICT" -> status != 409;
+                default -> ("HTTP_" + status).equals(reason);
+            };
+        }
+        return reachable ? java.util.Optional.of(reason) : java.util.Optional.empty();
+    }
+
     private static String rejectionReason(int status, JsonNode body) {
         if (body != null && "REMOTE_WRITE_REJECTED".equals(body.path("message").asText())) {
             String reason = body.path("reason").asText();

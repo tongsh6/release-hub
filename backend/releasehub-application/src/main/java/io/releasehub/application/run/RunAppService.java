@@ -74,7 +74,7 @@ public class RunAppService {
     /** 每次只完成一个任务：先补已确认结果，否则沿原领取执行路径推进。 */
     public boolean executeNextTask(String runId) {
         // 同一投影入口也处理无 PENDING 后继的末尾 TRY；扫描只发现，结果事务核对原证明。
-        if (runPort.projectNextAppliedTask(runId)) return true;
+        if (runPort.projectNextConfirmedTask(runId)) return true;
         var next = runPort.claimNextTask(runId);
         if (next.isEmpty()) return false;
         var claim = next.get();
@@ -199,7 +199,7 @@ public class RunAppService {
                 result = GitBranchPort.MergeResult.unknown("合并结果与持久 MR 检查点不一致").withEvidence(checkpoint);
             }
             Map<String, String> updates = RunPort.mrResultUpdates(result);
-            return taskResult(claim, mergeOutcome(result),
+            return taskResult(claim, RunPort.mergeOutcome(result),
                     result.detail() == null ? source + " → " + target : result.detail(), updates);
         } catch (RuntimeException error) {
             return taskResult(claim, RunItemResult.UNKNOWN, safeFailureMessage(error), Map.of("git.blockReason", "UNKNOWN"));
@@ -232,16 +232,6 @@ public class RunAppService {
             result = GitBranchPort.MergeResult.unknown("合并成功响应缺少项目、MR 身份或提交证据").withEvidence(result.mrEvidence());
         }
         return result;
-    }
-
-    private RunItemResult mergeOutcome(GitBranchPort.MergeResult result) {
-        return switch (result.status()) {
-            case SUCCESS -> result.mrEvidence().disposition() == GitBranchPort.MrDisposition.ALREADY_MERGED
-                    ? RunItemResult.ALREADY_MERGED : RunItemResult.MERGED;
-            case CONFLICT, BLOCKED -> RunItemResult.MERGE_BLOCKED;
-            case UNKNOWN -> RunItemResult.UNKNOWN;
-            case FAILED -> RunItemResult.FAILED;
-        };
     }
 
     private boolean isCommitSha(String value) {
@@ -401,7 +391,7 @@ public class RunAppService {
         Instant started = clock.instant();
         var merged = executeMerge(repo, git, source, target);
         recordMergeEvidence(item, merged);
-        RunItemResult mergeOutcome = mergeOutcome(merged);
+        RunItemResult mergeOutcome = RunPort.mergeOutcome(merged);
         if (!saveCleanupStep(run, item, new RunStep(ActionType.MERGE_TO_MASTER, mergeOutcome,
                 started, clock.instant(), merged.detail() == null ? source + " → " + target : merged.detail()))) {
             skipCleanupAfterMerge(run, item);
