@@ -906,7 +906,7 @@ C2-B8 已 DONE，以下契约经独立 RED、一次 PG 过强断言校准及本�
 - **AND** 现操作查询需认证但无仓库级/操作者级过滤，不声称仅创建者可见，不在 B8 扩 RBAC；GitOperationsPanel 不渲染 targetJson，无新增 UI 入口
 - **AND** 原“标题不存”测试断言按完整请求可审计调整，token/认证 header/无关正文及响应证据隐私约束保留，不泛化存任意 body 或 secret；独立 RED 冻结后的契约仍须保留
 
-B9最终验收状态（不替代下列规范）：独立RED、校准与实现后，单次相关1078/1078、API48/48、普通918（913 PASS/5既有SKIP）、静态及最终源码绑定通过；113新例包含于1078。四个排序PG例直接核三个读取入口的完整步骤及末项，每批最多一次Task查询、无关联时零额外查询及completeTask复用约束以源码审查留证，不冒称运行时SQL计数。实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003attempt 1已completed/success，5 PASS / 0 FAIL，B9已DONE。B10「MERGE_MR 精确只读核对证据」已DONE，typed观察仍不改Task/Step/guard/seq2，最终证据见记录23.11。B11读取状态证明已DONE，契约及终态见下列规范与记录24.9；B12失败重试闭环已DONE（记录25.10），当前唯一HEAD为B13「项目身份响应证明统一」，SEND/UNKNOWN受证据约束恢复继续排队。证据与边界见任务记录22.7–22.14；历史失败不覆盖，完整UI未扩验。
+B9最终验收状态（不替代下列规范）：独立RED、校准与实现后，单次相关1078/1078、API48/48、普通918（913 PASS/5既有SKIP）、静态及最终源码绑定通过；113新例包含于1078。四个排序PG例直接核三个读取入口的完整步骤及末项，每批最多一次Task查询、无关联时零额外查询及completeTask复用约束以源码审查留证，不冒称运行时SQL计数。实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该SHA的Full-Link 44978661003attempt 1已completed/success，5 PASS / 0 FAIL，B9已DONE。B10「MERGE_MR 精确只读核对证据」已DONE，typed观察仍不改Task/Step/guard/seq2，最终证据见记录23.11。B11读取状态证明已DONE，契约及终态见下列规范与记录24.9；B12失败重试闭环已DONE（记录25.10），B13项目身份响应证明已DONE（记录26），当前唯一HEAD为B14「原 MERGE_MR 已持久拒绝响应的结果投影」，SEND/UNKNOWN受证据约束恢复继续排队。证据与边界见任务记录22.7–22.14；历史失败不覆盖，完整UI未扩验。
 
 ### Requirement: 完整未发送 CREATE_MR 意图的原任务接续
 
@@ -1090,7 +1090,7 @@ B9最终验收状态（不替代下列规范）：独立RED、校准与实现后
 - **THEN** 复用现JpaRepository.findAllById至多一次读取整批关联任务，无关联id时零额外query；completeTask直接复用已有任务列表
 - **AND** 不逐Run/Item/Step查询，不引入缓存、第二套存储、DTO字段或新接口
 
-B10最终验收状态（不替代下列规范）：冻结d51a0b7生产的独立27例为23 FAIL/4正控，随后独立GREEN27/27；新增adapter24仅3固定+15响应+6 locator，旧18另回归，namespace/通用错误保留的源码边界不扩称新增覆盖。三条真实HTTP未加same-key零额外GET断言，幂等沿现回归与源码核验。UI基线4/4、完整前端218/218含coverage通过；单次相关1123/1123、API48/48、普通942（937 PASS/5旧SKIP）、静态与最终源码审计均通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定SHA Full-Link44982102777 attempt 1已completed/success，5 PASS/0 FAIL，B10已DONE；证据见记录23.7–23.11。B11读取状态证明已DONE，独立契约与本地验收见记录24，实现35ca21366ec9124fe9c4d6d2ef162a09c13709fb已推送，固定SHA Full-Link44984865795 attempt 1为5 PASS/0 FAIL；B12失败重试闭环已DONE（记录25.10），当前唯一HEAD为B13「项目身份响应证明统一」；本CI不扩称新观察的真实远端或完整UI旅程。
+B10最终验收状态（不替代下列规范）：冻结d51a0b7生产的独立27例为23 FAIL/4正控，随后独立GREEN27/27；新增adapter24仅3固定+15响应+6 locator，旧18另回归，namespace/通用错误保留的源码边界不扩称新增覆盖。三条真实HTTP未加same-key零额外GET断言，幂等沿现回归与源码核验。UI基线4/4、完整前端218/218含coverage通过；单次相关1123/1123、API48/48、普通942（937 PASS/5旧SKIP）、静态与最终源码审计均通过，实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定SHA Full-Link44982102777 attempt 1已completed/success，5 PASS/0 FAIL，B10已DONE；证据见记录23.7–23.11。B11读取状态证明已DONE，独立契约与本地验收见记录24，实现35ca21366ec9124fe9c4d6d2ef162a09c13709fb已推送，固定SHA Full-Link44984865795 attempt 1为5 PASS/0 FAIL；B12失败重试闭环已DONE（记录25.10），B13项目身份响应证明已DONE（记录26），当前唯一HEAD为B14「原 MERGE_MR 已持久拒绝响应的结果投影」；本CI不扩称新观察的真实远端或完整UI旅程。
 
 ### Requirement: MERGE_MR精确只读观察使用完整远端证明
 
@@ -1263,7 +1263,157 @@ B12阶段证据（不替代下列规范）：冻结59f6311生产的23新增独�
 - **THEN** TRY仍消费原I/IID/A，不重新ENSURE、不因当前源B改写原SHA或重建MR
 - **AND** 原有operation的未知结果和历史UNKNOWN仍禁止普通retry，不由一次FOUND解锁
 
-B13当前准备状态（详细规范后续定义）：拟由Resolver.resolve、Evidence.read的namespace前置及GitLabAdapter.resolveProjectId三个现入口复用现Resolver，统一actual200、object和positive integral JSON id的纯证明，不新增实体或Port。各入口定位、token与真实异常政策保持；仅long消费者另核上界，字符串身份不附加long上限。第三入口正常不可信/越界沿既有GIT_OP_004；Evidence正常非200为INCOMPLETE、200身份不符为MISMATCH。当前仅只读核对与内存测试准备，尚无新增测试落盘或运行，详细事前合同待切片基线后记录26；metadata、其他业务GET、SEND/UNKNOWN和完整UI仍独立待验。
+B13「项目身份响应证明统一」已DONE：三入口共用actual200/object/正整数JSON id无损String证明，保留各入口定位、凭据、异常政策及long消费边界。冻结独立70例为21 FAIL/49 PASS→70/70 GREEN；单次相关1239/1239含该70例，API48/48、普通1019（1014 PASS/5既有SKIP）及真实静态门禁通过。业务实现`4dbe2c6fd17b0f02a7306dcb7549c2fa83b2d7b5`、静态门禁修复`ddcec2ea6520ae7b347e13f9a2a28d1fae68bb67`已分组推送；固定后者完整SHA的[Full-Link 45102738088](https://github.com/tongsh6/release-hub/actions/runs/45102738088) attempt 1已completed/success，5 PASS/0 FAIL。完整证据、首次静态假PASS纠正及8条既有warning处置见记录第26节。 事前范围、原RED、冻结断言和完整验收证据见记录26.1–26.10；本规范不授予观察自动恢复或重发权。
+
+### Requirement: namespace项目身份必须由实际成功响应和JSON整数证明
+
+系统 MUST 在现Resolver.resolve、Evidence.read的namespace前置及GitLabAdapter.resolveProjectId复用Resolver内的静态纯证明，仅接受实际HTTP 200、object正文和positive integral JSON id，并无损返回String。各入口定位、凭据和真实异常政策 MUST 保持；long范围仅由现long消费者核准。证明不成立时不得继续依赖该身份的业务请求；正常响应拒绝结果按入口区分，不新增实体、DTO、Port或额外GET，也不扩大观察与恢复权限。
+
+#### Scenario: 三入口接受真实200正整数身份
+
+- **GIVEN** 原入口定位与凭据门禁通过，namespace GET实际返回200及含正整数JSON id的对象
+- **WHEN** 现三个入口使用共享纯证明
+- **THEN** Resolver/Evidence保留无损十进制String，第三入口在long范围内返回原数值
+- **AND** 原写链、观察与仓库读取消费者继续使用该已核身份，无额外GET
+
+#### Scenario: 完整正文不能替代实际200状态
+
+- **GIVEN** namespace GET正常返回201、206或204，即使正文提供匹配原I的整数id
+- **WHEN** 入口判定本次项目身份
+- **THEN** Resolver拒绝为GIT_IDENTITY_UNAVAILABLE，Evidence返回INCOMPLETE，第三入口拒绝为GIT_OP_004
+- **AND** 不产生后续依赖该身份的业务GET或写HTTP
+
+#### Scenario: JSON类型与正文形状不得被强制转换掩盖
+
+- **GIVEN** 实际200但body缺失/null/非对象，或id缺失/null/文本/布尔/小数/零/负数
+- **WHEN** 三入口核验项目身份
+- **THEN** Resolver与第三入口拒绝，Evidence返回MISMATCH且零业务GET
+- **AND** 不以asText后匹配、Number.longValue截断或解析文本将其补成合法身份
+
+#### Scenario: long上界只约束实际long消费者
+
+- **GIVEN** 实际200对象包含大于Long.MAX_VALUE的合法正整数JSON id
+- **WHEN** Resolver或Evidence按字符串原I核对
+- **THEN** 该整数无损保留且不因long上限被拒绝；原I不符仍为MISMATCH
+- **AND** GitLabAdapter.resolveProjectId以GIT_OP_004拒绝越界，不截断或包装；Long.MAX_VALUE本身可被long消费者接纳
+
+#### Scenario: 三入口原定位与凭据政策保持独立
+
+- **GIVEN** 原Resolver有configured base及唯一clone映射门禁，Evidence按原repoId/provider/base与仓库token回退读取，第三入口依赖原Settings
+- **WHEN** 三入口接入共享纯证明
+- **THEN** 各自原定位、token及前置拒绝保持，不整体调用Resolver改变其他入口政策
+- **AND** 原expected project不符不能进入numeric业务请求
+
+#### Scenario: 真实HTTP异常不改成正常响应拒绝
+
+- **GIVEN** 远端实际抛出HTTP401/403/404、ResourceAccess或解析异常，或第三入口Settings缺失
+- **WHEN** 原入口处理失败
+- **THEN** 保留既有异常政策；Evidence的401/403为FORBIDDEN、404为NOT_FOUND、解析/传输失败为UNAVAILABLE
+- **AND** 正常返回的非200与抛异常路径分别验证，不以全局错误处理器改变它们
+
+#### Scenario: 实际写入口在不可信身份处停止
+
+- **GIVEN** 原Spring写链的namespace身份响应不合格
+- **WHEN** Resolver被真实adapter或interceptor消费
+- **THEN** 不形成基于该错误身份的新operation/SEND或业务写HTTP
+- **AND** 已有Run/Task结果仍沿原协议收口，不制造本片的重放或替代路径
+
+#### Scenario: 核对只追加原观察事实
+
+- **GIVEN** 原operation为UNKNOWN且保留guard，namespace响应不合格或随后只读核对为FOUND
+- **WHEN** 现reconcile提交Observation
+- **THEN** 只按原协议新增Observation并更新operation.version/updatedAt
+- **AND** operation业务身份/状态/events、guard及Run/Task/Step保持，不能由FOUND释放保护或重发
+
+### Requirement: 原合并拒绝响应只补齐合格原任务结果
+
+系统 MUST 仅在当前WINDOW协议、原TRY_MERGE仍RUNNING且完整领取按数据库时间已到期、finishedAt为空、无自身Step、实际顺序存在且同仓前序资格满足时，对唯一自身MERGE_MR REJECTED同步响应进行本地结果投影。候选扫描 MUST 包含无PENDING的末尾合格TRY，资格 MUST 在原锁序内重核；不得因扫描、到期或FOUND观察取得发送权。
+
+#### Scenario: 正常与恢复分别满足独立业务判据
+
+- **GIVEN** 先冻结发布语义的独立预期，而不是读取正常执行函数的返回值生成期望
+- **WHEN** 分别执行正常同步拒绝和seq2持久化后中断恢复
+- **THEN** 已确认的权限/保护/审批/流水线/代码冲突拒绝形成MERGE_BLOCKED及正确原因，Task为FAILED；HTTP_409形成MERGE_BLOCKED及blockReason UNKNOWN，Task为FAILED
+- **AND** NO_COMMITS只能形成UNKNOWN Task/Item/Step及NEEDS_REVIEW Run、finishedAt为空；任何拒绝都不能写成功绑定，两路径一致只作为附加约束
+
+#### Scenario: 已持久拒绝响应在原结果提交前中断
+
+- **GIVEN** 原MERGE_MR的可信REJECTED seq2已独立提交，原TRY结果事务未提交且符合到期与归属资格
+- **WHEN** 默认worker经既有结果投影入口恢复
+- **THEN** 复用原同步拒绝的业务映射与mrResultUpdates，经原completeTask事务补齐同一Task/Step/metadata/Item/Run与guard确认
+- **AND** 恢复HTTP为0，原PUT总数不增加；token、operation、attempt、检查点、原计划与事件保持
+
+#### Scenario: 原拒绝证明必须完整且类型严格
+
+- **GIVEN** 同attempt恰有seq0 INTENT_RECORDED、seq1 SEND_STARTED、seq2 REJECTED，seq1证明当前真实sender
+- **WHEN** 核准原seq2
+- **THEN** evidence必须是恰含httpStatus/rejectionReason的object，httpStatus必须是可无损转int的JSON整数400–499且非408；rejectionReason必须是规范非空文本，与event.reason、operation.reason相同且组合符合现分类器可达语义
+- **AND** 原Run/Item/repository/operator/provider、I/IID/A、source/target计划、完整五字段PUT及requestHash和guard owner/generation全部一致且guard.reason为空；缺失或不符保持原事实，不用HTTP状态容错或Observation补证
+
+#### Scenario: 拒绝原因组合必须由原分类器可达
+
+- **GIVEN** 原响应携带规范原因和actual status
+- **WHEN** 核准持久拒绝原因
+- **THEN** 保护分支优先于401/403；401/403只允许PROTECTED_BRANCH或PERMISSION_DENIED，CONFLICT不得配409，HTTP_n须匹配actual status
+- **AND** UNKNOWN、自由文本、缺失/不一致原因或不可能组合拒绝投影，不使用正常adapter的容错回退补证
+
+#### Scenario: INTENT换权后只认实际sender
+
+- **GIVEN** 原未发送INTENT曾合法换权，由当前sender发送并得到REJECTED
+- **WHEN** 原Task到期后核准已持久响应
+- **THEN** 按seq1的taskId/claimToken及原事件归属证明，不能用operation的历史领取token替代
+- **AND** 错sender、错attempt、缺失或多余事件拒绝投影
+
+#### Scenario: 阻塞原因UNKNOWN不等于任务UNKNOWN
+
+- **GIVEN** 原拒绝规范原因是HTTP_409
+- **WHEN** 合格原TRY按独立拒绝预期补原结果
+- **THEN** Item/Step为MERGE_BLOCKED，blockReason为UNKNOWN，Task为FAILED；不冒充代码冲突、合并成功或Task UNKNOWN
+- **AND** 使用mrResultUpdates保留原MR身份、mergeSha和disposition，不使用ENSURE_MR成功绑定补丁
+
+#### Scenario: NO_COMMITS继续表达业务未知
+
+- **GIVEN** 原REJECTED同步响应规范原因是NO_COMMITS
+- **WHEN** 合格原任务补结果
+- **THEN** 原提交被目标包含仍缺充分证明；Task及Item/Step为UNKNOWN，Run为NEEDS_REVIEW且finishedAt为空，保留原MR检查点与REJECTED事件，不推断MERGED/ALREADY_MERGED或普通FAILED
+- **AND** 原guard在REJECTED结果事务中确认释放，普通retry仍被UNKNOWN Task及NEEDS_REVIEW Run门禁拒绝，不自动创建retry Run
+
+#### Scenario: 结果事务竞争与回滚不丢原证据
+
+- **GIVEN** 两个投影者或原sender与投影者竞争同一原结果，或Step/metadata写入后发生CAS失败/外层回滚
+- **WHEN** 通过既有Run→Task→remote/guard锁序与completeTask结果事务处理
+- **THEN** 至多一个原Step和完整结果提交；失败事务的结果、后继、Run、绑定与guard修改全部回滚
+- **AND** 原独立提交的REJECTED seq2保留，之后仍可核准合法投影
+
+#### Scenario: 未确定响应和既有终态不被借用恢复
+
+- **GIVEN** SEND尚无seq2、operation为UNKNOWN/NEEDS_REVIEW，或Task已有UNKNOWN/其他终态Step，或仅有FOUND观察
+- **WHEN** 扫描或恢复本片候选
+- **THEN** 不补造REJECTED、不释放保护、不重发PUT、不重写历史Task/Step
+- **AND** 无seq2的原sender仍可按原fence合法迟到finish；既有APPLIED成功投影保持
+
+#### Scenario: 默认扫描与策略消费同一拒绝结果
+
+- **GIVEN** 原TRY位于仓库队尾且无PENDING，或同仓还有后继而其他仓库可执行
+- **WHEN** worker发现并提交合格REJECTED原结果
+- **THEN** 同仓不越序，FAIL_FAST/CONTINUE沿原策略消费阻塞结果，UNKNOWN保持同仓阻断，其他仓库可推进
+- **AND** 独立JVM在REJECTED seq2后强杀再重启，须验证原PUT仅一次、恢复HTTP为0、原operation/attempt/token/事件不变
+
+#### Scenario: 默认恢复结果由真实查询与重试入口消费
+
+- **GIVEN** 独立JVM在原REJECTED seq2后退出，领取期限已到且默认worker完成合法投影
+- **WHEN** 通过现Run查询与retry入口读取或受理
+- **THEN** 查询呈现原window/iteration/repository、MR项目/IID/URL、source/target/SHA、实际顺序及正确结果/原因；不只验证数据库行
+- **AND** 明确阻塞项仅在源Run已结束且无RUNNING/UNKNOWN等原门禁满足时可申请retry，新Run继承原I/IID/A；预检发现SHA变化不改成新SHA重发
+
+#### Scenario: 已拒绝写的guard释放不授予业务重试权
+
+- **GIVEN** NO_COMMITS已经补齐为UNKNOWN Task/Item/Step及NEEDS_REVIEW Run
+- **WHEN** 原结果事务确认REJECTED并释放该operation的guard
+- **THEN** Run.finishedAt为空，普通retry拒绝且不创建新Run或operation；同窗口重叠仓库的新编排仍受未决Run门禁约束
+- **AND** 不宣称全局永久持有仓库guard；同Run其他仓库仍按原协议推进
+
+B14以上为事前验收要求，尚无实现或测试通过声明；其独立RED/GREEN、真实HTTP/PG/进程、源码绑定与固定SHA CI按记录27逐项落证。
 
 ## MODIFIED Requirements
 

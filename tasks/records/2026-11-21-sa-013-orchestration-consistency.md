@@ -1692,3 +1692,192 @@ API首轮唯一失败为RunPlanApiIT.unresolvedOrchestrationPreventsCloseBeforeA
 独立RED→23 GREEN、单次相关1174、API补证后48、普通967、静态与最终源码审计、六代码文件分组推送及固定SHA CI均完成，B12标DONE并出队，验收文档单独收口。API首轮失败、旧fixture校准和10份快照中前4份仅API fixture差异等边界均保留；前端218仅B10历史，本片未重跑。CI只验已有backend API与隔离GitLab五切片，不扩大完整UI旅程或Slice4/5既有覆盖，也不赋予真实SEND/UNKNOWN新的恢复权限。
 
 下一唯一HEAD为C2-B13「项目身份响应证明统一」。拟由Resolver.resolve、Evidence.read的namespace前置及GitLabAdapter.resolveProjectId三个现入口复用现Resolver，统一actual200、object和positive integral JSON id的纯证明，不新增实体或Port。各入口定位、token与真实异常政策保持；仅long消费者另核上界，字符串身份不附加long上限。第三入口正常不可信/越界沿既有GIT_OP_004；Evidence正常非200为INCOMPLETE、200身份不符为MISMATCH。当前仅只读核对与内存测试准备，尚无新增测试落盘或运行，详细事前合同待切片基线后记录26；metadata、其他业务GET、SEND/UNKNOWN和完整UI仍独立待验。后续任务仍按既定SA-002顺序推进。
+
+## 26. C2-B13 项目身份响应证明统一
+
+### 26.1 基线、目标与当前事实
+
+B12实现7042f19278ff8d8bfa102a8f27d0c1f1b949539d及固定SHA Full-Link44989857158首轮5/5已验收；十份验收文档已按73ea437dae8263e4e73de79d0454f5a94d2fc8c1提交推送。B13从该洁净提交建立`.ai/reports/validation/c2-b13/baseline.json`，记录backend495、frontend222文件。记录25全文封存，不回写其当时准备状态。
+
+本片唯一目标是三个现namespace→numeric project入口使用同一响应身份证明，阻止不可信身份进入实际写链、历史核对和仓库统计，回连SA-013既有安全执行蓝图。以下为实现前独立契约，保留合同定义时点的准备事实：当时独立测试正在编辑，生产冻结，尚无运行结果。后续实际进度另节追加，不将预计RED、历史CI或源码推演记为通过。
+
+### 26.2 独立正反例与结果契约
+
+| 输入或入口 | 必须满足的行为 |
+|---|---|
+| actual200 + object + positive integral JSON id | 由现GitRemoteIdentityResolver的静态纯函数输出无损十进制String；不新增实体、DTO、Port或额外GET |
+| 正常201/206/204，即使body带正确id | 无身份证明；Resolver沿GIT_IDENTITY_UNAVAILABLE，Evidence为INCOMPLETE，第三入口为GIT_OP_004；零依赖该身份的业务GET/写请求 |
+| 200但body缺失/null/非对象，id缺失/null/文本/布尔/小数/零/负数 | 不做容错强转；Resolver/第三入口拒绝，Evidence为MISMATCH；小数1.0也不属于JSON整数 |
+| 大于Long.MAX_VALUE的合法JSON整数 | Resolver/Evidence继续无损String语义，不新增long上限；仅GitLabAdapter.resolveProjectId独立拒绝越界为GIT_OP_004，Long.MAX_VALUE仍可接受 |
+| 原项目I与已证明id不符 | 原expected project校验保持；Evidence为MISMATCH并在原namespace前置停止，不向新J发业务GET |
+| 原定位、配置及凭据政策 | Resolver保留parse/configured base/provider/唯一clone/expected project与externalHeaders；Evidence保留repoId/provider/clone base、仓库token优先及Settings回退；第三入口保留Settings/base/path/token |
+| 实际抛异常 | Resolver沿原异常映射；Evidence401/403为FORBIDDEN、404为NOT_FOUND、解析/传输失败为UNAVAILABLE；第三入口HTTP401/403/404、ResourceAccess及missingSettings沿原政策，不被正常响应校验统一吞掉 |
+| 既有reconcile消费者 | 只追加原Observation并更新operation.version/updatedAt；业务身份、状态、events、guard与Run/Task/Step保持；UNKNOWN后FOUND也不授权恢复或发送 |
+
+原GitLabAdapter使用Map/Number.longValue或Long.parseLong可能截断小数/大整数或接受文本，故本片必须在该现方法直接读取JsonNode，再复用纯证明并单独核long边界。其他两个入口不得通过整体调用Resolver来复用规则：它们各自的定位、凭据和异常政策不是重复逻辑。网络读取仍在原账本事务之外，未增加GET或持锁网络。
+
+### 26.3 责任查重、真实消费者与反对方案
+
+基线源码定位均为`backend/`下已有文件：
+
+| 已核定位 | 当前缺口与立即消费链 |
+|---|---|
+| `releasehub-infrastructure/src/main/java/io/releasehub/infrastructure/git/GitRemoteIdentityResolver.java`37–63、103 | resolve已有整数类型与字符串形状校验，但丢弃响应status；现对象可承责共享纯证明。GitLabGitBranchAdapter.resolveIdentity和GitWriteHttpInterceptor.write立即消费，再进入numeric URI、Journal与实际HTTP |
+| 同目录`GitRemoteEvidenceAdapter.java`34–106 | namespace只取body并以asText匹配id，缺actual200和JSON类型证明；由GitOperationAppService.reconcile22–33立即消费为既有观察结果/API |
+| `releasehub-infrastructure/src/main/java/io/releasehub/infrastructure/gitlab/GitLabAdapter.java`82–114 | Map读取后强制long转换；CodeRepositoryAppService.normalizeBranch70–87、getGateSummary201–213、sync354–373实际用于默认分支、门禁和统计读取，原各自失败处理保持 |
+| `releasehub-infrastructure/src/main/java/io/releasehub/infrastructure/persistence/gitoperation/GitOperationPersistenceAdapter.java`429–442 | observe新增Observation并更新updatedAt、乐观version；不能将只读核对描述为整个operation行逐字不变 |
+| `releasehub-common/src/main/java/io/releasehub/common/exception/ErrorCode.java`106 | 现GIT_IDENTITY_UNAVAILABLE对应GIT_OP_004/503，足以承接第三入口正常不可信和越界，不增错误码 |
+
+最强反例先于实现：返回201且含原I、文本“1”被asText放行、小数/超long整数被截断，均可能得到看似可信的同一值；不能只验证转换后的值。反过来把全部身份收紧为long会拒绝现字符串链合法大整数，也不成立。保留三份核心判据会继续漂移；把完整Resolver复用于Evidence/第三入口会串入configured base/唯一clone等不同政策；新建解析服务、DTO或通用错误处理器均无必要，采用原Resolver内纯证明和各入口原结果映射。
+
+二阶影响是更早拦截错误目标请求与误导观察/统计，错误仍由原消费者解释，不把一次拒绝转成成功或永久失权。三阶影响是身份规则只有一处维护而凭据、业务结果与恢复权限仍各司其职。沿既有恢复经验保持numeric目标、未知保护和独立操作事实；本片不凭一次FOUND推进Task或释放guard。
+
+### 26.4 独立验收计划、影响与交付出口
+
+下表为独立选例计划及预期，尚未执行；不得把预计失败数写成RED事实：
+
+| 选择集合 | 新例 / 旧正控 | 预计结果 | 验收重点 |
+|---|---:|---|---|
+| adapter | 52 / 10，共62 | 17 FAIL / 45 PASS | 三入口status/body/id类型、无损整数与long边界、原配置/定位/token/真实异常政策 |
+| 真实Spring + HTTP + PostgreSQL | 6 / 2，共8 | 4 FAIL / 4 PASS | 真实写链身份拒绝零后续写；现reconcile分类与Observation/version/updatedAt、原业务状态/events/guard保持 |
+| 合计 | 58 / 12，共70 | 21 FAIL / 49 PASS | 测试身份、请求计数与持久事实独立核对，不依赖未来helper计算期望 |
+
+先在冻结73ea437生产中仅叠加测试取得行为RED，编译/fixture失败单独保留并修正，不计产品RED；所有独立RED完成后才改生产，再运行同批GREEN、相关/API/普通回归、静态TopN与源码绑定。旧断言如需校准必须单独说明，不提前宣称断言全保持。分组提交推送后固定完整实现SHA跑CI，最终验收前B13保持HEAD；前端若未改，历史组件结果只作历史沿用，静态检查按本片实际记录。
+
+数据/API/UI无新增字段、schema、实体、DTO、Port或展示入口；无缓存、额外GET或网络持锁。metadata与其他业务GET的响应证明、SEND/UNKNOWN受证据约束恢复及完整UI继续独立排队，再按既定顺序推进SA-002。未验收停止交付，缺陷以修复提交处理，已有执行/观察/guard事实保留，不清数据、不重发未知请求，也不建立本片专用开关或调度器。
+
+### 26.5 冻结生产上的独立RED与测试契约保留
+
+两组独立验证均以73ea437dae8263e4e73de79d0454f5a94d2fc8c1导出生产为基线，仅叠加各自测试文件；result.json的sourceStable、rootProductionStable均为true，signatureSeamPaths为空，0 ERROR/0 SKIP。实际合计70选择例（58新+12既有正控）为21 FAIL/49 PASS，符合事前预期；26.1–26.4原文保留，以下才是运行事实。
+
+| 证据（`.ai/reports/validation/c2-b13/`下） | 实际结果 |
+|---|---|
+| `red-adapter-frozen-jdk21/result.json` | 62=17 FAIL/45 PASS，8.2s；Resolver消费链23=2 FAIL/21 PASS，Evidence19=3 FAIL/16 PASS，GitLabAdapter20=12 FAIL/8 PASS |
+| `red-http-frozen-jdk21/result.json` | 8=4 FAIL/4 PASS，16.3s；真实Spring/HTTP/PostgreSQL链 |
+| `test-contract-freeze.json` | passed=true、allOldAssertionsPreserved=true；四份新测试块及有限fixture调整均可明确逆变换，逐字恢复基线 |
+
+Resolver链的两个FAIL来自201/206仍返回FOUND、携带TagEvidence并发出原应为零的numeric业务GET。Evidence三个FAIL来自文本id和201/206被判FOUND并读取后继业务对象。GitLabAdapter的12个FAIL逐项为STATUS_201、STATUS_206、STRING_ID、INTEGRAL_LOOKING_DECIMAL、FRACTIONAL_ID、ZERO_ID、NEGATIVE_ID、MISSING_ID、NULL_ID、NON_OBJECT、EMPTY_BODY、LONG_OVERFLOW：前七项及越界未抛预期BusinessException；missing/null/empty抛旧NotFoundException，非对象抛旧Map转换的RestClientException，均与事前正常不可信响应契约不符，不是编译或fixture错误。
+
+HTTP两个201/206用例在当前ENSURE_MR结果处实际得到COMPLETED、后继TRY为PENDING，目标为FAILED/SKIPPED；两个观察用例分别是206+numeric id实际FOUND（目标INCOMPLETE）和200+string id实际FOUND（目标MISMATCH）。失败定位不等于后续全部断言已执行，也不据此声称原UNKNOWN或guard被解除；完整后继零请求与事实保留仍须GREEN验证。
+
+| 已冻结测试文件 | 新块行数 | 旧内容边界 |
+|---|---:|---|
+| GitLabReleaseEvidenceTest | 84 | 两个setup局部mock提升为每例字段，BeforeEach仍逐例创建同一类型新mock；两处var改字段赋值，无原断言或正控变化 |
+| GitRemoteEvidenceAdapterTest | 93 | 无旧fixture变化 |
+| GitLabAdapterTest | 87 | 仅补新断言使用的WireMock import |
+| GitWriteSafetyIT | 114 | 无旧fixture变化 |
+
+四块hash、完整文件hash和baselineReconstructedExactly=true均保存于test-contract-freeze.json。独立业务断言未为匹配现生产而校准；全部RED完成后才进入三个现生产文件的实现。记录本节时尚无GREEN、本地完整回归、提交推送或本片CI验收结果，B13保持HEAD。
+
+### 26.6 接手复核与本地回归（2026-11-23）
+
+继续会话时本机HEAD仍为73ea437，11个已有未提交文件中包含三个生产文件和四个测试文件；不能把远端或旧交接中的“尚无GREEN”当作最新本机事实。原始XML、Maven日志与当前源码独立复核确认已有独立GREEN和相关回归可复用，无需为接手重复执行。
+
+| 证据目录（`.ai/reports/validation/c2-b13/`下） | 本轮确认的事实 |
+|---|---|
+| `green-independent-jdk21/` | 4 suites，70个唯一测试全部通过，0 FAIL/ERROR/SKIP；与两组冻结RED的70个测试身份完全相同，原21个FAIL全部转为PASS |
+| `regression-final-jdk21/` | 单次15 suites，1239个唯一测试全部通过，0 FAIL/ERROR/SKIP；70独立例全部包含其中，重叠不累计 |
+| `api-final-jdk21/` | 本次接手重新执行3 suites，48/48 PASS，48.9s；覆盖Run分页、计划和窗口API |
+| `ordinary-final-jdk21/` | 本次接手重新执行既有普通测试选择，1019项中1014 PASS、5既有SKIP，0 FAIL/ERROR，14.2s |
+
+四份既有GREEN/相关回归及新增API/普通回归的before/after backend快照均为495文件，逐项相同并匹配当前工作区；四份测试整文件与新增块hash继续匹配RED契约冻结，未调整断言来获得GREEN。frontend222文件保持不变，未重跑组件测试，历史218组件结果不算本片的新验证。
+
+冻结RED的两份351文件production快照与73ea437一致；唯一哈希口径差异是`backend/tests/e2e/test_utils.sh`符号链接：Git记录链接文本，运行期快照记录解引用内容。已分别核准链接目标与实际目标内容均与基线一致，未将口径差异误报为生产改动，见`red-evidence-audit.json`。
+
+独立实现审查覆盖三个现生产入口、四测试完整diff及实际调用链，未发现阻断项。共享证明仅判断status/object/JSON整数；expected project、URI、凭据和异常政策仍由原入口承担；long上限只在GitLabAdapter消费端核准。HTTP/PG新例确认不可信身份零后继业务写与本Task operation，核对仅追加Observation/version/updatedAt，原Run/Task/Step、状态、events与guard保持。本节仍不代表提交推送或固定SHA CI已经完成。
+
+### 26.7 静态门禁的实际失败与修复边界
+
+首次本轮扫描`.ai/reports/static-scan/20261123-103938/`发现六份新鲜SpotBugs XML均0，但两个前端原始日志实际为“pnpm未找到命令”。旧脚本丢弃执行退出码，仅按日志中的英文error/正则判定，错误显示两项PASS且最终exit0；外层首次审计同样漏掉本地化命令错误。因此该轮前端检查未执行，不能当作通过。原日志与原result保留，`static-final-jdk21/audit-correction.json`明确否定首次passed声明。
+
+必要修复限定既有`scripts/dev/static-scan-topn.sh`：以实际退出状态证明检查完成，并保留warnings与SKIP的独立语义；工具未执行或失败必须出现在报告并使最终退出非零。先以隔离fixture复现并验证失败路径，再使用项目声明的Node24和pnpm10.33.0完成真实复扫。此门禁修复单独分组提交，不改B13 backend候选树，不借用旧扫描的前端结果。
+
+### 26.8 门禁修复与真实最终复扫
+
+既有静态脚本仅按英文日志关键词判定，无法证明命令实际完成。本片将四项真实退出码同时用于结果表、质量基线、失败TopN及最终exit；正常warnings独立保留，缺manifest明确SKIP，原始退出码写入raw/check-exit-codes.tsv。没有移除检查或改成忽略失败。
+
+隔离合同封存原脚本后取得7 FAIL/2 PASS；最终同9组全部PASS，覆盖pnpm缺失、lint非英文失败、typecheck空日志非零、Maven无error非零、git diff空日志非零、正常warning、正常PASS、成功0 errors文本及缺manifest。中间Bash3.2变量紧贴中文括号与验证器非UTF8显示问题均原样留档；修复只调整变量边界和显示解码，不改变输入或验收断言。证据位于static-gate-contract/；该9例不代替真实项目检查。
+
+修复后真实扫描104651正确FAIL：本轮新增任务记录末尾多一空行，git diff --check返回2；其他三项实际通过。移除该空行后最终扫描.ai/reports/static-scan/20261123-105114/summary.md四项退出码全部0，脚本exit0，27.1s。JDK21、Node v24.19.0、pnpm10.33.0；六模块fresh SpotBugs XML实际BugInstance各0，typecheck PASS，lint 0 errors/8既有测试fixture warnings。TopN八项已逐项记录保留理由与复扫证据：GroupTreeSelect两项类型、GroupDialog三项同文件组件与三项默认值，相关两文件与基线同hash，本片未改变生产前端规则。
+
+最终源码绑定见static-final-verified-jdk21/：backend495/frontend222前后相同，backend与已验1239/API48/普通1019候选树一致，scanner SHA-256为ea2a221a8613951627014138ef0087d23e277100d46d97e713a1cd35757e7d50。独立审阅复核四退出码、六XML新鲜性、实际BugInstance、两组源码、旧警告归属和隔离9例均一致。103938假PASS与104651真实FAIL继续保留，不改写历史。
+
+### 26.9 分组提交、远端与固定SHA验收
+
+- B13三个生产文件与四测试单独提交为4dbe2c6fd17b0f02a7306dcb7549c2fa83b2d7b5，父提交73ea437；提交后backend495逐项匹配最终测试树，原独立测试块保持。
+- 静态门禁脚本单独提交为ddcec2ea6520ae7b347e13f9a2a28d1fae68bb67，仅该脚本变化，backend与4dbe2c6相同。未移除Git hook；首个提交的LFS PATH提示保留，后续恢复Homebrew PATH后提交和推送成功。
+- 两组提交已正常fast-forward推送到feature/orchestration-consistency并核对远端；main/develop仍同d4534ccc34fedb9bbf394ced89b4726f43ec197c，未force或更新基线分支。
+- [Full-Link 45102738088](https://github.com/tongsh6/release-hub/actions/runs/45102738088) 仅dispatch一次，固定完整head_sha为ddcec2ea6520ae7b347e13f9a2a28d1fae68bb67，workflow_dispatch / e2e-full-link.yml / attempt 1。已completed/success，于2026-11-23北京时间11:03:48完成，e2e job 137457055388的14个步骤均success，五个切片各自PASSED，汇总5 PASS/0 FAIL；run/job/checkout日志三者SHA一致。主线程独立GET与原日志复核通过；首次汇总解析未容纳两计数间的符号，原始失败另存，修正只解析原日志同一行的两个计数，原证据及5/0标准未改。
+- 原始提交、push、dispatch和CI结果保存于.ai/reports/validation/c2-b13/delivery/；验收文档与B14事前契约另组提交。固定SHA CI覆盖现后端API与隔离GitLab五切片，不代替B13本地70独立例，也不扩大为完整UI、全部C2/S3或真正SEND/UNKNOWN恢复验收。
+
+### 26.9.1 文档收口与严格校验
+
+十份正文完整diff已独立交叉审阅；B13完成证据、B14唯一HEAD、70包含于1239、普通1019=1014+5、前端历史结果和非完整UI边界一致。随后按用户“核对当前任务目标和边界”的要求补强独立业务判据、精确UNKNOWN/NEEDS_REVIEW状态及真实查询/重试消费出口，见27.1.1；未增加B14生产或测试改动。
+
+本机无既有OpenSpec CLI，初查NOT_RUN保留在openspec-strict-audit/。按项目指南，在临时目录使用官方@fission-ai/openspec 1.16.0、Node24，关闭安装生命周期脚本及遥测，从docs执行openspec validate add-durable-run-recovery --strict，首次及目标边界校准后的最终校验均exit0。临时工具目录已回收，项目依赖未变；不能把历史未执行记录改成通过。最终证据在openspec-strict-boundary-final/，10个change输入文件前后同hash。
+
+最终strict、git diff --check、check-roadmap均通过，唯一HEAD为B14；backend495/frontend222仍匹配B13验收树。文档初次检查发现两处段落拆分留下的行尾空格，已修正；审计器首次按换行读取Git路径遇到中文路径转义，已改用NUL分隔读取，文件集合仍精确10份。原失败留在delivery/docs-gates-initial-failure.json，不改写历史。
+
+### 26.10 本片结论与下一队首
+
+B13已完成独立RED→同批GREEN、相关/API/普通回归、真实静态门禁、源码绑定、独立审查、分组提交推送与固定SHA CI，标DONE。70例含58新例与12既有正控，且全部包含于1239；各轮不得相加。普通1019为1014 PASS/5既有SKIP；前端222文件保持，218组件结果仍仅是B10历史，本片没有重跑组件测试。
+
+现三个namespace身份入口共用actual200/object/positive integral JSON id无损String证明，保留原定位、凭据与异常政策；long上限只属于long消费端。没有新增实体/DTO/Port/schema、额外GET或恢复权。metadata及其他业务GET、完整UI继续独立验收；真正未确定写入仍由原协议保护。
+
+## 27. C2-B14 事前契约：原 MERGE_MR 已持久拒绝响应的结果投影
+
+### 27.1 目标、备选与当前状态
+
+B13出队后将B14设为唯一HEAD。已读取现候选扫描、APPLIED投影、原sender证明、同步拒绝分类、completeTask/acknowledgeTask及正常结果消费者，完成两次独立只读审阅。当前仅事前契约，B14测试未落盘、未运行，生产未修改；开工时以包含本契约的完整提交SHA冻结基线，先独立行为RED，不能借B13的GREEN或CI。
+
+确定同步REJECTED已持久化但原Task尚RUNNING，是可由既有原响应补本地结果的最小缺口；已终态UNKNOWN的历史更正与SEND无响应需要不同证据。选择前者的MERGE_MR子集，避免把一次FOUND解释成原PUT成功、释放未知保护或授予重发。
+
+### 27.1.1 2026-11-23 目标与边界复核
+
+用户要求核对当前任务目标和边界后，再次对照愿景、项目画像、设计及实际消费者。确认B14交付的是“已知原拒绝在中断后成为可查询、可解释、可被队列和重试门禁正确消费的原结果”，而不是补齐枚举对称、单独交付helper，或让所有拒绝都变为可重试。恢复遵守现领取到期规则，不承诺即时接管。
+
+独立业务预期先冻结，正常与恢复都应满足；不能用正常failedWrite输出作测试oracle。确定权限/保护/审批/流水线/代码冲突拒绝为MERGE_BLOCKED及正确原因、Task FAILED；HTTP_409为MERGE_BLOCKED及blockReason UNKNOWN、Task FAILED。GitLab该合并接口的409表示源SHA不匹配，不能只按“Conflict”字样判代码冲突，依据[官方合并接口](https://docs.gitlab.com/api/merge_requests/#merge-a-merge-request)。
+
+NO_COMMITS不足以证明原提交已经进入目标，因此Task及Item/Step为UNKNOWN，Run为NEEDS_REVIEW、finishedAt为空，普通retry仍被拒绝。operation已明确REJECTED后原guard可由结果事务确认释放，但不授予业务重试权；同窗口重叠仓库的新编排仍受未决Run门禁约束，不能误称全局继续占有仓库guard。
+
+完成出口须覆盖真实拒绝持久化→独立进程退出→到期默认worker→原结果事务→现Run查询/后继策略/retry受理。查询应保留原窗口/迭代/仓库与MR证据链；明确阻塞项也须源Run已结束等门禁满足才能申请重试，继承原I/IID/A，预检发现源SHA从A变B时停止，不替换为B。真正SEND/UNKNOWN及旧终态更正继续排队；本次复核只校准合同，未改B14生产实现或测试。
+
+### 27.2 资格与证据
+
+仅当前WINDOW协议原TRY_MERGE仍RUNNING，领取事实完整、数据库时间已到期、finishedAt为空、无自身Step、实际顺序和同仓前序资格满足，且只有一个自身MERGE_MR REJECTED operation，才可在原锁序内继续核准。必须保留历史owner自洽，seq0空意图、seq1实际sender、seq2拒绝恰为同attempt三条事件。INTENT由A创建、B合法接管并SEND的正控不能因op历史token=A而误拒；只认seq1与当前Task原token=B，不换token。
+
+seq2 evidence恰含typed httpStatus/rejectionReason；status为可无损转int的JSON整数400–499且非408，reason非空并与operation.reason和event.reason一致。只接受现producer可达原因：保护分支先于401/403；401/403只能PROTECTED_BRANCH或PERMISSION_DENIED；409不能CONFLICT，HTTP_n匹配actual status，UNKNOWN/任意文本不是现REJECTED producer产物。旧证据缺字段、错类型、原因不一致或事件多余均零变化，不凭状态补造原因。
+
+复用completeMergeRequest核准原完整五字段PUT、requestHash与检查点I/IID/A、原计划source/target；原Run/Item/repository/operator/provider一致。guard remote/session/operation/generation匹配且reason=null，null不代表无owner。不得以APPLIED较宽的target检查替代完整拒绝请求证明，不用Observation补原响应。
+
+### 27.3 结果、职责与影响
+
+恢复HTTP=0，不重新领取/续租、不新operation/attempt、不重建MR或重发PUT，不改原计划、检查点、首次时间、实际顺序或原事件。正常与恢复共用GitMergeWorkflow.failedWrite、Run结果映射与RunPort.mrResultUpdates，不使用ENSURE_MR的mrEvidenceUpdates改写MR身份/mergeSha/disposition。HTTP_409仍为MERGE_BLOCKED且blockReason UNKNOWN；NO_COMMITS才为业务UNKNOWN，不能把这两个UNKNOWN混为同一任务状态。
+
+通过现completeTask同一物理事务提交Step、metadata、Item、后继策略、Task CAS、Run汇总和acknowledgeTask。NO_COMMITS的operation仍REJECTED，guard沿现规则释放，形成UNKNOWN Task及Item/Step、NEEDS_REVIEW Run且finishedAt为空，普通retry继续拒绝；真正Operation.UNKNOWN/NEEDS_REVIEW继续保护。无seq2不得提前终结Task，保留原sender按原fence迟到finish的资格。事务失败全部回滚本次结果与guard，原独立seq2保留。
+
+复用GitOperationPersistenceAdapter原证明、RunJpaPersistenceAdapter候选与投影及现业务映射；严格拒绝响应核准归既有适配器，不新增通用解析服务、DTO、entity、schema、账本或第二恢复执行器。名称与真实职责不符时原位更名并迁移全部消费者，不留兼容双轨；不得把REJECTED接入会重新领取并HTTP发送的claimNextTask分支。此选择补齐确定结果的显示与仓库队列推进，同时避免重发副作用、平行结果规则和长期维护分叉。
+
+### 27.4 独立验收计划
+
+下表是待运行合同，不是通过结果；每个反例只改变主要被核条件，不作字段/状态全量笛卡尔组合。
+
+| 组 | 独立验收目标 |
+|---|---|
+| 1 独立业务预期 | 先按27.1.1冻结权限/保护/审批/流水线/冲突及HTTP fallback预期，再分别验正常和恢复；两路径一致为附加断言，恢复HTTP=0 |
+| 2 NO_COMMITS | UNKNOWN Task/Item/Step、NEEDS_REVIEW Run及finishedAt=null；原I/IID/A与REJECTED事件保持，guard确认释放，普通retry及同窗口重叠编排受理拒绝 |
+| 3 响应规范 | typed status/reason、字段集合、408/越界/未知原因、三处原因不一致及不可达组合拒绝投影，不补证 |
+| 4 sender/事件 | INTENT合法换权后新sender拒绝为正控；旧sender、错attempt、缺失/多余/乱序事件拒绝 |
+| 5 请求/计划/guard | 完整PUT/requestHash、原项目/IID/SHA/分支/owner/generation代表错配均零变化；FOUND不能修复 |
+| 6 Task资格 | 未到期、领取不完整、已有Step/终态、错误协议、多自身operation与同仓前序不满足均不投影 |
+| 7 竞争/迟到 | 两恢复者及原sender completeTask双向竞争至多一个Step；无seq2不接管或终结，合法迟到finish保持，错误sender仍拒绝 |
+| 8 原子回滚 | Step/metadata暂写后CAS失败和外层rollback，结果/后继/Run/绑定/guard全回滚，原REJECTED seq2保留且以后可投影 |
+| 9 扫描/真实消费 | 默认worker发现无PENDING末尾TRY；现Run查询读到原MR证据/结果/原因，同仓策略及跨仓推进正确；retry受理门禁、原I/IID/A继承和SHA变化时禁止替换重发均有实际验证 |
+| 10 保护回归 | 分支/建MR/合并APPLIED正控保持；SEND无响应、Operation.UNKNOWN/NEEDS_REVIEW、已有UNKNOWN Step和单次FOUND不恢复或重发 |
+| 11 真实进程 | 独立JVM在原REJECTED seq2提交后、Task结果提交前强杀，到期重启默认worker补原结果；原PUT总数1、恢复HTTP0、原operation/attempt/token/事件保持，保留APPLIED强杀正控 |
+
+### 27.5 交付出口与保留范围
+
+独立行为RED→同批GREEN后，按实际影响完成相关/API/普通回归、静态TopN、源码绑定与独立审阅；编译/fixture失败另记，实际唯一测试身份不重叠累计。同步design/spec/tasks、任务记录、台账、场景矩阵与唯一队列，验证后分组提交推送并固定完整实现SHA CI，之后才可DONE。
+
+创建分支/创建MR的REJECTED投影、真正SEND/UNKNOWN恢复、已有终态UNKNOWN历史更正及完整UI仍独立验收。缺陷以修复提交处理，不删除历史/远端资产，不迁移旧证据、不释放未证明guard或重发未知请求。

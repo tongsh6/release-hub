@@ -1,6 +1,6 @@
 # ReleaseHub 愿景与产品规划
 
-> 更新：2026-11-21。正式生命周期与责任读取 [唯一项目画像](../PROJECT_PROFILE.yaml)，阶段核对依据见 [AIEF 接入记录](../../../tasks/records/2026-11-21-aief-project-operating-context.md)。
+> 更新：2026-11-23。正式生命周期与责任读取 [唯一项目画像](../PROJECT_PROFILE.yaml)，阶段核对依据见 [AIEF 接入记录](../../../tasks/records/2026-11-21-aief-project-operating-context.md)。
 > 本文维护愿景、问题定义和产品边界；实现及验证事实见 [项目台账](../../project-ledger.md)，当前任务只从 [执行路线图](../../execution-roadmap.md) 的唯一 HEAD 选择。
 
 ## 1. 愿景与产品定义
@@ -138,7 +138,11 @@ Attach/Detach 建立或解除关系，不写 Git；Publish 改变窗口生命周
 - B9 原 CREATE_MR INTENT 的安全接续与本地收口已验收：复用原项目 I、SHA A、完整请求及 operation/attempt，换权只更新当前 Task 发送资格；真实 noSEND 结果与原 NOT_SENT/Task/Step/metadata/Run/guard 同事务收口。原 SEND/UNKNOWN 继续保留保护，步骤读取复用匹配 Task 的持久顺序。独立正反例先行，最终单次 13 suites 1078/1078（含 113 新例）、API 48/48、普通 918（913 PASS / 5 既有 SKIP）及静态通过；十份 495 文件最终快照相同。实现 `666acdc7a60c0922db2f05713cbfefd23eed8265` 已推送，固定该 SHA 的 [Full-Link 44978661003](https://github.com/tongsh6/release-hub/actions/runs/44978661003) attempt 1 为 5 PASS / 0 FAIL。完整历史和边界见记录第 22 节。
 - B10「MERGE_MR 精确只读核对证据」已验收：原 PUT 定位、实际 GET 状态与完整 I/IID/A 证明共同决定观察，十字段保留 JSON 类型和显式 null；原 Task/Step/guard/seq2 保持。冻结 RED 为 23 FAIL/4 正控 PASS，同批 27/27 GREEN；最终单次相关 1123/1123、API 48/48、普通 942（937 PASS/5 既有 SKIP）、前端 218/218及静态通过。实现 `8dcca5bf8265a3a1f36c16a14f0e3b8b0b35652d` 已推送，固定该 SHA 的 [Full-Link 44982102777](https://github.com/tongsh6/release-hub/actions/runs/44982102777) attempt 1 为 5 PASS/0 FAIL。 完整证据见记录第23节。
 - B11「GitLab MR 读取响应状态证明」已验收：getMap/readPages 仅让实际 HTTP 200 进入原正文与身份校验，正常返回的非 200 为 INCOMPLETE；分页任一页不合格即舍弃已累积候选，既有异常分类保持。冻结独立 RED 为 19 FAIL/14 正控 PASS，同批 33/33 GREEN（28 新例及 5 既有正控）；最终单次相关 1151/1151、API 48/48、普通 967（962 PASS/5 既有 SKIP）及静态通过。实现 `35ca21366ec9124fe9c4d6d2ef162a09c13709fb` 已推送，固定该 SHA 的 [Full-Link 44984865795](https://github.com/tongsh6/release-hub/actions/runs/44984865795) attempt 1 为 5 PASS/0 FAIL。 完整证据见记录第24节。
-- B12「无自身写意图任务的失败与重试闭环」已验收：在原Run→Task锁与token核准下，仅将当前Task无任何自身operation且无自身Step的首次UNKNOWN归FAILED，同一结果贯穿原结果事务；诊断、原计划及真实未知写保护保持，现新Run retry继续遵守源Run结束等受理门禁。独立23新例为11 FAIL/12正控PASS→23/23 GREEN；单次相关1174/1174含这23例，API旧fixture补证后48/48、普通967（962 PASS/5旧SKIP）及静态通过。实现 `7042f19278ff8d8bfa102a8f27d0c1f1b949539d` 已推送，固定该SHA的 [Full-Link 44989857158](https://github.com/tongsh6/release-hub/actions/runs/44989857158) attempt 1为5 PASS/0 FAIL。 完整证据见记录第25节；当前唯一 HEAD 为 B13「项目身份响应证明统一」。三个namespace→numeric project入口将共用现Resolver的actual200/object/正整数JSON id纯证明，各入口定位、token与异常政策保持；GitLabPort的long消费者独立拒绝越界，其余字符串身份不新增long上限。独立正反例仅只读和内存准备，尚未落盘、尚未运行；metadata与其他业务GET证明、SEND/UNKNOWN恢复及完整UI继续独立验收。
+- B12「无自身写意图任务的失败与重试闭环」已验收：在原Run→Task锁与token核准下，仅将当前Task无任何自身operation且无自身Step的首次UNKNOWN归FAILED，同一结果贯穿原结果事务；诊断、原计划及真实未知写保护保持，现新Run retry继续遵守源Run结束等受理门禁。独立23新例为11 FAIL/12正控PASS→23/23 GREEN；单次相关1174/1174含这23例，API旧fixture补证后48/48、普通967（962 PASS/5旧SKIP）及静态通过。实现 `7042f19278ff8d8bfa102a8f27d0c1f1b949539d` 已推送，固定该SHA的 [Full-Link 44989857158](https://github.com/tongsh6/release-hub/actions/runs/44989857158) attempt 1为5 PASS/0 FAIL。 完整证据见记录第25节；
+
+B13「项目身份响应证明统一」已DONE：三入口共用actual200/object/正整数JSON id无损String证明，保留各入口定位、凭据、异常政策及long消费边界。冻结独立70例为21 FAIL/49 PASS→70/70 GREEN；单次相关1239/1239含该70例，API48/48、普通1019（1014 PASS/5既有SKIP）及真实静态门禁通过。业务实现`4dbe2c6fd17b0f02a7306dcb7549c2fa83b2d7b5`、静态门禁修复`ddcec2ea6520ae7b347e13f9a2a28d1fae68bb67`已分组推送；固定后者完整SHA的[Full-Link 45102738088](https://github.com/tongsh6/release-hub/actions/runs/45102738088) attempt 1已completed/success，5 PASS/0 FAIL。完整证据、首次静态假PASS纠正及8条既有warning处置见记录第26节。
+
+当前唯一 HEAD 为 B14「原 MERGE_MR 已持久拒绝响应的结果投影」：只补完整原REJECTED响应后的合格RUNNING Task，恢复零HTTP；事前契约及11组独立验收已定义，尚无B14测试或实现。真正SEND/UNKNOWN、终态历史更正、metadata与其他业务GET、完整UI继续独立验收。
 - S4/S5：其他动作的安全恢复、完整 GitLab/UI 旅程和受控交付。
 
 完整阶段依赖、迁移、风险及验收条件统一维护在 [恢复设计](../../openspec/changes/add-durable-run-recovery/design.md) 与 [任务追踪](../../openspec/changes/add-durable-run-recovery/tasks.md)，不在本文维护第二份执行队列。
